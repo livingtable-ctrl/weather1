@@ -527,8 +527,32 @@ def _is_cron_running() -> bool:
             return False
         if _cron_lock_pid_reused(pid, lock_create_time):
             return False
+        # Round-2 opus review (M2-11): this is the branch that actually runs
+        # (psutil is a hard requirement, requirements.txt) -- same pairing
+        # the no-psutil branch's comment below documents, but with a much
+        # longer window: after a watchdog os._exit() with PID reuse ruled
+        # out, this reports "running" for up to _STUCK_RUNNING_BACKSTOP_SECS
+        # (86400s = 24h), which would suppress cmd_cron's stale-.tmp
+        # self-heal for that same window. Safe for the identical reason --
+        # _acquire_cron_lock (~line 358) checks the SAME predicate against
+        # the SAME constant, so cron can't actually run in that window
+        # either, meaning a temporarily-"lost" kill switch can't let a
+        # trade through. This is the window an operator would actually hit
+        # in practice (not the no-psutil fallback below).
         return (_time.time() - started_at) < _STUCK_RUNNING_BACKSTOP_SECS
     # psutil unavailable — treat as running only if the lock is recent
+    #
+    # batch-32 opus review (L-D): after a watchdog os._exit(), BOTH the lock
+    # file and main.py cmd_cron's .kill_switch.tmp are orphaned together --
+    # this branch reports "running" for up to _STALE_LOCK_AGE_SECS (1800s)
+    # past the crash, which would suppress cmd_cron's stale-.tmp self-heal
+    # for that same window. This is safe ONLY because _acquire_cron_lock
+    # (this file, ~line 394) uses the SAME `heartbeat` field and the SAME
+    # 1800s constant to decide staleness -- cron can't actually run in that
+    # window either, so the temporarily-"lost" kill switch can't let a trade
+    # through. If either threshold/field is ever changed independently of
+    # the other, this pairing breaks silently. psutil is a hard requirement
+    # (requirements.txt) so this whole branch is rare in practice.
     return (_time.time() - heartbeat) < _STALE_LOCK_AGE_SECS
 
 

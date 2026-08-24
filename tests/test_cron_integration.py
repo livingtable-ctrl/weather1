@@ -2332,6 +2332,89 @@ class TestKillSwitchOverrideRenameRace:
         assert not (tmp_path / ".kill_switch.tmp").exists()
 
 
+class TestKillSwitchTmpRestoreRacesLiveOverride:
+    """M-27: the stale-.tmp self-heal at the top of cmd_cron used to run
+    unconditionally, before the cron lock is ever touched (the lock lives
+    deep inside cron.py's _cmd_cron_body, reached only via _cron_cmd_cron()
+    after this self-heal block already ran). A scheduled `loop` cycle firing
+    while an operator's manually-answered override is in flight (which holds
+    the lock and has its OWN .kill_switch parked at this same .tmp path)
+    would "restore" the switch mid-override, halting the authorized
+    override. Fixed by skipping the self-heal while cron._is_cron_running()
+    reports a live holder."""
+
+    def test_stale_tmp_restore_skipped_while_cron_is_running(
+        self, cron_env, monkeypatch
+    ):
+        """Mutation-tested: reverting the `and not _skip_tmp_self_heal` guard
+        (main.py's cmd_cron) makes this assertion fail -- the .tmp gets
+        renamed to .kill_switch even though _is_cron_running() reports True,
+        exactly the race this test guards against."""
+        tmp_path, client, main, paper = cron_env
+        import cron as cron_mod
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_tmp_path = tmp_path / ".kill_switch.tmp"
+        ks_tmp_path.write_text('{"reason": "live override in flight"}')
+        assert not ks_path.exists()
+
+        monkeypatch.setattr(cron_mod, "_is_cron_running", lambda: True)
+        # No kill switch present -> not called_from_loop's override-prompt
+        # branch is skipped entirely; this call should fall straight through
+        # to the normal (non-override) cron path without touching input().
+        monkeypatch.setattr(
+            "builtins.input",
+            lambda *_a, **_kw: (_ for _ in ()).throw(
+                AssertionError("must not prompt -- no restored kill switch")
+            ),
+        )
+
+        main.cmd_cron._called_from_loop = False
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert ks_tmp_path.exists(), (
+            "the .tmp must be left untouched while a live process holds the "
+            "cron lock -- it may still be that process's own in-flight "
+            "override, not an orphan"
+        )
+        assert not ks_path.exists(), (
+            ".kill_switch must NOT be restored while cron is running -- "
+            "doing so would halt the live override that's using this .tmp"
+        )
+
+    def test_stale_tmp_restore_still_happens_when_cron_is_not_running(
+        self, cron_env, monkeypatch
+    ):
+        """Positive control for the test above: when _is_cron_running()
+        reports False (the crashed-watchdog case this self-heal exists for),
+        the restore must still proceed exactly as before."""
+        tmp_path, client, main, paper = cron_env
+        import cron as cron_mod
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_tmp_path = tmp_path / ".kill_switch.tmp"
+        ks_tmp_path.write_text('{"reason": "test halt"}')
+
+        monkeypatch.setattr(cron_mod, "_is_cron_running", lambda: False)
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "n")
+
+        main.cmd_cron._called_from_loop = False
+        try:
+            main.cmd_cron(client)
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert ks_path.exists(), (
+            ".kill_switch must still be restored from the stale .tmp"
+        )
+        assert not ks_tmp_path.exists()
+
+
 @pytest.mark.cron_integration
 class TestSamedayOnlyWiring:
     """opus review (2026-08-22): the sameday_only kwarg's full call chain is

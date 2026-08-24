@@ -55,7 +55,7 @@ from colors import (
     signal_color,
     yellow,
 )
-from config import load_and_validate as _load_config
+from config import BotConfig
 from consistency import find_violations, get_shadow_observation_report
 from kalshi_client import (
     KalshiClient,
@@ -162,7 +162,18 @@ from weather_markets import (
     reset_gate_counts,
 )
 
-_bot_config = _load_config()
+# H-1: intentionally unvalidated (BotConfig.from_env(), not config.load_and_validate()).
+# This runs at MODULE IMPORT TIME -- before sys.excepthook is installed below, and
+# before main() ever gets a chance to look at args[0] and decide whether this
+# subcommand is exempt from strict trading-parameter validation. Calling .validate()
+# here would mean ANY out-of-bounds env value (e.g. a menu-writable KALSHI_FEE_RATE=0,
+# or MIN_EDGE>STRONG_EDGE) bricks every CLI command including `py main.py kill` -- the
+# runbook's documented emergency halt -- with a raw unhandled traceback and no
+# crash.log (batch-09 closed this exact regression for the KALSHI_ENV check;
+# batch-29 reopened it for 7 new bounds checks without noticing the same import-time
+# hazard applied). Actual bounds validation now happens in main(), after dispatch
+# decides the command isn't exempt -- see the config.validate() gate below.
+_bot_config = BotConfig.from_env()
 
 # Crash log: write uncaught exceptions (including from threads) to data/crash.log
 # so the error survives even when the terminal window closes before the user can read it.
@@ -299,8 +310,57 @@ def cmd_cron(
     # If a previous override run was hard-killed by the cron watchdog (os._exit
     # bypasses finally blocks), .kill_switch.tmp may have been left behind without
     # being renamed back.  Restore it now so the kill switch is never silently lost.
-    _kill_stale_tmp = _kill_path.with_name(".kill_switch.tmp")
+    #
+    # M-27: derived from _kill_path.name (not a hardcoded ".kill_switch.tmp"
+    # literal) so this can't silently desync from cmd_resume's own derivation
+    # (main.py's cmd_resume) if KILL_SWITCH_PATH's filename ever changes.
+    _kill_stale_tmp = _kill_path.with_name(_kill_path.name + ".tmp")
+    # M-27: this self-heal used to run unconditionally at the top of every
+    # cmd_cron call, before the cron lock is acquired (deep inside cron.py's
+    # _cmd_cron_body). Without a guard, a scheduled `loop` cycle firing while
+    # an operator's manually-answered override is running (which holds the
+    # lock and has its OWN .kill_switch moved aside as this same .tmp file)
+    # would "restore" the switch mid-override -- halting the authorized
+    # override, firing a duplicate kill-switch alert, and leaving the
+    # override's own finally block believing nothing happened (its .tmp is
+    # gone by the time it checks). _is_cron_running() is the existing
+    # read-only lock check (cron.py, already used by web_app.py and the EMOS
+    # activate/deactivate guards above) -- skip the self-heal entirely while
+    # a live process holds the lock; a genuinely orphaned .tmp (the crashed-
+    # watchdog case this exists for) has no live lock holder and is
+    # unaffected. Opus review (L-B): only computed when a .tmp actually
+    # exists (the overwhelmingly common case is that it doesn't) -- avoids a
+    # lock-file read + psutil.pid_exists() + Process.create_time() on every
+    # single cmd_cron call for nothing.
+    # Opus review (L-C): this narrows the race window from minutes (the old
+    # code's window spanned the interactive override prompt plus the whole
+    # cron cycle) to milliseconds -- the override's own move-aside
+    # (`_kill_path` -> `_kill_stale_tmp`, below) happens before the lock is
+    # acquired inside _cron_cmd_cron(), and the lock is released before the
+    # override's finally block restores the switch. A scheduled cron firing
+    # in either of those specific windows can still race this self-heal.
+    # Fail-closed direction (restoring the switch, not losing it) means the
+    # residual window is a false-positive halt, not a missed one -- accepted
+    # as a real but low-consequence gap rather than a full redesign (e.g. a
+    # marker file written around the move-aside itself, independent of lock
+    # state) that this fix's scope doesn't require.
     if _kill_stale_tmp.exists():
+        _skip_tmp_self_heal = False
+        try:
+            _skip_tmp_self_heal = _cron_module._is_cron_running()
+        except Exception:
+            # Round-2 opus review (M2-12): leaving _skip_tmp_self_heal False
+            # here means the self-heal PROCEEDS (restores the kill switch)
+            # -- the safe/restrictive direction, i.e. fail CLOSED, not fail
+            # open. _is_cron_running()'s own default (used correctly by the
+            # other _is_cron_running() call sites in this file, which gate
+            # whether an action is BLOCKED) is fail-open in ITS context;
+            # this guard inverts that relationship since it gates whether a
+            # restore happens, not whether one is refused.
+            pass
+    else:
+        _skip_tmp_self_heal = True  # nothing to restore either way
+    if _kill_stale_tmp.exists() and not _skip_tmp_self_heal:
         if not _kill_path.exists():
             try:
                 import safe_io as _safe_io
@@ -418,7 +478,7 @@ def cmd_cron(
         # retry every other Windows file-replace in this codebase gets --
         # aborts the override cleanly instead of an uncaught traceback if
         # the move fails for any other reason.
-        _kill_tmp = _kill_path.with_name(".kill_switch.tmp")
+        _kill_tmp = _kill_path.with_name(_kill_path.name + ".tmp")
         try:
             import safe_io as _safe_io
 
@@ -821,6 +881,14 @@ _PERMANENT_DATA_FILES = {
     "emos_params.json",
     "correlations.json",
     "metar_lockout_calibration.json",
+    # M-19: written only on failure (the AUD-0026 phantom-live-position
+    # sentinel), so its mtime never refreshes on success and it would
+    # otherwise be deleted after 2 days while the dangerous DB row it warns
+    # about survives.
+    "execution_log_unsettled_exit_rows.json",
+    # M-19: multi-week rain-arb graduation history -- any >=2-day cron pause
+    # followed by one CLI invocation would delete it, losing the whole trend.
+    "rain_arb_shadow_observations.json",
 }
 
 
@@ -1244,8 +1312,23 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
 
     _KILL_PATH = KILL_SWITCH_PATH
 
+    # L-9: naive datetime.now() reads the HOST's local timezone -- correct
+    # only by coincidence on an operator's own machine, and silently wrong
+    # (both the displayed cycle timestamps and the "9 PM" auto-settle trigger
+    # below) once the bot runs on a UTC-configured VM (the planned host move).
+    # ZoneInfo("America/New_York") pins "9 PM" to what it's always meant --
+    # Kalshi's own exchange-local time -- matching the rest of this file's
+    # established `datetime.now(ZoneInfo(...))` convention (e.g. main.py's
+    # _target_date_due/cmd_backtest/_days_out helpers), and correctly handles
+    # DST transitions via real tz-aware arithmetic instead of the naive-local
+    # subtraction this loop's own "H-10" comment already anticipates trouble
+    # from.
+    from zoneinfo import ZoneInfo as _LoopZoneInfo
+
+    _LOOP_TZ = _LoopZoneInfo("America/New_York")
+
     def _now() -> datetime:
-        return datetime.now()
+        return datetime.now(_LOOP_TZ)
 
     def _run_cycle(label: str) -> None:
         print(bold(f"\n[loop] ── {label} ── {_now().strftime('%Y-%m-%d %H:%M')} ──"))
@@ -1291,6 +1374,14 @@ def cmd_loop(client: KalshiClient, args: list[str] | None = None) -> None:
         )
     )
 
+    # Opus review (L-H): `next_run = _now() + timedelta(...)` is wall-clock
+    # arithmetic in America/New_York, so a cycle spanning a DST transition
+    # fires up to an hour early (spring-forward) or late (fall-back), twice a
+    # year -- strictly better than the pre-fix naive-local behavior (which had
+    # the same DST issue AND was wrong about which timezone it was even in
+    # after a UTC-host move) and low-consequence (an interval-timing loop, not
+    # a safety gate), so left as a documented limitation rather than switching
+    # to UTC-computed-then-locally-rendered arithmetic.
     # Run immediately on startup
     _run_cycle("startup run")
     next_run = _now() + timedelta(seconds=interval_s)
@@ -1732,9 +1823,9 @@ def _analyze_once(
     min_edge: float | None = None,
     show_summary: bool = False,
 ):
+    """Run one analysis pass. Returns set of opportunity tickers found."""
     if min_edge is None:
         min_edge = MIN_EDGE
-    """Run one analysis pass. Returns set of opportunity tickers found."""
     markets = get_weather_markets(client)
     # Dedup by ticker + skip stale markets before analysis, matching cron.py's
     # cmd_cron parity (backlog.txt "THE ONLY LIVE-ORDER PATH..." smallest-safe
@@ -2399,8 +2490,13 @@ def _render_analysis_results(
                     )
                 except Exception as _arb_exc:
                     print(dim(f"  [Arb] Could not place: {_arb_exc}"))
-    except Exception:
-        pass
+    except Exception as _arb_outer_exc:
+        # L-9: this outer handler covers find_violations()/the gate check/the
+        # per-city cost bookkeeping *around* the inner per-violation try above
+        # (which already handles the naked-leg unwind and logs at WARNING) --
+        # an exception here used to vanish silently even though it's in the
+        # same code path that places real paper orders.
+        _log.error("consistency: arbitrage placement block failed: %s", _arb_outer_exc)
 
     # ── Portfolio correlation warning ────────────────────────────────────────
     # Only warn on above-threshold opps — sub-threshold markets aren't being traded.
@@ -2475,28 +2571,108 @@ def _load_live_config() -> dict:
     """Load live trading hard stops from data/live_config.json.
 
     Creates the file with safe defaults if it does not exist.
-    Returns the config dict.
+    Returns the config dict, merged over _LIVE_CONFIG_DEFAULT so a missing key
+    (partial/hand-edited file) can't silently fail open -- e.g. callers read
+    `cfg.get("daily_loss_limit", float("inf"))`, so a config dict missing that
+    key entirely would disable the daily-loss circuit breaker instead of using
+    the safe $200 default.
     """
+    import logging as _cfg_log
+    import math
+
     try:
         with open(_LIVE_CONFIG_PATH, encoding="utf-8") as f:
-            return json.load(f)
+            loaded = json.load(f)
     except FileNotFoundError:
-        _LIVE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _LIVE_CONFIG_PATH.write_text(
-            json.dumps(_LIVE_CONFIG_DEFAULT, indent=2), encoding="utf-8"
-        )
+        # Opus review (M-C): mkdir()/write_text() here can themselves raise
+        # OSError (read-only data dir, disk full, an AV lock during create) --
+        # that's a NEW exception raised while already handling
+        # FileNotFoundError, so the `except OSError` clause below (which only
+        # wraps the original `try:` block above) can't catch it. Same AUD-0008
+        # failure mode this whole function exists to close, just one branch
+        # over -- give the create step its own guard instead.
+        try:
+            _LIVE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _LIVE_CONFIG_PATH.write_text(
+                json.dumps(_LIVE_CONFIG_DEFAULT, indent=2), encoding="utf-8"
+            )
+        except OSError as exc:
+            _cfg_log.getLogger(__name__).warning(
+                "_load_live_config: could not create default %s (%s) — using "
+                "in-memory defaults this cycle",
+                _LIVE_CONFIG_PATH,
+                exc,
+            )
         return dict(_LIVE_CONFIG_DEFAULT)
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
         # M-20: corrupted live_config.json (interrupted write) must fall back to
         # defaults — previously an unhandled JSONDecodeError crashed the watch path.
-        import logging as _cfg_log
-
         _cfg_log.getLogger(__name__).error(
             "_load_live_config: %s is corrupted (%s) — using defaults",
             _LIVE_CONFIG_PATH,
             exc,
         )
         return dict(_LIVE_CONFIG_DEFAULT)
+    except OSError as exc:
+        # M-26: a transient error (AV-scan PermissionError, a Windows sharing
+        # violation, a disk hiccup) on open()/read() must not propagate -- this
+        # is called every cycle inside cmd_watch's persistent `while True` loop,
+        # whose only exception handler is `except KeyboardInterrupt` (the exact
+        # failure mode AUD-0008 already fixed for the sibling position-
+        # protection block a few lines below this call site).
+        _cfg_log.getLogger(__name__).warning(
+            "_load_live_config: could not read %s (%s) — using defaults this cycle",
+            _LIVE_CONFIG_PATH,
+            exc,
+        )
+        return dict(_LIVE_CONFIG_DEFAULT)
+
+    if not isinstance(loaded, dict):
+        _cfg_log.getLogger(__name__).error(
+            "_load_live_config: %s did not contain a JSON object (got %s) — "
+            "using defaults",
+            _LIVE_CONFIG_PATH,
+            type(loaded).__name__,
+        )
+        return dict(_LIVE_CONFIG_DEFAULT)
+
+    # Opus review (M-D): merging over the default fixes a MISSING key, but a
+    # present-and-null (or wrong-typed, e.g. a string) value would still
+    # overwrite the safe default and pass the plain dict merge -- callers'
+    # `cfg.get("daily_loss_limit", float("inf"))` only helps when the key is
+    # absent, not when it's `None`; a `None` there raises TypeError on the
+    # first numeric comparison in the same live-order path M-26 set out to
+    # protect. Validate each KNOWN key's type before accepting it from
+    # `loaded`; unrecognized extra keys pass through unchanged (harmless).
+    merged = dict(_LIVE_CONFIG_DEFAULT)
+    for _key, _default_val in _LIVE_CONFIG_DEFAULT.items():
+        _val = loaded.get(_key, _default_val)
+        # Round-2 opus review (M2-3): json.load() accepts bare NaN/Infinity
+        # (a non-standard-JSON Python extension) as a real float, so the
+        # isinstance check alone let `{"daily_loss_limit": NaN}` through --
+        # every consumer's gate is `live_loss >= daily_loss_limit`, which is
+        # always False against NaN, silently disabling the circuit breaker.
+        # math.isfinite() rejects NaN/+-Infinity the same way the type check
+        # rejects a string, closing the exact fail-open direction this
+        # function exists to prevent.
+        if (
+            isinstance(_val, int | float)
+            and not isinstance(_val, bool)
+            and math.isfinite(_val)
+        ):
+            merged[_key] = _val
+        elif _key in loaded:
+            _cfg_log.getLogger(__name__).warning(
+                "_load_live_config: %s has a non-numeric %s (%r) — using default %s",
+                _LIVE_CONFIG_PATH,
+                _key,
+                _val,
+                _default_val,
+            )
+    for _key, _val in loaded.items():
+        if _key not in _LIVE_CONFIG_DEFAULT:
+            merged[_key] = _val
+    return merged
 
 
 def _resolve_price(client: KalshiClient, ticker: str, side: str) -> float | None:
@@ -3424,10 +3600,10 @@ def cmd_today(client: KalshiClient) -> None:
         # exception (its own shadow-gate checks run FIRST inside that
         # function, before the exposure-cap checks) fails open here too,
         # placing a real order on a shadow-only market. Added the same
-        # checks, in the same order _quick_paper_buy/cmd_paper use (now six:
+        # checks, in the same order _quick_paper_buy/cmd_paper use (now eight:
         # trading-paused, hurricane-count, hurricane-next-event, storm-order,
-        # blanket-other-hurricane, rain -- grown one at a time as each new
-        # shape shipped its own shadow gate).
+        # blanket-other-hurricane, rain, snow, hourly-directional temperature --
+        # grown one at a time as each new shape shipped its own shadow gate).
         if is_trading_paused():
             print(
                 red(
@@ -5027,6 +5203,14 @@ def cmd_export() -> None:
         print(dim("  No paper trades to export yet."))
 
     # Tax export — paper trades
+    # L-9 sweep: UTC year, not a filer's local calendar year -- flagged and
+    # deliberately left as-is. export_tax_csv() filters by settled_at[:4],
+    # and settled_at is itself stored in UTC throughout this codebase (see
+    # paper.py's get_daily_pnl). Switching only this caller to a local
+    # timezone would desync the requested tax_year from the UTC basis
+    # settled_at is actually compared against -- a real fix needs
+    # export_tax_csv() itself to interpret settled_at in the filer's local
+    # time, which is a bigger change than this doc/tz nit sweep should make.
     tax_year = datetime.now(UTC).year
     tax_path = str(out_dir / f"paper_tax_{tax_year}.csv")
     n3 = export_tax_csv(tax_path, tax_year=tax_year)
@@ -6015,8 +6199,13 @@ def cmd_setup():
     existing_pem = os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
     existing_env = os.getenv("KALSHI_ENV", "demo")
 
+    # L-9: mask the existing Key ID in the prompt (all but last 4 chars) --
+    # re-running setup used to echo it in plaintext into terminal scrollback,
+    # which can persist in terminal history/screen-recording tools far longer
+    # than the .env file itself does.
+    _key_id_display = "…" + existing_key[-4:] if len(existing_key) > 4 else existing_key
     key_id = (
-        input(f"  Key ID       [{existing_key or 'required'}]: ").strip()
+        input(f"  Key ID       [{_key_id_display or 'required'}]: ").strip()
         or existing_key
     )
     pem_path = (
@@ -6853,11 +7042,15 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
                 "0-1 excl",
             ),
             ("MAX_POSITION_AGE_DAYS", "warn on positions older than N days", "int"),
-            ("KALSHI_FEE_RATE", "taker fee (reference only — see below)", "0-1"),
+            (
+                "KALSHI_FEE_RATE",
+                "taker fee (reference only — see below)",
+                "0-1 excl",
+            ),
             (
                 "KALSHI_MAKER_FEE_RATE",
                 "maker fee — the rate this bot's own trades actually pay",
-                "0-1",
+                "[0-1)",
             ),
             ("KALSHI_ENV", "demo or prod", "demo/prod"),
         ]
@@ -6945,6 +7138,17 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
                     valid = False
             except ValueError:
                 valid = False
+        elif fmt == "[0-1)":
+            # Inclusive of 0.0 (unlike "0-1 excl" above) -- backs
+            # KALSHI_MAKER_FEE_RATE, whose config.py validate() bound is
+            # `0.0 <= x < 1.0`: $0 is the real, expected maker fee for this
+            # bot's markets, not an edge case (see config.py's own comment).
+            try:
+                fv = float(new_val)
+                if not 0 <= fv < 1:
+                    valid = False
+            except ValueError:
+                valid = False
         elif fmt == "int":
             try:
                 int(new_val)
@@ -6958,6 +7162,77 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             print(red(f"  Invalid value for {key} (expected {fmt})."))
             continue
 
+        # M-25: KALSHI_ENV governs which base_url the session's already-built
+        # `client` talks to (kalshi_client.py sets base_url once, at construction
+        # -- it never re-reads the env). Hot-editing it here would flip this
+        # banner to [DEMO]/[PROD] immediately while every live order this
+        # session places still goes to whichever URL `client` was built with --
+        # a real order can be placed under a DEMO banner. Refuse the in-session
+        # edit rather than risk that desync; a restart picks up the new value
+        # through the normal build_client() path at process start.
+        if key == "KALSHI_ENV":
+            print(
+                red(
+                    "  KALSHI_ENV can't be changed from this menu — it controls "
+                    "which server every live order in this session reaches, and "
+                    "this session's client was already built with the old value."
+                )
+            )
+            print(
+                dim(
+                    "  Edit KALSHI_ENV in .env directly, then restart the bot to "
+                    "apply it.\n"
+                )
+            )
+            continue
+
+        # H-1: authoritative check -- run the REAL config.BotConfig.
+        # validation_errors() against the would-be env (not a re-implementation
+        # of its bounds) so this menu can never write a value validate() would
+        # then reject at next startup. Temporarily applied to os.environ (not
+        # yet written to .env) so validation sees this edit combined with every
+        # other current setting, e.g. catches a MIN_EDGE edit that would push
+        # it above the existing STRONG_EDGE, not just this field in isolation.
+        #
+        # Opus review (M-B): comparing the CANDIDATE's error set against a
+        # BASELINE taken before the edit, not refusing on ANY candidate error,
+        # matters because validate() checks 17 fields but this menu can only
+        # edit 7 of them -- an earlier version of this fix refused every edit
+        # (even ones that fix the very field the operator came here to fix)
+        # whenever some OTHER, unrelated field was already invalid in .env
+        # (e.g. a hand-edited KELLY_CAP), permanently deadlocking the menu
+        # with no in-app way to recover. Only refuse when the edit introduces
+        # a genuinely NEW error; pre-existing unrelated errors are written
+        # through and surfaced as a warning instead.
+        import config as _config_mod
+
+        _baseline_errors = set(_config_mod.BotConfig.from_env().validation_errors())
+        _orig_env_val = os.environ.get(key)
+        os.environ[key] = new_val
+        _candidate_errors = set(_config_mod.BotConfig.from_env().validation_errors())
+        _new_errors = _candidate_errors - _baseline_errors
+        if _new_errors:
+            if _orig_env_val is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = _orig_env_val
+            print(red("  Rejected — would produce an invalid configuration:"))
+            for _err in sorted(_new_errors):
+                print(red(f"  - {_err}"))
+            continue
+        _preexisting_errors = _candidate_errors & _baseline_errors
+        if _preexisting_errors:
+            print(
+                yellow(
+                    "  Note: .env already has unrelated invalid setting(s) this "
+                    "edit doesn't fix — consider running `py main.py config`:"
+                )
+            )
+            for _err in sorted(_preexisting_errors):
+                print(yellow(f"  - {_err}"))
+        # Valid (or no worse than before) -- os.environ[key] already holds
+        # new_val; persist it to .env too.
+
         # Try python-dotenv first
         try:
             from dotenv import set_key as _set_key
@@ -6967,7 +7242,32 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             _write_env(key, new_val)
 
         # Reload env + modules
-        load_dotenv(override=True)
+        #
+        # Opus review (L-G): load_dotenv(override=True) re-reads the WHOLE
+        # .env file, not just `key` -- if an operator hand-edited KALSHI_ENV
+        # in a text editor while this process was running, then used Settings
+        # to edit any OTHER field, this reload would silently pick up the new
+        # KALSHI_ENV into os.environ. _kalshi_env() (env-fresh) would then
+        # report the new value while `client.base_url` (fixed at construction)
+        # still targets the old one -- the exact M-25 desync, just triggered
+        # by an external file edit instead of a direct menu edit. Snapshot and
+        # restore KALSHI_ENV across the reload so only an explicit KALSHI_ENV
+        # menu edit (refused above) or a process restart can ever change it.
+        # Round-2 opus review (M2-2): pass env_path explicitly -- a bare
+        # load_dotenv(override=True) does its own upward directory search
+        # (python-dotenv's find_dotenv(), anchored to the real call frame,
+        # not affected by any test monkeypatching env_path/__file__), which
+        # is redundant with -- and in a test, can silently diverge from --
+        # the exact file `_set_key`/`_write_env` above just wrote to.
+        # Explicit path removes the ambiguity and makes this correctly
+        # testable in isolation; behaves identically in real production
+        # since env_path IS what find_dotenv() would have resolved to there.
+        _preserved_kalshi_env = os.environ.get("KALSHI_ENV")
+        load_dotenv(str(env_path), override=True)
+        if _preserved_kalshi_env is None:
+            os.environ.pop("KALSHI_ENV", None)
+        else:
+            os.environ["KALSHI_ENV"] = _preserved_kalshi_env
         try:
             importlib.reload(_utils_mod)
             import paper as _paper_mod
@@ -8551,8 +8851,31 @@ def cmd_menu(client: KalshiClient):
     ]
     key_map = {opt[0].lower(): str(i) for i, opt in enumerate(top_options, 1)}
 
+    # M-25: read from the live client, not a fresh env read (_kalshi_env()).
+    # client.base_url is fixed at construction (build_client(), process
+    # start) and never re-reads KALSHI_ENV -- an env-fresh banner could flip
+    # to [DEMO] the instant an operator edits KALSHI_ENV via the Settings
+    # menu while every live order this session places still reaches
+    # whichever server `client` was actually built with. Settings now
+    # refuses that in-session edit outright (restart required), so this
+    # banner reading the client is the other half of that fix: it can never
+    # show a state the client doesn't back. Opus review (I-4): hoisted out
+    # of the redraw loop (the import doesn't need to repeat every redraw),
+    # and made explicit (PROD/DEMO/unrecognized) instead of an implicit
+    # not-PROD-means-DEMO fallback -- build_client() only ever produces one
+    # of the two constants today, so this can't currently fire, but it fails
+    # loudly instead of reassuringly if that ever changes.
+    from kalshi_client import DEMO_BASE as _DEMO_BASE
+    from kalshi_client import PROD_BASE as _PROD_BASE
+
     while True:
-        env_text = f"[{_kalshi_env().upper()}]"
+        _client_base = getattr(client, "base_url", None)
+        if _client_base == _PROD_BASE:
+            env_text = "[PROD]"
+        elif _client_base == _DEMO_BASE:
+            env_text = "[DEMO]"
+        else:
+            env_text = "[UNKNOWN]"
         title_visible = f"   Kalshi Weather Prediction Markets   {env_text}"
 
         # Build status line
@@ -8636,6 +8959,11 @@ def cmd_menu(client: KalshiClient):
         print(bold(f"  └{bar}┘\n"))
 
         # ── Reminder banners ──────────────────────────────────────────────────
+        # L-9: the kill-switch/staleness check and the due-trades check used to
+        # share one blanket `except Exception: pass` -- split into two try
+        # blocks (each logged at WARNING, not silently swallowed) so a bug in
+        # the due-trades section can never suppress the halt indication, and
+        # vice versa; each failure is now visible instead of invisible.
         try:
             import time as _t
 
@@ -8669,7 +8997,12 @@ def cmd_menu(client: KalshiClient):
                                 f"  ⚠  Cron last ran {_hours_since:.0f}h ago — press L to start the loop.\n"
                             )
                         )
+        except Exception as _banner_exc:
+            _log.warning(
+                "cmd_menu: kill-switch/staleness banner failed: %s", _banner_exc
+            )
 
+        try:
             # Unsettled due trades
             from paper import get_open_trades as _got
 
@@ -8684,8 +9017,8 @@ def cmd_menu(client: KalshiClient):
                         f"  ⚠  {len(_due)} trade(s) due today — go to P → 3 → 1 to settle.\n"
                     )
                 )
-        except Exception:
-            pass
+        except Exception as _due_exc:
+            _log.warning("cmd_menu: due-trades banner failed: %s", _due_exc)
 
         for i, (key, name, desc) in enumerate(top_options, 1):
             num = cyan(f"  {i:>2}")
@@ -9478,7 +9811,7 @@ def cmd_backtest(client: KalshiClient, args: list):
 def cmd_paper(args: list, client: KalshiClient | None = None):
     """
     Paper trading commands:
-      paper buy <ticker> <yes/no> <qty> <price>
+      paper buy <ticker> <yes/no> <price> [qty]
       paper results
       paper settle <trade_id> <yes/no>
       paper reset
@@ -10303,10 +10636,18 @@ def cmd_weekly_summary() -> None:
     entered_this_week = [
         t for t in all_trades if (t.get("entered_at") or "") >= week_start_str
     ]
+    # M-29: filter by settled_at (settlement date), not entered_at (entry
+    # date) -- a position entered 10+ days ago that settled yesterday belongs
+    # in this week's P&L/win-rate, and a position entered this week that's
+    # still open (no settled_at yet) does not. Mirrors paper.py's
+    # get_daily_pnl (P0-2/M-9) and cmd_paper's settled-history sort, both of
+    # which already use settled_at for exactly this reason.
     settled_this_week = [
         t
         for t in all_trades
-        if t.get("settled") and (t.get("entered_at") or "") >= week_start_str
+        if t.get("settled")
+        and t.get("settled_at")
+        and (t.get("settled_at") or "") >= week_start_str
     ]
 
     week_pnl = sum(t.get("pnl") or 0.0 for t in settled_this_week)
@@ -10918,8 +11259,12 @@ def _check_cron_staleness() -> None:
                         "  Multi-day markets are not being scanned. Run: py main.py cron\n"
                     )
                 )
-    except Exception:
-        pass
+    except Exception as _staleness_exc:
+        # L-9: a corrupt/partial heartbeat file (interrupted write) used to
+        # silently disable this dead-man's-switch banner with no trace --
+        # log it so an operator investigating "why didn't I get warned" can
+        # find the cause.
+        _log.warning("_check_cron_staleness: check failed: %s", _staleness_exc)
 
 
 def _setup_logging(log_file: str = "bot.log") -> None:
@@ -10959,6 +11304,28 @@ def _setup_logging(log_file: str = "bot.log") -> None:
 
 def main():
     args = sys.argv[1:]
+    # Round-2 opus review (M2-4): strip --debug HERE, before every dispatch
+    # check below -- each early-return exemption (setup/calibrate/schedule-
+    # cycles/emos-status/emos-deactivate/kill/resume) matches only
+    # `args[0]`, so `py main.py --debug kill` used to skip every one of
+    # them and fall through to validate_env()/build_client() -- the exact
+    # PEM/credential exposure M-A specifically moved kill/resume earlier to
+    # avoid. The actual DEBUG log-level toggle stays at its original spot
+    # below (needs _setup_logging() to have already installed handlers);
+    # only the stripping moved earlier, via this flag.
+    _debug_flag = "--debug" in args
+    if _debug_flag:
+        args = [a for a in args if a != "--debug"]
+
+    # Round-2 opus review (M2-5): hoisted here (was after every early-return
+    # exemption below) so kill/resume -- and setup/calibrate/schedule-cycles/
+    # emos-status/emos-deactivate, which share the same early-return shape --
+    # get a bot.log trail too. Pure additive setup (installs handlers, no
+    # dependency on anything computed below); previously cmd_resume's own
+    # "black swan state cleared" log line went nowhere (root logger had no
+    # handlers yet -- logging.lastResort only emits WARNING+, and that line
+    # logs at INFO) despite genuinely happening.
+    _setup_logging()
 
     # Skip env check for setup command so new users can run it without creds
     if args and args[0].lower() == "setup":
@@ -10986,6 +11353,67 @@ def main():
         cmd_emos_deactivate()
         return
 
+    # H-1 opus review (M-A): kill/resume -- the runbook's documented emergency
+    # halt (LIVE_TRADING_RUNBOOK.md "Immediate halt") and its pair -- moved into
+    # this same early-return block, mirroring emos-deactivate immediately above.
+    # Merely exempting them from the bounds-check gate below (an earlier version
+    # of this fix) was NOT enough: they still fell through to validate_env()
+    # (exits 1 if KALSHI_KEY_ID/PRIVATE_KEY_PATH is unset OR the .pem file is
+    # missing/unreadable) and build_client() (kalshi_client.py actually parses
+    # the PEM via serialization.load_pem_private_key() -- a rotated/corrupted
+    # key raises there), neither of which kill/resume need: both only ever
+    # touch data/.kill_switch(.tmp), never an API credential or a trading-
+    # parameter field.
+    if args and args[0].lower() == "kill":
+        cmd_kill()
+        return
+    if args and args[0].lower() == "resume":
+        cmd_resume()
+        return
+
+    # H-1: trading-parameter bounds check, deferred here (not import time -- see
+    # BotConfig.from_env() above). Exempts every command above (all return before
+    # reaching here) plus the config self-repair/diagnostic surface itself --
+    # opus review (H-A) caught that this gate's own error message told the
+    # operator to run `py main.py settings` to fix it, while `settings` was NOT
+    # exempt and would hit this exact same gate first, making the printed
+    # remedy unreachable. `config`/`config-check` (read-only diagnostic) and
+    # `unlock` (cron-lock recovery, no config read at all) share the same
+    # "must survive a broken .env to be useful" shape.
+    if args and args[0].lower() not in (
+        "settings",
+        "config-settings",
+        "config",
+        "config-check",
+        "unlock",
+    ):
+        try:
+            _bot_config.validate()
+        except ValueError as _cfg_exc:
+            print(red(f"\n  Invalid configuration:\n{_cfg_exc}\n"))
+            print(
+                dim(
+                    "  Fix these in .env (or via `py main.py settings`), or run "
+                    "`py main.py kill` to halt trading immediately.\n"
+                )
+            )
+            if args[0].lower() in ("cron", "loop"):
+                # Unattended invocations (scheduled task / persistent loop) have
+                # no human reading this terminal -- a raw exit(1) here previously
+                # meant a broken .env silently stopped every scheduled cycle with
+                # nobody notified. Mirrors the kill-switch alert's pattern (cron.py).
+                try:
+                    from notify import send_system_alert as _cfg_alert
+
+                    _cfg_alert(
+                        "Kalshi bot: invalid configuration, trading halted",
+                        f"py main.py {args[0].lower()} refused to start: {_cfg_exc}",
+                        cooldown_key="invalid_config",
+                    )
+                except Exception:
+                    pass
+            sys.exit(1)
+
     if not validate_env():
         if not Path(".env").exists():
             print(
@@ -11011,12 +11439,12 @@ def main():
     ):
         _validate_config()
 
-    _setup_logging()
-
-    # --debug enables verbose logging of API errors and silent exceptions
-    if "--debug" in args:
+    # --debug enables verbose logging of API errors and silent exceptions.
+    # Already stripped from `args` at the top of this function (M2-4);
+    # _setup_logging() also already ran up there (M2-5) -- only the actual
+    # log-level toggle happens here.
+    if _debug_flag:
         logging.getLogger().setLevel(logging.DEBUG)
-        args = [a for a in args if a != "--debug"]
     else:
         logging.disable(logging.DEBUG)
 
@@ -11063,6 +11491,22 @@ def main():
             _do_onboard = False  # M-18: DB errors must not block the interactive menu
         if _do_onboard:
             cmd_onboard()
+        # H-1: the args-based gate above only runs when args[0] is set --
+        # `if args and ...` short-circuits False for a bare `py main.py`
+        # (this branch). Warn, don't block: the interactive menu is exactly
+        # where an operator would go to fix a bad .env via Settings (S), so
+        # exiting here would remove the only easy way in to fix it.
+        try:
+            _bot_config.validate()
+        except ValueError as _cfg_exc:
+            print(yellow(f"\n  Warning: invalid configuration — {_cfg_exc}\n"))
+            print(
+                dim(
+                    "  Fix via Settings (S) or in .env — some commands (cron, "
+                    "today, analyze, ...) will refuse to run until this is "
+                    "resolved.\n"
+                )
+            )
         cmd_menu(client)
         return
 
@@ -11201,10 +11645,9 @@ def main():
         cmd_walk_forward()
     elif cmd == "report":
         cmd_report()
-    elif cmd == "kill":
-        cmd_kill()
-    elif cmd == "resume":
-        cmd_resume()
+    # "kill"/"resume" are handled by the early-return block near the top of
+    # main() (M-A) -- both always return before dispatch reaches this elif
+    # chain, so no entries for them belong here anymore.
     elif cmd == "features":
         cmd_features()
     elif cmd == "signals":

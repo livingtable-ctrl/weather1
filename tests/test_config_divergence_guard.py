@@ -50,12 +50,19 @@ def _numeric_or_str(value: str) -> float | str:
 
 # Env vars where two different-looking default literals are semantically
 # equivalent, not a real divergence -- each entry documents why.
-_KNOWN_SAFE_STRING_MISMATCHES = {
-    # cron.py:  os.getenv("ENABLE_MICRO_LIVE", "false").lower() != "true"  (unset -> gate active, i.e. disabled)
-    # config.py: os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"     (unset -> False,        i.e. disabled)
-    # Different boolean-flag idioms, same "disabled when unset" behavior.
-    "ENABLE_MICRO_LIVE",
-}
+#
+# batch-32 (opus review L-E): ENABLE_MICRO_LIVE used to need an entry here --
+# config.py read it via os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"
+# while cron.py read os.getenv("ENABLE_MICRO_LIVE", "false").lower() != "true",
+# different boolean-flag idioms with the same "disabled when unset" behavior.
+# config.py's BotConfig.enable_micro_live no longer reads the env var at all
+# (it's a plain `False` literal now, mirroring utils.ENABLE_MICRO_LIVE's own
+# hardcoded False -- the real enforcement point, which this field's env read
+# never actually gated) -- cron.py is the only reader left, so there's no
+# longer a second literal to diverge from. Entry removed rather than kept
+# stale; this file's own test_dead_field_allowlist_has_no_stale_entries
+# exists to catch exactly this kind of leftover for the OTHER allowlist.
+_KNOWN_SAFE_STRING_MISMATCHES: set[str] = set()
 
 
 def test_no_env_var_has_conflicting_hardcoded_defaults():

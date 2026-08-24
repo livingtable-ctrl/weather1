@@ -280,9 +280,16 @@ class BotConfig:
     drawdown_halt_pct: float = field(
         default_factory=lambda: _env_float("DRAWDOWN_HALT_PCT", "0.20")
     )
-    enable_micro_live: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_MICRO_LIVE", "").lower() == "true"
-    )
+    # L-9: mirrors utils.ENABLE_MICRO_LIVE's hardcoded False, not the env var --
+    # the real enforcement point (order_executor._auto_place_trades) gates on
+    # utils.ENABLE_MICRO_LIVE directly, which utils.py hard-disables
+    # unconditionally (permanently dead code until re-implemented with
+    # pre_live_trade_check()/execution_log/idempotency-key/add_live_loss()
+    # accounting -- see P0-3/P0-4). Reading the env var here would let this
+    # field's only consumer, web_app.py's dashboard, tell an operator who set
+    # ENABLE_MICRO_LIVE=true that micro-live is "enabled" while the trading
+    # code never actually enables it.
+    enable_micro_live: bool = False
     min_brier_samples: int = field(
         default_factory=lambda: _env_int("MIN_BRIER_SAMPLES", "30")
     )
@@ -335,15 +342,36 @@ class BotConfig:
 
     def validate(self) -> None:
         """Raise ValueError for any invalid configuration combination."""
-        errors = []
+        errors = self.validation_errors()
+        if errors:
+            raise ValueError(
+                "Invalid configuration:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+
+    def validation_errors(self) -> list[str]:
+        """Same checks as validate(), but returns the raw list instead of
+        raising -- lets a caller (cmd_settings' authoritative-write check)
+        compare a baseline error set against a candidate edit's error set
+        without parsing validate()'s combined exception message, and without
+        re-implementing these bounds a second time."""
+        errors: list[str] = []
         if self.min_edge > self.strong_edge:
             errors.append(
                 f"MIN_EDGE ({self.min_edge}) > STRONG_EDGE ({self.strong_edge}) — no trades would ever qualify"
             )
-        if self.paper_min_edge > self.min_edge:
-            errors.append(
-                f"PAPER_MIN_EDGE ({self.paper_min_edge}) > MIN_EDGE ({self.min_edge})"
-            )
+        # H-1 opus review (M-E): a "paper_min_edge > min_edge" check used to raise
+        # here. Removed entirely, not clamped -- this field is disk-derived
+        # (walk_forward_params.json, soft-clamped to [0.03, 0.15]) and, per
+        # utils.get_paper_min_edge()'s own docstring, is EXPECTED to sometimes
+        # exceed min_edge: "config.py's BotConfig.paper_min_edge (dashboard
+        # display only) shows the raw, unclamped auto-tuned suggestion; this
+        # [utils.get_paper_min_edge(), hard-capped at 0.05] is the safety-clamped
+        # value that actually gates trade placement... so the two can legitimately
+        # differ." BotConfig.paper_min_edge has exactly one consumer in the whole
+        # codebase (web_app.py's dashboard display) -- comparing it to min_edge
+        # was never validating a real misconfiguration, and clamping it would
+        # have made the dashboard lie about the raw tuning suggestion it exists
+        # to show.
         if not (0.0 < self.kalshi_fee_rate < 1.0):
             errors.append(
                 f"KALSHI_FEE_RATE ({self.kalshi_fee_rate}) must be between 0 and 1"
@@ -395,16 +423,18 @@ class BotConfig:
             )
         if self.paper_min_edge < 0.01:
             errors.append(f"PAPER_MIN_EDGE ({self.paper_min_edge}) must be >= 0.01")
-        if self.max_daily_spend <= 0:
-            errors.append(f"MAX_DAILY_SPEND ({self.max_daily_spend}) must be > 0")
-        if self.max_same_day_spend <= 0:
-            errors.append(f"MAX_SAME_DAY_SPEND ({self.max_same_day_spend}) must be > 0")
+        # Inclusive of 0.0 -- "spend nothing" is a legitimate sentinel (every
+        # consumer's check is `spend >= MAX_..._SPEND`, and spend starts at 0, so
+        # 0 halts all auto-trading of that kind rather than meaning "no limit").
+        if self.max_daily_spend < 0:
+            errors.append(f"MAX_DAILY_SPEND ({self.max_daily_spend}) must be >= 0")
+        if self.max_same_day_spend < 0:
+            errors.append(
+                f"MAX_SAME_DAY_SPEND ({self.max_same_day_spend}) must be >= 0"
+            )
         if self.min_brier_samples < 1:
             errors.append(f"MIN_BRIER_SAMPLES ({self.min_brier_samples}) must be >= 1")
-        if errors:
-            raise ValueError(
-                "Invalid configuration:\n" + "\n".join(f"  - {e}" for e in errors)
-            )
+        return errors
 
 
 def load_and_validate() -> BotConfig:

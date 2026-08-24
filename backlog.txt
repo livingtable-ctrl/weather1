@@ -27159,3 +27159,306 @@ Batch-31 process notes: full ceremony per the 29-step workflow (money path, no L
   failure mode. Source: audit/handoff_prompts/batches/batch-31.md (audit/POST_MERGE_REVIEW.md, cited as
   the finding source in that handoff, does not exist in this repo as of this writing -- these entries are
   added fresh from the handoff's own text, same situation as batch-30's items above).
+
+[RESOLVED 2026-08-23 -- batch-32 item 1 (H-1)] batch-29 re-opened the import-time-validation regression batch-09 closed -- a Settings-menu edit bricks every CLI command including the documented emergency halt
+Priority: HIGH -- empirically reproduced live (`KALSHI_FEE_RATE=0 python -c "import main"` raw-tracebacked,
+  confirmed no data/crash.log written since sys.excepthook installs AFTER the crash point)
+Files: config.py (validate()), main.py (module-level BotConfig load, main(), cmd_settings), tests/test_config_validation.py, tests/test_menu_ux.py
+
+Problem:
+  config._bot_config = config.load_and_validate() ran at main.py MODULE IMPORT TIME (column 0, before
+  main() ever looks at args[0] to decide whether the command is exempt, and before sys.excepthook is
+  installed). batch-09 (see AUD-0015's Resolution above) had already established that a duplicate
+  KALSHI_ENV check at this exact call site would brick every exempted subcommand and deliberately kept
+  BotConfig.validate() out of the import path for that reason. batch-29 (commit f21f8ffd) added 7 new
+  bounds checks to validate() without noticing the same import-time hazard applied generally, not just to
+  the KALSHI_ENV case -- reopening the regression for every field validate() now checks. Reproduced 4
+  menu-writable bricking values: KALSHI_FEE_RATE=0 or 1 (cmd_settings' menu "0-1" fmt is inclusive, but
+  validate()'s bound is exclusive), KALSHI_MAKER_FEE_RATE=1, MIN_EDGE=0 (paper_min_edge 0.04 > 0), and
+  MIN_EDGE>STRONG_EDGE. What died: `kill` (the runbook's documented Option-A emergency halt), `resume`,
+  `setup` (the .env-repair wizard whose whole purpose is fixing a broken .env -- already "exempted" in
+  main()'s dispatch, but that exemption never mattered since the crash happened before main() ever ran),
+  and scheduled `cron` (would have exited 1 with no alert once the crash was merely converted to a raise
+  instead of fixed).
+Resolution (2026-08-23):
+  (a) Deferred validation (AskUserQuestion: defer-to-main() vs wrap-and-fallback-at-import -- the latter
+  would still need the same main()-dispatch gate to enforce anything, plus a discarded second validate()
+  attempt at import for no benefit; deferred won). main.py's module-level line now calls
+  BotConfig.from_env() (unvalidated construction -- _env_float's own parse-error raises are unchanged,
+  out of scope per batch-09's same precedent) instead of load_and_validate(). main() gained a new gate
+  right after the existing setup/calibrate/schedule-cycles/emos-status/emos-deactivate early-returns:
+  args[0] not in ("kill", "resume") -> _bot_config.validate(), catching ValueError with the same
+  friendly-message-then-exit(1) shape validate_env() already uses, extending the exemption list to
+  kill/resume (pure state-toggle commands that never read a trading-parameter field). Unattended
+  invocations (cron/loop) additionally fire notify.send_system_alert(cooldown_key="invalid_config") on
+  failure, since a raw exit(1) with nobody watching the terminal used to silently stop every scheduled
+  cycle with no alert. Self-review caught a second gap: the args-based gate short-circuits False for a
+  bare `py main.py` (empty args, interactive menu launch) -- added a separate non-blocking warning (print,
+  not exit) in the `if not args:` branch, since exiting there would remove the only easy way in (Settings)
+  to actually fix a broken .env.
+  (b) Made cmd_settings authoritative (AskUserQuestion not needed here -- direction was explicit in the
+  handoff): instead of replicating validate()'s bounds in the menu's own fmt system, cmd_settings now
+  temporarily applies the candidate value to os.environ and calls the REAL config.load_and_validate()
+  before ever writing to .env, restoring the prior env value and refusing the write on ValueError. This
+  automatically covers every current and future validate() check (including cross-field ones like
+  MIN_EDGE vs STRONG_EDGE) without needing to keep a second bounds implementation in sync. Also extended
+  the menu's own first-pass fmt validation (immediate inline feedback, unchanged from before): KALSHI_
+  FEE_RATE moved from "0-1" (inclusive) to "0-1 excl" (matching validate()'s exclusive-both-ends bound,
+  the same treatment batch-29 already gave MAX_DAILY_LOSS_PCT), and a new "[0-1)" fmt (inclusive-0,
+  exclusive-1) added for KALSHI_MAKER_FEE_RATE, matching config.py's own $0-is-real-not-edge-case comment.
+  Tests: test_bot_config_from_env_never_raises_for_bounds_violation, TestMainDeferredConfigValidation (6
+  tests: kill/resume survive, non-exempt command rejects with friendly message, cron alerts, interactive
+  command does NOT alert (positive control), bare invocation warns-but-still-launches) in
+  tests/test_config_validation.py; TestKalshiEnvBannerAndEdit's KALSHI_ENV-refusal test doubles as
+  informal coverage that cmd_settings' authoritative-check plumbing doesn't accidentally block a benign
+  edit. All new assertions mutation-tested (reverted via Edit, confirmed failure, restored) except item
+  6's tests, filed under that item below.
+
+[RESOLVED 2026-08-23 -- batch-32 item 2 (EM1-M2/M-3 riders)] sentinel and disk-derived values validate() now rejects
+Priority: LOW/MEDIUM
+Files: config.py (validate())
+
+Problem:
+  (a) MAX_DAILY_SPEND=0 / MAX_SAME_DAY_SPEND=0 are legitimate "spend nothing" sentinels -- every consumer
+  (order_executor.py:2734,3787,4409,4470; main.py:2906,3511,5360) checks `spend >= MAX_..._SPEND`, and
+  spend starts at 0, so 0 correctly halts all auto-trading of that kind. validate()'s `<= 0` bound
+  rejected the sentinel outright.
+  (b) paper_min_edge is disk-derived (walk_forward_params.json, soft-clamped to [0.03, 0.15] by
+  _compute_paper_min_edge_from_files) while min_edge is env-derived (default 0.07 when MIN_EDGE unset) --
+  a legitimate weekly walk-forward calibration write (e.g. optimal_min_edge=0.10, well within the clamp)
+  can land above an unset MIN_EDGE with zero operator mistake involved. validate()'s `paper_min_edge >
+  min_edge` raise meant a bot-written file could brick every CLI start (before item 1's fix made this
+  non-fatal for exempt commands, and moot for everyone else since it's now a warn).
+Resolution (2026-08-23):
+  (a) Relaxed both bounds from `<= 0` to `< 0` (0 now valid, negative still rejected), mirroring the
+  SAME_DAY_RESERVE_AFTER_HOUR_UTC=24 sentinel precedent's comment style (state the sentinel, what it
+  means, cite the exact downstream comparison operator that makes it safe).
+  (b) Changed the paper_min_edge > min_edge check from `errors.append(...)` (raise) to a `_log.warning(...)`
+  plus `self.paper_min_edge = self.min_edge` (clamp), since one side is machine-written and BotConfig
+  isn't frozen. The separate `paper_min_edge < 0.01` floor check right below is unaffected (independent
+  scenario, still a hard error).
+  Tests: test_max_daily_spend_zero_is_valid_sentinel, test_max_daily_spend_negative_still_rejected
+  (positive control), test_paper_min_edge_above_min_edge_clamps_not_raises (tests/test_config_validation.py).
+  All mutation-tested.
+
+[RESOLVED 2026-08-23 -- batch-32 item 3 (M-27)] kill-switch .tmp restore races an in-flight override
+Priority: MEDIUM -- fail-closed direction, no money risk, but defeats an authorized manual override
+Files: main.py (cmd_cron), tests/test_cron_integration.py
+Batches touched by prior work on this file region: 904ea92d, 651bbe3f, 077052ad
+
+Problem:
+  The stale-.kill_switch.tmp self-heal at the top of cmd_cron ran unconditionally, before the cron lock
+  is ever acquired (the lock lives deep inside cron.py's _cmd_cron_body, reached only via
+  _cron_cmd_cron() -- strictly after this self-heal block). A scheduled `loop` cycle firing while an
+  operator's manually-answered override is running (which holds the lock and has its OWN .kill_switch
+  parked at this same .tmp path) would "restore" the switch mid-override from a SEPARATE process --
+  halting the authorized override mid-cycle, firing a duplicate kill-switch alert, and leaving the
+  override's own finally block believing nothing happened (its .tmp is gone by the time it checks, so it
+  skips its own restore and prints a misleading "restored" confirmation). Separately, main.py:302/421 (the
+  restore and move-aside .tmp paths) hardcoded the literal ".kill_switch.tmp" while cmd_resume derived it
+  from KILL_SWITCH_PATH.name -- currently produce the same string only because the filename happens to be
+  ".kill_switch", a silent-desync risk if that constant is ever renamed.
+Resolution (2026-08-23):
+  Guarded the self-heal with cron._is_cron_running() (the existing read-only, fail-open-to-False lock
+  check already used by web_app.py and the EMOS activate/deactivate guards) -- skip the restore/discard-
+  orphan block entirely while a live process holds the lock; a genuinely orphaned .tmp (the crashed-
+  watchdog case this self-heal exists for) has no live lock holder and is unaffected. Unified all 3
+  .tmp-name derivations in main.py (the two in cmd_cron plus cmd_resume's pre-existing one) to the same
+  `_kill_path.with_name(_kill_path.name + ".tmp")` pattern.
+  Tests: TestKillSwitchTmpRestoreRacesLiveOverride (2 new tests -- restore skipped while cron is running,
+  and a positive control confirming the restore still happens when it's genuinely not running), plus the
+  3 pre-existing TestKillSwitchOverrideRenameRace tests re-run clean (55 tests, tests/test_cron_integration.py)
+  confirming no regression to the AUD-0039 orphan-discard logic this shares code with. Mutation-tested.
+
+[RESOLVED 2026-08-23 -- batch-32 item 4 (M-19)] cleanup_data_dir deletes two files this merge window introduced
+Priority: MEDIUM -- cheap, done early per the handoff's own ordering
+Files: main.py (_PERMANENT_DATA_FILES), tests/test_cleanup_data_dir.py
+Precedent: 2315636d added member_quarantine.json to this same set for the identical reason
+
+Problem:
+  cleanup_data_dir() runs on every invocation and deletes any data/*.json file older than 2 days not in
+  _PERMANENT_DATA_FILES. Two files this merge window introduced were missing from that allowlist:
+  execution_log_unsettled_exit_rows.json (the AUD-0026 phantom-live-position sentinel, written only on
+  failure so its mtime never refreshes on the common success path -- deleted after 2 days while the
+  dangerous DB row it warns about survives) and rain_arb_shadow_observations.json (multi-week rain-arb
+  graduation history -- any >=2-day cron pause followed by one CLI invocation would delete the whole trend).
+Resolution (2026-08-23): Added both filenames to _PERMANENT_DATA_FILES, same set/style as the existing
+  entries. Tests: extended test_permanent_file_set_covers_expected_names's `required` set with both names
+  (the pre-existing test_permanent_files_are_never_deleted already covers the whole set generically).
+
+[RESOLVED 2026-08-23 -- batch-32 item 5 (M-26)] _load_live_config doesn't catch OSError, and returns unmerged/unshaped JSON
+Priority: MEDIUM
+Files: main.py (_load_live_config), tests/test_live_execution.py
+
+Problem:
+  _load_live_config()'s except clause covered FileNotFoundError and (json.JSONDecodeError, ValueError,
+  KeyError) but not other OSError subclasses -- a transient AV-scan PermissionError or Windows sharing
+  violation on open()/read() would propagate uncaught. Its sole call site inside cmd_watch's persistent
+  `while True` loop (main.py's watch mode) has only `except KeyboardInterrupt` as a handler -- the exact
+  AUD-0008 failure mode already fixed for the sibling position-protection block a few lines below this
+  call site. Separately, a successful `json.load(f)` returned the parsed dict AS-IS, unmerged against
+  _LIVE_CONFIG_DEFAULT -- callers read `cfg.get("daily_loss_limit", float("inf"))`, so a valid-but-partial
+  file (missing that one key) silently disabled the daily-loss circuit breaker instead of using the safe
+  $200 default. And valid-but-wrong-shaped JSON (e.g. a list) was returned unchecked, which would
+  AttributeError on the first `.get()` call downstream.
+Resolution (2026-08-23): Added `except OSError` (log at WARNING, return defaults for this cycle only --
+  distinct from the JSONDecodeError branch's ERROR level, since a transient read failure isn't corruption).
+  Changed the success path to `{**_LIVE_CONFIG_DEFAULT, **loaded}` so a missing key always falls back to
+  the safe default. Added an explicit `isinstance(loaded, dict)` check, falling back to defaults (logged
+  at ERROR) for any other JSON shape.
+  Tests: TestLoadLiveConfig gained 3 new tests (partial file merges over defaults, non-dict JSON falls
+  back, transient OSError falls back not raises) alongside the 1 pre-existing test, tests/test_live_execution.py.
+  All 3 mutation-tested.
+
+[RESOLVED 2026-08-23 -- batch-32 item 6 (M-25)] cmd_settings KALSHI_ENV edit desyncs the menu banner from the live client in the unsafe direction
+Priority: MEDIUM -- real order could be placed under a DEMO banner
+Files: main.py (cmd_settings, cmd_menu), tests/test_menu_ux.py
+
+Problem:
+  kalshi_client.KalshiClient.base_url is set once, at construction (main.build_client()), and never
+  re-reads KALSHI_ENV afterward. cmd_menu's [DEMO]/[PROD] banner read os.getenv("KALSHI_ENV") fresh every
+  redraw (main._kalshi_env()). Editing KALSHI_ENV via the interactive Settings menu flipped the banner
+  immediately while the session's already-built `client` -- what every live order/gate actually keys off
+  -- kept targeting the OLD environment: a real order could be placed under a DEMO banner (or vice versa).
+Resolution (2026-08-23): AskUserQuestion (rebuild-the-client-after-write vs refuse-the-in-session-edit) --
+  refuse won: this toggle governs real-vs-demo money, so forcing a deliberate restart to flip it is a
+  safety feature in the same fail-closed spirit as this batch's other items, not just less implementation
+  effort; a rebuild path that's wrong in some edge case (an exception between write and rebuild) would
+  reintroduce the exact desync it's meant to close. cmd_settings now refuses the KALSHI_ENV edit outright
+  (prints a "restart required" message, never reaches the write step) instead of writing+hot-reloading it.
+  cmd_menu's banner changed to read `client.base_url == PROD_BASE` directly instead of the env-fresh
+  helper, so it can never show a state the client doesn't actually back.
+  Tests: TestKalshiEnvBannerAndEdit (3 tests -- banner reflects a PROD client even when env says demo,
+  positive control for a DEMO client, and KALSHI_ENV edit is refused with no dotenv.set_key call),
+  tests/test_menu_ux.py. All mutation-tested.
+
+[RESOLVED 2026-08-23 -- batch-32 item 7 (M-29)] cmd_weekly_summary filters "settled this week" by entered_at, not settled_at
+Priority: MEDIUM -- weekly P&L/win-rate/best/worst wrong in both directions
+Files: main.py (cmd_weekly_summary), tests/test_weekly_summary.py (new)
+
+Problem:
+  settled_this_week filtered on `t.get("entered_at") >= week_start_str`, not settled_at. A position
+  entered 10+ days ago that settled yesterday was wrongly excluded from the week's P&L/win-rate/best-
+  worst; an open position entered this week (no settled_at yet) was wrongly included via the `t.get(
+  "settled")` check alone not actually gating on when settlement happened. settled_at exists on every
+  settled trade and is used for exactly this purpose elsewhere (paper.py's get_daily_pnl, P0-2/M-9; and
+  cmd_paper's settled-history sort).
+Resolution (2026-08-23): Changed the filter to `t.get("settled") and t.get("settled_at") and
+  t.get("settled_at") >= week_start_str`, mirroring get_daily_pnl's own settled_at-presence guard (avoids
+  a None-slice TypeError the same fix note there calls out).
+  Tests: new tests/test_weekly_summary.py, TestCmdWeeklySummarySettledAtFilter (3 tests -- old-entry/
+  recent-settlement is counted, recent-entry/still-open is not counted as settled (positive control),
+  old-entry/old-settlement excluded from both). Mutation-tested (1 of 3 tests is specifically sensitive to
+  this exact mutation and correctly caught it; the other 2 aren't sensitive to this specific change and
+  correctly kept passing, confirming they're not vacuous for THIS mutation while still real assertions).
+
+[RESOLVED 2026-08-23 -- batch-32 item 8 (L-9/L-5/INFO sweep)] same-file low-severity sweep: swallowed exceptions, naive local time, docstring/comment nits
+Priority: LOW
+Files: main.py (cmd_menu, _check_cron_staleness, _render_analysis_results's arb block, cmd_loop, cmd_export,
+  cmd_paper, cmd_today's shadow-gate comment, _analyze_once, config.py's enable_micro_live, cmd_setup)
+
+Problem/Resolution (each sub-item, LOW tier -- no dedicated mutation-tested test per sub-item, covered by
+  the existing regression sweep re-run clean; behavioral changes are logging-only or comment-only):
+  (a) cmd_menu's kill-switch/staleness banner shared one blanket `except Exception: pass` with the
+  due-trades banner right below it -- split into two separate try/except blocks, each logged at WARNING,
+  so a bug in one can never blank the other's indication. _check_cron_staleness's identical swallow
+  (corrupt/partial heartbeat file) now logs at WARNING too instead of silently disabling the dead-man's-
+  switch banner.
+  (b) The arb-placement block's OUTER `except Exception: pass` (main.py's _render_analysis_results, around
+  find_violations()/the gate check/per-city cost bookkeeping -- distinct from the inner per-violation try
+  that already logs and handles the naked-leg unwind) now logs at ERROR -- this path places real paper
+  orders and was the only handler in the block with zero logging.
+  (c) cmd_loop's `_now()` used naive datetime.now() (host-local time) for cycle timestamps and the "9 PM"
+  auto-settle trigger -- silently wrong once the bot runs on a UTC-configured VM (the planned host move).
+  Changed to datetime.now(ZoneInfo("America/New_York")), matching this file's established tz-aware
+  convention elsewhere and correctly handling DST via real tz-aware arithmetic (the loop's own pre-
+  existing "H-10" comment already anticipated DST/NTP trouble from the naive-local subtraction).
+  cmd_export's UTC tax_year was investigated and DELIBERATELY LEFT AS-IS: export_tax_csv() filters by
+  settled_at[:4], and settled_at is itself stored in UTC throughout this codebase (paper.py's
+  get_daily_pnl) -- switching only the caller to local time would desync the requested tax_year from the
+  UTC basis settled_at is actually compared against. A real fix needs export_tax_csv() itself to interpret
+  settled_at in the filer's local time, which is a bigger change than this doc/tz nit sweep should make;
+  documented inline rather than silently dropped.
+  (d) Doc nits: cmd_paper's docstring said `paper buy <ticker> <yes/no> <qty> <price>` but the real usage
+  strings (and self-dispatch parsing -- there's no separate argparse subparser, contrary to the handoff's
+  citation) are `<price> [qty]` -- corrected. cmd_today's shadow-gate comment said "now six" gates but the
+  actual elif chain has eight (trading-paused, hurricane-count, hurricane-next-event, storm-order,
+  blanket-other-hurricane, rain, snow, hourly-directional-temperature -- snow and hourly were added after
+  the comment was last updated) -- corrected. _analyze_once's "docstring" was a bigger bug than described:
+  the triple-quoted string sat AFTER a statement (`if min_edge is None: ...`), so it was never actually
+  bound to __doc__ at all (an inert expression statement) -- moved to the first line of the function body.
+  _render_analysis_results's docstring was checked and found to have NO mismatch with actual behavior --
+  handoff's citation was stale; no change made. config.BotConfig.enable_micro_live read the env var while
+  the real enforcement point (utils.ENABLE_MICRO_LIVE) hardcodes False unconditionally (permanently dead
+  code per tests/test_phase2_batch_l.py's own comment, pending P0-3/P0-4 re-implementation) -- the
+  dashboard's only consumer of this field could tell an operator who set ENABLE_MICRO_LIVE=true that
+  micro-live is "enabled" while the trading code never actually enables it. Changed the field to a plain
+  `False` literal mirroring utils.py's hardcode, with a comment explaining why. cmd_setup echoed the
+  existing KALSHI_KEY_ID in plaintext when re-running the wizard -- masked to all but the last 4 chars
+  (KALSHI_KEY_ID is a public identifier, not the private key itself, but terminal scrollback/screen-
+  recording persistence made even that worth trimming).
+
+Batch-32 process notes: full ceremony per the 29-step workflow (safety-gate surface -- kill switch, live
+  gates, emergency commands -- no LOW-tier downgrade for steps 11-12 despite item 8 being LOW individually).
+  AskUserQuestion used for the two genuine judgment calls the handoff itself flagged (item 1a's guard shape,
+  item 6's rebuild-vs-refuse) -- both decisions and reasoning captured in their own entries above.
+
+  TWO rounds of independent opus review (effort=high), per step 11's "the fix itself needs its own review"
+  rule. Round 1 (against the original 8-item implementation): 1 HIGH + 5 MEDIUM + 8 LOW + 8 INFO, all
+  addressed -- HIGH (H-A): the new main() config-validation gate blocked `py main.py settings`, the exact
+  command its own error message told the operator to run; widened the exemption tuple. MEDIUM: kill/resume
+  were only exempted from the bounds gate but still fell through to validate_env()/build_client() (a
+  rotated PEM could still block the emergency halt) -- moved to a true early-return mirroring
+  emos-deactivate (M-A); cmd_settings' authoritative check refused EVERY edit whenever any unrelated field
+  was already invalid anywhere in .env, permanently deadlocking the menu -- fixed via a baseline-vs-
+  candidate error-set diff, requiring a new config.BotConfig.validation_errors() method (M-B);
+  _load_live_config's file-creation step could itself raise OSError uncaught (M-C); the dict-merge fix
+  only handled a MISSING key, not a present-but-null one (M-D); the paper_min_edge>min_edge clamp was
+  itself wrong -- traced every consumer and found BotConfig.paper_min_edge is a display-only field whose
+  divergence from min_edge is documented as EXPECTED, so the check was removed entirely rather than
+  clamped (M-E). LOW/INFO: kill-switch self-heal perf reorder, race-window documentation, a stale
+  divergence-guard allowlist entry, a new settled_at=None regression test, KALSHI_ENV snapshot/restore
+  across an unrelated Settings edit's reload, DST-drift documentation, hoisted import + explicit banner
+  fallback.
+
+  Round 2 (against round 1's fixes): 0 HIGH + 2 MEDIUM + 7 LOW + 8 INFO, all addressed -- MEDIUM: the new
+  tests' `_isolate_dispatch` helper didn't stub validate_env(), so 2 tests only passed by coincidence
+  (this dev machine's real .env has valid-looking credentials) and would have turned CI red on a fresh
+  checkout with no .env at all (M2-1, confirmed by reproducing with a broken KALSHI_PRIVATE_KEY_PATH);
+  the L-G test's mutation claim only held by coincidence too -- `load_dotenv(override=True)` with no path
+  argument does its own upward directory search and was silently loading the real dev .env instead of the
+  test's tmp_path fixture (M2-2) -- fixed the PRODUCTION code to pass env_path explicitly (also closes a
+  latent real-world ambiguity, not just a test gap). LOW: NaN/Infinity in live_config.json bypassed the
+  M-D type gate (json.load accepts bare NaN as a Python extension) and would fail the daily-loss circuit
+  breaker OPEN -- added math.isfinite() (M2-3); `py main.py --debug kill` bypassed the M-A early-return
+  entirely since it matches only args[0] -- moved the --debug strip to the very top of main(), before any
+  dispatch check, and removed the now-dead tail `elif cmd == "kill"/"resume"` entries (M2-4); kill/resume
+  never reached _setup_logging(), so any INFO-level log inside their call chains (e.g. cmd_resume's black-
+  swan-clear message) went nowhere -- hoisted _setup_logging() to the same early spot (M2-5); two stale
+  mutation-testing docstring claims from round 1 no longer matched the current code after M-D's later
+  refactor -- corrected both to describe what's actually verified (M2-8, M2-9). M-B's string-diff can
+  misclassify an improving-but-still-invalid edit as "new" (M2-6) and two from_env() calls per menu edit
+  print duplicate cache-reload warnings (M2-7, cosmetic -- downgrading the log level was rejected since
+  tests/test_phase2_batch_a.py's TestPaperMinEdgeWarning explicitly requires WARNING level for that exact
+  line) were both confirmed non-blocking and left as documented, deliberate no-ops per the reviewer's own
+  framing.
+
+  Also caught mid-session (not a review finding): tests/test_config.py -- a whole 30-test file never in
+  the original scoped-test list -- had one test (test_max_daily_spend_zero_raises) asserting the OLD,
+  pre-fix behavior item 2(a) deliberately changed; renamed/inverted to test_max_daily_spend_zero_is_valid_
+  sentinel and a stale comment in a sibling test (referencing the M-E-removed check) corrected.
+
+  Every fix across both rounds mutation-tested individually (reverted via Edit, confirmed the specific
+  test fails with the exact before/after diff, restored) before moving to the next finding. Final,
+  complete consolidated regression sweep (20 test files: every file touched plus every file independently
+  found to cover a changed function) = 622 passed, 15 deselected, 0 failed. ruff/ruff-format/mypy clean
+  via the real pre-commit hook (two ruff-format/ruff --fix passes across the session, both pure mechanical
+  reformatting -- not re-run against tests per this project's own "don't rerun tests needlessly"
+  convention, except where the mutated line was specifically re-checked). graphify-out/ refresh
+  deliberately skipped: same
+  worktree-cache-key mismatch batch-31 hit (manifest.json's keys are tied to worktree frosty-leakey-c41696,
+  not this session's batch-32-audit-handoff-ae9432) -- noted rather than attempted. Source:
+  audit/handoff_prompts/batches/batch-32.md (audit/POST_MERGE_REVIEW.md, cited as the finding source in
+  that handoff, does not exist in this repo as of this writing -- entries added fresh from the handoff's
+  own text, same situation as batch-31's above). Batch 37 has one 1-line main.py change
+  (cmd_emos_deactivate print) noted in the handoff as needing to run AFTER this batch.

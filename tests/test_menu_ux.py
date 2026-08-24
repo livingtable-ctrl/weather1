@@ -412,3 +412,187 @@ class TestRatingTierAwareness:
         assert "tier" not in analysis
         out = self._render(capsys, market, analysis)
         assert out.count("★") == 3
+
+
+class TestKalshiEnvBannerAndEdit:
+    """M-25: KALSHI_ENV edited via the interactive Settings menu used to
+    desync the [DEMO]/[PROD] banner (env-fresh read, main._kalshi_env()) from
+    the live client's actual base_url (fixed at construction, never re-read)
+    -- a real order could be placed under a DEMO banner. Fixed two ways: the
+    banner now reads client.base_url directly instead of the env var, and
+    cmd_settings refuses the in-session KALSHI_ENV edit outright (restart
+    required) so the two can never observably disagree."""
+
+    def test_banner_reflects_client_base_url_not_env(self, monkeypatch, capsys):
+        """Mutation-tested: reverting the banner to `_kalshi_env().upper()`
+        makes this assert [DEMO] instead of [PROD] even though the client is
+        actually PROD."""
+        import main
+        from kalshi_client import PROD_BASE
+
+        monkeypatch.setenv("KALSHI_ENV", "demo")  # env says demo...
+        client = MagicMock()
+        client.base_url = PROD_BASE  # ...but the live client is actually PROD
+
+        with patch("builtins.input", side_effect=["Q"]):
+            try:
+                main.cmd_menu(client)
+            except (SystemExit, StopIteration, EOFError):
+                pass
+
+        out = capsys.readouterr().out
+        assert "[PROD]" in out, (
+            f"expected client-derived [PROD] banner, got: {out[:200]!r}"
+        )
+        assert "[DEMO]" not in out
+
+    def test_banner_shows_demo_for_demo_client(self, monkeypatch, capsys):
+        """Positive control: a DEMO client must still show [DEMO], proving
+        the assertion above isn't vacuously true."""
+        import main
+        from kalshi_client import DEMO_BASE
+
+        client = MagicMock()
+        client.base_url = DEMO_BASE
+
+        with patch("builtins.input", side_effect=["Q"]):
+            try:
+                main.cmd_menu(client)
+            except (SystemExit, StopIteration, EOFError):
+                pass
+
+        out = capsys.readouterr().out
+        assert "[DEMO]" in out
+        assert "[PROD]" not in out
+
+    def test_kalshi_env_edit_is_refused_not_written(self, monkeypatch, capsys):
+        """cmd_settings must refuse the KALSHI_ENV edit before ever reaching
+        a write -- confirmed by asserting dotenv.set_key is never called.
+        Mutation-tested: removing the `if key == "KALSHI_ENV": ... continue`
+        branch makes set_key_calls non-empty."""
+        import main
+
+        set_key_calls = []
+        monkeypatch.setattr(
+            "dotenv.set_key",
+            lambda *a, **kw: set_key_calls.append((a, kw)),
+        )
+
+        # "7" selects KALSHI_ENV (7th setting_keys entry), "prod" is the
+        # candidate value, then Enter to exit the settings loop.
+        with patch("builtins.input", side_effect=["7", "prod", ""]):
+            main.cmd_settings(MagicMock())
+
+        out = capsys.readouterr().out
+        assert "restart" in out.lower()
+        assert not set_key_calls, "KALSHI_ENV must never be written from this menu"
+
+
+class TestCmdSettingsAuthoritativeWrite:
+    """H-1(b)/M-B (opus review): cmd_settings' authoritative pre-write check
+    used to refuse EVERY edit whenever validate() found ANY error anywhere in
+    the whole config, not just in the field being edited -- an operator whose
+    .env had an unrelated hand-edited bad value (e.g. KELLY_CAP=2, not even
+    menu-editable) could never fix ANYTHING via Settings, including the very
+    field they came to fix. Fixed by comparing a baseline error set (taken
+    before the edit) against the candidate's error set and only refusing on a
+    genuinely NEW error."""
+
+    def test_valid_edit_succeeds_despite_unrelated_preexisting_error(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        """Mutation-tested: reverting to "refuse on ANY candidate error" (the
+        pre-M-B behavior) makes this fail -- the valid MIN_EDGE edit gets
+        rejected solely because of the unrelated KELLY_CAP=2 error."""
+        import main
+
+        monkeypatch.setenv("KELLY_CAP", "2")  # unrelated, not menu-editable, invalid
+        monkeypatch.setenv("MIN_EDGE", "0.07")
+        monkeypatch.setenv("STRONG_EDGE", "0.30")
+
+        env_path = tmp_path / ".env"
+        env_path.write_text("MIN_EDGE=0.07\nSTRONG_EDGE=0.30\nKELLY_CAP=2\n")
+        monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))
+
+        set_key_calls = []
+        monkeypatch.setattr(
+            "dotenv.set_key",
+            lambda path, k, v: set_key_calls.append((k, v)),
+        )
+
+        # "1" selects MIN_EDGE, "0.08" is a valid candidate, "" exits.
+        with patch("builtins.input", side_effect=["1", "0.08", ""]):
+            main.cmd_settings(MagicMock())
+
+        out = capsys.readouterr().out
+        assert "Rejected" not in out, f"valid edit must not be rejected, got:\n{out}"
+        assert set_key_calls == [("MIN_EDGE", "0.08")]
+        assert "KELLY_CAP" in out, (
+            "unrelated pre-existing error should be surfaced as a warning"
+        )
+
+    def test_edit_that_introduces_a_new_error_is_still_rejected(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        """Positive control: the baseline-vs-candidate diff must still catch
+        an edit that genuinely makes things worse, proving M-B's fix isn't
+        just "always allow everything"."""
+        import main
+
+        monkeypatch.setenv("MIN_EDGE", "0.07")
+        monkeypatch.setenv("STRONG_EDGE", "0.30")
+
+        env_path = tmp_path / ".env"
+        env_path.write_text("MIN_EDGE=0.07\nSTRONG_EDGE=0.30\n")
+        monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))
+
+        set_key_calls = []
+        monkeypatch.setattr(
+            "dotenv.set_key",
+            lambda path, k, v: set_key_calls.append((k, v)),
+        )
+
+        # "1" selects MIN_EDGE, "0.9" pushes it above STRONG_EDGE (0.30), "" exits.
+        with patch("builtins.input", side_effect=["1", "0.9", ""]):
+            main.cmd_settings(MagicMock())
+
+        out = capsys.readouterr().out
+        assert "Rejected" in out
+        assert "STRONG_EDGE" in out
+        assert not set_key_calls, (
+            "an edit that introduces a new error must not be written"
+        )
+
+    def test_unrelated_edit_does_not_pick_up_hand_edited_kalshi_env(
+        self, monkeypatch, tmp_path
+    ):
+        """L-G (opus review): load_dotenv(override=True) re-reads the WHOLE
+        .env file after ANY edit, not just the field being edited -- if an
+        operator hand-edited KALSHI_ENV in a text editor while this process
+        was running, an unrelated Settings edit would silently pick up the
+        new KALSHI_ENV via this reload, desyncing os.environ from the
+        already-built client (the same M-25 shape, a different trigger).
+        Mutation-tested: removing the snapshot/restore makes os.environ pick
+        up the .env file's out-of-band KALSHI_ENV=prod."""
+        import os
+
+        import main
+
+        monkeypatch.setenv("KALSHI_ENV", "demo")  # process started in demo
+        monkeypatch.setenv("MIN_EDGE", "0.07")
+        monkeypatch.setenv("STRONG_EDGE", "0.30")
+
+        env_path = tmp_path / ".env"
+        # .env on disk was hand-edited to prod, out of band, while running
+        env_path.write_text("MIN_EDGE=0.07\nSTRONG_EDGE=0.30\nKALSHI_ENV=prod\n")
+        monkeypatch.setattr(main, "__file__", str(tmp_path / "main.py"))
+        monkeypatch.setattr("dotenv.set_key", lambda path, k, v: None)
+
+        # "1" selects MIN_EDGE, "0.08" a valid unrelated edit, "" exits.
+        with patch("builtins.input", side_effect=["1", "0.08", ""]):
+            main.cmd_settings(MagicMock())
+
+        assert os.environ.get("KALSHI_ENV") == "demo", (
+            "an unrelated Settings edit must not silently pick up a "
+            "hand-edited KALSHI_ENV from disk"
+        )

@@ -129,6 +129,13 @@ class TestCleanupDataDir:
             "retired_strategies.json",
             "learned_weights.json",
             "learned_correlations.json",
+            # M-19: execution_log_unsettled_exit_rows.json is written only on
+            # failure (its mtime never refreshes on the common success path),
+            # and rain_arb_shadow_observations.json accumulates multi-week
+            # graduation history -- both would be silently deleted by a
+            # >=2-day cron pause followed by one CLI invocation.
+            "execution_log_unsettled_exit_rows.json",
+            "rain_arb_shadow_observations.json",
         }
         missing = required - _PERMANENT_DATA_FILES
         assert not missing, f"Missing from _PERMANENT_DATA_FILES: {missing}"

@@ -35,6 +35,164 @@ class TestLoadLiveConfig:
         assert cfg["max_open_positions"] == 10
         assert (tmp_path / "live_config.json").exists()
 
+    def test_oserror_creating_default_falls_back_to_in_memory_defaults(
+        self, tmp_path, monkeypatch
+    ):
+        """M-C (opus review): the FileNotFoundError branch's own mkdir()/
+        write_text() can raise OSError (read-only dir, disk full, AV lock) --
+        a NEW exception distinct from the one being handled, so the sibling
+        `except OSError` clause (which only wraps the original open() call)
+        can't catch it. Must fall back to in-memory defaults, not propagate,
+        for the same cmd_watch-loop reason M-26 exists. Mutation-tested:
+        removing the inner try/except around mkdir()/write_text() makes this
+        raise PermissionError instead of returning defaults."""
+        from pathlib import Path
+
+        import main
+
+        missing_path = tmp_path / "live_config.json"
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", missing_path)
+        monkeypatch.setattr(
+            Path,
+            "mkdir",
+            lambda self, *a, **kw: (_ for _ in ()).throw(
+                PermissionError("simulated read-only data dir")
+            ),
+        )
+
+        cfg = main._load_live_config()  # must not raise
+
+        assert cfg["daily_loss_limit"] == 200
+        assert not missing_path.exists()
+
+    def test_partial_file_merges_over_defaults(self, tmp_path, monkeypatch):
+        """M-26: a valid-JSON file missing daily_loss_limit must NOT make
+        callers' `.get("daily_loss_limit", float("inf"))` fail open -- the
+        merge must fill it in from _LIVE_CONFIG_DEFAULT.
+
+        Round-2 opus review (M2-8) correction: the docstring here used to
+        claim a specific mutation (reverting to `return loaded`) that no
+        longer exists in the current code -- M-D replaced the plain-dict
+        merge with a per-key validation loop (main.py's _load_live_config).
+        That loop is deliberately REDUNDANT in two independent ways (both
+        `merged = dict(_LIVE_CONFIG_DEFAULT)`'s pre-seeded base AND each
+        iteration's own `loaded.get(_key, _default_val)` fallback separately
+        guarantee "missing key -> default"), verified by mutating each one
+        individually -- neither alone breaks this test. This test still
+        pins real, correct, non-vacuous end-to-end behavior (confirmed via
+        the explicit-value-preserved assertion below, which WOULD fail if
+        the loop stopped reading `loaded` at all), it just isn't a minimal
+        single-line mutation target given the current implementation's
+        intentional redundancy."""
+        import json
+
+        import main
+
+        cfg_path = tmp_path / "live_config.json"
+        cfg_path.write_text(json.dumps({"max_trade_dollars": 75}))
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", cfg_path)
+
+        cfg = main._load_live_config()
+        assert cfg["max_trade_dollars"] == 75  # explicit value preserved
+        assert cfg["daily_loss_limit"] == 200  # missing key filled from default
+        assert cfg["max_open_positions"] == 10
+        assert cfg["gtc_cancel_hours"] == 24
+
+    def test_null_daily_loss_limit_falls_back_to_default_not_none(
+        self, tmp_path, monkeypatch
+    ):
+        """M-D (opus review): a PRESENT-but-null value must also fall back to
+        the safe default, not just an ABSENT one -- the plain dict merge
+        (`{**DEFAULT, **loaded}`) only fixes missing keys; `{"daily_loss_
+        limit": null}` would overwrite 200 with None and TypeError on the
+        first numeric comparison in the live-order path this exists to
+        protect. Mutation-tested: reverting to the plain merge makes
+        cfg["daily_loss_limit"] be None instead of 200."""
+        import json
+
+        import main
+
+        cfg_path = tmp_path / "live_config.json"
+        cfg_path.write_text(
+            json.dumps({"daily_loss_limit": None, "max_trade_dollars": "not-a-number"})
+        )
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", cfg_path)
+
+        cfg = main._load_live_config()
+        assert cfg["daily_loss_limit"] == 200
+        assert cfg["max_trade_dollars"] == 50  # non-numeric string also rejected
+        assert cfg["max_open_positions"] == 10  # untouched key still present
+
+    def test_nan_daily_loss_limit_falls_back_to_default(self, tmp_path, monkeypatch):
+        """M2-3 (round-2 opus review): json.load() accepts bare NaN/Infinity
+        as real Python floats (a non-standard-JSON extension) -- the M-D type
+        gate's `isinstance(_val, int | float)` alone let `{"daily_loss_
+        limit": NaN}` through, and every consumer's gate is `live_loss >=
+        daily_loss_limit`, which is always False against NaN -- silently
+        disabling the circuit breaker instead of failing safe. Mutation-
+        tested: removing the `math.isfinite(_val)` clause makes
+        cfg["daily_loss_limit"] be NaN instead of 200 (assertable via
+        `!= itself`, since NaN != NaN)."""
+
+        import main
+
+        cfg_path = tmp_path / "live_config.json"
+        cfg_path.write_text('{"daily_loss_limit": NaN, "max_trade_dollars": Infinity}')
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", cfg_path)
+
+        cfg = main._load_live_config()
+        assert cfg["daily_loss_limit"] == 200
+        assert cfg["max_trade_dollars"] == 50
+
+    def test_non_dict_json_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        """M-26: valid JSON that isn't an object (e.g. a list) must be
+        rejected explicitly, not returned as-is (a caller's .get() would
+        raise AttributeError on a list)."""
+        import json
+
+        import main
+
+        cfg_path = tmp_path / "live_config.json"
+        cfg_path.write_text(json.dumps([1, 2, 3]))
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", cfg_path)
+
+        cfg = main._load_live_config()
+        assert cfg == {
+            "max_trade_dollars": 50,
+            "daily_loss_limit": 200,
+            "max_open_positions": 10,
+            "gtc_cancel_hours": 24,
+        }
+
+    def test_transient_oserror_falls_back_to_defaults_not_raises(
+        self, tmp_path, monkeypatch
+    ):
+        """M-26: a transient OSError (AV-scan PermissionError, a Windows
+        sharing violation) must not propagate -- this is called every cycle
+        inside cmd_watch's persistent while-True loop, whose only exception
+        handler is `except KeyboardInterrupt` (AUD-0008's failure mode).
+        Mutation-tested: removing the `except OSError` branch makes this
+        raise PermissionError instead of returning defaults."""
+        import builtins
+
+        import main
+
+        cfg_path = tmp_path / "live_config.json"
+        cfg_path.write_text("{}")
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", cfg_path)
+
+        real_open = builtins.open
+
+        def _flaky_open(path, *a, **kw):
+            if str(path) == str(cfg_path):
+                raise PermissionError("simulated AV-scan lock")
+            return real_open(path, *a, **kw)
+
+        monkeypatch.setattr("builtins.open", _flaky_open)
+
+        cfg = main._load_live_config()
+        assert cfg["daily_loss_limit"] == 200
+
 
 class TestPlaceLiveOrder:
     def setup_method(self):

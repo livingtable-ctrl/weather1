@@ -180,9 +180,14 @@ def test_same_day_reserve_after_hour_utc_above_24_raises():
 
 
 def test_paper_min_edge_below_floor_raises():
+    # batch-32 M2-9: the PAPER_MIN_EDGE > MIN_EDGE check this comment used to
+    # distinguish itself from was removed entirely (H-1 opus review M-E --
+    # BotConfig.paper_min_edge has exactly one consumer, web_app.py's
+    # dashboard display, and utils.get_paper_min_edge()'s own docstring
+    # documents this divergence as expected, not a misconfiguration). Only
+    # the floor check below (paper_min_edge must be >= 0.01) remains.
     cfg = BotConfig()
-    cfg.paper_min_edge = 0.005  # below the default MIN_EDGE (0.07) too, so
-    # this only ever trips the new floor check, not PAPER_MIN_EDGE > MIN_EDGE.
+    cfg.paper_min_edge = 0.005
     with pytest.raises(ValueError, match="PAPER_MIN_EDGE"):
         cfg.validate()
 
@@ -193,11 +198,16 @@ def test_paper_min_edge_at_floor_passes():
     cfg.validate()
 
 
-def test_max_daily_spend_zero_raises():
+def test_max_daily_spend_zero_is_valid_sentinel():
+    """batch-32 H-1 item 2(a): superseded the old test_max_daily_spend_
+    zero_raises -- 0 is a legitimate "spend nothing" sentinel (every real
+    consumer's check is `spend >= MAX_..._SPEND`, and spend starts at 0, so
+    0 correctly halts all auto-trading of that kind), not a misconfiguration.
+    Only negative is still invalid (test_max_daily_spend_negative_raises,
+    below, unchanged)."""
     cfg = BotConfig()
     cfg.max_daily_spend = 0.0
-    with pytest.raises(ValueError, match="MAX_DAILY_SPEND"):
-        cfg.validate()
+    cfg.validate()  # must not raise
 
 
 def test_max_daily_spend_negative_raises():
