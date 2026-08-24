@@ -229,6 +229,27 @@ Priority: Low -- the affected mechanism (settlement_monitor.py's T-ticker
   threshold decision (see "What it would look like" below) becomes higher-
   stakes once live trading is ever enabled -- both gates should be
   reconsidered together, not just the original paper one.
+  UPDATE 2026-08-23 (batch-37 item 3c, skeptic-found residue while
+  re-deriving this entry's own "unreachable gate" claim against a clean
+  refit): `data/metar_lockout_calibration.json` is NOT git-tracked
+  (confirmed via `git ls-files` / `.gitignore` this session -- it's listed
+  under the `data/` ignore rule). `_calibrate_metar_settlement_confidence`
+  (settlement_monitor.py) returns the RAW, uncalibrated confidence
+  unchanged whenever no calibration model is loadable -- its own docstring
+  calls this "fails closed" (no adjustment applied), but the practical
+  effect on a fresh host (e.g. after the planned VM move, before the
+  weekly auto-retrain has run once) is the opposite from a risk
+  standpoint: raw confidence can reach up to ~0.857 (ml_bias.py/AUD-0038's
+  own ceiling model), which DOES cross cron.py's >=0.80 force-close gate,
+  whereas the calibrated ceiling (0.766/0.595, this entry's whole "gate is
+  unreachable" premise) does not. A fresh host would silently make the
+  T-ticker force-close path reachable again, contradicting this entry's
+  Priority: Low rationale. Undecided: either git-track the calibration
+  file so a fresh host inherits the fitted model, or make
+  `_calibrate_metar_settlement_confidence` fail CLOSED in the opposite
+  sense (skip force-close, not just skip the adjustment) when no
+  calibration is loadable. Needs an AskUserQuestion before implementing
+  either -- not resolved by this note.
 
 Problem:
   `metar._dynamic_lock_in_confidence()` is hard-bounded to [0.72, 0.97]
@@ -23460,7 +23481,7 @@ Resolution (2026-08-21, batch-07):
   Mutation-tested: reverted the ZoneInfo computation to a bare utils.utc_today() call via Edit -- the test failed as expected (0 != 2). Separately reverted the "days_out" key drop from the log_prediction analysis dict -- the test's log_prediction assertion failed as expected (KeyError: 'days_out'). Restored via Edit in both cases.
   Lint/mypy: ruff check + format clean, mypy clean (web_app.py, tracker.py).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] settlement_monitor.py logs per-city polling failures at DEBUG only, invisible on console for an unattended daily task
+[RESOLVED 2026-08-22 -- see resolution below.] settlement_monitor.py logs per-city polling failures at DEBUG only, invisible on console for an unattended daily task
 Priority: LOW (audit id AUD-0047, status CONFIRMED, confidence HIGH, evidence E1)
 Files: settlement_monitor.py, main.py, cron.py
 
@@ -23471,6 +23492,12 @@ Problem:
   Financial risk: None directly (this signal path is documented as currently dormant); primarily an operability/observability gap.
   Recommendation: Bump these two handlers to WARNING, matching the reasoning already applied to cron.py's ML-retrain block in the same commit window.
   Full record: audit/AUDIT_REPORT.json (id AUD-0047), audit/AUDIT_REPORT.md.
+
+Resolution: batch-12 (`0d601705`) bumped both handlers from `_log.debug()` to
+  `_log.warning()`, each with an "AUD-0047: bumped from debug to warning"
+  comment explaining why (settlement_monitor.py's market-fetch and
+  per-city-error handlers, ~720-737 in current code) -- verified present in
+  current code this session.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] execution_log.py and tracker.py never explicitly close SQLite connections
 Priority: LOW (audit id AUD-0048, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24100,7 +24127,7 @@ Problem:
   Recommendation: None required; noted so this audit's overall test-quality assessment isn't skewed toward assuming pervasive weak coverage based on the handful of gaps found above, which are genuine but narrow.
   Full record: audit/AUDIT_REPORT.json (id AUD-0080), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] metar.fetch_metar_daily_extreme docstring's caller list is stale after b0f4cad2 added a third caller
+[RESOLVED 2026-08-22 -- see resolution below.] metar.fetch_metar_daily_extreme docstring's caller list is stale after b0f4cad2 added a third caller
 Priority: INFO (audit id AUD-0081, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
@@ -24110,6 +24137,11 @@ Problem:
   Financial risk: None -- purely cosmetic/documentation.
   Recommendation: Update the docstring to mention the third caller, or phrase it generically ('every current caller') rather than naming call sites individually so future additions don't require a docstring update to stay accurate.
   Full record: audit/AUDIT_REPORT.json (id AUD-0081), audit/AUDIT_REPORT.md.
+
+Resolution: `2a0f8e09` updated the docstring's caller enumeration to include
+  all 3 callers (settlement_monitor.py, weather_markets.py's _metar_lock_in,
+  weather_markets.py's _compute_persistence_prob) -- verified present in
+  current metar.py this session.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] CI workflow runs the full pytest suite twice per run (coverage report + coverage gate as separate full runs)
 Priority: INFO (audit id AUD-0083, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24317,7 +24349,7 @@ Problem:
   design pass and test coverage rather than folding into an already-large
   review-response round.
 
-[OPEN 2026-08-19 -- found by independent opus review of batch-03 (AUD-0003), genuinely out of scope for that fix: requires real-world verification of Kalshi's actual fee schedule, not something to guess at while already mid-fix] order_executor._poll_pending_orders' natural-settlement P&L formula applies the taker fee only on WINNING outcomes, so a taker-entered position that LOSES at settlement is recorded fee-free, understating that loss
+[RESOLVED 2026-08-22 -- see resolution below.] order_executor._poll_pending_orders' natural-settlement P&L formula applies the taker fee only on WINNING outcomes, so a taker-entered position that LOSES at settlement is recorded fee-free, understating that loss
 Priority: LOW -- same-direction consequence as AUD-0003 (the daily-loss circuit breaker under-tripping), but on the losing side, and against a formula convention that predates and is broader than this fix
 Files: order_executor.py, execution_log.py, backtest.py
 
@@ -24354,6 +24386,22 @@ Problem:
   maker/taker fee selection (order.get("order_type") == "limit") to the
   losing branches as well, and audit backtest.py/_exit_live_position for the
   same gap, since they share the identical win-only convention.
+
+Resolution: batch-22 (`7dbd7ee3`) replaced the win-only `(1 - _fee)` flat-rate
+  approximation in _poll_pending_orders' settlement branch with an
+  unconditional fee subtraction -- `_fee_dollars` (maker via
+  utils.kalshi_maker_fee, taker via utils.kalshi_taker_fee, selected by
+  order_type) is now computed once per fill and subtracted from gross_pnl
+  regardless of win/loss outcome (order_executor.py, `_poll_pending_orders`,
+  the `_fee_dollars = kalshi_maker_fee(...) if ... else kalshi_taker_fee(...)`
+  / `pnl = round(gross_pnl - _fee_dollars, 4)` block -- verified present in
+  current code this session; the empirical fee-schedule question this entry
+  raised was separately resolved by adopting Kalshi's documented curved
+  per-contract formula instead of guessing). The identical entry-side gap
+  for early-exited (not naturally-settled) positions remains open as its own
+  follow-up entry (see "record_live_exit_fill never charges the ENTRY-side
+  taker fee ... early exit" below) -- do not conflate the two; this
+  resolution covers the natural-settlement path only.
 
 [RESOLVED 2026-08-19/20 -- see resolution below.] ENSEMBLE MODEL QUALITY
   DEGRADED FROM ~100% TO 30% DIRECTIONAL ACCURACY OVER 3 MONTHS -- NO
@@ -26665,7 +26713,7 @@ Problem:
 
 Resolution 2026-08-23 (batch-25 item 4):
   Both /api/halt and /api/override routed through safe_io.atomic_write_json, wrapped in try/except returning a JSON 500 (matching this file's own error-response convention everywhere else) instead of an unhandled exception. atomic_write_json's temp filename is unique per pid/thread/attempt rather than a hardcoded ".kill_switch.tmp", so it can never collide with cmd_cron's override-parking file -- verified against main.py's actual override code, not just plausible-by-construction.
-  tests/test_bare_os_replace_guard.py's method-form detection was rewritten from a naming-convention regex to an AST scan for any single-positional-argument .replace() call (str.replace() always takes >=2 positional args, so this is unambiguous regardless of what the receiver is named) -- opus-review-caught: the first attempt used a "tmp"-in-identifier-name regex heuristic justified as "every real call site names its temp variable with tmp in it", which was FALSE -- cron.py's log-rotation call log_path.replace(log_path.with_suffix(".log.1")) is a real, pre-existing instance of this exact anti-pattern on a file with guaranteed concurrent readers, and the AST rewrite is what actually caught it. Left allowlisted rather than fixed (cron.py belongs to a different batch's file ownership) -- flagged here as a follow-up: cron.py:1370's log rotation should route through safe_io the same way this item's two sites now do.
+  tests/test_bare_os_replace_guard.py's method-form detection was rewritten from a naming-convention regex to an AST scan for any single-positional-argument .replace() call (str.replace() always takes >=2 positional args, so this is unambiguous regardless of what the receiver is named) -- opus-review-caught: the first attempt used a "tmp"-in-identifier-name regex heuristic justified as "every real call site names its temp variable with tmp in it", which was FALSE -- cron.py's log-rotation call log_path.replace(log_path.with_suffix(".log.1")) is a real, pre-existing instance of this exact anti-pattern on a file with guaranteed concurrent readers, and the AST rewrite is what actually caught it. Left allowlisted rather than fixed (cron.py belongs to a different batch's file ownership) -- flagged here as a follow-up: cron.py's `log_path.replace(log_path.with_suffix(".log.1"))` log rotation (in `_cmd_cron_body`, line 1853 as of this session -- the earlier "cron.py:1370" citation was itself stale; identify by this snippet, not the line number, since it will drift again) should route through safe_io the same way this item's two sites now do.
   Adjacent fix (opus-review-caught, same kill-switch data flow this item already touches): /api/resume (web_app.py) and cmd_resume (main.py) only checked/cleared .kill_switch, not a kill switch parked at .kill_switch.tmp mid-override -- resuming during an override window silently looked like a no-op and the kill switch re-armed itself the moment the in-flight override cycle's own finally block restored the parked file. Both now also clear the parked copy; verified safe against the cron process concurrently restoring it (main.py's own restore step already catches OSError, including FileNotFoundError from the source disappearing mid-restore, and just logs).
   Also fixed in the same session, found via the same kill-switch/backup investigation (opus-review-caught, cloud_backup.py restore_data() -- the counterpart to item 1's backup_data(), same WAL/sidecar bug class, same file): the pre-restore safety snapshot's shutil.copytree previously passed ignore=shutil.ignore_patterns("*.shm", "*.wal") intending to exclude SQLite's sidecars -- verified via fnmatch that this never actually matched anything (SQLite names them "<name>.db-wal"/"<name>.db-shm", hyphen not dot), so the exclusion was dead code, removed for clarity. Separately, restoring a .db file over a live one left that live file's stale -wal/-shm sidecars in place -- reproduced live (constructed two different SQLite DBs, copied one over the other's live main file, left the other's stale WAL sidecar in place: the restored file's own real table became invisible, "no such table", the OLD database silently came back instead of the restored one). Fixed across two review rounds: copy to a temp path, swap into place via _replace_with_retry, THEN clean stale sidecars (not before) -- round 1 of this sub-fix still had a residual window (if the final replace itself failed after sidecars were already deleted, the live WAL was destroyed with no replacement in place, also reproduced live); reordered so the atomic replace happens before sidecar cleanup, so a failure at that point can only leave a stale sidecar behind (now logged loudly) rather than lose data the restore was supposed to deliver.
   3 rounds of independent opus review (effort=high) before push given this protects the live-order ledger and the emergency kill-switch path -- round 1 (2 HIGH + 6 MEDIUM), round 2 reviewing round 1's fixes (0 HIGH + 4 MEDIUM + 8 LOW, all in what round 1's fixes themselves introduced), round 3 focused on round 2's fixes (0 HIGH + 1 MEDIUM + 6 LOW). Every fix mutation-tested individually (reverted via Edit, confirmed the specific new test fails, restored) rather than trusted from the review's own writeup. Full scoped suite (218 tests across the touched files) passes; ruff+ruff-format+mypy clean via the actual pre-commit hook.
@@ -27440,6 +27488,50 @@ Batch-32 process notes: full ceremony per the 29-step workflow (safety-gate surf
   misclassify an improving-but-still-invalid edit as "new" (M2-6) and two from_env() calls per menu edit
   print duplicate cache-reload warnings (M2-7, cosmetic -- downgrading the log level was rejected since
   tests/test_phase2_batch_a.py's TestPaperMinEdgeWarning explicitly requires WARNING level for that exact
+
+[OPEN 2026-08-23 -- never filed as its own entry despite being known since the REAL NBM VIA IEM NBS STATION BULLETINS work; recorded only inside that entry's own "Known residual" note (search backlog.txt for "fetch_mos()'s existing GFS/NAM path filters rows by"), and absent from BACKLOG_OPEN.md as a result; independently re-confirmed still present in current code this session] mos.fetch_mos()'s GFS/NAM row filter compares a UTC ftime against a city-local target date
+Priority: LOW -- same defect class as the analyze_trade UTC-vs-city-local family (AUD-0017/0044/0045/0046 and their sigma-lookup sibling below), but confined to which hourly rows feed the GFS/NAM MOS max/min for a single day, not a trade-entry gate
+Files: mos.py (fetch_mos, ~line 191 row filter; ~line 333 parses ftime as UTC in the separate NBS txn-row path for contrast)
+
+Problem:
+  fetch_mos()'s tz threading (the `tz: str | None = None` parameter added
+  alongside the analyze_trade UTC-vs-city-local fix, see this file's
+  "ANALYZE_TRADE'S past_date GATE" resolution note) fixed the MOS-specific
+  sigma lookup's days_out calculation to use city-local today, but did NOT
+  touch the separate row filter that decides which hourly rows are even
+  considered for that day's max/min: `day_rows = [r for r in rows if
+  str(r.get("ftime", "")).startswith(date_str)]`, where `ftime` is a UTC
+  timestamp string from the GFS/NAM payload and `date_str` is
+  `target_date.isoformat()` -- target_date is city-local (from analyze_
+  trade's parse_city_date()), so this comparison silently mixes a UTC
+  field against a local-date string.
+  Root cause: the tz parameter's docstring only ever promises the sigma
+  lookup ("days_out must be too"); the row filter a few lines above it was
+  never in scope for that fix and was missed as a distinct, adjacent bug.
+  Evidence: mos.py:191 verified verbatim this session (`day_rows = [r for
+  r in rows if str(r.get("ftime", "")).startswith(date_str)]`); mos.py's
+  separate NBS txn-row path (~line 333) explicitly parses ftime with
+  `.replace(tzinfo=UTC)`, confirming ftime is UTC in this API's payload
+  shape generally, not just in that path.
+  Financial risk: a city up to ~7h off UTC (matches the M-18c KLAX
+  citation this entry is filed from) can have its GFS/NAM max/min computed
+  over a row window that's misaligned with the actual city-local day in
+  both directions -- feeding the same MOS-sigma-fallback path
+  _forecast_uncertainty/analyze_trade already depend on for trade-entry
+  probability when NBS/METAR coverage is unavailable. Currently
+  non-operative for live capital (LIVE_TRADING_ENABLED unset); affects
+  paper-trading signal quality.
+  Recommendation: convert `ftime` to the station's city tz before the
+  startswith comparison (mirroring the NBS txn-row path's existing
+  `datetime.strptime(...).replace(tzinfo=UTC)` -> `.astimezone(tz)`
+  pattern), using the same `tz` parameter already threaded through for the
+  sigma lookup so no new parameter is needed.
+  Coordination note: batch-36 (M-18c in its own handoff prompt) owns the
+  code fix for this same defect. This entry exists so the residual is
+  tracked as its own item and shows up in BACKLOG_OPEN.md, per batch-39's
+  scope; whoever lands second between batch-36 and any future session
+  picking this entry up should add the Resolution note here rather than
+  leaving it open after the code fix ships.
   line) were both confirmed non-blocking and left as documented, deliberate no-ops per the reviewer's own
   framing.
 

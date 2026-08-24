@@ -122,6 +122,8 @@ echo "LIVE_TRADING_ENABLED=true" >> .env
 
 # 2. Verify the gate passes programmatically
 python -c "
+from dotenv import load_dotenv
+load_dotenv()
 from trading_gates import LiveTradingGate
 allowed, reason = LiveTradingGate().check()
 print('Gate:', 'PASS' if allowed else 'BLOCKED', '—', reason)
@@ -266,20 +268,21 @@ designed against that mechanism once instead of twice.
 
 ### After any reboot, crash, or power loss, before resuming
 
-1. **Check for a stale `data/cron.lock`.** A clean shutdown always deletes
+1. **Check for a stale `data/.cron.lock`.** A clean shutdown always deletes
    it (`_release_cron_lock`); a crash or forced reboot can leave it behind.
    `_acquire_cron_lock` verifies the recorded PID's own `create_time` (not
    just `pid_exists()`) before trusting an existing lock, so the next `cron`
-   invocation self-heals automatically once the crashed process's PID is
-   confirmed dead OR reassigned to an unrelated process — no operator
-   intervention needed for the ordinary crash case. (This does NOT cover
-   every case: if the crashed process's exact PID happens to still be
-   running as a genuinely different process by the time you check, the lock
-   stays held until that PID frees up or you clear it manually.) To
-   confirm/clear it manually anyway:
+   invocation self-heals automatically in both ordinary crash cases: the
+   PID is confirmed dead, or the PID was reassigned to an unrelated process
+   (a `create_time` mismatch proves the reuse) — no operator intervention
+   needed either way. The only case that can't self-heal on the spot is a
+   live PID whose `create_time` can't be positively confirmed (e.g. Windows
+   `AccessDenied` querying a protected process that reused the PID) — even
+   that case is capped by a 24h backstop (`_STUCK_RUNNING_BACKSTOP_SECS`),
+   not held indefinitely. To confirm/clear it manually anyway:
    ```cmd
-   type data\cron.lock   # inspect; if present, cron.py will validate it on next run
-   del data\cron.lock    # only if you want to force-clear it before running cron
+   type data\.cron.lock   # inspect; if present, cron.py will validate it on next run
+   del data\.cron.lock    # only if you want to force-clear it before running cron
    ```
 2. **Let `_recover_pending_orders` run.** It's already invoked automatically
    near the start of every `cron` cycle (`cron.py`, `_cmd_cron_body`, gated

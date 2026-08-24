@@ -92,7 +92,8 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py scan` | Scan all weather markets, print opportunities |
 | `python main.py watch` | Live watch mode — refreshes every 5 minutes |
 | `python main.py web` | Start the dashboard at http://localhost:5000 |
-| `python main.py order <ticker>` | Manually place a trade with full model analysis and confirmation |
+| `python main.py buy <ticker> <yes/no> <qty> <price>` | Manually place a live YES/NO order |
+| `python main.py sell <ticker> <yes/no> <qty> <price>` | Manually place a live sell order |
 | `python main.py today` | Today's positions and PnL summary (alias: `t`) |
 | `python main.py balance` | Show account balance |
 | `python main.py positions` | Show open positions |

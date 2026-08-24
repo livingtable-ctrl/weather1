@@ -339,6 +339,7 @@ FIX: paper.py:541 — add log at WARNING before return 1.0 in exception handler.
 ```
 [paper.py] spread_kelly_multiplier() L:579–594  9/10 — Clean formula; handles spread<=0 and net_edge<=0 edge cases; floors at 0.5; full test coverage (TestSpreadKellyMultiplier 8 tests). Exemplary small function.  [Confidence: C]
 ```
+**REMOVED:** `spread_kelly_multiplier()` (and its `TestSpreadKellyMultiplier` suite) was deleted from `paper.py` by batch-26 (`3b854726`). This entry is stale — kept here only as a historical record of the 2026-06-29 audit snapshot.
 
 ```
 [paper.py] kelly_bet_dollars() L:597–641  8/10 — Handles all three STRATEGY modes; applies drawdown scaling to all strategies (M-11 comment); applies streak pause; applies method multiplier; uses dynamic Brier cap. is_streak_paused() and drawdown_scaling_factor() each do a disk read — two separate reads not under a single lock. Minor staleness risk. Full test coverage (TestKellyCompounding, TestDrawdownScaling, test_kelly_bet_dollars_*). No I5 check here — Kelly fraction is passed in from caller; this function does not validate 0<p<1 itself, but the callers are responsible for that.  [Confidence: C]
