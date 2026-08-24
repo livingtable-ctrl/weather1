@@ -94,9 +94,43 @@ function applyTheme(t) {
 }
 
 // ---------------------------------------------------------------------------
+// RefreshCountdown — owns its own 1s ticker and local state so it's the only
+// thing that re-renders every second; everything else reads DataContext and
+// only re-renders when the data it actually depends on changes (batch-43 H-2:
+// this used to live in App's own state, forcing every context consumer —
+// including the 67 KB AnalyticsTab chart computation — to re-render once a
+// second just to animate this label).
+// ---------------------------------------------------------------------------
+function RefreshCountdown() {
+  const M = useContext(DataContext);
+  const [countdown, setCountdown] = useState(60);
+  const intervalRef = useRef(null);
+
+  // Reset to 60 and restart the ticker each time fresh data actually arrives
+  useEffect(() => {
+    setCountdown(60);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setCountdown(prev => (prev <= 1 ? 60 : prev - 1));
+    }, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, [M.stats?.timestamp]);
+
+  return (
+    <button
+      onClick={() => M?.refresh?.()}
+      title="Click to refresh data now"
+      style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'ui-monospace, monospace', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 5 }}
+    >
+      ↻ {countdown}s
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Nav
 // ---------------------------------------------------------------------------
-function Nav({ active, onNavigate, theme, onToggleTheme, connected, refreshCountdown }) {
+function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
   const TAB_NAMES = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades', 'Settings'];
   const M = useContext(DataContext);
   const ks = M?.stats?.kill_switch;
@@ -151,15 +185,7 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected, refreshCount
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {/* Auto-refresh countdown — clicking triggers an immediate data refresh */}
-        {refreshCountdown != null && (
-          <button
-            onClick={() => M?.refresh?.()}
-            title="Click to refresh data now"
-            style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'ui-monospace, monospace', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: 5 }}
-          >
-            ↻ {refreshCountdown}s
-          </button>
-        )}
+        <RefreshCountdown />
         {/* SSE live indicator */}
         <span title={connected ? 'Live stream connected' : 'Stream disconnected'} style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -363,9 +389,7 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null });
   const [toasts, setToasts] = useState([]);
-  const [refreshCountdown, setRefreshCountdown] = useState(60);
   const cronPollRef = useRef(null);
-  const countdownRef = useRef(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -395,18 +419,7 @@ export default function App() {
 
   useEffect(() => () => {
     if (cronPollRef.current) clearInterval(cronPollRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
   }, []);
-
-  // Auto-refresh countdown resets to 60 each time data arrives
-  useEffect(() => {
-    setRefreshCountdown(60);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    countdownRef.current = setInterval(() => {
-      setRefreshCountdown(prev => prev <= 1 ? 60 : prev - 1);
-    }, 1000);
-    return () => clearInterval(countdownRef.current);
-  }, [data.stats?.timestamp]);
 
   // Sync URL hash to active tab so back/forward work
   useEffect(() => {
@@ -507,8 +520,19 @@ export default function App() {
 
   const TabComponent = TABS[activeTab] || OverviewTab;
 
+  // Memoized so a re-render that doesn't touch data/cronState/the handlers
+  // (e.g. a theme or tab change) hands consumers back the same value
+  // reference instead of a brand-new object literal every time (batch-43
+  // H-2, part 2 of 2). Note this only kicks in once `data`'s own reference
+  // is stable across such renders — see the useData.js `refresh` finding
+  // flagged separately.
+  const contextValue = useMemo(
+    () => ({ ...data, cronState, handleRunCron, handleCancelCron }),
+    [data, cronState, handleRunCron, handleCancelCron],
+  );
+
   return (
-    <DataContext.Provider value={{ ...data, cronState, handleRunCron, handleCancelCron }}>
+    <DataContext.Provider value={contextValue}>
       <div style={{
         background: 'var(--bg-page)', color: 'var(--text)',
         fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
@@ -520,7 +544,6 @@ export default function App() {
           theme={theme}
           onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           connected={connected}
-          refreshCountdown={refreshCountdown}
         />
         <ToastContainer toasts={toasts} />
         {commandPaletteOpen && (
