@@ -2103,10 +2103,20 @@ def check_sameday_condition_type_weakness(
     fire in practice for a long time). Intentionally warn-only, same
     reasoning as check_condition_type_weakness: a single condition_type
     same-day slice is too small/noisy a sample to auto-halt on.
+
+    Skips the "unspecified" bucket (NULL condition_type rows) -- unlike
+    'between'/'above'/'below', it isn't a real, currently-tradeable market
+    family an operator could act on; it's a data-hygiene artifact of rows
+    logged before the condition_type column was reliably populated (found
+    live: all 8 real unspecified rows in production predate 2026-06-25,
+    long before this function shipped). Alerting on it would just be noise
+    with no actionable fix.
     """
     breakdown = get_sameday_calibration().get("by_condition_type", {})
     alerts_out: list[str] = []
     for cond_type, stats in breakdown.items():
+        if cond_type == "unspecified":
+            continue
         if stats["n"] < min_samples:
             continue
         if abs(stats["bias"]) > bias_floor:
@@ -3104,6 +3114,33 @@ def count_settled_snow_predictions() -> int:
     return len(events)
 
 
+# batch-40 follow-up (found live 2026-08-24, the morning after batch-40
+# shipped, from cmd_cron's own real production output): between-bucket
+# METAR lock-in was disabled 2026-06-29 (a broken implementation that
+# compared the INSTANTANEOUS METAR reading against the bucket, not the
+# daily running extreme -- the AC3 violation weather_markets._metar_lock_in's
+# own between-branch comment documents) and re-enabled 2026-08-09 (bded3d6a,
+# "re-enable between-bucket METAR lock-in on the daily extreme, not
+# instantaneous temp"). Rows predicted before the re-enable measure DELETED
+# code, not the current implementation -- batch-40's own handoff explicitly
+# flagged this exact contamination ("do NOT cite the n=70 between rows with
+# Brier 0.2825 -- 69/70 predate the 2026-06-29 implementation replacement
+# and measure deleted code"), but batch-40's own new code (this function,
+# and get_sameday_calibration()'s new by_condition_type breakdown) didn't
+# actually filter it out -- confirmed live: of the 70 real between/
+# days_out=0/metar_lockout rows in production, 69 have predicted_at
+# '2026-06-03...' (pre-disable) and exactly 1 has predicted_at
+# '2026-08-13...' (post-re-enable, the single real shadow prediction
+# batch-40's own handoff cited). Without this cutoff,
+# _between_metar_gates_active()'s 20-sample floor could clear almost
+# entirely on dead-code residue with zero real evidence about the CURRENT
+# formula -- exactly the failure mode Decision 2's shadow-only posture
+# exists to prevent. Date-only (not the commit's exact time) since there is
+# a multi-day gap with zero between rows on either side of it in the real
+# data, so second-level precision cannot matter.
+_BETWEEN_METAR_REENABLED_AT = "2026-08-09"
+
+
 def count_settled_between_predictions() -> int:
     """Count settled between-bracket METAR-lock predictions -- batch-40
     "Between-bracket calibration design", Decision 1/2's sample-floor
@@ -3123,6 +3160,10 @@ def count_settled_between_predictions() -> int:
     settled between ticker is its own distinct market/outcome (unlike a
     monthly ladder's shared sibling brackets), so a raw-row count is already
     a real per-market count.
+
+    Also excludes any row predicted before _BETWEEN_METAR_REENABLED_AT --
+    see that constant's own comment for why (dead-code contamination found
+    live the day after this function first shipped).
     """
     init_db()
     with _conn() as con:
@@ -3133,7 +3174,9 @@ def count_settled_between_predictions() -> int:
             WHERE p.condition_type = 'between'
               AND p.method = 'metar_lockout'
               AND p.days_out = 0
-            """
+              AND p.predicted_at >= ?
+            """,
+            (_BETWEEN_METAR_REENABLED_AT,),
         ).fetchone()
     return row[0] if row else 0
 
@@ -4125,13 +4168,23 @@ def get_sameday_calibration() -> dict:
                     weather_markets.is_between_bracket_ticker's docstring).
                     NULL condition_type rows (pre-dating that column, or a
                     logging path that never set it) are grouped under the key
-                    "unspecified" rather than silently dropped.
+                    "unspecified" rather than silently dropped. The
+                    'between' slice specifically excludes rows predicted
+                    before _BETWEEN_METAR_REENABLED_AT (see that constant's
+                    own comment) -- dead-code-era rows from before the
+                    2026-08-09 re-enable, found contaminating this exact
+                    breakdown live the day after it shipped. This exclusion
+                    applies ONLY to the by_condition_type breakdown, not to
+                    the top-level n/brier/calibration_buckets/by_time_of_day
+                    above, which keep this function's original "includes
+                    ALL condition types" pooled contract unchanged.
     """
     init_db()
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.our_prob, o.settled_yes, p.local_hour, p.condition_type
+            SELECT p.our_prob, o.settled_yes, p.local_hour, p.condition_type,
+                   p.predicted_at
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
@@ -4186,11 +4239,16 @@ def get_sameday_calibration() -> dict:
     # batch-40 Decision 1: condition_type breakdown, same shape as by_tod
     # above. Grouped in Python (not SQL GROUP BY) to reuse the same `rows`
     # fetch and the same n/brier/mean/bias arithmetic as by_tod, rather than
-    # a second query.
+    # a second query. 'between' rows predating the re-enable are skipped
+    # here only -- `rows` itself (and therefore `curve`/`by_tod` above,
+    # already computed) are untouched, preserving this function's existing
+    # pooled contract.
     by_cond: dict[str, dict] = {}
     cond_members: dict[str, list[tuple[float, int]]] = {}
     for r in rows:
         key = r["condition_type"] or "unspecified"
+        if key == "between" and r["predicted_at"] < _BETWEEN_METAR_REENABLED_AT:
+            continue
         cond_members.setdefault(key, []).append(
             (float(r["our_prob"]), int(r["settled_yes"]))
         )

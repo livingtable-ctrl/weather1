@@ -29488,3 +29488,49 @@ Resolution (2026-08-24):
   Claude's hosted infrastructure was reported overloaded at review time by the user, who explicitly
   instructed the session to self-review rather than attempt the usual opus effort=high dispatch.
   Source: audit/handoff_prompts/batches/batch-40.md.
+
+Follow-up fix 2026-08-24 (found live the same day, from the user pasting a real cron run's output):
+  cmd_cron's first real run under this batch's new code fired two false-alarm SAMEDAY CONDITION-TYPE
+  WEAKNESS alerts: condition_type=between (n=70, brier=0.2728) and condition_type=unspecified (n=8,
+  brier=0.3525). The between n=70/brier=0.2728 figure was immediately recognizable as almost exactly the
+  n=70/Brier=0.2825 figure this batch's own Problem section explicitly named as invalid evidence ("do NOT
+  cite the n=70 between rows with Brier 0.2825 -- 69/70 predate the 2026-06-29 implementation replacement
+  and measure deleted code") -- this batch's own new count_settled_between_predictions() and
+  get_sameday_calibration()'s new by_condition_type breakdown never actually excluded that population.
+  Confirmed live against the real DB: of 70 real between/days_out=0/method=metar_lockout rows, 69 have
+  predicted_at '2026-06-03...' (the pre-disable broken implementation, which compared the instantaneous
+  METAR reading against the bucket rather than the daily running extreme) and exactly 1 has predicted_at
+  '2026-08-13...' (post-re-enable, the single real shadow prediction this batch's own handoff cited).
+  Between-bucket METAR lock-in was disabled 2026-06-29 and re-enabled 2026-08-09 (bded3d6a, "re-enable
+  between-bucket METAR lock-in on the daily extreme, not instantaneous temp") -- this is the SAFETY-CRITICAL
+  half of the bug: without a cutoff, _between_metar_gates_active()'s 20-sample floor could clear almost
+  entirely on dead-code residue with zero real evidence about the CURRENT formula, defeating the entire
+  purpose of Decision 2's shadow-only interim posture. The unspecified/NULL-condition_type alert was a
+  separate, milder issue: all 8 real unspecified rows are pre-2026-06-25 data-hygiene artifacts (rows logged
+  before condition_type was reliably populated), not a real, currently-actionable market family.
+  Fix: new tracker._BETWEEN_METAR_REENABLED_AT = "2026-08-09" constant (date-only, not the commit's exact
+  time -- there is a multi-day gap with zero between rows on either side of it in the real data, so
+  second-level precision cannot matter). count_settled_between_predictions() now requires
+  predicted_at >= that cutoff. get_sameday_calibration()'s by_condition_type breakdown excludes pre-cutoff
+  'between' rows specifically (NOT the top-level pooled n/brier/by_time_of_day, which keep the function's
+  pre-existing "includes ALL condition types" contract unchanged -- verified by a dedicated regression test).
+  check_sameday_condition_type_weakness() now also skips the "unspecified" bucket entirely regardless of
+  bias, since it isn't a real market family an operator could act on.
+  Verified live against the real production DB after the fix: count_settled_between_predictions() now
+  returns 1 (was 70); by_condition_type['between'] now shows n=1 with realistic stats instead of the
+  contaminated n=70 pool; the top-level pooled n (188) is unchanged; check_sameday_condition_type_weakness()
+  now returns [] against the same real data that produced the two false alarms.
+  New tests: TestCountSettledBetweenPredictions gained 2 tests (excludes-pre-cutoff, includes-on-boundary);
+  TestCliCalibrationSplit gained 2 tests (by_condition_type excludes the pre-cutoff between row; top-level
+  pooled n stays unchanged by the same exclusion); TestCheckSamedayConditionTypeWeakness gained 2 tests
+  (never alerts on unspecified; never alerts on pre-cutoff between rows). Mutation-tested the cutoff itself
+  (removed the predicted_at filter, confirmed the new exclusion test failed as expected, restored). Full
+  scoped suite (test_tracker.py + test_weather_markets.py + test_between_bracket_shadow.py; metar.py/
+  weather_markets.py's between branch weren't touched by this fix, so test_phase2_batch_d.py wasn't
+  re-included): 843 passed, 3 skipped, 10 subtests passed, 0 failures. ruff/ruff-format/mypy clean via the
+  real pre-commit hook.
+  Process note: this is exactly the kind of gap the batch's own "measurement first" mandate exists to catch
+  -- the new alert worked as designed (surfaced a real problem on its very first production run), but the
+  problem it surfaced was in the alert's own filtering, not the between formula. Caught same-day because the
+  user pasted the actual cron log rather than the fix being deployed and forgotten.
+  Source: audit/handoff_prompts/batches/batch-40.md (this is a same-day follow-up, not a new handoff item).

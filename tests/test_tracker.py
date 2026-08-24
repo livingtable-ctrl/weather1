@@ -1777,6 +1777,34 @@ class TestCheckSamedayConditionTypeWeakness(unittest.TestCase):
         self.assertEqual(len(sameday_alerts), 1)
         self.assertEqual(multiday_alerts, [])
 
+    def test_never_alerts_on_unspecified_condition_type(self):
+        """batch-40 follow-up (found live 2026-08-24): NULL condition_type
+        rows aren't a real, actionable market family -- confirmed live, all
+        8 real "unspecified" production rows are pre-2026-06-25 data-hygiene
+        artifacts, not a genuine model-quality signal. Must never alert,
+        regardless of how badly miscalibrated the pool looks."""
+        for i in range(8):
+            self._insert(f"UNSPEC-{i}", 0.90, False, condition_type=None)
+        alerts = tracker.check_sameday_condition_type_weakness()
+        self.assertEqual(alerts, [])
+
+    def test_never_alerts_on_between_rows_predating_reenable(self):
+        """batch-40 follow-up (found live 2026-08-24): between rows
+        predicted before the 2026-08-09 re-enable (bded3d6a) measure
+        deleted code -- get_sameday_calibration()'s by_condition_type
+        breakdown already excludes them (see test_tracker.py's
+        TestCliCalibrationSplit), so this alert must never fire on them
+        either, since it reads that same breakdown."""
+        for i in range(8):
+            self._insert(f"OLD-BAD-{i}", 0.90, False, condition_type="between")
+        with tracker._conn() as con:
+            con.executemany(
+                "UPDATE predictions SET predicted_at=? WHERE ticker=?",
+                [("2026-06-03 02:03:52", f"OLD-BAD-{i}") for i in range(8)],
+            )
+        alerts = tracker.check_sameday_condition_type_weakness()
+        self.assertEqual(alerts, [])
+
 
 class TestGetBias(unittest.TestCase):
     """Focused tests for tracker.get_bias() (#111)."""
@@ -2211,6 +2239,55 @@ class TestCliCalibrationSplit(_Phase3Base):
         dashboard = tracker.get_sameday_calibration()
         self.assertIn("unspecified", dashboard["by_condition_type"])
         self.assertEqual(dashboard["by_condition_type"]["unspecified"]["n"], 1)
+
+    def test_by_condition_type_excludes_between_rows_predating_reenable(self):
+        """batch-40 follow-up (found live 2026-08-24): a 'between' row
+        predicted before the 2026-08-09 re-enable (bded3d6a) measures
+        deleted code, not the current implementation -- must be excluded
+        from the by_condition_type breakdown specifically, without changing
+        the top-level pooled n (see next test)."""
+        self._add(
+            "TKCAL-BYCOND-BETWEEN-OLD",
+            "NYC",
+            0.90,
+            0.50,
+            False,
+            condition_type="between",
+            days_out=0,
+        )
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "UPDATE predictions SET predicted_at=? WHERE ticker=?",
+                ("2026-06-03 02:03:52", "TKCAL-BYCOND-BETWEEN-OLD"),
+            )
+        dashboard = tracker.get_sameday_calibration()
+        self.assertNotIn("between", dashboard["by_condition_type"])
+
+    def test_top_level_pooled_n_unchanged_by_between_reenable_cutoff(self):
+        """The by_condition_type exclusion above must NOT leak into the
+        top-level n/brier/by_time_of_day -- get_sameday_calibration()'s
+        existing "includes ALL condition types" pooled contract stays
+        intact (see test_get_sameday_calibration_still_includes_between)."""
+        self._add(
+            "TKCAL-POOLED-BETWEEN-OLD",
+            "NYC",
+            0.90,
+            0.50,
+            False,
+            condition_type="between",
+            days_out=0,
+        )
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            con.execute(
+                "UPDATE predictions SET predicted_at=? WHERE ticker=?",
+                ("2026-06-03 02:03:52", "TKCAL-POOLED-BETWEEN-OLD"),
+            )
+        dashboard = tracker.get_sameday_calibration()
+        self.assertEqual(dashboard["n"], 1)
 
     def test_multiday_calibration_cli_bucket_grouping(self):
         """Rows land in the correct 0.2-wide probability buckets."""
@@ -7557,6 +7634,35 @@ class TestCountSettledBetweenPredictions(unittest.TestCase):
         tracker.mark_outcome_disputed("KXHIGHNY-26APR01-B67.5-DISP")
         after = tracker.count_settled_between_predictions()
         self.assertEqual(before, after)
+
+    def _backdate(self, ticker, predicted_at):
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET predicted_at=? WHERE ticker=?",
+                (predicted_at, ticker),
+            )
+
+    def test_excludes_rows_predating_the_between_reenable(self):
+        """batch-40 follow-up (found live 2026-08-24): between-bucket METAR
+        lock-in was disabled 2026-06-29 and re-enabled 2026-08-09 (bded3d6a).
+        A row predicted before the re-enable measures deleted code, not the
+        current implementation -- confirmed live: 69 of 70 real production
+        between rows predate it. Without this exclusion the 20-sample
+        shadow-gate floor could clear almost entirely on dead-code residue."""
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-OLD", True)
+        self._backdate("KXHIGHNY-26APR01-B67.5-OLD", "2026-06-03 02:03:52")
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before)
+
+    def test_includes_rows_on_or_after_the_reenable_date(self):
+        """Boundary check: predicted_at exactly on the re-enable date must
+        still count (>=, not >)."""
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-BOUND", True)
+        self._backdate("KXHIGHNY-26APR01-B67.5-BOUND", "2026-08-09 00:00:00")
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before + 1)
 
 
 class TestClampLastCalibrationCount(unittest.TestCase):
