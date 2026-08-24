@@ -167,9 +167,18 @@ def climatological_prob(
         return None
 
 
-def _climatological_prob_inner(
-    city: str, coords: tuple, target_date: date, condition: dict
-) -> float | None:
+def _window_temps(
+    city: str, coords: tuple, target_date: date, var: str
+) -> list[float] | None:
+    """Historical `var` ("max"/"min") temps within the ±WINDOW_DAYS calendar
+    window around target_date's day-of-year, across the full climate archive.
+    Shared by climatological_prob and climatological_normal so both apply the
+    identical window/shoulder-month logic to the identical data. Returns None
+    only on a fetch failure (fetch_historical itself already handles/logs
+    that) — an empty or short result is each caller's own floor to enforce,
+    since climatological_prob's and climatological_normal's floors happen to
+    match today (30 points) but that's not guaranteed to stay true.
+    """
     data = fetch_historical(city, coords)
     if not data:
         return None
@@ -180,7 +189,7 @@ def _climatological_prob_inner(
     )
 
     target_doy = target_date.timetuple().tm_yday
-    temps = []
+    temps: list[float] = []
 
     _n_dates = len(data["dates"])
     _n_highs = len(data["highs"])
@@ -206,9 +215,17 @@ def _climatological_prob_inner(
         diff = abs(target_doy - d_doy)
         diff = min(diff, 365 - diff)  # handle year-boundary wrap
         if diff <= window:
-            temps.append(low if condition.get("var") == "min" else high)
+            temps.append(low if var == "min" else high)
 
-    if len(temps) < 30:  # need enough data points to be meaningful
+    return temps
+
+
+def _climatological_prob_inner(
+    city: str, coords: tuple, target_date: date, condition: dict
+) -> float | None:
+    var = "min" if condition.get("var") == "min" else "max"
+    temps = _window_temps(city, coords, target_date, var)
+    if temps is None or len(temps) < 30:  # need enough data points to be meaningful
         return None
 
     if condition["type"] == "above":
@@ -219,6 +236,40 @@ def _climatological_prob_inner(
         lo, hi = condition["lower"], condition["upper"]
         return sum(1 for t in temps if lo <= t <= hi) / len(temps)
     return None
+
+
+def climatological_normal(
+    city: str, coords: tuple, target_date: date, var: str
+) -> tuple[float, float] | None:
+    """Mean and std-dev of the historical `var` ("max"/"min") temp for city in
+    the same ±WINDOW_DAYS calendar window climatological_prob() uses, across
+    the same 30yr archive. Returns None on insufficient data (<30 points,
+    matching climatological_prob's own floor) or a fetch failure.
+
+    Used by regime.detect_regime (M-31) to judge "unusually hot/cold" against
+    the city's actual seasonal normal instead of a fixed absolute threshold
+    that fires on ordinary Phoenix/Vegas summer days.
+    """
+    if _clim_cb.is_open():
+        _log.warning("Climatology circuit open — skipping normal for %s", city)
+        return None
+    try:
+        result = _climatological_normal_inner(city, coords, target_date, var)
+        _clim_cb.record_success()
+        return result
+    except Exception as exc:
+        _clim_cb.record_failure()
+        _log.warning("climatological_normal failed for %s: %s", city, exc)
+        return None
+
+
+def _climatological_normal_inner(
+    city: str, coords: tuple, target_date: date, var: str
+) -> tuple[float, float] | None:
+    temps = _window_temps(city, coords, target_date, var)
+    if temps is None or len(temps) < 30:
+        return None
+    return statistics.mean(temps), statistics.stdev(temps)
 
 
 def persistence_prob(

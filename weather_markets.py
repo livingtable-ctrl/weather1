@@ -367,7 +367,8 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
     Blends the static hand-coded bias table with a dynamic correction derived from
     the official Kalshi settlement temperature (outcomes.settled_temp_f), not a live
     METAR read.  As sample count grows, the dynamic correction takes over — at 10
-    samples it contributes 20%, at 50+ samples 100%.
+    samples it contributes 0%, linearly rising to 100% by 50+ samples (below 10
+    samples, the static table alone is used).
 
     This means the static table is the reliable fallback for new cities while the
     dynamic correction gradually dominates once the data is trustworthy.
@@ -1783,8 +1784,25 @@ def batch_prewarm_forecasts(
                 )
             _forecast_cb.record_success()
             for i, city in enumerate(city_names):
-                if i < len(results):
-                    city_model_data[city][model] = results[i].get("daily", {})
+                if i >= len(results):
+                    continue
+                _daily = results[i].get("daily", {})
+                # batch-13 follow-through: get_weather_forecast._fetch_one
+                # (the per-city path) already raises on a malformed daily
+                # dict via this same validate_forecast() call -- this
+                # batched path is the one that actually fills the cache in
+                # production (prewarm runs first), so a malformed per-city
+                # response here must be skipped the same way, not silently
+                # stored and blended downstream.
+                if not validate_forecast(_daily, source="open_meteo"):
+                    _log.info(
+                        "[batch_prewarm] model %s returned a malformed "
+                        "forecast for %s — skipping",
+                        model,
+                        city,
+                    )
+                    continue
+                city_model_data[city][model] = _daily
             ok = True
         except Exception as exc:
             _forecast_cb.record_failure()
@@ -1802,12 +1820,19 @@ def batch_prewarm_forecasts(
         dates_list: list[str] = next(
             (v.get("time", []) for v in model_data.values() if v.get("time")), []
         )
-        # Derive month from the first available date string (YYYY-MM-DD)
-        _month = int(dates_list[0][5:7]) if dates_list else 1
-        _weights = _forecast_model_weights(_month, city)
 
         for j, date_str in enumerate(dates_list):
             cache_key = (city, date_str)
+            # Keyed by THIS entry's own target date's month, matching
+            # get_weather_forecast's and batch_prewarm_ensemble's convention
+            # (both use target_date.month, not the scan date) — otherwise a
+            # multi-day prewarm spanning a season boundary (Sep->Oct,
+            # Mar->Apr, plus the ENSO term) gives every date in the batch
+            # the SCAN date's seasonal ECMWF weight instead of its own, and
+            # since prewarm fills the cache first, that wrong-month value is
+            # what actually trades.
+            _month = int(date_str[5:7])
+            _weights = _forecast_model_weights(_month, city)
             highs: list[tuple[float, float]] = []
             lows: list[tuple[float, float]] = []
             precips: list[tuple[float, float]] = []
@@ -2209,6 +2234,7 @@ def batch_prewarm_ensemble(
                 # downloaded members in favor of data from a superseded model
                 # cycle.
                 all_temps: list[float] = []
+                _contributed_models: set[str] = set()
                 _cycle_ttl = _ttl_until_next_cycle()
                 bias = _model_bias(city_name, var_str)
                 for model in fetch_models:
@@ -2230,6 +2256,7 @@ def batch_prewarm_ensemble(
                         # Tracking-only: cached above for accuracy scoring,
                         # must NOT enter the live trading blend below.
                         continue
+                    _contributed_models.add(model)
                     model_bias = bias.get(model, 0.0)
                     blend_temps = (
                         [t - model_bias for t in member_temps]
@@ -2240,7 +2267,12 @@ def batch_prewarm_ensemble(
                     w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
                     repeats = max(1, round(w * 2))
                     all_temps.extend(blend_temps * repeats)
-                if all_temps:
+                # Only overwrite when every blend model contributed to THIS
+                # key this run — mirrors the precip guard above (a
+                # circuit-breaker opening mid-loop, the documented expected
+                # failure mode, must not clobber a complete, still-fresh
+                # existing blend with a thinner one for a full cycle TTL).
+                if all_temps and set(blend_models) <= _contributed_models:
                     _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
                     _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
                     written += 1
@@ -3515,6 +3547,15 @@ _QUARANTINE_MIN_EFFECT = 0.02  # minimum practical own-vs-peer Brier-score gap
 
 _member_quarantine_state_cache: dict = {}
 _member_quarantine_state_cache_key: tuple[str, float] | None = None  # (path, mtime)
+# True once this process has successfully determined the real quarantine
+# state at least once (a real read, OR a confirmed-absent file). Distinct
+# from _member_quarantine_state_cache_key being None: _save_member_
+# quarantine_state() deliberately resets the KEY to None on every save (to
+# force the next read to re-parse) while leaving _cache's CONTENT alone --
+# using "key is None" as a never-loaded sentinel would misfire in exactly
+# that post-save window, discarding the still-good cached content on a
+# transient read error right after a save.
+_member_quarantine_state_ever_loaded: bool = False
 
 
 def load_member_quarantine_state() -> dict:
@@ -3536,23 +3577,50 @@ def load_member_quarantine_state() -> dict:
     failed persist can never leave a mutated-but-unsaved object sitting in
     this cache for the rest of the process).
     """
-    global _member_quarantine_state_cache, _member_quarantine_state_cache_key
+    global \
+        _member_quarantine_state_cache, \
+        _member_quarantine_state_cache_key, \
+        _member_quarantine_state_ever_loaded
 
     path = MEMBER_QUARANTINE_PATH
     if not path.exists():
         _member_quarantine_state_cache = {}
         _member_quarantine_state_cache_key = None
+        _member_quarantine_state_ever_loaded = True
         return {}
     try:
         cache_key = (str(path), path.stat().st_mtime)
         if cache_key == _member_quarantine_state_cache_key:
             return _member_quarantine_state_cache
         data = json.loads(path.read_text())
-    except Exception:
-        return {}
+    except Exception as exc:
+        # Mirrors _load_platt_models/_load_metar_calibration: a transient
+        # read (mid-os.replace, AV scanner hold) must not wipe a
+        # previously-good cached state -- that would silently re-admit a
+        # quarantined ensemble member into the live blend for this call and,
+        # via the now-empty cache key, force a full per-market prewarm-cache
+        # miss for the rest of the scan. Only coerce to {} on a genuine
+        # first-ever load (_ever_loaded is False) -- NOT on
+        # _member_quarantine_state_cache_key being None, since
+        # _save_member_quarantine_state() deliberately resets the key to
+        # None on every save while leaving the cache's content alone, and
+        # using the key alone here would wrongly discard still-good content
+        # on a transient error in that post-save window. Otherwise keep
+        # whatever is cached and don't record the cache key, so the next
+        # call retries.
+        if not _member_quarantine_state_ever_loaded:
+            return {}
+        _log.warning(
+            "load_member_quarantine_state: reload failed, keeping %d "
+            "existing entries: %s",
+            len(_member_quarantine_state_cache),
+            exc,
+        )
+        return _member_quarantine_state_cache
     result = data if isinstance(data, dict) else {}
     _member_quarantine_state_cache = result
     _member_quarantine_state_cache_key = cache_key
+    _member_quarantine_state_ever_loaded = True
     return result
 
 
@@ -6748,26 +6816,64 @@ def _compute_persistence_prob(
         # daily-high/low field (backlog.txt L710), so that source alone
         # can't provide this.
         if var in ("max", "min") and days_out == 0 and _live:
-            _live_temp = None
+            _daily_ext = None
             _station = _metar_station_for_city(city)
-            if _station:
-                _city_tz_str = _CITY_TZ.get(city, "America/New_York")
-                try:
-                    from zoneinfo import ZoneInfo as _ZI_PP
+            _city_tz_str = _CITY_TZ.get(city, "America/New_York")
+            try:
+                from zoneinfo import ZoneInfo as _ZI_PP
 
-                    _local_today = datetime.now(_ZI_PP(_city_tz_str)).date()
-                except Exception:
-                    _log.warning(
-                        "_compute_persistence_prob: ZoneInfo(%r) unavailable "
-                        "— falling back to UTC date",
-                        _city_tz_str,
-                    )
-                    _local_today = datetime.now(UTC).date()
-                _live_temp = _metar.fetch_metar_daily_extreme(
+                _city_zoneinfo_pp = _ZI_PP(_city_tz_str)
+                _local_today = datetime.now(_city_zoneinfo_pp).date()
+            except Exception:
+                _log.warning(
+                    "_compute_persistence_prob: ZoneInfo(%r) unavailable "
+                    "— falling back to UTC date",
+                    _city_tz_str,
+                )
+                _city_zoneinfo_pp = None
+                _local_today = datetime.now(UTC).date()
+            if _station:
+                _daily_ext = _metar.fetch_metar_daily_extreme(
                     _station, _city_tz_str, _local_today, var
                 )
-            if _live_temp is None:
-                _live_temp = _live.get("temp_f")
+            # Per-observation local-date guard, mirroring _metar_lock_in's
+            # hoisted guard: nws.get_live_observation() is TTL-cached and,
+            # at e.g. 00:15 local, can still be serving a reading from just
+            # before local midnight -- without this check that prior-day
+            # reading would be blended in below as if it were part of
+            # today's running extreme. Fails OPEN (uses the reading as
+            # before) when the timestamp is missing/unparseable rather than
+            # blocking outright: nws.py's real API response always
+            # populates "timestamp" (the "" default only exists for a
+            # malformed/incomplete response), so an empty/bad value here
+            # means "can't tell" rather than "confirmed stale" -- only a
+            # timestamp that POSITIVELY resolves to a non-today local date
+            # is evidence the reading must not be trusted as today's extreme.
+            _current_reading = _live.get("temp_f")
+            if _city_zoneinfo_pp is not None:
+                _obs_dt = _safe_parse_close_time(_live.get("timestamp", ""))
+                if (
+                    _obs_dt is not None
+                    and _obs_dt.astimezone(_city_zoneinfo_pp).date() != _local_today
+                ):
+                    _current_reading = None
+            # Combine the fresher instantaneous reading with the cached
+            # daily extreme (mirrors _metar_lock_in's AUD-0016 combine:
+            # fetch_metar_daily_extreme and this NWS observation are
+            # independently TTL-cached and can disagree). _current_reading
+            # is itself a candidate observation the true running extreme is
+            # taken over, so min()/max() with it can only tighten toward
+            # the true value, never overshoot past it.
+            if _daily_ext is not None and _current_reading is not None:
+                _live_temp = (
+                    min(_current_reading, _daily_ext)
+                    if var == "min"
+                    else max(_current_reading, _daily_ext)
+                )
+            elif _daily_ext is not None:
+                _live_temp = _daily_ext
+            else:
+                _live_temp = _current_reading
         else:
             _live_temp = _live.get("temp_f") if _live else None
         if _live_temp is None:
@@ -6779,7 +6885,13 @@ def _compute_persistence_prob(
         )
         _thi = condition.get("upper")
         return _persistence_prob(condition["type"], _tlo, _thi, _current_temp)
-    except Exception:
+    except Exception as exc:
+        # Was a silent None -- persistence would drop out of its blend slot
+        # (both _analyze_hourly_trade's and analyze_trade's own fixed 0.15
+        # blend weight for it) with no trace of why. Log so a systematic
+        # failure (e.g. a persistent NWS/METAR outage) is visible instead of
+        # looking like persistence simply had nothing to contribute.
+        _log.warning("_compute_persistence_prob(%s, %s) failed: %s", city, var, exc)
         return None
 
 
@@ -7396,6 +7508,25 @@ def _regime_blend_active() -> bool:
             {"n_settled": n},
         )
     return active
+
+
+def _gated_regime_confidence_boost(regime_info: dict) -> float:
+    """M-31: heat_dome/cold_snap's Kelly boost gets the SAME settled-count
+    gate _blend_weights' own regime override already requires (`regime in
+    _REGIME_BLEND_WEIGHTS and _regime_blend_active()`) -- unlike that
+    consumer, this Kelly-sizing one previously had no gate at all, so an
+    unvalidated regime classification could size up live trades from the
+    very first live trade. blocking_high/volatile aren't gated here: they're
+    a narrower, spread-only signal with no climatology-anomaly claim, and
+    out of this finding's scope.
+    """
+    boost = regime_info.get("confidence_boost", 1.0)
+    if (
+        regime_info.get("regime") in ("heat_dome", "cold_snap")
+        and not _regime_blend_active()
+    ):
+        return 1.0
+    return boost
 
 
 # ── PDO / PNA blend state ────────────────────────────────────────────────────
@@ -10459,10 +10590,7 @@ def _analyze_hurricane_next_event_trade(
         # unconditional mode (next_event_outcomes' own default) whenever that
         # confirmation is unavailable -- see occurred_this_season's own
         # comment above for why this distinction matters.
-        _today = datetime.now(UTC).date()
-        as_of_month_day = (
-            (_today.month, _today.day) if occurred_this_season is False else None
-        )
+        #
         # Opus-review-caught (2026-08-07): close_dt is UTC, but Kalshi's own
         # "Before <date>" wording is an ET calendar date (confirmed live:
         # close_time "2026-09-15T03:59Z" is 23:59 ET on Sep 14, for a market
@@ -10473,18 +10601,28 @@ def _analyze_hurricane_next_event_trade(
         # (material for the cat5 series' own smaller sample). Converting to
         # America/New_York before reading .month/.day fixes this the same
         # way _metar_lock_in's own "_local_today" already does for temperature
-        # markets, DST included.
+        # markets, DST included. "Today" (as_of_month_day) must use the SAME
+        # ET conversion, not UTC -- otherwise, 20:00-24:00 ET (already the
+        # next UTC calendar day), as_of_month_day would sit one day ahead of
+        # target_month_day's own reference frame, an internally inconsistent
+        # "as of" cutoff for the exact same moment in time.
         try:
             from zoneinfo import ZoneInfo as _ZI
 
-            _close_dt_et = close_dt.astimezone(_ZI("America/New_York"))
+            _et_zone = _ZI("America/New_York")
+            _close_dt_et = close_dt.astimezone(_et_zone)
+            _today_et = datetime.now(_et_zone).date()
         except Exception:
             _log.warning(
                 "_analyze_hurricane_next_event_trade[%s]: ZoneInfo(America/New_York) "
-                "unavailable -- falling back to UTC close_dt",
+                "unavailable -- falling back to UTC",
                 ticker,
             )
             _close_dt_et = close_dt
+            _today_et = datetime.now(UTC).date()
+        as_of_month_day = (
+            (_today_et.month, _today_et.day) if occurred_this_season is False else None
+        )
         target_month_day = (_close_dt_et.month, _close_dt_et.day)
         outcomes = hc.next_event_outcomes(
             storms,
@@ -10972,11 +11110,11 @@ def _analyze_hourly_trade(
         "ci_adjusted_kelly": ci_adj_kelly,
         "consensus": consensus,
         "model_consensus": True,
-        "near_threshold": (
-            abs(forecast_temp - _prob_threshold(condition)) <= 3.0
-            if _prob_threshold(condition) is not None
-            else False
-        ),
+        # _prob_threshold() always returns a float (falls back to `default`
+        # rather than None when neither key is set -- see its own
+        # docstring), so the "is not None else False" branch this used to
+        # have was unreachable dead code.
+        "near_threshold": abs(forecast_temp - _prob_threshold(condition)) <= 3.0,
         "days_out": days_out,
         "city": city,
         "target_date": target_date.isoformat()
@@ -12042,12 +12180,10 @@ def analyze_trade(
     # Market divergence gate: when the market is highly confident (>70%) and
     # our model strongly disagrees (<25%), the market almost certainly has
     # information we don't (same-day obs, late-breaking data). Skip to avoid
-    # systematically betting against a well-informed crowd.
+    # systematically betting against a well-informed crowd. The actual gate
+    # check happens later, below, once blended_prob is computed -- this just
+    # stores market_prob for it.
     _mkt_p = _prices.get("implied_prob", 0.5)
-    if _mkt_p > 0.70 or _mkt_p < 0.30:
-        # We'll check our blended_prob later — store market_prob for gate
-        # (gate is applied after blended_prob is computed, below)
-        pass
     _divergence_gate_market_prob = _mkt_p
     _yes_ask = _prices.get("yes_ask", 0) or 0
     _yes_bid = _prices.get("yes_bid", 0) or 0
@@ -12809,7 +12945,14 @@ def analyze_trade(
         try:
             from regime import detect_regime as _detect_regime
 
-            _regime_info = _detect_regime(city, ens_stats or {}, days_out)
+            _regime_info = _detect_regime(
+                city,
+                ens_stats or {},
+                days_out,
+                coords=coords,
+                target_date=target_date,
+                var=var,
+            )
         except Exception:
             pass
 
@@ -13302,7 +13445,7 @@ def analyze_trade(
 
     # _regime_info was populated earlier (section 6a) before blend weights ran.
     # Read confidence_boost from the already-detected regime dict.
-    _confidence_boost = _regime_info.get("confidence_boost", 1.0)
+    _confidence_boost = _gated_regime_confidence_boost(_regime_info)
 
     # Hard-skip when atmosphere is in "volatile" regime (ensemble std > 12°F).
     # A 20% Kelly reduction is not enough protection when models disagree by 12+°F —

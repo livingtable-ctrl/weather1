@@ -9,6 +9,8 @@ import threading
 import time
 from unittest.mock import patch
 
+import pytest
+
 import climatology
 
 
@@ -267,6 +269,97 @@ class TestFetchHistoricalCaching:
             )
 
         assert result is None
+
+
+class TestClimatologicalNormal:
+    """M-31: climatological_normal() is a new function -- regime.py's
+    heat_dome/cold_snap climatology-anomaly confirmation reads it. Mirrors
+    climatological_prob's own circuit-breaker/window/floor conventions
+    (shared via the new _window_temps helper both now call)."""
+
+    def test_mean_and_stdev_match_hand_computed_values(self):
+        import statistics
+
+        data = _synthetic_climate_data(n_years=30, high_base=85.0, high_spread=5.0)
+        with patch.object(climatology, "fetch_historical", return_value=data):
+            from datetime import date as _date
+
+            result = climatology.climatological_normal(
+                "Phoenix",
+                (33.45, -112.07, "America/Phoenix"),
+                _date(2020, 7, 15),
+                "max",
+            )
+        assert result is not None
+        mean, std = result
+        # July 15 across 30 years, alternating +5/-5 by year parity (15 of
+        # each) -- window (WINDOW_DAYS=21, July isn't a shoulder month)
+        # only admits the 15th-of-July points themselves (June/Aug 15 are
+        # 31 days away), so this is exactly the alternating +-5 series.
+        expected_values = [
+            85.0 + (5.0 if year % 2 == 0 else -5.0) for year in range(2000, 2030)
+        ]
+        assert mean == pytest.approx(statistics.mean(expected_values))
+        assert std == pytest.approx(statistics.stdev(expected_values))
+        assert mean == pytest.approx(85.0)
+
+    def test_insufficient_data_returns_none(self):
+        """Fewer than 30 points in the window (climatological_prob's own
+        floor) must return None, not a normal computed from a thin sample."""
+        data = _synthetic_climate_data(n_years=10)
+        with patch.object(climatology, "fetch_historical", return_value=data):
+            from datetime import date as _date
+
+            result = climatology.climatological_normal(
+                "Phoenix",
+                (33.45, -112.07, "America/Phoenix"),
+                _date(2020, 7, 15),
+                "max",
+            )
+        assert result is None
+
+    def test_fetch_failure_returns_none(self):
+        with patch.object(climatology, "fetch_historical", return_value=None):
+            from datetime import date as _date
+
+            result = climatology.climatological_normal(
+                "Phoenix",
+                (33.45, -112.07, "America/Phoenix"),
+                _date(2020, 7, 15),
+                "max",
+            )
+        assert result is None
+
+    def test_circuit_open_returns_none_without_fetching(self):
+        from datetime import date as _date
+
+        with patch.object(climatology._clim_cb, "is_open", return_value=True):
+            with patch.object(climatology, "fetch_historical") as mock_fetch:
+                result = climatology.climatological_normal(
+                    "Phoenix",
+                    (33.45, -112.07, "America/Phoenix"),
+                    _date(2020, 7, 15),
+                    "max",
+                )
+        assert result is None
+        mock_fetch.assert_not_called()
+
+    def test_min_var_uses_lows_not_highs(self):
+        data = _synthetic_climate_data(
+            n_years=30, high_base=85.0, high_spread=0.0, low_base=50.0
+        )
+        with patch.object(climatology, "fetch_historical", return_value=data):
+            from datetime import date as _date
+
+            result = climatology.climatological_normal(
+                "Phoenix",
+                (33.45, -112.07, "America/Phoenix"),
+                _date(2020, 7, 15),
+                "min",
+            )
+        assert result is not None
+        mean, _std = result
+        assert mean == pytest.approx(50.0), "var='min' must read the lows series"
 
 
 class TestComputeSigmaFromClimate:

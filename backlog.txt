@@ -27802,3 +27802,241 @@ Batch-38 process notes: LOW-tier downgrade (self-review + 1 review agent, not op
   (global python3's pre_commit 4.6.2, not just the main clone's own .venv ruff/mypy, which are meaningfully
   newer versions than the pinned pre-commit hooks and can disagree) on every touched file, both before and
   after the post-review fixes.
+
+[RESOLVED 2026-08-24 -- batch-35 item 1 (M-15)] load_member_quarantine_state fails OPEN on a transient read error
+Priority: MEDIUM
+Files: weather_markets.py (load_member_quarantine_state), tests/test_weather_markets.py
+
+Problem:
+  `except Exception: return {}` discarded the last-known-good cached quarantine state on ANY read
+  failure -- a mid-os.replace read or an AV scanner hold re-admits a quarantined ensemble member into the
+  live blend for that call (ensemble_models_with_ecmwf), and the empty-cache tag misses the prewarmed
+  entry, forcing a full per-market refetch; different markets in one scan could end up blended from
+  different model sets. Every sibling loader in this file (_load_platt_models, _load_metar_calibration,
+  _maybe_refresh_calibration_weights) already preserves its cache on transient failure with an explicit
+  comment explaining why -- this loader was the one holdout still failing open.
+Resolution (2026-08-24):
+  Mirrors _load_platt_models's pattern: on any exception, coerce to {} only on a genuine first-ever load;
+  otherwise log a WARNING naming the failure and return the existing cached dict object unchanged, without
+  recording the (now-stale) cache key, so the next call retries instead of permanently discarding live
+  state.
+  Self-review correction (opus review was unavailable, 529 Overloaded, at push time -- see this batch's
+  own summary note; self-review substituted at the user's explicit direction and caught this): the first
+  cut used `_member_quarantine_state_cache_key is None` as the "first-ever load" test, mirroring
+  _load_platt_models's `_PLATT_MODELS is None` check literally. But unlike _PLATT_MODELS (never reset after
+  a successful load), _save_member_quarantine_state() deliberately resets the cache KEY to None on every
+  successful save (to force the next read to re-parse) while leaving the cache's CONTENT untouched -- so
+  the literal-mirror check misfired in exactly that post-save window, discarding still-good cached content
+  on a transient read error right after a save, reproducing the M-15 bug this fix exists to close at a
+  narrower trigger window. Fixed with a dedicated `_member_quarantine_state_ever_loaded` bool, set True on
+  any successful determination of state (a real read OR a confirmed-absent file), never reset to False by
+  a save.
+  Tests: TestLoadMemberQuarantineStateTransientFailure (4 tests) -- primes the cache with real content,
+  forces path.stat()/read_text() to fail on a bumped mtime (so the cache-key short-circuit doesn't just
+  return the cache without even reaching the read), and asserts the SAME cached dict object comes back
+  (matching the docstring's own promise) plus a WARNING log naming the failure; a first-ever-load-with-
+  corrupt-file test covers coercing to {} rather than hanging or raising; a 4th test (added during the
+  self-review correction) specifically reproduces the post-save window -- saves twice (second save resets
+  the key to None while content-priming the cache), then forces a read failure, asserting the cache is
+  still preserved. Mutation-tested each behavior individually via Edit-revert-confirm-restore, including
+  reverting the corrected check back to the original `cache_key is None` form and confirming the new 4th
+  test (and only that one) fails -- restored after confirming. Full scoped suite (482 tests) re-run clean
+  after this correction: 480 passed, 3 skipped (skip count unchanged, pre-existing/unrelated), 0 failed.
+
+[RESOLVED 2026-08-24 -- batch-35 item 2 (M-16)] _compute_persistence_prob never received either of _metar_lock_in's two hardenings
+Priority: MEDIUM
+Files: weather_markets.py (_compute_persistence_prob), tests/test_weather_markets.py
+
+Problem:
+  (a) AUD-0016 class: used the live METAR daily-extreme reading only when it was None, never combined it
+  with the fresher instantaneous reading via max()/min() the way _metar_lock_in's sibling fix does --
+  fetch_metar_daily_extreme and the live observation are independently TTL-cached and can disagree.
+  Worked example: cached extreme 86 vs a fresher live reading of 91 on "above 88.5" produced 0.309 instead
+  of the correct 0.691; persistence carries a fixed 0.15 blend weight on both the daily and hourly paths,
+  so this was a real ~5.7pt wrong-side shift on every call that hit this exact combination.
+  (b) No per-observation local-date guard on the live-reading fallback (84ce95e6's hoisted guard already
+  exists for _metar_lock_in): at e.g. 00:15 local, a TTL-cached NWS observation from 23:53 the prior local
+  day could be used as "today's running extreme."
+  (c) The enclosing bare `except Exception: return None` had no logging -- persistence silently dropped
+  out of its blend slot with no trace.
+Resolution (2026-08-24):
+  (a) Now combines the daily extreme (metar.fetch_metar_daily_extreme) with the live reading
+  (nws.get_live_observation's temp_f) via max()/min() exactly like _metar_lock_in's AUD-0016 fix, falling
+  back to whichever single source is available when only one is present.
+  (b) Added the per-observation local-date guard using the existing _safe_parse_close_time helper (reused
+  rather than adding a third ad-hoc ISO-parse copy -- that helper's own docstring already flags avoiding
+  exactly that). Deliberately fails OPEN (uses the reading, unguarded) when the timestamp is missing or
+  unparseable rather than fail-closed: nws.py's real API response always populates "timestamp" (the ""
+  default only exists for a malformed/incomplete response), so an empty/bad value means "can't tell," not
+  "confirmed stale" -- only a timestamp that POSITIVELY resolves to a non-today local date blocks the
+  reading. This also matches every pre-existing test fixture in this file, which uses timestamp="".
+  (c) Added a WARNING log naming the city/var/exception on the catch-all.
+  Tests: TestComputePersistenceProbCombinesWithDailyExtreme (3 tests, incl. the audit's own 86-vs-91
+  worked example and a direction check proving it's max() not min()), TestComputePersistenceProbLocalDateGuard
+  (3 tests: stale-reading-excluded, stale-reading-with-no-fallback-returns-None as a positive control, and
+  missing-timestamp-fails-open), plus one new test on the existing exception-logging class. All 4 existing
+  daily-extreme/no-station-fallback tests in this file (predating this batch) continue to pass unmodified,
+  confirming the combine preserves their exact expected values. Mutation-tested individually: reverted the
+  combine to "prefer daily_ext" (3 tests correctly failed), reverted the date guard away entirely (2 tests
+  correctly failed) -- both restored after confirming.
+
+[RESOLVED 2026-08-24 -- batch-35 item 3 (M-17)] two prewarm cache-write defects, each already guarded by a sibling path in the same file
+Priority: MEDIUM
+Files: weather_markets.py (batch_prewarm_forecasts, batch_prewarm_ensemble), tests/test_weather_markets.py
+
+Problem:
+  (a) batch_prewarm_forecasts keyed the seasonal ECMWF model weight off the SCAN date's month
+  (dates_list[0], i.e. today), while get_weather_forecast and batch_prewarm_ensemble both key off the
+  TARGET date's own month -- a multi-day prewarm batch spanning a season boundary (Sep->Oct, Mar->Apr,
+  plus the ENSO term) gave every date in the batch the scan date's weight instead of its own. Since
+  prewarm fills the cache first, the wrong-month value was what actually traded across the boundary.
+  (b) batch_prewarm_ensemble's temperature blend wrote on `if all_temps:` alone -- no "every model
+  contributed this run" guard, unlike the precip sibling a few lines above it in the same function (which
+  already has one, with a comment explaining exactly this hazard). A circuit-breaker opening mid-loop (the
+  function's own documented expected failure mode) silently overwrote a complete 3-model blend with a
+  thinner 1-2 model one for a full cycle TTL.
+Resolution (2026-08-24):
+  (a) Moved the _forecast_model_weights(month, city) call inside the per-date loop, deriving month from
+  each entry's own date_str rather than dates_list[0].
+  (b) Added the identical guard the precip block already has: track which blend models actually
+  contributed non-empty members this run, and only overwrite the (city, date, None, var) cache entry when
+  every blend_models member is represented; a partial run now leaves an existing complete entry untouched.
+  Tests: TestBatchPrewarmForecastsMonthKeying (2 tests -- one asserts _forecast_model_weights is called
+  with each date's OWN month via a spy, one is a behavioral proof that Dec/Jul entries with an ECMWF
+  outlier produce genuinely different blended high_f values, which the bug would make identical).
+  TestBatchPrewarmEnsembleAllModelsGuard (2 tests -- a partial 2-of-3-model run must not clobber a
+  pre-seeded complete blend sentinel, with a positive control that a full 3-model run does still write).
+  Mutation-tested individually (reverted (a) to the scan-date-keyed single call before the loop -- both
+  tests correctly failed; reverted (b)'s guard to bare `if all_temps:` -- the clobber test correctly
+  failed) -- both restored after confirming.
+
+[RESOLVED 2026-08-24 -- batch-35 item 4 (M-31, skeptic-verified)] regime Kelly boost was climatology-blind and unclamped
+Priority: MEDIUM
+Files: regime.py (detect_regime, new _climatologically_confirmed), climatology.py (new climatological_normal,
+  new _window_temps shared helper), weather_markets.py (new _gated_regime_confidence_boost,
+  _analyze_trade's detect_regime call site), tests/test_regime.py, tests/test_climatology.py,
+  tests/test_weather_markets.py
+
+Problem:
+  regime.py's heat_dome/cold_snap detection used absolute triggers (mean>95 & std<5 -> heat_dome, mean<25
+  & std<5 -> cold_snap) granting a flat confidence_boost=1.20, multiplied UNCLAMPED into
+  _price_and_size's ci_adj_kelly (bounded only by the final KELLY_CAP, which observed sizing does not
+  routinely pin). Skeptic verification (source audit): Phoenix/Vegas summer KXHIGH sits squarely in the
+  firing band (sigma 3.2-3.5, means >95 routine) -- fires on ordinary days, not extreme ones. The second
+  regime consumer (the blend-weight shift in _blend_weights) IS gated behind _regime_blend_active() (30+
+  settled multi-day trades); the Kelly boost consumer was gated by nothing.
+  Fix direction required an AskUserQuestion (genuine design choice among: (a) climatology-normal comparison,
+  (b) settled-count gate matching the blend-weight consumer, (c) neutralize to 1.0 pending validation).
+  User selected (a)+(b) together, the audit's own recommended (most thorough) option.
+Resolution (2026-08-24):
+  (a) climatology.py gained climatological_normal(city, coords, target_date, var) -> (mean, std) | None,
+  sharing a new _window_temps(city, coords, target_date, var) helper with the existing
+  climatological_prob's own day-of-year-window logic (refactored out, zero behavior change --
+  _climatological_prob_inner now just calls the shared helper). regime.py's detect_regime gained optional
+  coords/target_date/var kwargs (defaulting to None, preserving the OLD absolute-threshold-only behavior
+  for any caller that can't supply climatology context, e.g. every pre-existing test) and a new
+  _climatologically_confirmed() helper requiring the ensemble mean to clear _REGIME_ANOMALY_SIGMA=1.5
+  climatological std-devs above/below the city's own seasonal normal before heat_dome/cold_snap can fire.
+  Fails CLOSED when context IS supplied but the lookup fails or returns insufficient data -- an
+  unvalidated boost is never granted just because climatology was unreachable. weather_markets.py's
+  analyze_trade now passes coords/target_date/var through to detect_regime.
+  (b) Extracted the Kelly-boost consumption site into a new _gated_regime_confidence_boost(regime_info)
+  helper (for direct unit-testability) that suppresses heat_dome/cold_snap's boost to 1.0 unless
+  _regime_blend_active() -- the SAME settled-count gate the blend-weight consumer already requires.
+  blocking_high/volatile are explicitly untouched (narrower, spread-only signals with no climatology-
+  anomaly claim, out of this finding's scope).
+  Tests: TestClimatologicalConfirmation in test_regime.py (7 tests: genuinely-anomalous confirms for both
+  heat_dome/cold_snap, the audit's own routine-Phoenix-summer case does NOT confirm and falls through to
+  blocking_high, symmetric routine-cold case, no-coords bypass preserves old behavior via an
+  AssertionError-raising spy proving climatological_normal is never even called, lookup-failure fails
+  closed, zero-std fails closed). All 8 pre-existing regime.py tests pass unmodified (none pass
+  coords/target_date, confirming the bypass). TestClimatologicalNormal in test_climatology.py (5 tests:
+  hand-computed mean/stdev against a known alternating +-5 series, insufficient-data floor, fetch failure,
+  circuit-breaker-open short-circuits without fetching, min-var reads lows not highs). Full
+  test_climatology.py suite (45 tests) re-run to confirm the _window_temps refactor didn't change
+  climatological_prob's own behavior. TestGatedRegimeConfidenceBoost in test_weather_markets.py (6 tests
+  covering heat_dome/cold_snap suppressed-when-inactive, passed-through-when-active, blocking_high/normal/
+  empty-dict unaffected). Mutation-tested individually: disabled the climatology confirmation (4 "not
+  confirmed" tests correctly failed, 3 "confirmed" tests correctly still passed), forced var='min' to read
+  highs in _window_temps (the min-var test correctly failed), removed the settled-count gate (both
+  suppression tests correctly failed) -- all restored after confirming.
+
+[RESOLVED 2026-08-24 -- batch-35 item 5 (L-17 registry-tie)] _KXTEMP_HOURLY_CITY not structurally tied to KNOWN_WEATHER_SERIES
+Priority: LOW
+Files: tests/test_weather_markets.py (new guard test only -- no production code change; this is a
+  registry-consistency assertion, not a bug fix)
+
+Problem:
+  Adding a 6th hourly series to KNOWN_WEATHER_SERIES without a matching _KXTEMP_HOURLY_CITY entry silently
+  bypasses BOTH the _is_hourly routing branch (the market would flow into the daily pipeline including
+  _metar_lock_in -- the contamination hazard backlog.txt already names) AND the shadow-only routing in
+  order_executor/main. The two registries are in sync today (5/5) but nothing asserted it.
+Resolution (2026-08-24):
+  TestKxtempHourlyCityRegistryTie (2 tests): every KNOWN_WEATHER_SERIES entry matching the KXTEMP*H prefix
+  pattern must have a _KXTEMP_HOURLY_CITY entry, and symmetrically every _KXTEMP_HOURLY_CITY entry must be
+  registered in KNOWN_WEATHER_SERIES. Verified the guard actually detects drift (appending a 6th
+  unregistered series and re-running the membership check by hand) rather than doing a full mutation-test
+  round-trip, since this is a pure set-membership assertion with no production logic to mutate.
+
+[RESOLVED 2026-08-24 -- batch-35 item 6 (LOW/INFO sweep, same file)] four independent low-severity nits, swept while touching weather_markets.py for items 1-4
+Priority: LOW
+Files: weather_markets.py (_analyze_hurricane_next_event_trade, _get_combined_station_bias docstring, two
+  dead-code sites, batch_prewarm_forecasts), tests/test_hurricane_markets.py
+
+Problem/Resolution, four independent nits:
+  (a) _analyze_hurricane_next_event_trade computed as_of_month_day ("today") from raw UTC now, while
+  target_month_day (the market's close_time) was already correctly ET-converted (opus-review-caught
+  2026-08-07, for the identical UTC-vs-Kalshi's-ET-calendar-date reason). During 20:00-24:00 ET -- already
+  the next UTC calendar day -- as_of_month_day sat one day ahead of target_month_day's own reference frame
+  for the identical moment, an internally inconsistent "as of" cutoff. Shadow-only (this method isn't a
+  live-order path yet). Now both "today" and the target date share the same ET ZoneInfo conversion. Test:
+  test_as_of_month_day_uses_et_not_utc_during_rollover_window in test_hurricane_markets.py, freezing
+  wm.datetime to a real (non-Mock) datetime subclass at 2026-09-15 02:30 UTC (= Sep 14 22:30 EDT) and
+  asserting next_event_outcomes receives as_of_month_day=(9,14), not (9,15). Mutation-tested (reverted the
+  ET conversion back to datetime.now(UTC).date(), confirmed the test correctly fails with (9,15), restored).
+  (b) _get_combined_station_bias's docstring claimed "at 10 samples it contributes 20%, at 50+ samples
+  100%" -- contradicting both the actual code (`if count < 10: return static_bias`, i.e. 0% dynamic below
+  10) and the correct inline comment directly above the blend formula. Corrected the docstring to match.
+  (c) Two unreachable dead-code sites: a `near_threshold` dict-comprehension branched on
+  `_prob_threshold(condition) is not None else False`, but utils.prob_threshold() always returns a float
+  (falls back to `default` rather than None per its own docstring) -- simplified to the unconditional
+  expression. A bare `if _mkt_p > 0.70 or _mkt_p < 0.30: pass` no-op (the real market-divergence gate check
+  happens later, once blended_prob is computed, per the block's own pre-existing comment) -- removed the
+  dead if/pass, kept the comment and the (real, used-downstream) _divergence_gate_market_prob assignment.
+  The pre-existing, deliberately-unreachable hourly-handling defense-in-depth block (documented decision)
+  was left untouched per the batch's own instruction.
+  (d) batch-13 follow-through (backlog.txt L23799-23812, AUD-0060): get_weather_forecast's per-city
+  _fetch_one closure already raises on a malformed daily response via validate_forecast(), but
+  batch_prewarm_forecasts -- the BATCHED path that actually fills the cache in production, since prewarm
+  runs before any per-city fetch -- never called it, silently storing and blending a malformed per-city
+  response. Now calls validate_forecast(daily, source="open_meteo") per city inside the batched response
+  loop, skipping (not storing) any city whose response fails validation while still processing the other
+  cities in the same batch. Tests: TestBatchPrewarmForecastsValidatesResponse (2 tests) -- a realistic
+  missing-"time" scenario, plus a direct spy-based test proving validate_forecast is actually CALLED once
+  per (city, model) pair (6 calls for 2 cities x 3 models) and its verdict is honored, not just computed
+  and discarded (the realistic scenario alone doesn't mutation-prove this, since a missing "time" field
+  also gets filtered out naturally downstream by the blend loop's own `if v.get("time")` check -- confirmed
+  by mutation-testing both: the realistic test survived disabling validate_forecast entirely, the spy test
+  correctly failed).
+
+Test/lint summary for the whole batch (final, after the item-1 self-review correction above): full scoped
+  suite (tests/test_weather_markets.py 330, tests/test_regime.py 15, tests/test_metar.py 40,
+  tests/test_forecasting.py 98, 483 total) = 480 passed, 3 skipped, 0 failed (skips pre-existing, unrelated
+  to this batch). Widened beyond the batch's own scoped list to also re-run
+  tests/test_climatology.py (45, item 4 touches climatology.py directly) and
+  tests/test_hurricane_markets.py/test_hurricane_gating.py/test_hurricane_climatology.py (254 combined,
+  item 6a touches hurricane next-event logic) -- all green. ruff/ruff-format/mypy clean via the real
+  pre-commit hook (python -mpre_commit run --files <changed files>). Every fix mutation-tested
+  individually via Edit-based revert/confirm/restore, not a string-replace script. graphify-out/ refresh
+  deliberately skipped: same worktree-cache-key mismatch batch-31/batch-32 both hit (manifest.json's keys
+  are tied to worktree frosty-leakey-c41696, not this session's batch-35-weather-markets-correctness) --
+  noted rather than attempted.
+  Independent opus review (step 11, effort=high, mandatory for this live-trade-pricing-surface batch):
+  the opus model returned 529 Overloaded on all 4 attempts across the session (2 before the item-1
+  self-review correction, 2 more after it, spread across several minutes -- same underlying outage
+  batch-38 hit earlier the same day, see that entry's own note). Per explicit user direction, substituted
+  a rigorous self-review with fresh eyes at the same rigor bar rather than keep blocking indefinitely --
+  this IS what caught the item-1 correction documented above (a real bug in the fix itself, found via
+  self-review, mutation-tested and confirmed). Treating this self-review as the review-gate substitute for
+  this batch, consistent with batch-38's precedent the same day, not as a placeholder pending a later
+  opus run.

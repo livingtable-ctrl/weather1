@@ -1264,6 +1264,107 @@ class TestBlendWeightCalibrationPriority:
         assert w["climatology"] == pytest.approx(0.2325, abs=1e-6)
 
 
+class TestKxtempHourlyCityRegistryTie:
+    """L-17: _KXTEMP_HOURLY_CITY must stay structurally tied to
+    KNOWN_WEATHER_SERIES -- adding a 6th KXTEMP*H series to the fetch list
+    alone (without a matching _KXTEMP_HOURLY_CITY entry) bypasses BOTH the
+    _is_hourly daily/hourly routing branch (the market silently flows into
+    the daily pipeline instead, including _metar_lock_in -- the
+    contamination hazard backlog.txt:6766-6769 names) AND the shadow-only
+    routing in order_executor/main. Nothing previously asserted the two
+    registries stay in sync."""
+
+    def test_every_kxtemp_hourly_series_has_a_city_mapping(self):
+        import weather_markets as wm
+
+        hourly_series = {
+            s
+            for s in wm.KNOWN_WEATHER_SERIES
+            if s.startswith("KXTEMP") and s.endswith("H")
+        }
+        assert hourly_series, (
+            "test setup bug: no KXTEMP*H series found in KNOWN_WEATHER_SERIES"
+        )
+        missing = hourly_series - set(wm._KXTEMP_HOURLY_CITY)
+        assert not missing, (
+            f"{missing} appear in KNOWN_WEATHER_SERIES as hourly series but "
+            f"have no _KXTEMP_HOURLY_CITY entry -- would silently flow into "
+            f"the daily pipeline instead of the hourly one"
+        )
+
+    def test_every_kxtemp_hourly_city_entry_is_registered(self):
+        """Symmetric check: an _KXTEMP_HOURLY_CITY entry with no matching
+        KNOWN_WEATHER_SERIES registration signals a registry that's
+        drifted, not just a one-directional gap."""
+        import weather_markets as wm
+
+        extra = set(wm._KXTEMP_HOURLY_CITY) - set(wm.KNOWN_WEATHER_SERIES)
+        assert not extra, (
+            f"{extra} are in _KXTEMP_HOURLY_CITY but not registered in "
+            f"KNOWN_WEATHER_SERIES at all"
+        )
+
+
+class TestGatedRegimeConfidenceBoost:
+    """M-31(b): heat_dome/cold_snap's Kelly-sizing confidence_boost must be
+    gated behind the same _regime_blend_active() settled-count check the
+    blend-weight consumer (_blend_weights' regime override) already uses --
+    unlike that consumer, this one previously had no gate at all."""
+
+    def test_heat_dome_boost_suppressed_when_not_active(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: False)
+        boost = wm._gated_regime_confidence_boost(
+            {"regime": "heat_dome", "confidence_boost": 1.20}
+        )
+        assert boost == 1.0
+
+    def test_cold_snap_boost_suppressed_when_not_active(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: False)
+        boost = wm._gated_regime_confidence_boost(
+            {"regime": "cold_snap", "confidence_boost": 1.20}
+        )
+        assert boost == 1.0
+
+    def test_heat_dome_boost_passes_through_when_active(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: True)
+        boost = wm._gated_regime_confidence_boost(
+            {"regime": "heat_dome", "confidence_boost": 1.20}
+        )
+        assert boost == pytest.approx(1.20)
+
+    def test_blocking_high_boost_unaffected_by_gate_when_not_active(self, monkeypatch):
+        """blocking_high is explicitly out of scope for this gate -- a
+        narrower, spread-only signal with no climatology-anomaly claim."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: False)
+        boost = wm._gated_regime_confidence_boost(
+            {"regime": "blocking_high", "confidence_boost": 1.15}
+        )
+        assert boost == pytest.approx(1.15)
+
+    def test_normal_regime_boost_of_1_unaffected(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: False)
+        boost = wm._gated_regime_confidence_boost(
+            {"regime": "normal", "confidence_boost": 1.0}
+        )
+        assert boost == 1.0
+
+    def test_empty_regime_info_defaults_to_1(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_regime_blend_active", lambda: False)
+        assert wm._gated_regime_confidence_boost({}) == 1.0
+
+
 def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     """analyze_trade result includes model_consensus bool when it returns a result."""
     import mos
@@ -4463,6 +4564,253 @@ class TestGetEcmwfAifsProb:
         wm._ensemble_cache.clear()
 
 
+class TestBatchPrewarmForecastsMonthKeying:
+    """M-17(a): batch_prewarm_forecasts must key each cache entry's seasonal
+    model weight off THAT ENTRY's own target date's month, matching
+    get_weather_forecast's and batch_prewarm_ensemble's convention -- not
+    off dates_list[0] (the scan date), which gives every date in a
+    multi-day prewarm batch spanning a season boundary the SCAN date's
+    weight instead of its own."""
+
+    def test_weights_keyed_per_date_across_season_boundary(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._forecast_cache.clear()
+        wm._forecast_cb.record_success()
+
+        sep_date = "2026-09-30"
+        oct_date = "2026-10-01"
+
+        members_by_model = {
+            "gfs_seamless": 70.0,
+            "ecmwf_ifs025": 80.0,
+            "icon_seamless": 90.0,
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            model = params.get("models")
+            val = members_by_model.get(model, 75.0)
+            resp.json.return_value = {
+                "daily": {
+                    "time": [sep_date, oct_date],
+                    "temperature_2m_max": [val, val],
+                    "temperature_2m_min": [val - 20, val - 20],
+                    "precipitation_sum": [0.0, 0.0],
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        real_weights = wm._forecast_model_weights
+        calls = []
+
+        def _spy_weights(month, city=None):
+            calls.append((month, city))
+            return real_weights(month, city)
+
+        monkeypatch.setattr(wm, "_forecast_model_weights", _spy_weights)
+
+        written = wm.batch_prewarm_forecasts({("NYC", sep_date), ("NYC", oct_date)})
+        assert written == 2
+
+        months_called = {c[0] for c in calls}
+        assert 9 in months_called and 10 in months_called, (
+            f"expected _forecast_model_weights called with both the Sep (9) "
+            f"and Oct (10) entry's OWN month, got calls={calls} -- the old "
+            f"bug called it once with dates_list[0]'s month for every date"
+        )
+
+        wm._forecast_cache.clear()
+
+    def test_seasonal_ecmwf_weight_actually_differs_by_target_month(self, monkeypatch):
+        """Behavioral (not just call-args) proof: ECMWF is weighted higher
+        in winter months than summer/shoulder months (see
+        _forecast_model_weights) -- a Sep-30/Oct-1 pair with distinct
+        per-model values must produce cached high_f values that reflect
+        EACH entry's own month's weighting, not an identical ratio for both
+        (which is what the scan-date-keyed bug would produce)."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._forecast_cache.clear()
+        wm._forecast_cb.record_success()
+
+        dec_date = "2026-12-15"  # winter -- ECMWF favored
+        jul_date = "2026-07-15"  # summer -- GFS favored
+
+        members_by_model = {
+            "gfs_seamless": 60.0,
+            "ecmwf_ifs025": 100.0,
+            "icon_seamless": 60.0,
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            model = params.get("models")
+            val = members_by_model.get(model, 75.0)
+            resp.json.return_value = {
+                "daily": {
+                    "time": [dec_date, jul_date],
+                    "temperature_2m_max": [val, val],
+                    "temperature_2m_min": [val - 20, val - 20],
+                    "precipitation_sum": [0.0, 0.0],
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        written = wm.batch_prewarm_forecasts({("NYC", dec_date), ("NYC", jul_date)})
+        assert written == 2
+
+        dec_high = wm._forecast_cache.get(("NYC", dec_date))["high_f"]
+        jul_high = wm._forecast_cache.get(("NYC", jul_date))["high_f"]
+        assert dec_high != pytest.approx(jul_high), (
+            f"December's ECMWF-favoring weight and July's must produce "
+            f"DIFFERENT blended high_f values given ECMWF's outlier 100.0 "
+            f"vs the other two models' 60.0 -- got dec={dec_high} "
+            f"jul={jul_high} (equal means both were keyed off the same "
+            f"month, reproducing the bug)"
+        )
+
+        wm._forecast_cache.clear()
+
+
+class TestBatchPrewarmForecastsValidatesResponse:
+    """batch-13 follow-through (backlog.txt L23799): get_weather_forecast's
+    per-city _fetch_one already raises on a malformed daily response via
+    validate_forecast() -- batch_prewarm_forecasts is the batched path that
+    actually fills the cache in production (prewarm runs first), and it
+    must skip a malformed per-city response the same way rather than
+    silently storing and blending it."""
+
+    def test_malformed_per_city_response_is_skipped(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._forecast_cache.clear()
+        wm._forecast_cb.record_success()
+
+        good_date = "2026-09-15"
+
+        def _fake_om_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            # city_names is sorted(cities_needed) internally -- "Chicago" <
+            # "NYC" -- so index 0 is Chicago (malformed: missing "time",
+            # which validate_forecast requires) and index 1 is NYC
+            # (well-formed).
+            resp.json.return_value = [
+                {"daily": {"temperature_2m_max": [80.0]}},
+                {
+                    "daily": {
+                        "time": [good_date],
+                        "temperature_2m_max": [75.0],
+                        "temperature_2m_min": [55.0],
+                        "precipitation_sum": [0.0],
+                    }
+                },
+            ]
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        written = wm.batch_prewarm_forecasts(
+            {("NYC", good_date), ("Chicago", good_date)}
+        )
+
+        assert wm._forecast_cache.get(("NYC", good_date)) is not None, (
+            "NYC's well-formed response must still be cached"
+        )
+        assert wm._forecast_cache.get(("Chicago", good_date)) is None, (
+            "Chicago's malformed response (missing 'time') must be skipped, "
+            "not silently stored/blended"
+        )
+        assert written == 1
+
+        wm._forecast_cache.clear()
+
+    def test_validate_forecast_consulted_per_city_and_honored(self, monkeypatch):
+        """Direct proof (not dependent on downstream code happening to also
+        reject a missing 'time' field): validate_forecast() must actually
+        be CALLED with each city's own daily dict, and a False return must
+        actually block that city's entry from being stored -- not just be
+        computed and discarded."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._forecast_cache.clear()
+        wm._forecast_cb.record_success()
+
+        good_date = "2026-09-15"
+
+        def _fake_om_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            # Both cities' payloads are otherwise identical and well-formed
+            # enough to sail through every OTHER check (is_all_null, "time"
+            # membership) -- only validate_forecast's own verdict can tell
+            # them apart here.
+            resp.json.return_value = [
+                {
+                    "daily": {
+                        "time": [good_date],
+                        "temperature_2m_max": [80.0],
+                        "temperature_2m_min": [60.0],
+                        "precipitation_sum": [0.0],
+                    }
+                },
+                {
+                    "daily": {
+                        "time": [good_date],
+                        "temperature_2m_max": [75.0],
+                        "temperature_2m_min": [55.0],
+                        "precipitation_sum": [0.0],
+                    }
+                },
+            ]
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        seen_daily_dicts = []
+
+        def _fake_validate(daily, source="open_meteo"):
+            seen_daily_dicts.append(daily)
+            # Reject Chicago (index 0, temperature_2m_max starts at 80.0),
+            # accept NYC (index 1, starts at 75.0).
+            return daily.get("temperature_2m_max") != [80.0]
+
+        monkeypatch.setattr(wm, "validate_forecast", _fake_validate)
+
+        wm.batch_prewarm_forecasts({("NYC", good_date), ("Chicago", good_date)})
+
+        assert len(seen_daily_dicts) == 6, (
+            f"validate_forecast must be called once per (city, model) pair "
+            f"(2 cities x 3 models = 6), got {len(seen_daily_dicts)} calls"
+        )
+        assert wm._forecast_cache.get(("Chicago", good_date)) is None, (
+            "validate_forecast's False verdict for Chicago must actually "
+            "block its entry, not just be computed and ignored"
+        )
+        assert wm._forecast_cache.get(("NYC", good_date)) is not None, (
+            "validate_forecast's True verdict for NYC must let it through"
+        )
+
+        wm._forecast_cache.clear()
+
+
 class TestBatchPrewarmEnsembleTrackingOnlyModels:
     """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2:
     batch_prewarm_ensemble must cache gem_global/ukmo_global_ensemble_20km's
@@ -4658,6 +5006,152 @@ class TestBatchPrewarmEnsembleBiasCorrection:
         assert 68.0 in blended, (
             f"gfs_seamless (zero bias) must be unaffected: {blended}"
         )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._MODEL_BIAS_CACHE.clear()
+
+
+class TestBatchPrewarmEnsembleAllModelsGuard:
+    """M-17(b): the temperature blend write must require every blend model
+    to have contributed to THIS key this run, mirroring the sibling precip
+    guard a few lines above it in the same function -- a circuit-breaker
+    opening mid-loop (or any single model failing) must not clobber a
+    complete, still-fresh existing blend with a thinner one."""
+
+    def test_partial_model_failure_does_not_clobber_existing_complete_blend(
+        self, monkeypatch
+    ):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(wm.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        monkeypatch.setattr(wm, "_model_bias", lambda city, var, **kw: {})
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        # icon_seamless fails this run (all-null members, e.g. a dead-model
+        # response) -- gfs_seamless and ecmwf_aifs025_ensemble both succeed.
+        members_by_model = {
+            "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            if model == "icon_seamless":
+                resp.json.return_value = {
+                    "daily": {"time": [date_iso], f"{daily_key}_member01": [None]}
+                }
+                return resp
+            members = members_by_model.get(model, [])
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    **{
+                        f"{daily_key}_member{i + 1:02d}": [v]
+                        for i, v in enumerate(members)
+                    },
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        blend_key = ("NYC", date_iso, None, "max", "")
+        pre_existing_complete_blend = [1.0, 2.0, 3.0]  # sentinel, not a real blend
+        wm._ensemble_cache.set(blend_key, pre_existing_complete_blend)
+
+        wm.batch_prewarm_ensemble({("NYC", date_iso)})
+
+        assert wm._ensemble_cache.get(blend_key) == pre_existing_complete_blend, (
+            "a partial (2 of 3 models) run must NOT overwrite the existing "
+            "complete blend entry with a thinner one"
+        )
+        # H-14 per-model writes are unconditional and must be unaffected by
+        # this guard -- confirms the guard is scoped to the blended entry only.
+        assert wm._ensemble_cache.get(
+            ("gfs_seamless", "NYC", date_iso, "max", None)
+        ) == pytest.approx(members_by_model["gfs_seamless"])
+        assert (
+            wm._ensemble_cache.get(("icon_seamless", "NYC", date_iso, "max", None))
+            is None
+        ), "icon_seamless failed this run and must have no per-model entry"
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_all_models_succeeding_writes_the_blend(self, monkeypatch):
+        """Positive control for the guard above: when every blend model DOES
+        contribute, the blend must still be written (proves the guard
+        doesn't just block everything)."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(wm.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        monkeypatch.setattr(wm, "_model_bias", lambda city, var, **kw: {})
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        members_by_model = {
+            "icon_seamless": [70.0, 71.0, 72.0],
+            "gfs_seamless": [68.0, 69.0, 70.0],
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            members = members_by_model.get(model, [])
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    **{
+                        f"{daily_key}_member{i + 1:02d}": [v]
+                        for i, v in enumerate(members)
+                    },
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        blend_key = ("NYC", date_iso, None, "max", "")
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written > 0
+        assert wm._ensemble_cache.get(blend_key) is not None
 
         wm._ensemble_cache.clear()
         wm._ensemble_disk_pending.clear()
@@ -5548,6 +6042,143 @@ class TestMemberQuarantineScan:
         assert 0 < wm._QUARANTINE_MIN_EFFECT < 0.1, (
             f"_QUARANTINE_MIN_EFFECT={wm._QUARANTINE_MIN_EFFECT} is outside "
             f"a sane fraction of the real Brier scale"
+        )
+
+
+class TestLoadMemberQuarantineStateTransientFailure:
+    """M-15: a transient read error (mid-os.replace, AV scanner hold) must
+    keep the previously-cached state, mirroring every sibling loader in this
+    file (_load_platt_models, _load_metar_calibration,
+    _maybe_refresh_calibration_weights) rather than discarding it to {}."""
+
+    def test_transient_read_error_keeps_cached_state(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state({"gfs_seamless": {"quarantined": True}})
+        primed = wm.load_member_quarantine_state()
+        assert primed["gfs_seamless"]["quarantined"] is True, (
+            "test setup bug: cache must be primed with real content first"
+        )
+
+        real_stat = Path.stat
+
+        def _bumped_mtime_stat(self, *a, **kw):
+            result = real_stat(self, *a, **kw)
+            if self == wm.MEMBER_QUARANTINE_PATH:
+
+                class _Bumped:
+                    st_mtime = result.st_mtime + 1.0
+
+                return _Bumped()
+            return result
+
+        def _boom_read_text(self, *a, **kw):
+            if self == wm.MEMBER_QUARANTINE_PATH:
+                raise OSError("simulated AV scanner hold")
+            return real_read_text(self, *a, **kw)
+
+        real_read_text = Path.read_text
+        monkeypatch.setattr(Path, "stat", _bumped_mtime_stat)
+        monkeypatch.setattr(Path, "read_text", _boom_read_text)
+
+        result = wm.load_member_quarantine_state()
+        assert result == primed, (
+            f"a transient read error must keep the cached state, got {result}"
+        )
+        assert result is wm._member_quarantine_state_cache, (
+            "must return the SAME cached object load_member_quarantine_state's "
+            "own docstring promises on a cache hit, not a fresh {}"
+        )
+
+    def test_transient_read_error_logs_warning(self, monkeypatch, caplog):
+        import logging
+
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state({"gfs_seamless": {"quarantined": True}})
+        wm.load_member_quarantine_state()
+
+        real_stat = Path.stat
+
+        def _bumped_mtime_stat(self, *a, **kw):
+            result = real_stat(self, *a, **kw)
+            if self == wm.MEMBER_QUARANTINE_PATH:
+
+                class _Bumped:
+                    st_mtime = result.st_mtime + 1.0
+
+                return _Bumped()
+            return result
+
+        def _boom_read_text(self, *a, **kw):
+            if self == wm.MEMBER_QUARANTINE_PATH:
+                raise OSError("simulated AV scanner hold")
+            return real_read_text(self, *a, **kw)
+
+        real_read_text = Path.read_text
+        monkeypatch.setattr(Path, "stat", _bumped_mtime_stat)
+        monkeypatch.setattr(Path, "read_text", _boom_read_text)
+
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            wm.load_member_quarantine_state()
+        assert any(
+            "load_member_quarantine_state" in r.message
+            and "existing entries" in r.message
+            for r in caplog.records
+        ), (
+            f"expected a WARNING naming the reload failure, got: {[r.message for r in caplog.records]}"
+        )
+
+    def test_first_ever_load_with_read_error_still_returns_empty(self, monkeypatch):
+        """No prior successful load has ever happened -- must coerce to {}
+        same as before, not raise or hang, since there is nothing cached
+        yet to fall back to."""
+        import weather_markets as wm
+
+        # File exists (isolate_member_quarantine's tmp_path) but is unparseable.
+        wm.MEMBER_QUARANTINE_PATH.write_text("{not valid json")
+        wm._member_quarantine_state_cache = {}
+        wm._member_quarantine_state_cache_key = None
+        wm._member_quarantine_state_ever_loaded = False
+
+        result = wm.load_member_quarantine_state()
+        assert result == {}
+
+    def test_transient_read_error_right_after_a_save_still_keeps_cached_state(
+        self, monkeypatch
+    ):
+        """_save_member_quarantine_state() deliberately resets the cache KEY
+        to None on every successful save (to force the next read to
+        re-parse) while leaving the cache's CONTENT untouched -- a naive
+        "cache_key is None means never loaded" check would misfire in
+        exactly this post-save window and wrongly discard the still-good
+        content on a transient read error, reproducing the M-15 bug this
+        fix exists to close, just at a narrower trigger window. Must still
+        preserve the cache here."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state({"gfs_seamless": {"quarantined": True}})
+        primed = wm.load_member_quarantine_state()
+        # A second save (e.g. a later scan cycle) -- resets the cache KEY to
+        # None again while _member_quarantine_state_cache still holds `primed`.
+        wm._save_member_quarantine_state({"gfs_seamless": {"quarantined": True}})
+        assert wm._member_quarantine_state_cache_key is None, (
+            "test setup bug: a save must reset the cache key"
+        )
+
+        def _boom_read_text(self, *a, **kw):
+            if self == wm.MEMBER_QUARANTINE_PATH:
+                raise OSError("simulated AV scanner hold")
+            return real_read_text(self, *a, **kw)
+
+        real_read_text = Path.read_text
+        monkeypatch.setattr(Path, "read_text", _boom_read_text)
+
+        result = wm.load_member_quarantine_state()
+        assert result == primed, (
+            f"a transient read error right after a save must still keep the "
+            f"cached state (key-is-None here does NOT mean never-loaded), "
+            f"got {result}"
         )
 
 
@@ -7041,3 +7672,271 @@ class TestComputePersistenceProbRefactorSafetyNet:
             days_out=0,
         )
         assert result is None
+
+    def test_exception_in_lookup_logs_warning(self, monkeypatch, caplog):
+        """M-16(c): the enclosing bare except previously swallowed the
+        failure silently -- persistence dropping out of its blend slot must
+        now be visible in the logs, not just return None."""
+        import logging
+
+        import weather_markets as wm
+
+        def _boom(*a, **kw):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr("nws.get_live_observation", _boom)
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            result = wm._compute_persistence_prob(
+                "NYC",
+                (40.0, -74.0, "America/New_York"),
+                {"type": "above", "threshold": 70.0},
+                "max",
+                70.0,
+                days_out=0,
+            )
+        assert result is None
+        assert any(
+            "_compute_persistence_prob" in r.message and "network down" in r.message
+            for r in caplog.records
+        ), (
+            f"expected a WARNING naming the failure, got: {[r.message for r in caplog.records]}"
+        )
+
+
+class TestComputePersistenceProbCombinesWithDailyExtreme:
+    """M-16(a): _compute_persistence_prob must combine the fresher live
+    reading with the cached daily extreme via max()/min() (mirroring
+    _metar_lock_in's AUD-0016 fix), not just prefer the daily extreme and
+    ignore the live reading whenever a daily extreme happens to be
+    available."""
+
+    def _live_obs(self, temp_f, obs_dt=None):
+        return {
+            "temp_f": temp_f,
+            "timestamp": obs_dt.isoformat() if obs_dt is not None else "",
+            "description": "",
+        }
+
+    def test_fresher_higher_current_reading_extends_stale_daily_extreme_max(
+        self, monkeypatch
+    ):
+        """The audit's own worked example: cached daily extreme 86, fresher
+        live reading 91, threshold 88.5 -- the two are independently
+        TTL-cached and can disagree. Must combine via max(), not just use
+        the (stale, lower) cached extreme alone."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation", lambda *a, **kw: self._live_obs(91.0)
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: 86.0)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.691
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 88.5},
+            "max",
+            88.5,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.691)
+        assert captured["current_temp"] == pytest.approx(91.0), (
+            "must combine via max(current=91, daily_ext=86) = 91, not just "
+            "use the stale cached daily extreme (86) alone"
+        )
+
+    def test_daily_extreme_still_wins_when_current_is_lower_max_var(self, monkeypatch):
+        """Direction check: max() must not let a LOWER fresh reading pull
+        the combined value down below a genuinely higher daily extreme --
+        proves this is really max(), not min() or a plain overwrite."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation", lambda *a, **kw: self._live_obs(80.0)
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: 91.0)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.5
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 88.5},
+            "max",
+            88.5,
+            days_out=0,
+        )
+        assert captured["current_temp"] == pytest.approx(91.0)
+
+    def test_fresher_lower_current_reading_extends_stale_daily_extreme_min(
+        self, monkeypatch
+    ):
+        """Symmetric min-var case: cached daily low 58, fresher live
+        reading 52 (colder) -- must combine via min(52, 58) = 52."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation", lambda *a, **kw: self._live_obs(52.0)
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: 58.0)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.5
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "below", "threshold": 55.0},
+            "min",
+            55.0,
+            days_out=0,
+        )
+        assert captured["current_temp"] == pytest.approx(52.0), (
+            "must combine via min(current=52, daily_ext=58) = 52"
+        )
+
+
+class TestComputePersistenceProbLocalDateGuard:
+    """M-16(b): the live NWS reading must not be trusted as part of today's
+    running extreme when its own observation timestamp resolves to a prior
+    local calendar day (the 00:15-local / 23:53-prior-day OKC/SATX class of
+    bug _metar_lock_in's hoisted guard already exists to stop)."""
+
+    def _stale_and_today_obs(self, city="NYC"):
+        from datetime import datetime as _dt
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        city_tz = wm._CITY_TZ.get(city, "America/New_York")
+        today_local = _dt.now(ZoneInfo(city_tz)).date()
+        yesterday_local = today_local - timedelta(days=1)
+        stale_dt = _dt(
+            yesterday_local.year,
+            yesterday_local.month,
+            yesterday_local.day,
+            23,
+            53,
+            tzinfo=ZoneInfo(city_tz),
+        )
+        return stale_dt
+
+    def test_stale_prior_day_reading_excluded_falls_back_to_daily_extreme_alone(
+        self, monkeypatch
+    ):
+        import metar as _metar
+        import weather_markets as wm
+
+        stale_dt = self._stale_and_today_obs()
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {
+                "temp_f": 91.0,  # would win the combine if wrongly trusted
+                "timestamp": stale_dt.isoformat(),
+                "description": "",
+            },
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: 86.0)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.5
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 88.5},
+            "max",
+            88.5,
+            days_out=0,
+        )
+        assert captured["current_temp"] == pytest.approx(86.0), (
+            "a stale prior-day reading (91) must be excluded from the "
+            "combine entirely, leaving the daily extreme (86) alone -- "
+            "not blended in via max() just because it happens to be higher"
+        )
+
+    def test_stale_prior_day_reading_with_no_daily_extreme_returns_none(
+        self, monkeypatch
+    ):
+        """Positive control for the guard actually doing something when
+        there's no daily-extreme fallback to land on: with the stale
+        reading excluded and no station/daily-extreme available, there is
+        no usable temp at all and the function must return None rather
+        than silently trusting the stale reading as a last resort."""
+        stale_dt = self._stale_and_today_obs()
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {
+                "temp_f": 91.0,
+                "timestamp": stale_dt.isoformat(),
+                "description": "",
+            },
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: None)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 88.5},
+            "max",
+            88.5,
+            days_out=0,
+        )
+        assert result is None
+
+    def test_missing_timestamp_fails_open_still_combines(self, monkeypatch):
+        """An empty/unparseable timestamp (nws.py's own defensive default
+        for a malformed response -- "" rather than raising) can't be
+        proven stale, so it must NOT be blocked -- this is the fail-open
+        counterpart to the fail-closed case above, and matches every
+        pre-existing fixture in this file that uses timestamp=''."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"temp_f": 91.0, "timestamp": "", "description": ""},
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: 86.0)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.5
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 88.5},
+            "max",
+            88.5,
+            days_out=0,
+        )
+        assert captured["current_temp"] == pytest.approx(91.0)

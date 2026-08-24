@@ -1352,6 +1352,60 @@ class TestAnalyzeHurricaneNextEventTrade:
         assert result["method"] == "hurricane_next_event_climatology"
         assert result["occurred_this_season"] is None
 
+    def test_as_of_month_day_uses_et_not_utc_during_rollover_window(self, monkeypatch):
+        """LOW/INFO sweep item (a): as_of_month_day ("today") must be
+        derived from the SAME America/New_York conversion target_month_day
+        already uses, not raw UTC "now" -- otherwise 20:00-24:00 ET (already
+        the next UTC calendar day) makes as_of_month_day one day ahead of
+        target_month_day's own reference frame for the identical moment.
+
+        Frozen instant: 2026-09-14 23:30 UTC = 2026-09-14 19:30 EDT. UTC's
+        date is Sep 14 too here, so pick a moment where UTC has already
+        rolled to Sep 15 while ET is still Sep 14 evening: 2026-09-15 02:30
+        UTC = 2026-09-14 22:30 EDT.
+        """
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        import hurricane_climatology as hc
+        import weather_markets as wm
+
+        class _FrozenDT(_dt):
+            @classmethod
+            def now(cls, tz=None):
+                _instant = _dt(2026, 9, 15, 2, 30, tzinfo=UTC)
+                if tz is None:
+                    return _instant.replace(tzinfo=None)
+                return _instant.astimezone(tz)
+
+        monkeypatch.setattr(wm, "datetime", _FrozenDT)
+        monkeypatch.setattr(
+            "hurricane_climatology.load_basin_storms",
+            lambda basin: [{"year": 2020, "basin": "AL"}],
+        )
+        monkeypatch.setattr(
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 0
+        )
+
+        captured = {}
+
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            captured["as_of_month_day"] = as_of_month_day
+            return [True] * 15
+
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+
+        wm._analyze_hurricane_next_event_trade(
+            self._enriched(), self._condition(), _dt(2026, 12, 1, tzinfo=UTC), 39
+        )
+        # UTC "now" is Sep 15; ET "now" (the real local wall-clock moment)
+        # is still Sep 14 evening -- must reflect ET, not UTC.
+        assert captured["as_of_month_day"] == (9, 14), (
+            f"expected ET-derived (9, 14), got {captured['as_of_month_day']} "
+            f"-- as_of_month_day is using raw UTC 'now' instead of the ET "
+            f"conversion target_month_day already applies"
+        )
+
     def test_cat5_never_calls_the_count_to_date_cache(self, monkeypatch):
         """cat5_hurricane has no live "already occurred" signal in this
         pass -- must never call _get_cached_hurricane_count_to_date at all,
