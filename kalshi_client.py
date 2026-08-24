@@ -766,6 +766,119 @@ class KalshiClient:
     def get_series_list(self, **params) -> list[dict]:
         return self._paginate_get("/series", "series", params, default_limit=None)
 
+    def get_fills(self, **params) -> list[dict]:
+        """GET /portfolio/fills -- every fill (partial or full match) on this
+        account, cursor-paginated same as get_trades/get_positions/etc.
+        (docs.kalshi.com, verified 2026-08-24: limit max 1000/default 100,
+        so this passes default_limit=1000 same as get_markets/get_trades).
+
+        Accepts the endpoint's documented optional filters as passthrough
+        kwargs: ticker, order_id, min_ts, max_ts, subaccount, exchange_index.
+
+        Batch-49 item 1: the fee-change monitor's data source. Each fill
+        object carries `fee_cost` (string, fixed-point dollars, e.g.
+        "0.5600") -- confirmed via docs.kalshi.com's OpenAPI-derived Fill
+        schema, not previously read by any caller in this file (every fee
+        this bot has used until now is locally computed via
+        utils.kalshi_maker_fee/kalshi_taker_fee, never read back from a real
+        fill). Also carries is_taker (bool) -- a maker fill assumed $0 on
+        this bot's weather series is one with is_taker=False.
+        """
+        return self._paginate_get(
+            "/portfolio/fills", "fills", params, default_limit=1000
+        )
+
+    def get_order_queue_position(self, order_id: str) -> float | None:
+        """GET /portfolio/orders/{order_id}/queue_position -- number of
+        contracts that need to be matched (price-time priority) before this
+        resting order receives a partial or full match (docs.kalshi.com,
+        verified 2026-08-24). Returns None (warning logged) if the response
+        shape is unexpected -- missing the documented `queue_position_fp`
+        field, not a dict at all, or the field isn't parseable as a float --
+        same fail-soft shape convention as _validate for a response-shape
+        drift, since this is read-only instrumentation (batch-49 item 2),
+        not wired into any trading decision. Does NOT swallow a network/API
+        error from the underlying _get() call -- callers wrap this in their
+        own try/except (see order_executor._place_live_order), same
+        convention as every other method in this file.
+
+        Batch-49 item 2: read-only. Do NOT call this from a live-order
+        mutation path expecting it to influence placement/reprice -- that
+        wiring is a separate, not-yet-built backlog item (see backlog.txt).
+        """
+        data = self._get(f"/portfolio/orders/{order_id}/queue_position", auth=True)
+        raw = data.get("queue_position_fp") if isinstance(data, dict) else None
+        if raw is None:
+            _log.warning(
+                "get_order_queue_position(%s): response missing 'queue_position_fp'. "
+                "Actual keys: %s. The API may have changed.",
+                order_id,
+                list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+            )
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            _log.warning(
+                "get_order_queue_position(%s): unparseable queue_position_fp %r",
+                order_id,
+                raw,
+            )
+            return None
+
+    def get_bulk_queue_positions(
+        self,
+        market_tickers: str | list[str] | None = None,
+        event_ticker: str | None = None,
+    ) -> list[dict]:
+        """GET /portfolio/orders/queue_positions -- queue positions for every
+        currently-resting order matching the filter, in one call (bulk
+        variant of get_order_queue_position, docs.kalshi.com verified
+        2026-08-24). Requires at least one of market_tickers/event_ticker --
+        confirmed live 2026-08-24: the endpoint 400s with "Need to specify
+        market_tickers or event_ticker" when both are omitted, so this fails
+        fast client-side with the same message instead of making a request
+        guaranteed to error.
+
+        market_tickers accepts either a comma-separated string or a list
+        (joined here) -- docs.kalshi.com documents it as "Comma-separated
+        list of market tickers to filter by".
+
+        Batch-49 item 2: exists so a poller can check queue position for
+        many resting orders in ONE call (rate-budget requirement: "bulk
+        queue-position once per poll pass, not per order") rather than
+        looping get_order_queue_position per order.
+
+        Returns each entry's raw dict: order_id, market_ticker,
+        queue_position_fp. `data.get("queue_positions")` can be null
+        (confirmed live) when nothing matches the filter -- normalized to []
+        here so callers never need a None-check.
+
+        Opus review follow-up: unlike every other list endpoint in this
+        file, this does NOT route through _paginate_get -- docs.kalshi.com's
+        GetOrderQueuePositionsResponse schema documents only `queue_positions`
+        (array, required), no cursor field at all, and this bot's own
+        resting-order count is bounded by max_open_positions (~10 today), so
+        a single page is expected to always be complete. If Kalshi later
+        adds cursor support here, this would need the same pagination
+        treatment as get_fills/get_positions/etc.
+        """
+        if not market_tickers and not event_ticker:
+            raise ValueError(
+                "get_bulk_queue_positions: need market_tickers or event_ticker"
+            )
+        params: dict = {}
+        if market_tickers:
+            params["market_tickers"] = (
+                ",".join(market_tickers)
+                if isinstance(market_tickers, list)
+                else market_tickers
+            )
+        if event_ticker:
+            params["event_ticker"] = event_ticker
+        data = self._get("/portfolio/orders/queue_positions", params=params, auth=True)
+        return data.get("queue_positions") or []
+
     # ── Authenticated endpoints ───────────────────────────────────────────────
 
     def get_balance(self) -> dict:

@@ -59,6 +59,11 @@ RUNNING_FLAG_PATH = _DATA / ".cron_running"
 LAST_HEARTBEAT_PATH = _DATA / "last_heartbeat.txt"
 PROD_REMINDER_PATH = _DATA / "last_prod_reminder.txt"
 SERIES_DRIFT_PATH = _DATA / "series_drift_check.json"
+# Batch-49 item 1: persisted once-per-day gate for the fills-based $0-maker-
+# fee guard (fee_change_check.json) and once-per-week gate for the
+# best-effort kalshi.com/fee-schedule page watch (fee_schedule_scrape_check.json).
+FEE_CHECK_PATH = _DATA / "fee_change_check.json"
+FEE_SCHEDULE_SCRAPE_PATH = _DATA / "fee_schedule_scrape_check.json"
 CITY_REGISTRY_REPORT_PATH = _DATA / "city_registry_report.json"
 RETIREMENT_PROBATION_PATH = _DATA / "retirement_probation_check.json"
 HOURLY_TARGET_HOURS_PATH = _DATA / "hourly_target_hours.json"

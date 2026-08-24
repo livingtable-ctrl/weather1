@@ -1732,3 +1732,101 @@ class TestConnClosesConnection:
                 "SELECT ticker FROM orders WHERE ticker=?", ("KXROLLBACKTEST",)
             ).fetchone()
         assert row is None, "a write inside a raising block must be rolled back"
+
+
+class TestQueuePositionLog:
+    """Batch-49 item 2: queue_positions table + log_queue_position()/
+    get_queue_position_history(). Isolated via conftest.py's autouse
+    isolate_execution_log fixture (fresh temp DB per test)."""
+
+    def test_table_created_by_init_log(self):
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            cols = {row[1] for row in con.execute("PRAGMA table_info(queue_positions)")}
+        assert cols == {
+            "id",
+            "order_row_id",
+            "exchange_order_id",
+            "ticker",
+            "queue_position",
+            "source",
+            "observed_at",
+        }
+
+    def test_log_queue_position_round_trips(self):
+        row_id = execution_log.log_queue_position(
+            exchange_order_id="ORD-1",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=10.0,
+            source="placement",
+            order_row_id=5,
+        )
+
+        assert row_id > 0
+        history = execution_log.get_queue_position_history("ORD-1")
+        assert len(history) == 1
+        assert history[0]["exchange_order_id"] == "ORD-1"
+        assert history[0]["ticker"] == "KXHIGHNY-26AUG24-T80"
+        assert history[0]["queue_position"] == 10.0
+        assert history[0]["source"] == "placement"
+        assert history[0]["order_row_id"] == 5
+        assert history[0]["observed_at"]  # non-empty timestamp
+
+    def test_log_queue_position_accepts_none(self):
+        """A None queue_position (API shape drift, see
+        kalshi_client.get_order_queue_position's fail-soft return) must
+        still log a row rather than raise -- the observation "we tried and
+        got nothing usable" is itself worth recording."""
+        execution_log.log_queue_position(
+            exchange_order_id="ORD-2",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=None,
+            source="poll",
+        )
+
+        history = execution_log.get_queue_position_history("ORD-2")
+        assert len(history) == 1
+        assert history[0]["queue_position"] is None
+        assert history[0]["order_row_id"] is None
+
+    def test_get_queue_position_history_is_a_time_series_oldest_first(self):
+        """Multiple poll-pass observations for the same order must all be
+        retained (a time series, not a single latest-value snapshot) and
+        returned oldest-first."""
+        execution_log.log_queue_position(
+            exchange_order_id="ORD-3",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=20.0,
+            source="placement",
+        )
+        execution_log.log_queue_position(
+            exchange_order_id="ORD-3",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=12.0,
+            source="poll",
+        )
+
+        history = execution_log.get_queue_position_history("ORD-3")
+        assert len(history) == 2
+        assert history[0]["queue_position"] == 20.0
+        assert history[1]["queue_position"] == 12.0
+
+    def test_get_queue_position_history_scoped_to_order_id(self):
+        execution_log.log_queue_position(
+            exchange_order_id="ORD-A",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=1.0,
+            source="placement",
+        )
+        execution_log.log_queue_position(
+            exchange_order_id="ORD-B",
+            ticker="KXHIGHNY-26AUG24-T80",
+            queue_position=2.0,
+            source="placement",
+        )
+
+        assert len(execution_log.get_queue_position_history("ORD-A")) == 1
+        assert len(execution_log.get_queue_position_history("ORD-B")) == 1
+
+    def test_get_queue_position_history_unknown_order_returns_empty(self):
+        assert execution_log.get_queue_position_history("NO-SUCH-ORDER") == []

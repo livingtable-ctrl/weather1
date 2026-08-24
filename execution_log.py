@@ -168,6 +168,27 @@ def init_log() -> None:
                 total      REAL NOT NULL DEFAULT 0.0,
                 updated_at TEXT NOT NULL
             );
+
+            -- Batch-49 item 2: queue-position observations (read-only
+            -- fill-quality instrumentation, NOT wired into any reprice/
+            -- chase decision -- see kalshi_client.get_order_queue_position's
+            -- docstring). A genuine time series, not a single snapshot per
+            -- order -- one row per observation (placement, or each poll
+            -- pass while the order is still resting), so this is a new
+            -- table rather than a column on `orders` (which has exactly one
+            -- row per order attempt).
+            CREATE TABLE IF NOT EXISTS queue_positions (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_row_id       INTEGER,   -- orders.id, if resolvable at log time
+                exchange_order_id  TEXT    NOT NULL,
+                ticker             TEXT    NOT NULL,
+                queue_position     REAL,      -- NULL if the API omitted/couldn't parse it
+                source             TEXT    NOT NULL,   -- "placement" or "poll"
+                observed_at        TEXT    NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_queue_positions_order
+                ON queue_positions(exchange_order_id, observed_at);
             """)
         with _conn() as con:
             _run_migrations(con)
@@ -1664,6 +1685,66 @@ def get_recent_orders(limit: int = 50) -> list[dict]:
     with _conn() as con:
         rows = con.execute(
             "SELECT * FROM orders ORDER BY placed_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def log_queue_position(
+    exchange_order_id: str,
+    ticker: str,
+    queue_position: float | None,
+    source: str,
+    order_row_id: int | None = None,
+) -> int:
+    """Record one queue-position observation for a resting order.
+
+    Batch-49 item 2: read-only fill-quality instrumentation. `source` is
+    "placement" (logged once, right after a maker order is confirmed live)
+    or "poll" (logged once per poll pass for each still-resting order, via
+    the bulk queue_positions endpoint -- see order_executor._poll_pending_orders).
+
+    Does NOT swallow errors itself (init_log()/the INSERT can both raise,
+    e.g. a locked or corrupt DB) -- every call site wraps this in its own
+    try/except per this repo's convention that instrumentation must never
+    risk the trading-critical path it's observing (same reasoning as
+    market_mid_at_fill's lookup in _poll_pending_orders); this function
+    itself just does the write and lets the caller decide whether a
+    logging failure is worth a warning.
+    """
+    init_log()
+    with _conn() as con:
+        cur = con.execute(
+            """
+            INSERT INTO queue_positions
+              (order_row_id, exchange_order_id, ticker, queue_position, source, observed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                order_row_id,
+                exchange_order_id,
+                ticker,
+                queue_position,
+                source,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        return cur.lastrowid or 0
+
+
+def get_queue_position_history(exchange_order_id: str) -> list[dict]:
+    """Return every logged queue-position observation for one exchange
+    order, oldest first. Batch-49 item 2 -- makes the logged data queryable
+    for the (separate, not-yet-built) reprice-decision backlog item this
+    batch deliberately does not wire into."""
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT * FROM queue_positions
+            WHERE exchange_order_id = ?
+            ORDER BY observed_at ASC
+            """,
+            (exchange_order_id,),
         ).fetchall()
     return [dict(r) for r in rows]
 

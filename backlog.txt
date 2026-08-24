@@ -29534,3 +29534,169 @@ Follow-up fix 2026-08-24 (found live the same day, from the user pasting a real 
   problem it surfaced was in the alert's own filtering, not the between formula. Caught same-day because the
   user pasted the actual cron log rather than the fix being deployed and forgotten.
   Source: audit/handoff_prompts/batches/batch-40.md (this is a same-day follow-up, not a new handoff item).
+
+[RESOLVED 2026-08-24 -- batch-49 item 1] Fee-change monitor -- standing guard that Kalshi's $0 weather-series maker fee stays $0
+Priority: LOW (forward-looking guard, may never fire)
+Files: kalshi_client.py, cron.py, paths.py, tests/test_kalshi_client.py, tests/test_fee_change_monitor.py
+
+Problem:
+  The 7.7.26 fee schedule PDF was read directly on 2026-08-24, confirming weather series pay $0 maker
+  (maker multiplier defaults to 0; no weather/climate series in the Non-Standard Fees table) -- this bot's
+  KALSHI_MAKER_FEE_RATE=0/kalshi_fee_rate=0.07 are both correct against that PDF today. Nothing in this
+  repo previously watched for Kalshi silently adding a per-series maker fee (one table row on their end
+  would invalidate the assumption with no code-level signal).
+Resolution (2026-08-24):
+  Added kalshi_client.get_fills() (GET /portfolio/fills, cursor-paginated same as get_trades/get_positions).
+  cron._check_fee_change(client): once/day (gated via new FEE_CHECK_PATH, same once-per-day convention as
+  check_series_drift), pulls the trailing ~25h of fills via min_ts, asserts every non-taker (maker) fill's
+  fee is $0 -- reads either `fee_cost` (docs.kalshi.com's documented field name) or `fee_cost_fp` (this
+  repo has already seen Kalshi migrate other fields to a `*_fp` suffix: fill_count_fp, orderbook_fp,
+  queue_position_fp below), and WARNS (does not silently read as $0) if a maker fill has neither field at
+  all -- opus review caught that the account had zero real fills at verification time, so `fee_cost` was
+  confirmed only against docs, never a live response, and treating "field absent" the same as "field
+  present and 0" would have let this guard ship permanently blind to a field-name change. Alerts via the
+  existing alerts.check_halt_transition/notify.send_system_alert/alerts.rollback_halt_transition
+  false->true-edge pattern (batch-24/batch-33's mechanism for the anomaly/daily-loss halts) so it fires
+  once per new detection, not every day the condition stays true, and retries next day if delivery totally
+  fails. cron._check_fee_schedule_page(): once/week, best-effort GET of kalshi.com/fee-schedule (confirmed
+  live 2026-08-24 that Cloudflare 429-blocks this fetch, same as reported 2026-08-23) -- 429/any fetch
+  failure is logged at debug and skipped quietly, never alerted on, never retried in a loop. On an actual
+  200, a coarse weather+change-language text-marker match also routes through the same edge-gated alert
+  mechanism (opus review caught the first version alerted unconditionally on every successful match, which
+  would re-alert every week forever once the 429-block ever lifts). Both registered as one try/except block
+  in cmd_cron's daily scan, right after the pre-existing check_series_drift() call.
+  Go/no-go gate (run live 2026-08-24): queried /portfolio/fills on the real prod account -- zero fills
+  currently (spec's own documented fallback: ships as a forward guard, asserts against an empty set).
+  Confirmed via docs.kalshi.com's OpenAPI-derived Fill schema (WebFetch/WebSearch, not the live account,
+  since it has no fills yet) that the fee field is `fee_cost` (string, fixed-point dollars).
+  Tests: tests/test_kalshi_client.py (TestGetFills, 4 tests) + new tests/test_fee_change_monitor.py
+  (TestCheckFeeChange 11 tests incl. the fee_cost/fee_cost_fp dual-spelling and missing-field cases;
+  TestCheckFeeSchedulePage 8 tests incl. the once-per-week gate, 429 quiet-skip, and edge-gated-repeat-match
+  cases). Full scoped run (tests/test_kalshi_client.py, tests/test_execution_log.py,
+  tests/test_fee_change_monitor.py, tests/test_queue_position_instrumentation.py, tests/test_live_execution.py,
+  tests/test_trading_gates.py, tests/test_prelog.py, tests/test_execution_proof.py, tests/test_risk_control.py,
+  tests/test_series_drift.py, tests/test_cron_integration.py, tests/test_cron_group_c.py,
+  tests/test_cron_trade_updates.py, tests/test_batch33_reliability.py, tests/test_paths_bypass_guard.py --
+  grepped for transitive callers of every edited function first): 565 passed, 4 skipped, 0 failures.
+  ruff/ruff-format/mypy clean via the real pre-commit hook.
+  Independent review: opus, effort=high (kalshi_client.py/order_executor.py are live-order-adjacent even
+  though every addition in this batch is read-only) -- findings addressed: missing-fee-field silent-$0 gap
+  (fixed, see above), page-watch alert not edge-gated (fixed, see above), a pre-existing unrelated test
+  assertion accidentally deleted while fixing an unrelated lint error during this session's own editing
+  (restored -- see batch-49 item 2's entry below for the shared review-findings list; both items were
+  reviewed together in one pass).
+  Source: audit/handoff_prompts/batches/batch-49.md.
+
+[RESOLVED 2026-08-24 -- batch-49 item 2] Queue-position reading for fill-quality -- read-only logging via the officially documented endpoints, NOT wired into reprice decisions
+Priority: LOW (instrumentation only)
+Files: kalshi_client.py, execution_log.py, order_executor.py, tests/test_kalshi_client.py, tests/test_execution_log.py, tests/test_queue_position_instrumentation.py
+
+Problem:
+  Fill-quality instrumentation was a known-open backlog item; predictions.db's `price_improvement` logging
+  already existed, but nothing read Kalshi's own queue-position data (GET
+  /trade-api/v2/portfolio/orders/{order_id}/queue_position and bulk GET
+  /trade-api/v2/portfolio/orders/queue_positions -- "number of contracts that need to be matched before
+  this order receives a partial or full match, price-time priority"), so any future reprice/chase-timing
+  decision would be blind to it.
+Resolution (2026-08-24):
+  Added kalshi_client.get_order_queue_position(order_id) and get_bulk_queue_positions(market_tickers=None,
+  event_ticker=None) -- both read-only. Bulk fails fast (ValueError, before any network call) when neither
+  filter is given (confirmed live 2026-08-24: the endpoint 400s "Need to specify market_tickers or
+  event_ticker" otherwise), and normalizes a null `queue_positions` response to [] (confirmed live: the
+  endpoint returns JSON null, not [], when nothing matches). Neither endpoint paginates (opus review
+  confirmed via docs.kalshi.com's schema: no cursor field documented on the bulk response at all, and this
+  bot's resting-order count is bounded by max_open_positions ~10 -- would need revisiting if Kalshi ever
+  adds cursor support here). New execution_log.queue_positions table (plain CREATE TABLE IF NOT EXISTS in
+  init_log's executescript, NOT a _MIGRATIONS entry -- opus review confirmed a migration entry would have
+  been wrong: on any pre-existing v18 DB, _run_migrations skips every entry with version <= current, so a
+  new table would never get created; CREATE TABLE IF NOT EXISTS is what makes it safely re-runnable, same
+  precedent as the pre-existing daily_live_loss table) -- a genuine time series (one row per observation),
+  not a column on `orders` (one row per order attempt). log_queue_position()/get_queue_position_history()
+  added alongside it. order_executor._place_live_order logs queue position once at successful placement
+  (own try/except, isolated from the True/dollar_cost return -- a lookup failure can never turn a real live
+  order into a reported failure); _poll_pending_orders logs it once per poll pass via the BULK endpoint
+  (rate-budget requirement: once per pass, not per order) for every pending order, matched by exchange
+  order_id, logged BEFORE the pre-close/GTC-age cancel checks so a canceled-this-pass order still gets its
+  final observation (opus-review-verified: this ordering is a deliberate, documented tradeoff against
+  adding a small write before a time-sensitive cancel decision, accepted as a single-process bot with no
+  real write contention). Zero order-mutation changes anywhere in this batch.
+  Go/no-go gate (2026-08-24): the spec's literal instruction ("place one resting demo order via the
+  existing demo-safe path") could not be executed -- this account has KALSHI_ENV=prod with a single prod
+  key configured, no demo credentials exist anywhere in this repo/.env, and placing a real order specifically
+  to test an endpoint would violate both this batch's own zero-order-mutation constraint and the standing
+  prohibited-action rule against executing financial trades. Substituted: confirmed both endpoints are
+  reachable and NOT tier-gated (GET /account/endpoint_costs lists no override entry for either -- both fall
+  to default_cost=10, an ordinary read cost, not a premium/gated one; the bulk endpoint's 400 on a missing
+  filter param is itself proof of normal request validation, not a permission wall), confirmed the bulk
+  endpoint's live response shape against a real (empty, since this account has zero resting orders) result,
+  and confirmed both field names (`queue_position_fp`) and both endpoints' exact paths against
+  docs.kalshi.com's OpenAPI-derived schema (WebFetch/WebSearch) rather than a live resting order.
+  Tests: tests/test_kalshi_client.py (TestQueuePosition, 9 tests incl. non-dict-response and empty-list
+  edge cases) + new tests/test_queue_position_instrumentation.py (TestPlacementQueuePositionLogging 4
+  tests incl. the order_row_id cross-reference; TestPollPassQueuePositionLogging 6 tests incl. the
+  once-per-pass market_tickers argument assertion and the canceled-this-pass ordering claim) +
+  tests/test_execution_log.py (TestQueuePositionLog, 6 tests). Full scoped run: same 15-file set as item 1
+  above (both items share one review/test pass) -- 565 passed, 4 skipped, 0 failures. Grepped tests/ for
+  transitive callers of _place_live_order/_poll_pending_orders first (6 files: test_trading_gates.py,
+  test_risk_control.py, test_prelog.py, test_live_execution.py, test_kalshi_client.py,
+  test_execution_proof.py) plus the cron daily-scan orchestration tests (test_cron_integration.py,
+  test_cron_group_c.py, test_cron_trade_updates.py) since the new fee-monitor task registration sits in the
+  same function.
+  ruff/ruff-format/mypy clean via the real pre-commit hook (one ruff-format auto-reformat pass across both
+  items' files, re-ran the full scoped suite afterward to confirm the reformat was purely cosmetic).
+  Independent review: opus, effort=high, one pass covering both items (kalshi_client.py/order_executor.py
+  are live-order-adjacent even though every addition here is read-only). All 5 hard constraints (zero
+  order-mutation; instrumentation can't fail a real order or block fill-status polling; bulk call once per
+  pass not per order; fee alert edge-gated with rollback-on-delivery-failure; 429 never treated as a real
+  failure signal) verified CLEAN. Findings addressed: fee_cost/fee_cost_fp dual-spelling + missing-field
+  warning (item 1), page-watch alert edge-gating (item 1), get_order_queue_position/log_queue_position
+  docstrings incorrectly claimed "never raises" (fixed -- corrected wording, added an isinstance(dict) guard
+  to get_order_queue_position for the one real non-dict-response gap), get_bulk_queue_positions' no-
+  pagination behavior documented as a verified-against-docs judgment call rather than an oversight,
+  placement-time synchronous-GET latency documented as an accepted tradeoff (place_order() already makes an
+  equivalent synchronous follow-up GET in the same path today), poll-loop write-before-cancel-check latency
+  documented as an accepted tradeoff, 25h-lookback-vs-intermittent-host gap documented honestly rather than
+  silently assumed away, and a pre-existing unrelated test assertion in test_kalshi_client.py
+  (test_page_cap_stops_at_50_pages's `assert len(result) == 50`) that got accidentally displaced and then
+  deleted while this session was fixing an unrelated ruff F841 unused-variable error on the same function --
+  caught by the reviewer, root-caused (an Edit call's old_string didn't include a trailing assertion line
+  that existed past what an earlier truncated Read had shown), and restored.
+  Surfaced to the user rather than decided unilaterally: (1) the page-watch's spoofed desktop-Chrome
+  User-Agent, specifically chosen to look like a real browser past Kalshi's Cloudflare bot block that the
+  code itself documents as deliberate -- a policy question against the Kalshi Member Agreement, not a pure
+  code bug. User asked for it removed (2026-08-24): replaced with an honest identifying UA
+  ("weather1-kalshi-bot/1.0 (fee-schedule watch)") -- the 429 fires regardless of UA (confirmed live), so
+  nothing was lost. (2) order_id is interpolated into the queue-position REST path without the AUD-0076
+  _validate_ticker_format-style guard used by get_market/get_orderbook/get_candlesticks -- but order_id is
+  Kalshi-assigned and round-tripped from the local DB, not user input, and cancel_order/get_order/
+  amend_order in this same file already omit the same guard today, so this matches existing precedent
+  rather than introducing a new gap; not changed.
+  When to revisit: (1) queue_positions has no retention/pruning in cron.py's existing Monday sweep (which
+  already prunes api_requests at 90d and analysis attempts at 30d then VACUUMs) -- unbounded growth is
+  bounded today by live-order activity, which is ~0 (LIVE_TRADING_ENABLED unset). Add pruning before live
+  trading resumes at any real volume. (2) See the OPEN entry immediately below for the reprice-decision
+  linkage this data exists to inform.
+  Source: audit/handoff_prompts/batches/batch-49.md.
+
+[OPEN 2026-08-24 -- filed per batch-49 item 2's own instruction to note the linkage] Queue-position data now exists (execution_log.queue_positions) but nothing reads it back into a reprice/chase decision
+Priority: LOW (data now exists as a forward guard; no decision logic built yet)
+Files: order_executor.py (_reprice_or_cancel_pending_orders, order_executor.py:779 as of 2026-08-24 -- the
+  EXISTING price-movement-triggered reprice-or-cancel logic, unrelated to this item)
+
+Problem:
+  batch-49 item 2 (see RESOLVED entry immediately above) added read-only queue-position logging at
+  maker-order placement and once per poll pass, explicitly WITHOUT wiring it into any decision -- the data
+  exists now (execution_log.get_queue_position_history(exchange_order_id)) but
+  _reprice_or_cancel_pending_orders' existing reprice-or-cancel logic (resolved 2026-07-12/2026-07-19, see
+  those earlier entries -- price-movement-triggered, amend-based) has no queue-position awareness at all.
+  Not the same gap as the already-resolved amend_order() item (backlog.txt ~L12735-12891, "Docs note queue
+  position is preserved only on size decrease") -- that was about the AMEND MECHANISM forfeiting queue
+  position on a price-only reprice; this item is about USING the queue-position VALUE itself as a decision
+  input (e.g. skip a marginal reprice if queue position is already favorable, or weight chase urgency by how
+  far back in the queue an order sits).
+Recommendation:
+  Once enough real queue-position history accumulates (blocked on live trading resuming --
+  LIVE_TRADING_ENABLED unset today), review execution_log.get_queue_position_history() data to see whether
+  queue position at placement/poll meaningfully predicts fill outcome, and if so design the actual decision
+  rule as its own scoped batch. Do not build this speculatively without real data -- exactly the trap this
+  batch's own dossier warned against ("keep it small... may never fire").

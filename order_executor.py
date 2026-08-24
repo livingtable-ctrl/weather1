@@ -1130,6 +1130,39 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
     # AUD-0012: dedicated unbounded query, not a LIMIT-200-of-everything
     # fetch filtered in Python -- see _recover_pending_orders' identical note.
     pending = [o for o in execution_log.get_pending_live_orders() if o.get("response")]
+
+    # Batch-49 item 2: ONE bulk queue-position call for this whole poll pass
+    # (rate-budget constraint: "bulk queue-position once per poll pass, not
+    # per order") rather than a per-order call inside the loop below.
+    # Read-only instrumentation only -- see kalshi_client.
+    # get_bulk_queue_positions' and execution_log.log_queue_position's
+    # docstrings; nothing below reads _qp_by_order_id for a trading
+    # decision. Isolated in its own try/except so a failure here can never
+    # block/skip the real fill-status polling loop that follows.
+    _qp_by_order_id: dict[str, float | None] = {}
+    if pending:
+        try:
+            _qp_tickers = sorted(
+                {o.get("ticker", "") for o in pending if o.get("ticker")}
+            )
+            if _qp_tickers:
+                for _qp_entry in client.get_bulk_queue_positions(
+                    market_tickers=_qp_tickers
+                ):
+                    _qp_oid = _qp_entry.get("order_id")
+                    if not _qp_oid:
+                        continue
+                    try:
+                        _qp_by_order_id[_qp_oid] = float(
+                            _qp_entry.get("queue_position_fp")
+                        )
+                    except (TypeError, ValueError):
+                        _qp_by_order_id[_qp_oid] = None
+        except Exception as _qp_poll_exc:
+            _log.debug(
+                "[LIVE] bulk queue-position poll failed (non-fatal): %s", _qp_poll_exc
+            )
+
     for order in pending:
         try:
             response = (
@@ -1143,6 +1176,34 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             order_id = response.get("order_id") if response else None
             if not order_id:
                 continue
+
+            # Batch-49 item 2: log this pass's queue-position observation
+            # (if the bulk call above returned one for this order) before
+            # the pre-close/GTC-age checks below, which can `continue` past
+            # the rest of this iteration -- a canceled-this-pass order still
+            # gets its last observation recorded. Opus review follow-up:
+            # this is a real SQLite write (PRAGMA synchronous=FULL, 30s
+            # timeout) placed before the time-sensitive pre-close cancel
+            # decision below -- under lock contention it could delay that
+            # cancel. Accepted: this is a single-process bot (no concurrent
+            # writer contending for the same DB), and moving the log after
+            # the cancel checks would lose the canceled-this-pass
+            # observation this ordering exists to capture -- a real
+            # tradeoff, not an oversight.
+            if order_id in _qp_by_order_id:
+                try:
+                    execution_log.log_queue_position(
+                        exchange_order_id=order_id,
+                        ticker=order.get("ticker", ""),
+                        queue_position=_qp_by_order_id[order_id],
+                        source="poll",
+                        order_row_id=order.get("id"),
+                    )
+                except Exception as _qp_log_exc:
+                    _log.debug(
+                        "[LIVE] queue-position poll log failed (non-fatal): %s",
+                        _qp_log_exc,
+                    )
 
             # Pre-close cancel — cancel before market expires rather than waiting
             # for the flat 24h GTC timer. A market closing at 08:00 UTC with an
@@ -2870,6 +2931,42 @@ def _place_live_order(
             "_recover_pending_orders will reconcile it",
             ticker,
             _bk_exc,
+        )
+
+    # Batch-49 item 2: log queue position at placement, read-only
+    # instrumentation for the open fill-quality backlog item -- NOT wired
+    # into any decision here. Own try/except (same isolation reasoning as
+    # the bookkeeping write above and _poll_pending_orders' market_mid_at_fill
+    # lookup): a queue-position API hiccup must never turn a real, already-
+    # live order into a reported failure.
+    #
+    # Opus review follow-up: this is a synchronous, auto-retrying GET
+    # (client._get -> _request_with_retry, up to 3 retries) inline in the
+    # placement hot path -- on a degraded Kalshi API this can add real
+    # latency before _place_live_order returns. Accepted as proportionate:
+    # place_order() itself already makes an equivalent synchronous GET
+    # follow-up (get_order()) immediately before this code runs, in the same
+    # try/except-isolated shape, so this doesn't introduce a new class of
+    # risk to the path, only one more instance of an already-accepted one.
+    # The poll pass captures the same data moments later regardless, so
+    # this could be dropped entirely if that latency ever becomes a real
+    # problem -- see backlog.txt.
+    try:
+        _qp_order_id = response.get("order_id") if response else None
+        if _qp_order_id:
+            _qp = client.get_order_queue_position(_qp_order_id)
+            execution_log.log_queue_position(
+                exchange_order_id=_qp_order_id,
+                ticker=ticker,
+                queue_position=_qp,
+                source="placement",
+                order_row_id=log_id,
+            )
+    except Exception as _qp_exc:
+        _log.debug(
+            "[LIVE] %s: queue-position lookup at placement failed (non-fatal): %s",
+            ticker,
+            _qp_exc,
         )
     return True, dollar_cost
 

@@ -28,6 +28,8 @@ from paths import (
     CRON_LOG_PATH,
     DATA_DIR,
     EMOS_PARAMS_PATH,
+    FEE_CHECK_PATH,
+    FEE_SCHEDULE_SCRAPE_PATH,
     GRADUATED_FLAG_PATH,
     KILL_SWITCH_PATH,
     LAST_CALIBRATION_COUNT_PATH,
@@ -793,6 +795,250 @@ def _check_prod_reminder() -> None:
         PROD_REMINDER_PATH.write_text(str(_today))
     except Exception as _exc:
         _log.debug("_check_prod_reminder failed: %s", _exc)
+
+
+# Batch-49 item 1: fee-change monitor. Resolved background (do NOT
+# re-investigate): the 7.7.26 fee schedule PDF was read directly on
+# 2026-08-24 -- weather series pay $0 maker (maker multiplier defaults to
+# 0; no weather/climate series in the Non-Standard Fees table). This bot's
+# KALSHI_MAKER_FEE_RATE=0/kalshi_fee_rate=0.07 are both confirmed correct
+# against that PDF. What this guards against: Kalshi adding a per-series
+# maker fee with a single table row, silently invalidating that assumption.
+# May never fire -- kept deliberately small (one cron task, one alert, no
+# config surface) per the dossier's own "why-not honesty" note.
+def _check_fee_change(client) -> None:
+    """Once per day: assert every non-taker (maker) fill's fee_cost is $0.
+
+    Checks every maker fill in the account, not filtered to a specific
+    series list -- this bot only maker-trades weather/climate series in
+    practice, and narrowing the ticker match would risk missing exactly
+    the kind of newly-added series this guard exists to catch (same
+    reasoning check_series_drift documents for its own ticker matching).
+
+    Covers roughly the trailing day via min_ts (a fixed look-back window,
+    not a persisted last-checked cursor) -- deliberately not a second piece
+    of persisted state for what's meant to stay a small, forward-only
+    guard. This assumes the gap between consecutive runs stays under 25h;
+    the gate is "first run of a new UTC date," not "24h since the last
+    run," so a host that isn't always-on (this bot's still-pending VM move)
+    could in principle leave a gap wider than the window and miss fills
+    that occur entirely inside it. Low practical impact -- a real fee
+    change is persistent, so the NEXT successful run still catches it --
+    but noted here rather than silently assumed away.
+
+    Uses alerts.check_halt_transition (the same false->true edge-tracking
+    mechanism batch-24/batch-33 built for risk halts) so a nonzero fee
+    alerts once when detected, not every day it stays detected -- this
+    isn't itself a halt/pause of anything, just reusing the same "don't
+    re-alert on unchanged state" primitive for a different boolean
+    condition, same as check_series_drift/refresh_hourly_target_hours reuse
+    the once-per-day gate pattern for unrelated checks.
+    """
+    try:
+        from utils import utc_today as _utc_today
+
+        _today = _utc_today()
+        if FEE_CHECK_PATH.exists():
+            try:
+                _existing = json.loads(FEE_CHECK_PATH.read_text())
+                if _existing.get("date") == str(_today):
+                    return
+            except Exception:
+                pass  # corrupt/missing state -- treat as "not yet run today"
+
+        _min_ts = int((_dt.datetime.now(UTC) - _dt.timedelta(hours=25)).timestamp())
+        fills = client.get_fills(min_ts=_min_ts)
+
+        _nonzero: list[tuple[str, str, float]] = []
+        for f in fills:
+            if f.get("is_taker"):
+                continue  # only maker fills are expected to be $0
+            _ticker = f.get("ticker") or f.get("market_ticker") or "?"
+            # Accept either spelling: docs.kalshi.com's Fill schema (verified
+            # 2026-08-24) documents `fee_cost`, but this repo has already
+            # seen Kalshi migrate other fields to a `*_fp` suffix
+            # (fill_count_fp, orderbook_fp, queue_position_fp) -- and this
+            # account had zero real fills at verification time, so
+            # `fee_cost` was confirmed only against docs, never a live
+            # response. A genuinely MISSING field (both keys absent) must
+            # warn, not silently read as a confirmed $0 -- opus review
+            # caught that treating "absent" the same as "present and 0"
+            # would let this guard ship permanently blind if the field name
+            # is ever wrong, with no log trail to notice.
+            if "fee_cost" in f:
+                _raw_fee = f.get("fee_cost")
+            elif "fee_cost_fp" in f:
+                _raw_fee = f.get("fee_cost_fp")
+            else:
+                _log.warning(
+                    "check_fee_change: maker fill %s (%s) has no fee_cost/"
+                    "fee_cost_fp field at all -- fee schedule shape may have "
+                    "changed. Fill keys: %s",
+                    f.get("fill_id") or f.get("trade_id"),
+                    _ticker,
+                    sorted(f.keys()),
+                )
+                continue
+            try:
+                _fee = float(_raw_fee)
+            except (TypeError, ValueError):
+                _log.warning(
+                    "check_fee_change: unparseable fee value on fill %s (%s): %r",
+                    f.get("fill_id") or f.get("trade_id"),
+                    _ticker,
+                    _raw_fee,
+                )
+                continue
+            if _fee != 0.0:
+                _nonzero.append(
+                    (_ticker, f.get("fill_id") or f.get("trade_id") or "?", _fee)
+                )
+
+        if _nonzero:
+            for _ticker, _fill_id, _fee in _nonzero:
+                _log.error(
+                    "check_fee_change: NONZERO maker fee detected -- ticker=%s "
+                    "fill_id=%s fee=$%.4f. Kalshi may have added a per-series "
+                    "maker fee; re-verify the fee schedule "
+                    "(https://kalshi.com/fee-schedule) before trusting "
+                    "KALSHI_MAKER_FEE_RATE=0 economics.",
+                    _ticker,
+                    _fill_id,
+                    _fee,
+                )
+
+        from alerts import check_halt_transition as _check_fee_transition
+
+        if _check_fee_transition("fee_nonzero", bool(_nonzero)):
+            from notify import send_system_alert as _fee_alert
+
+            _summary = "; ".join(
+                f"{t} (fill {fid}): ${fee:.4f}" for t, fid, fee in _nonzero[:5]
+            )
+            if not _fee_alert(
+                "Kalshi maker fee changed from $0",
+                f"Nonzero maker fee detected on {len(_nonzero)} fill(s): {_summary}",
+                cooldown_key="fee_change",
+            ):
+                from alerts import rollback_halt_transition as _rb_fee
+
+                _rb_fee("fee_nonzero")
+
+        FEE_CHECK_PATH.write_text(json.dumps({"date": str(_today)}))
+    except Exception as _fee_exc:
+        _log.warning("check_fee_change call failed: %s", _fee_exc)
+
+
+def _check_fee_schedule_page() -> None:
+    """Once per week: best-effort watch of kalshi.com/fee-schedule for
+    scheduled upcoming changes mentioning tracked weather series.
+
+    kalshi.com Cloudflare-blocks non-interactive fetches (429, confirmed
+    repeatedly 2026-08-23/24, re-confirmed 2026-08-24 while building this)
+    -- a 429 (or any other fetch failure) is logged at debug and skipped
+    quietly, NOT retried in a loop and NOT itself alerted on. The fills-
+    based check in _check_fee_change is the real guard; this is genuinely
+    best-effort and may never successfully fetch anything.
+    """
+    try:
+        from utils import utc_today as _utc_today
+
+        _today = _utc_today()
+        if FEE_SCHEDULE_SCRAPE_PATH.exists():
+            try:
+                _existing = json.loads(FEE_SCHEDULE_SCRAPE_PATH.read_text())
+                _last = _dt.date.fromisoformat(_existing.get("date", "1970-01-01"))
+                if (_today - _last).days < 7:
+                    return
+            except Exception:
+                pass  # corrupt/missing state -- treat as "due"
+
+        import requests
+
+        try:
+            # Honest User-Agent -- identifies this as a bot rather than
+            # spoofing a browser to get past Kalshi's Cloudflare block. The
+            # block fires regardless (confirmed live 2026-08-24), so nothing
+            # is gained by pretending otherwise, and this is a
+            # non-interactive fetch against a third party's page, not
+            # Kalshi's own trading API.
+            resp = requests.get(
+                "https://kalshi.com/fee-schedule",
+                timeout=10,
+                headers={"User-Agent": "weather1-kalshi-bot/1.0 (fee-schedule watch)"},
+            )
+        except Exception as _req_exc:
+            _log.debug("check_fee_schedule_page: fetch failed, skipping: %s", _req_exc)
+            FEE_SCHEDULE_SCRAPE_PATH.write_text(json.dumps({"date": str(_today)}))
+            return
+
+        if resp.status_code == 429:
+            _log.debug("check_fee_schedule_page: 429 (Cloudflare-blocked), skipping")
+            FEE_SCHEDULE_SCRAPE_PATH.write_text(json.dumps({"date": str(_today)}))
+            return
+        if resp.status_code != 200:
+            _log.debug("check_fee_schedule_page: HTTP %s, skipping", resp.status_code)
+            FEE_SCHEDULE_SCRAPE_PATH.write_text(json.dumps({"date": str(_today)}))
+            return
+
+        text_lower = resp.text.lower()
+        _weather_markers = (
+            "weather",
+            "climate",
+            "temperature",
+            "rain",
+            "snow",
+            "hurricane",
+        )
+        _change_markers = (
+            "upcoming",
+            "effective",
+            "scheduled",
+            "will change",
+            "new fee",
+        )
+        _matched = any(w in text_lower for w in _weather_markers) and any(
+            c in text_lower for c in _change_markers
+        )
+        if _matched:
+            _log.warning(
+                "check_fee_schedule_page: kalshi.com/fee-schedule mentions both a "
+                "weather-series marker and a change marker -- manual review needed "
+                "(this is a coarse text scan, not a parsed diff; may be a false "
+                "positive)."
+            )
+        # Opus review follow-up: a real fee-schedule page will almost
+        # certainly list weather series alongside an effective date on
+        # EVERY successful fetch, so without edge-gating this would re-alert
+        # every week forever the moment the 429-block ever lifts (the 6h
+        # notify cooldown doesn't suppress a weekly cadence). Same
+        # false->true edge mechanism as _check_fee_change above, distinct
+        # halt_type so the two don't share state.
+        try:
+            from alerts import check_halt_transition as _check_sched_transition
+
+            if _check_sched_transition("fee_schedule_page_match", _matched):
+                from notify import send_system_alert as _sched_alert
+
+                if not _sched_alert(
+                    "Kalshi fee schedule page may reference a weather fee change",
+                    "kalshi.com/fee-schedule text matched both a weather-series "
+                    "marker and a change-language marker. Manually verify before "
+                    "assuming $0 maker fees still hold.",
+                    cooldown_key="fee_schedule_page",
+                ):
+                    from alerts import rollback_halt_transition as _rb_sched
+
+                    _rb_sched("fee_schedule_page_match")
+        except Exception as _sched_exc:
+            _log.debug(
+                "check_fee_schedule_page: alert/transition failed (non-fatal): %s",
+                _sched_exc,
+            )
+
+        FEE_SCHEDULE_SCRAPE_PATH.write_text(json.dumps({"date": str(_today)}))
+    except Exception as _sched_outer_exc:
+        _log.debug("check_fee_schedule_page call failed: %s", _sched_outer_exc)
 
 
 def _log_near_settlement_trades(near: list[dict], db_path: Path) -> tuple[int, int]:
@@ -3242,6 +3488,18 @@ def _cmd_cron_body(
         _check_series_drift(client)
     except Exception as _drift_exc:
         _log.warning("check_series_drift call failed: %s", _drift_exc)
+
+    # Batch-49 item 1: fee-change monitor -- once per day, fills-based $0-
+    # maker-fee assert (real guard) + once per week, best-effort
+    # kalshi.com/fee-schedule page watch (may never successfully fetch, see
+    # _check_fee_schedule_page's own docstring). One task registration for
+    # both halves of item 1, same placement/isolation rationale as
+    # check_series_drift above.
+    try:
+        _check_fee_change(client)
+        _check_fee_schedule_page()
+    except Exception as _fee_task_exc:
+        _log.warning("fee-change monitor task failed: %s", _fee_task_exc)
 
     # Hourly-directional target-hour cache refresh — once per city per day,
     # same placement/isolation rationale as check_series_drift above

@@ -1181,6 +1181,192 @@ class TestPaginatedPortfolioAndPublicListEndpoints:
         assert len(result) == 50
 
 
+class TestGetFills:
+    """Batch-49 item 1: get_fills() -- go/no-go gate confirmed live 2026-08-24
+    (and via docs.kalshi.com's OpenAPI-derived Fill schema) that the fee
+    field is `fee_cost` (string, fixed-point dollars) and the endpoint
+    paginates the same way as get_trades/get_positions/etc."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_single_page_returns_fee_cost_field(self):
+        client = self._make_client()
+        fills = [
+            {
+                "fill_id": "f1",
+                "ticker": "KXHIGHNY-26AUG24-T80",
+                "is_taker": False,
+                "fee_cost": "0.0000",
+            }
+        ]
+        client._get = MagicMock(return_value={"fills": fills})
+        client._validate = MagicMock()
+
+        result = client.get_fills()
+
+        assert result == fills
+        assert client._get.call_args[0][0] == "/portfolio/fills"
+        assert client._get.call_args[1]["auth"] is True
+
+    def test_paginates_across_pages(self):
+        client = self._make_client()
+        page1 = [{"fill_id": "f1"}]
+        page2 = [{"fill_id": "f2"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"fills": page1, "cursor": "c1"},
+                {"fills": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_fills()
+
+        assert len(result) == 2
+        assert client._get.call_count == 2
+
+    def test_passes_through_filter_params(self):
+        """ticker/order_id/min_ts/max_ts are documented optional filters --
+        must reach the API call unmodified (same passthrough convention as
+        get_markets/get_events)."""
+        client = self._make_client()
+        client._get = MagicMock(return_value={"fills": []})
+        client._validate = MagicMock()
+
+        client.get_fills(ticker="KXHIGHNY-26AUG24-T80", min_ts=1000, max_ts=2000)
+
+        params = client._get.call_args[1]["params"]
+        assert params["ticker"] == "KXHIGHNY-26AUG24-T80"
+        assert params["min_ts"] == 1000
+        assert params["max_ts"] == 2000
+        assert params["limit"] == 1000  # default max page size
+
+    def test_empty_fill_set_returns_empty_list(self):
+        """Go/no-go spec explicitly allows this: 'if the account has zero
+        real fills, assert against an empty set and note it' -- confirmed
+        live 2026-08-24 (this account currently has zero fills)."""
+        client = self._make_client()
+        client._get = MagicMock(return_value={"fills": []})
+        client._validate = MagicMock()
+
+        assert client.get_fills() == []
+
+
+class TestQueuePosition:
+    """Batch-49 item 2: get_order_queue_position()/get_bulk_queue_positions().
+    Field names (queue_position_fp, market_tickers/event_ticker query
+    params) and the "need market_tickers or event_ticker" 400 confirmed
+    live 2026-08-24 and via docs.kalshi.com."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_get_order_queue_position_parses_fixed_point_string(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_position_fp": "10.00"})
+
+        result = client.get_order_queue_position("ORD-1")
+
+        assert result == 10.0
+        assert client._get.call_args[0][0] == "/portfolio/orders/ORD-1/queue_position"
+        assert client._get.call_args[1]["auth"] is True
+
+    def test_get_order_queue_position_missing_field_returns_none(self):
+        """Response-shape drift must warn, not crash -- same fail-soft
+        convention as _validate elsewhere in this file, since this is
+        read-only instrumentation, not a trading-critical read."""
+        client = self._make_client()
+        client._get = MagicMock(return_value={"unexpected": "shape"})
+
+        assert client.get_order_queue_position("ORD-1") is None
+
+    def test_get_order_queue_position_unparseable_returns_none(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_position_fp": "not-a-number"})
+
+        assert client.get_order_queue_position("ORD-1") is None
+
+    def test_get_order_queue_position_non_dict_response_returns_none(self):
+        """Opus review follow-up: a non-dict response (e.g. a raw string/
+        list on a degraded API) must warn and return None, not raise
+        AttributeError from data.get(...)."""
+        client = self._make_client()
+        client._get = MagicMock(return_value=["unexpected", "shape"])
+
+        assert client.get_order_queue_position("ORD-1") is None
+
+    def test_bulk_empty_list_market_tickers_raises(self):
+        """Opus review follow-up: market_tickers=[] is falsy, same as None
+        -- must hit the same fail-fast ValueError, not silently send an
+        empty market_tickers param."""
+        client = self._make_client()
+        client._get = MagicMock()
+
+        with pytest.raises(ValueError, match="market_tickers or event_ticker"):
+            client.get_bulk_queue_positions(market_tickers=[])
+
+        client._get.assert_not_called()
+
+    def test_bulk_requires_market_tickers_or_event_ticker(self):
+        """Confirmed live 2026-08-24: the endpoint 400s with 'Need to
+        specify market_tickers or event_ticker' when both are omitted --
+        fail fast client-side instead of making a request guaranteed to
+        error."""
+        client = self._make_client()
+        client._get = MagicMock()
+
+        with pytest.raises(ValueError, match="market_tickers or event_ticker"):
+            client.get_bulk_queue_positions()
+
+        client._get.assert_not_called()
+
+    def test_bulk_joins_ticker_list_into_comma_separated_param(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_positions": []})
+
+        client.get_bulk_queue_positions(market_tickers=["MKT-1", "MKT-2"])
+
+        params = client._get.call_args[1]["params"]
+        assert params["market_tickers"] == "MKT-1,MKT-2"
+
+    def test_bulk_accepts_event_ticker(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_positions": []})
+
+        client.get_bulk_queue_positions(event_ticker="EV-1")
+
+        params = client._get.call_args[1]["params"]
+        assert params["event_ticker"] == "EV-1"
+        assert "market_tickers" not in params
+
+    def test_bulk_normalizes_null_queue_positions_to_empty_list(self):
+        """Confirmed live 2026-08-24: `queue_positions` can be JSON null
+        when nothing matches the filter (not an empty list) -- callers must
+        never need a None-check."""
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_positions": None})
+
+        assert client.get_bulk_queue_positions(market_tickers="MKT-1") == []
+
+    def test_bulk_returns_raw_entries(self):
+        client = self._make_client()
+        entries = [
+            {"order_id": "ORD-1", "market_ticker": "MKT-1", "queue_position_fp": "5.00"}
+        ]
+        client._get = MagicMock(return_value={"queue_positions": entries})
+
+        assert client.get_bulk_queue_positions(market_tickers="MKT-1") == entries
+
+
 class TestEnvFilePermissions:
     """AUD batch-23 #5: .env can carry KALSHI_PRIVATE_KEY_PEM -- the entire
     private key in plaintext -- when the WebSocket feed is enabled, but was
