@@ -1525,12 +1525,20 @@ class TestFetchSeasonalSnowMeanCmUnitValidation:
             f"got {call_count['n']} real fetches"
         )
 
-    def test_missing_units_field_does_not_crash(self, monkeypatch):
+    def test_missing_units_field_does_not_crash(self, monkeypatch, caplog):
         """Older/degraded responses without monthly_units at all must not
-        crash -- the unit check only refuses on an explicit MISMATCH, not
-        on an absent field (defensive, since the field's presence itself
-        was only confirmed live this session, not documented as a stable
-        API contract)."""
+        crash -- opus-review-caught (L-1, this test predates the fix and
+        wasn't updated when it landed): the unit check now fails CLOSED on
+        a MISSING field too, not just an explicit mismatch (acis_snow.py's
+        own comment: "`is not None and !=` used to treat an absent
+        monthly_units key the same as a confirmed 'cm', defeating this
+        guard's own purpose"). This test's real, still-valid intent (per
+        its own name) is "does not crash", not "returns the raw value" --
+        a missing field must refuse gracefully (None + a warning), the
+        same shape test_unexpected_unit_refuses_value already proves for
+        an explicit mismatch."""
+        import logging
+
         import acis_snow
 
         class _FakeResp:
@@ -1542,10 +1550,12 @@ class TestFetchSeasonalSnowMeanCmUnitValidation:
 
         monkeypatch.setattr("acis_snow._session.get", lambda *a, **kw: _FakeResp())
         acis_snow._seasonal_cache._store.clear()
-        result = acis_snow.fetch_seasonal_snow_mean_cm(
-            39.7392, -104.9903, "America/Denver", 2026, 11
-        )
-        assert result == pytest.approx(15.82)
+        with caplog.at_level(logging.WARNING):
+            result = acis_snow.fetch_seasonal_snow_mean_cm(
+                39.7392, -104.9903, "America/Denver", 2026, 11
+            )
+        assert result is None
+        assert any("refusing to use this value" in r.message for r in caplog.records)
 
 
 class TestCheckSeriesDriftSnow:

@@ -176,13 +176,20 @@ class TestRandomSearchAndGate:
                 assert 0.0 <= v <= 1.0
 
     def test_equal_weights_returned_when_gate_fails(self):
-        """When val Brier improvement <= 0.001, equal weights are returned."""
+        """When val Brier improvement <= 0.001, equal weights are returned,
+        flagged _uncalibrated=True (M-13: this rejection is the same "not
+        actually calibrated" case as the too-few-val-rows path, and must
+        carry the same flag so _blend_weights falls through to the
+        hardcoded days-out schedule instead of treating these as a real
+        fit -- opus-review-caught: this test predates M-13's flag and
+        wasn't updated when it landed)."""
         from calibration import _best_weights
 
         # Identical rows → any weight triple scores the same → no improvement → gate fires
         rows = [(0.5, 0.5, 0.5, 1)] * 80
         train, val = rows[:64], rows[64:]
         result = _best_weights(train, val)
+        assert result.pop("_uncalibrated") is True
         assert result == pytest.approx(
             {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}, abs=1e-9
         )

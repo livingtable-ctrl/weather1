@@ -204,9 +204,14 @@ class TestClimateIndicesTTL:
         from utils import utc_today
 
         call_count = [0]
-        # Return a non-zero value for the current month so the H-17 all-zeros
-        # guard does not block caching (it only skips cache when AO+NAO+ENSO
-        # are all 0.0, which happens with an empty dict mock).
+        # opus-review-caught regression (H-17 guard tightened after this test
+        # was written): get_indices() no longer skips caching only when the
+        # COMBINED result is all-zero -- it now skips caching whenever ANY of
+        # the 3 RAW fetches came back as an empty dict (climate_indices.py's
+        # own comment: distinguishes "this source has nothing at all" from
+        # "this source's real recent value happens to be near zero"). A
+        # non-zero AO/NAO mock no longer compensates for an empty ENSO mock
+        # -- all three must be non-empty for the result to cache at all.
         # get_indices() keys its cache lookup by (utc_today().year, .month)
         # (climate_indices.py:134-139) -- must match here or a local/UTC
         # month-boundary mismatch seeds a key the real lookup never finds.
@@ -223,7 +228,9 @@ class TestClimateIndicesTTL:
         climate_indices._indices_cache = _FC(ttl_secs=climate_indices._INDICES_TTL_SECS)
 
         with patch.object(climate_indices, "_fetch_monthly_index", counting_fetch):
-            with patch.object(climate_indices, "_fetch_enso", return_value={}):
+            with patch.object(
+                climate_indices, "_fetch_enso", return_value=dict(_non_zero_data)
+            ):
                 climate_indices.get_indices()
                 calls_after_first = call_count[0]
                 climate_indices.get_indices()  # should serve from cache

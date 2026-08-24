@@ -986,7 +986,15 @@ def test_auto_place_trades_logs_paper_order_to_execution_log(tmp_path, monkeypat
 
     from utils import STRONG_EDGE
 
-    ticker = "KXHIGH-NYC-26APR30-B70"
+    # opus-review-caught regression (batch-40 between-bracket calibration,
+    # landed after this test): a "-B<N>" ticker suffix is now a real, gated
+    # between-bracket ticker (is_between_bracket_ticker()), shadow-routed by
+    # _auto_place_trades() rather than placed normally while
+    # _between_metar_gates_active() defaults off. This test's own intent
+    # (execution-log logging, unrelated to between-bracket routing) needs a
+    # ticker shape that reaches real placement -- "-T<N>" does, "-B<N>" no
+    # longer does.
+    ticker = "KXHIGH-NYC-26APR30-T70"
     fake_market = {"ticker": ticker, "yes_bid": 30, "yes_ask": 34, "_city": "NYC"}
     fake_analysis = {
         "edge": STRONG_EDGE + 0.06,

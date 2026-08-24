@@ -33,22 +33,14 @@ _REPO_ROOT = Path(__file__).parent.parent
 # utc_today()) must be listed here, or the guard test below fails. A new
 # function landing here without a real reason is a signal worth a second
 # look, not something to silently allowlist.
-_DATE_TODAY_ALLOWLIST: dict[str, str] = {
-    "backup_data": (
-        "cloud_backup.py -- prunes local backup directories older than 30 "
-        "days by parsing their date-named folder name; a local-vs-UTC "
-        "off-by-one-day skew is immaterial against a 30-day retention "
-        "window."
-    ),
-    "_check_prod_reminder": (
-        "cron.py -- once-per-day informational log/alert reminder gated by "
-        "a fixed threshold date, with its own idempotency check (compares "
-        "against a persisted 'last checked' date string) that "
-        "self-corrects if it fires more than once near a day boundary. A "
-        "few hours of local-vs-UTC drift around midnight has no real "
-        "consequence for a human-facing reminder."
-    ),
-}
+#
+# "backup_data" (cloud_backup.py) and "_check_prod_reminder" (cron.py) were
+# both removed from here -- confirmed live both were already converted to
+# utc_today()/datetime.now(UTC) by batch-33 M-21/L-6d; the allowlist entries
+# were simply never cleaned up afterward. Re-verify against the live source
+# before re-adding either: this guard's own test below (test_date_today_
+# allowlist_has_no_stale_entries) exists specifically to catch this drift.
+_DATE_TODAY_ALLOWLIST: dict[str, str] = {}
 
 
 _MASKED_TOKEN_TYPES = {tokenize.STRING, tokenize.COMMENT}

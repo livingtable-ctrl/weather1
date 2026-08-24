@@ -1019,8 +1019,16 @@ class TestMidCycleDrawdownBreachAlert:
         # place_paper_order path).
         monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
-        opp1 = _make_opp("KXHIGHNY-26APR17-B70", datetime.date(2026, 4, 17))
-        opp2 = _make_opp("KXHIGHNY-26APR18-B71", datetime.date(2026, 4, 18))
+        # opus-review-caught regression (batch-40 between-bracket calibration,
+        # landed after this test): a "-B<N>" ticker suffix is now a real,
+        # gated between-bracket ticker (is_between_bracket_ticker()), shadow-
+        # routed by _auto_place_trades() rather than placed normally while
+        # _between_metar_gates_active() defaults off. This test's own intent
+        # (drawdown-breach alerting, unrelated to between-bracket routing)
+        # needs a ticker shape that reaches real placement -- "-T<N>" (the
+        # ordinary above/below suffix) does, "-B<N>" no longer does.
+        opp1 = _make_opp("KXHIGHNY-26APR17-T70", datetime.date(2026, 4, 17))
+        opp2 = _make_opp("KXHIGHNY-26APR18-T71", datetime.date(2026, 4, 18))
 
         calls = {"n": 0}
 
@@ -1062,8 +1070,11 @@ class TestMidCycleDrawdownBreachAlert:
         # See test_fires_alert_on_mid_cycle_breach above for rationale.
         monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
-        opp1 = _make_opp("KXHIGHNY-26APR19-B72", datetime.date(2026, 4, 19))
-        opp2 = _make_opp("KXHIGHNY-26APR20-B73", datetime.date(2026, 4, 20))
+        # See test_fires_alert_on_mid_cycle_breach above for why "-T<N>", not
+        # "-B<N>" (batch-40's between-bracket gate would otherwise shadow-
+        # route these instead of placing them).
+        opp1 = _make_opp("KXHIGHNY-26APR19-T72", datetime.date(2026, 4, 19))
+        opp2 = _make_opp("KXHIGHNY-26APR20-T73", datetime.date(2026, 4, 20))
 
         with patch.object(notify, "send_system_alert") as mock_alert:
             placed = order_executor._auto_place_trades(
