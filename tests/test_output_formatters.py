@@ -12,7 +12,7 @@ def _mute_all_but_confusion_matrix(monkeypatch, module, confusion_matrix):
     """Stub every cmd_history dependency to a no-op/empty value except
     get_confusion_matrix, so the printed output is isolated to just the
     confusion-matrix block."""
-    monkeypatch.setattr(module, "sync_outcomes", lambda client: 0)
+    monkeypatch.setattr(module, "sync_outcomes", lambda client, settle_attempts=True: 0)
     monkeypatch.setattr(
         module,
         "get_history",
@@ -99,7 +99,7 @@ class TestCmdHistorySmoke:
     def test_no_history_prints_hint_and_returns(self, monkeypatch, capsys):
         import output_formatters as of
 
-        monkeypatch.setattr(of, "sync_outcomes", lambda client: 0)
+        monkeypatch.setattr(of, "sync_outcomes", lambda client, settle_attempts=True: 0)
         monkeypatch.setattr(of, "get_history", lambda n: [])
 
         of.cmd_history(client=MagicMock())
@@ -112,7 +112,7 @@ class TestCmdHistorySmoke:
         every dependency returning representative, non-empty data."""
         import output_formatters as of
 
-        monkeypatch.setattr(of, "sync_outcomes", lambda client: 2)
+        monkeypatch.setattr(of, "sync_outcomes", lambda client, settle_attempts=True: 2)
         monkeypatch.setattr(
             of,
             "get_history",
