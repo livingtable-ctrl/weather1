@@ -2,8 +2,8 @@
 
 > ## ⚠️ Completion status — read before picking up ANY batch file
 >
-> **As of 2026-08-25, master `4f2d6340`.** This directory holds 60 batch
-> files and **~46 are already implemented and merged.** Nothing inside an
+> **As of 2026-08-25, master `5202e2d6`.** This directory holds 66 batch
+> files and **~46 are already implemented and merged.** (The count read "60" until 2026-08-25; it was stale — recounted from disk, not incremented.) Nothing inside an
 > individual `batch-NN.md` says so — they are frozen handoffs, not living
 > documents.
 >
@@ -16,6 +16,7 @@
 > | **55** | 🚫 **DECLINED 2026-08-25** — design batch, user go/no-go answered **no**; zero production code changed. Full reasoning in `backlog.txt`, entry "BATCH-55: KXAVGT WEEKLY AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED". Short version: the family is eight days old, 53 of 55 brackets in its only completed week settled at ~1¢/~99¢, the book has no exit liquidity, and its settlement source (The Weather Company dailies) is not readable from this repo. Do not re-pick it up without re-running the four re-check questions in that entry. |
 > | **63** | 🟢 **READY** — [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md). Both dependencies landed (58's exit-gate precedent, 61's staleness layer). |
 > | **64-74** | 🟢 **READY** — [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md). Start with 64 (decaying sample clock); 66 is the go/no-go gating 72-74. |
+> | **75** | 🟢 **READY** — standalone, no index file. Filed 2026-08-25 from batch-53's replay fallout: the METAR lock's *running* daily extreme is persisted as `forecast_temp_f` and reaches `get_dynamic_station_bias` via `ensemble_member_scores`' `model='blended'` rows, so it adjusts live forecasts. Backlog entry is Priority **HIGH**. Opens with two `AskUserQuestion` decisions; includes a schema migration. |
 >
 > **Two traps this table exists to prevent, both hit for real on 2026-08-25:**
 >
@@ -42,7 +43,7 @@ Source: `audit/AUDIT_REPORT.md`/`.json` (2026-08-18 max-depth audit, 79 items) p
 
 Every batch instructs the recipient session to follow the 29-step `feedback-implementation-workflow` memory in full.
 
-**Later batch sets, indexed separately:** [INDEX-ROADMAP.md](INDEX-ROADMAP.md) (49-56, new market families) · [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md) (57-63, remaining open `backlog.txt` entries) · [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md) (64-74, backends for the eighteen proposed console panels — **start with batch 64, it has a decaying sample clock**).
+**Later batch sets, indexed separately:** [INDEX-ROADMAP.md](INDEX-ROADMAP.md) (49-56, new market families) · [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md) (57-63, remaining open `backlog.txt` entries) · [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md) (64-74, backends for the eighteen proposed console panels — **start with batch 64, it has a decaying sample clock**). Batch **75** is standalone and has no index file of its own.
 
 ## Suggested sequencing
 
