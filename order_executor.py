@@ -3952,6 +3952,18 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         edge_calc_version=_ECV,
         signal_source=a.get("method"),
         blend_sources=a.get("blend_sources"),
+        # batch-64 item 1 / panel A18. forecast_cycle above stays exactly as
+        # it is -- it is a wall-clock half-day dedup key that live order
+        # placement and LivePositionStore both depend on, NOT a model-run
+        # identifier. This is the real thing: {model: iso8601} of the run
+        # initialisation times behind the analysis, attached by
+        # analyze_trade() via weather_markets.get_model_run_init(). Log-only,
+        # like every field below it; nothing reads it until batch 71.
+        forecast_run_inits=a.get("forecast_run_inits"),
+        # batch-64 item 3 / panels A3 + A7 -- which forecast sources were
+        # considered and dropped, and why. blend_sources records only the
+        # survivors; this is its complement. Also log-only.
+        blend_exclusions=a.get("blend_exclusions"),
         model_consensus=a.get("model_consensus"),
         ens_mean=_es.get("mean"),
         ens_var=(_std * _std if _std is not None else None),

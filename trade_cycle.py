@@ -1207,6 +1207,15 @@ def _run_batch_prewarm_for_pairs(
     )
     # Flush to disk immediately so a canceled run still warms the next run.
     flush_ensemble_disk_cache()
+    # batch-64: the prewarm above is what fills the member-value buffer, so
+    # persist it at the same point -- forward-only data, a canceled run must
+    # not silently drop what it already collected.
+    try:
+        from weather_markets import flush_member_values as _flush_members
+
+        _flush_members()
+    except Exception as _mv_exc:
+        _log.debug("member values flush skipped: %s", _mv_exc)
 
     # Step 2: per-city sources that don't support batching.
     def _warm_one(city_date: tuple[str, str]) -> None:

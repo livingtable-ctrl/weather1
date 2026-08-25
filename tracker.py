@@ -31,7 +31,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 65  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 71  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -433,6 +433,121 @@ _MIGRATIONS = [
     # last delivery. Compounds with the pruner as the table grows.
     """CREATE INDEX IF NOT EXISTS idx_alert_deliveries_rule_fired
         ON alert_deliveries(rule_id, fired_at DESC)""",
+    # v65 -> v66: the real model-run initialisation times behind a prediction
+    # (batch-64 item 1 / panel A18). forecast_cycle above is NOT a model-run
+    # identifier -- order_executor._current_forecast_cycle() derives it from
+    # the wall clock ("12 if now.hour >= 12 else 0"), so a scan at 11:58 UTC
+    # consuming the 06z run records 00z and one at 12:02 consuming the SAME
+    # data records 12z. That column is deliberately left exactly as-is: live
+    # order dedup and LivePositionStore key off it (order_executor.py's
+    # _poll_pending_orders / _manage_live_positions), and per backlog.txt
+    # "IDEMPOTENCY KEY COLLIDES ..." it is a genuine wall-clock-half-day
+    # dedup key, which is what #37 actually wanted.
+    #
+    # This column stores a JSON {model: iso8601} dict rather than one scalar
+    # because the run time is genuinely PER-MODEL -- verified live 2026-08-25
+    # 06:34 UTC, when dwd_icon_eps and ncep_gefs025 were both on the 00z run
+    # but ecmwf_aifs025_ensemble was still on the PREVIOUS DAY's 18z, i.e. a
+    # 12-hour spread that no single scalar can represent honestly. Collapsing
+    # it (newest? oldest?) is a decision A18/batch-71 should make when it has
+    # a question to answer, not one baked in irreversibly at write time.
+    # Mirrors the blend_sources/run_trend_points/signal_values JSON-column
+    # precedent above. Log-only: nothing reads it until batch 71. No
+    # backfill -- the run time of a fetch that already happened is not
+    # recoverable, same reasoning as every other column added this way.
+    "ALTER TABLE predictions ADD COLUMN forecast_run_inits TEXT",
+    # v66 -> v67: which blend sources were CONSIDERED and dropped, and why
+    # (batch-64 item 3 / panels A3 + A7). blend_sources records only the
+    # survivors -- analyze_trade()'s renormalisation filters `v > 0` out of
+    # the dict entirely -- so a source that was unavailable is indistinguish-
+    # able from one that was never in the running, and the reason it was
+    # dropped currently exists only in a _log.debug line that nothing keeps.
+    # JSON {source: reason}, the same shape and the same write site as
+    # blend_sources itself. Deliberately NOT a parallel per-cycle history
+    # table: get_forecast_run_trend() + run_trend_points + blend_sources
+    # already reconstruct the movement series A3's middle section needs, and
+    # the exclusion reason is the only part of it with no persistent home.
+    # Log-only; no backfill.
+    "ALTER TABLE predictions ADD COLUMN blend_exclusions TEXT",
+    # v67 -> v69: per-member ensemble values (batch-64 item 2 / panel A15).
+    # ensemble_member_scores is per-MODEL (one row per city/model/target_date
+    # /var); the individual member values inside each ensemble are discarded
+    # once mean and sigma are computed. A15's rank histogram is precisely
+    # "where does the observed value fall among the sorted members", and the
+    # truncated-normal CRPS case needs the same -- neither is computable from
+    # mean and sigma, and neither can be reconstructed after the fact.
+    #
+    # Grain is (city, model, target_date, var, cycle) with the members as a
+    # JSON array, NOT one row per member: for a panel that always reads a
+    # whole member set at once, the normalised shape costs ~100x the rows for
+    # nothing. run_init carries the same per-model run timestamp as
+    # predictions.forecast_run_inits, captured at the moment of the fetch
+    # rather than inferred later.
+    #
+    # VOLUME (corrected by an opus review -- an earlier estimate here of
+    # "~24 rows/day" was derived from settled predictions and was roughly 50x
+    # low). The real driver is batch_prewarm_ensemble's combine loop:
+    # cities x target_dates x 2 vars x ~6 fetched models, times 4 cycle
+    # windows/day. At ~21 cities that is of order 1,200 rows/day, ~440k/year,
+    # at ~0.3-1 KB of values_json each -- a few hundred MB/year, in a
+    # predictions.db that cloud_backup pushes after every cron run. There is
+    # no retention sweep for this table yet; purge_old_predictions covers
+    # only predictions/outcomes. See backlog.txt "BATCH-64 FORWARD-ONLY
+    # TABLES HAVE NO RETENTION SWEEP" -- that must land before this has been
+    # writing for long.
+    #
+    # values_json holds the RAW members: pre-bias-correction and, critically,
+    # pre-weight-replication. get_ensemble_temps()/batch_prewarm_ensemble()
+    # both replicate each model's members `repeats` times to apply blend
+    # weights, which is why predictions.n_members reads 138/238/258 rather
+    # than a real member count -- a rank histogram built on replicated
+    # members would be badly distorted.
+    "CREATE TABLE IF NOT EXISTS ensemble_member_values ("
+    "  id           INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  city         TEXT NOT NULL,"
+    "  model        TEXT NOT NULL,"
+    "  target_date  TEXT NOT NULL,"
+    "  var          TEXT,"
+    "  cycle        TEXT,"
+    "  run_init     TEXT,"
+    "  n_members    INTEGER,"
+    "  values_json  TEXT NOT NULL,"
+    "  logged_at    TEXT NOT NULL"
+    ")",
+    # Dedup on the natural key, mirroring idx_ems_dedup's role for
+    # ensemble_member_scores: the ensemble cache is cycle-aligned and cron
+    # runs as a one-shot process, so several scans within one cycle would
+    # otherwise each insert an identical member set for the same forecast.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_emv_dedup "
+    "ON ensemble_member_values(city, model, target_date, var, cycle)",
+    # v69 -> v71: order-book depth snapshots (batch-64 item 4 / panels A4 +
+    # A17). kalshi_ws receives orderbook_snapshot and orderbook_delta
+    # messages already but never applied them to a usable depth structure --
+    # update_orderbook_cache kept only the single most recent delta, under
+    # `existing["last_delta"]`, overwritten by the next one. A4's ladder and
+    # its edge-as-you-fill walk, and A17's counterfactual replay, all need
+    # depth as a real book AND need its history, which is why this is a table
+    # rather than another field on data/orderbook_cache.json (that file only
+    # ever holds the latest state per ticker).
+    #
+    # Written from the WS listener's own writer thread, throttled --
+    # tracker._conn() opens a fresh connection per call in WAL mode, so a
+    # background-thread writer is safe, but a write per delta would not be.
+    #
+    # VOLUME: plain INSERT, no dedup, one row per subscribed ticker per
+    # DEPTH_SNAPSHOT_INTERVAL_SECS (default 60s). N tickers x 1,440 rows/day.
+    # Like ensemble_member_values above, this has no retention sweep yet --
+    # same backlog entry.
+    "CREATE TABLE IF NOT EXISTS orderbook_depth_snapshots ("
+    "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  ticker      TEXT NOT NULL,"
+    "  yes_json    TEXT NOT NULL,"
+    "  no_json     TEXT NOT NULL,"
+    "  env         TEXT,"
+    "  snapshot_at TEXT NOT NULL"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_ods_ticker_ts "
+    "ON orderbook_depth_snapshots(ticker, snapshot_at)",
 ]
 
 
@@ -859,6 +974,8 @@ def log_prediction(
     nbm_quantile_prob: float | None = None,
     ecmwf_consensus_gap_prob: float | None = None,
     signals: dict[str, float] | None = None,
+    forecast_run_inits: dict[str, str] | None = None,
+    blend_exclusions: dict[str, str] | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> bool:
     """Save a prediction to the database.
@@ -926,6 +1043,23 @@ def log_prediction(
     is_probation=1 filter is used only by brier_score_probation_rolling() for
     the auto-unretirement decision itself. The UPSERT MIN()s this the same way
     as is_shadow, for the same reason (a later real write always clears it).
+    forecast_run_inits: optional {model: iso8601} dict of the REAL model-run
+    initialisation times behind this prediction, from
+    weather_markets.get_model_run_init() (batch-64 item 1 / panel A18).
+    Stored as JSON, log-only, and explicitly NOT a replacement for
+    forecast_cycle -- that column stays a wall-clock half-day dedup key
+    (order_executor._current_forecast_cycle(), read by live order dedup and
+    LivePositionStore) and is not a model-run identifier at all. A dict
+    rather than one scalar because the run time is per-model and the models
+    genuinely disagree: verified live 2026-08-25, two blend models were on
+    the 00z run while ecmwf_aifs025_ensemble was still on the previous day's
+    18z. No backfill.
+    blend_exclusions: optional {source: reason} dict naming the forecast
+    sources that were considered and dropped, and why (batch-64 item 3 /
+    panels A3 + A7). blend_sources above records only the survivors -- a
+    source whose probability was unavailable is filtered out of it entirely
+    -- so without this an excluded source is indistinguishable from one that
+    was never a candidate. Stored as JSON, log-only. No backfill.
     conn: reuse a caller-provided connection (e.g. for batching many calls in
     one transaction) instead of opening a new one per call.
 
@@ -989,6 +1123,18 @@ def log_prediction(
     )
     gated_edge = round(gated_edge, 6) if gated_edge is not None else None
     signal_values_json = _json.dumps(signals) if signals is not None else None
+    # `is not None`, not truthiness -- matching blend_sources_json and
+    # signal_values_json above. An opus review caught the truthiness version:
+    # it wrote NULL for an empty dict, so "every source made it into the
+    # blend" became indistinguishable from "this row predates the column" and
+    # from "the caller never passed one". That is precisely the ambiguity
+    # blend_exclusions exists to remove, reintroduced one level up.
+    forecast_run_inits_json = (
+        _json.dumps(forecast_run_inits) if forecast_run_inits is not None else None
+    )
+    blend_exclusions_json = (
+        _json.dumps(blend_exclusions) if blend_exclusions is not None else None
+    )
 
     # G4: use today's wall-clock date as explicit UPSERT key (avoids SQLite
     # date(predicted_at) timezone ambiguity around UTC midnight).
@@ -1006,8 +1152,9 @@ def log_prediction(
            implied_mean, implied_sigma, fit_residual,
            liquidity_edge_scale, gated_edge, is_probation, var,
            ensemble_spread_f, model_disagreement_f, precip_sum_in,
-           nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values,
+           forecast_run_inits, blend_exclusions)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -1055,7 +1202,22 @@ def log_prediction(
             precip_sum_in         = excluded.precip_sum_in,
             nbm_quantile_prob     = excluded.nbm_quantile_prob,
             ecmwf_consensus_gap_prob = excluded.ecmwf_consensus_gap_prob,
-            signal_values         = excluded.signal_values
+            signal_values         = excluded.signal_values,
+            -- COALESCE, unlike every neighbour above: these two columns hold
+            -- forward-only data that cannot be recovered, and the UPSERT is
+            -- reached by writers that never pass them. weather_markets.py's
+            -- retirement-probation path calls log_prediction(is_shadow=True,
+            -- is_probation=True) with no blend kwargs at all, so a plain
+            -- overwrite NULLed a real trade's run inits for the same
+            -- (ticker, predicted_date) -- permanently, since there is no
+            -- backfill. A real value therefore wins over a later absent one;
+            -- a later PRESENT value still overwrites.
+            forecast_run_inits    = COALESCE(
+                excluded.forecast_run_inits, predictions.forecast_run_inits
+            ),
+            blend_exclusions      = COALESCE(
+                excluded.blend_exclusions, predictions.blend_exclusions
+            )
         """
     params = (
         ticker,
@@ -1102,6 +1264,8 @@ def log_prediction(
         nbm_quantile_prob,
         ecmwf_consensus_gap_prob,
         signal_values_json,
+        forecast_run_inits_json,
+        blend_exclusions_json,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
@@ -9419,6 +9583,177 @@ def log_member_score(
                 brier,
             ),
         )
+
+
+def log_ensemble_members(
+    city: str,
+    model: str,
+    target_date_str: str,
+    members: list[float],
+    var: str | None = None,
+    cycle: str | None = None,
+    run_init: str | None = None,
+) -> bool:
+    """Persist one model's RAW ensemble member values for a city/date.
+
+    batch-64 item 2 / panel A15. ensemble_member_scores (log_member_score
+    above) is per-MODEL -- one predicted_temp per city/model/target_date --
+    and the members behind that number are discarded once mean and sigma are
+    computed. A15's rank histogram is exactly "where does the observed value
+    fall among the sorted members", and the truncated-normal CRPS case needs
+    the same distribution; neither is computable from mean and sigma, and
+    neither can be reconstructed later. This is forward-only: it starts a
+    sample clock, it cannot be backfilled.
+
+    `members` MUST be the raw values as returned by _fetch_model_ensemble --
+    before bias correction and, critically, before the weight-replication
+    that get_ensemble_temps()/batch_prewarm_ensemble() apply (each model's
+    members repeated `repeats` times to express its blend weight). A
+    histogram built on replicated members is distorted by exactly that
+    weighting; predictions.n_members is a replicated count for the same
+    reason and is not a member count.
+
+    Deduplicates on (city, model, target_date, var, cycle) via idx_emv_dedup.
+
+    Delegates to log_ensemble_members_bulk() rather than carrying its own
+    copy of the INSERT: an opus review flagged that two writers with
+    duplicated SQL and duplicated dedup semantics will drift. The hot path
+    (weather_markets._persist_member_values) uses the bulk writer directly;
+    this one-row form exists for callers and tests that want a single write.
+    """
+    return (
+        log_ensemble_members_bulk(
+            [
+                {
+                    "city": city,
+                    "model": model,
+                    "target_date_str": target_date_str,
+                    "members": members,
+                    "var": var,
+                    "cycle": cycle,
+                    "run_init": run_init,
+                }
+            ]
+        )
+        > 0
+    )
+
+
+def log_ensemble_members_bulk(rows: list[dict]) -> int:
+    """Insert many ensemble member sets in ONE transaction. Returns rows added.
+
+    log_ensemble_members() above opens its own connection per call, which
+    measured at ~67 ms on this project's storage. batch_prewarm_ensemble()
+    calls the writer once per (city, model, target_date, var) -- of order 300
+    times per scan -- so per-call connections added ~20 s to every scan, paid
+    again on every subsequent scan because a deduped no-op costs the same as
+    an insert. That is far too much for a write-only observation that is not
+    allowed to disturb existing behaviour, hence this batched path.
+
+    `rows` are dicts with the same keys log_ensemble_members takes. Rows with
+    no members are skipped. INSERT OR IGNORE and the (city, model,
+    target_date, var, cycle) dedup semantics are identical to the single
+    writer -- see its docstring for why first-write-wins is the correct
+    choice here. Every failure is swallowed: this must never propagate into a
+    forecast fetch.
+    """
+    import json as _json
+
+    if not rows:
+        return 0
+    try:
+        init_db()
+        now = datetime.now(UTC).isoformat()
+        # var and cycle are coerced to "" rather than left None: SQLite
+        # treats NULLs as DISTINCT in a UNIQUE index, so a single NULL in
+        # either would silently switch idx_emv_dedup off for that row and
+        # let duplicates accumulate. Production callers always supply both,
+        # so this is a latent hazard rather than a live one -- but the whole
+        # point of the index is that a re-presented forecast collapses to
+        # one row, and a dedup key that fails open is worse than none.
+        params = [
+            (
+                r["city"],
+                r["model"],
+                r["target_date_str"],
+                r.get("var") or "",
+                r.get("cycle") or "",
+                r.get("run_init"),
+                len(r["members"]),
+                _json.dumps([float(m) for m in r["members"]]),
+                now,
+            )
+            for r in rows
+            if r.get("members")
+        ]
+        if not params:
+            return 0
+        with _conn() as con:
+            cur = con.executemany(
+                """
+                INSERT OR IGNORE INTO ensemble_member_values
+                  (city, model, target_date, var, cycle, run_init,
+                   n_members, values_json, logged_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    except Exception as exc:
+        _log.warning("log_ensemble_members_bulk failed for %d rows: %s", len(rows), exc)
+        return 0
+
+
+def log_orderbook_depth(
+    ticker: str,
+    yes_levels: list,
+    no_levels: list,
+    env: str | None = None,
+    snapshot_at: str | None = None,
+) -> bool:
+    """Persist one full-depth order-book snapshot for a ticker.
+
+    batch-64 item 4 / panels A4 + A17. The deltas that build this book have
+    been arriving over the websocket all along and were being thrown away --
+    kalshi_ws.update_orderbook_cache kept only the single most recent one.
+    A4's ladder and edge-as-you-fill walk, and A17's counterfactual replay,
+    need depth as a real book and need its HISTORY, which a single-state
+    cache file cannot provide. Forward-only: not backfillable.
+
+    Levels are [[price, qty], ...]. `env` stamps which KALSHI_ENV produced
+    the snapshot, for the same reason data/orderbook_cache.json carries
+    `_env`: the table is keyed only by ticker, so without it a demo book and
+    a prod book for the same ticker are indistinguishable after the fact.
+
+    Called from the WS listener thread (throttled by its caller, never per
+    delta). Returns True on insert; every failure is swallowed and logged --
+    this is a write-only observation and must never disturb the feed.
+    """
+    if not yes_levels and not no_levels:
+        return False
+    import json as _json
+
+    try:
+        init_db()
+        with _conn() as con:
+            con.execute(
+                """
+                INSERT INTO orderbook_depth_snapshots
+                  (ticker, yes_json, no_json, env, snapshot_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    ticker,
+                    _json.dumps(yes_levels),
+                    _json.dumps(no_levels),
+                    env,
+                    snapshot_at or datetime.now(UTC).isoformat(),
+                ),
+            )
+        return True
+    except Exception as exc:
+        _log.warning("log_orderbook_depth failed for %s: %s", ticker, exc)
+        return False
 
 
 def get_member_accuracy(days_back: int = 60) -> dict:

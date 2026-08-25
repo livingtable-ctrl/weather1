@@ -27,17 +27,30 @@ Source: the **Weather V3 additions design handoff** (`design_handoff_weather_v3_
 
 **Commit prerequisite:** these batch files must be committed to master before parallel worktree sessions start — worktrees can't see the main clone's uncommitted files.
 
-## Batch 64 comes first, and the reason is calendar not dependency
+## Batch 64 is DONE — the sample clocks are running
 
-Batch 64 lands four **forward-only writers**. They collect data that cannot be backfilled — A15's rank histogram in particular starts its sample clock the day member values first persist. Every day 64 is not running is a day permanently missing from batches 70 and 71.
+Landed 2026-08-25 (schema **v67**). The four writers and where their data goes:
 
-64 is small, pure backend, and conflicts with nothing in the frontend. **Run it first even if nothing else starts.**
+| Item | Where it lands | Notes for the consuming batch |
+|---|---|---|
+| W1 run init | `predictions.forecast_run_inits` | JSON `{model: iso8601}`, **not** a scalar — the models genuinely disagree (verified live: two blend models on 00z while `ecmwf_aifs025_ensemble` was on the previous day's 18z). Collapse it however A18 needs. `forecast_cycle` is untouched and still the wall-clock order-dedup key. |
+| W2 members | `ensemble_member_values` | One row per (city, model, target_date, var, cycle), members as a JSON array. Values are **raw** — pre-bias-correction and pre-weight-replication. |
+| W3 exclusions | `predictions.blend_exclusions` | JSON `{source: reason}`; reasons are `unavailable`, `zero_weight`, `circuit_open`. The complement of `blend_sources`. |
+| W4 depth | `orderbook_depth_snapshots` | Throttled per ticker via `DEPTH_SNAPSHOT_INTERVAL_SECS` (default 60s). New accessor `kalshi_ws.get_cached_depth()`; `get_cached_book()` is unchanged. |
+
+**Three corrections batches 70/71 must not re-inherit from the design handoff:**
+
+1. **Open-Meteo does NOT return a model-run timestamp in its forecast response.** Batch-64's own text said it did and told the implementer to "thread it through rather than re-requesting" — that is not possible. Probed live against both `api.open-meteo.com/v1/forecast` and `ensemble-api.open-meteo.com/v1/ensemble`: the only top-level time field is `generationtime_ms`, which is server processing time. The real value lives at `/data/<dataset>/static/meta.json` as `last_run_initialisation_time`, on a **separate** endpoint keyed by dataset name — and the bot's model aliases are not dataset names (`icon_seamless` and `gfs_seamless` both 500; they map to `dwd_icon_eps` and `ncep_gefs025`). See `weather_markets._MODEL_RUN_META_NAMES`.
+2. **`n_members` is not a member count.** `get_ensemble_temps()`/`batch_prewarm_ensemble()` replicate each model's members `repeats` times to express blend weights, so stored values read 138/238/258. A rank histogram built on it would be weight-distorted. Use `ensemble_member_values` instead.
+3. **`forecast_run_inits` is only populated when a fetch was actually observed.** An all-cache-hit scan records nothing rather than guessing a run time — that is deliberate, and 71 should filter on presence rather than assume every row has it.
+
+**Check real row counts before starting 70/71** rather than assuming a rate — A15b's half needs months, not days.
 
 ## Parallel structure
 
 | Track | Batches | Files owned | Parallel-safe with |
 |---|---|---|---|
-| **W — Writers** | [64](batch-64.md) | `order_executor.py`, `kalshi_ws.py`, `paper.py`, `tracker.py` **(migrations + writers only)**, forecast-fetch call sites in `weather_markets.py` | A, B (see tracker.py note) |
+| **W — Writers** ✅ done | [64](batch-64.md) | `order_executor.py`, `kalshi_ws.py`, `paper.py`, `tracker.py` **(migrations + writers only)**, forecast-fetch call sites in `weather_markets.py` | A, B (see tracker.py note) |
 | **A — Analytics on existing data** | [65](batch-65.md), [66](batch-66.md), [67](batch-67.md) | `tracker.py` **(new query functions only)**, `web_app.py` **(new endpoints only)**, `config.py` (66 only), `weather_markets.py` gate-count + CDF regions (65/67) | each other, W, B |
 | **B — Audits & independent** | [68](batch-68.md), ~~[69](batch-69.md)~~ ✅ | `settlement_monitor.py`, `metar.py` (68); `notify.py`, `cron.py`, `alerts.py`, plus `tracker.py` (3 migrations, v61→v64), `web_app.py` (5 routes), 2 `main.py` dispatch lines and a new `acis_temps.py` (69, landed) | everything |
 | **C — Blocked on track W** | [70](batch-70.md), [71](batch-71.md) | `tracker.py` query functions, `web_app.py` endpoints | each other |
@@ -49,7 +62,7 @@ Batches 64-67 and 70-71 all append to `tracker.py` and `web_app.py`. They are de
 
 **Two exceptions where that is not true and coordination is required:**
 
-1. **`tracker.py`'s `_MIGRATIONS` list is a single ordered array.** Batch 64 adds migrations (member values, forecast history). Batch 72 adds one (depth snapshots). If both are in flight, the second to land **must** rebase and re-number rather than hand-merging conflict markers, and must re-run `init_db()` against a scratch DB to confirm the migration chain still applies cleanly from an empty file. `_SCHEMA_VERSION` must be bumped to match the list length.
+1. **`tracker.py`'s `_MIGRATIONS` list is a single ordered array.** Batch 64 has landed and grew it from 61 to **67** entries (`_SCHEMA_VERSION = 67`). Batch 72 adds one (depth snapshots) — note 64 already created `orderbook_depth_snapshots`, so check whether 72's migration is still needed at all before adding a duplicate. If both are in flight, the second to land **must** rebase and re-number rather than hand-merging conflict markers, and must re-run `init_db()` against a scratch DB to confirm the migration chain still applies cleanly from an empty file. `_SCHEMA_VERSION` must be bumped to match the list length.
 2. **`web_app.py`'s `/api/analytics` reflection tuple** is one literal. Several batches add a name to it. Same rule: rebase, don't hand-merge.
 
 ### Collision notes
@@ -60,7 +73,7 @@ Batches 64-67 and 70-71 all append to `tracker.py` and `web_app.py`. They are de
 
 ## Sequencing
 
-1. **[64](batch-64.md) immediately.** Sample clocks. Nothing else has a decaying value.
+1. ~~**[64](batch-64.md) immediately.**~~ ✅ **Done 2026-08-25** — schema v67. Sample clocks are running.
 2. **[66](batch-66.md) next, then [65](batch-65.md).** See the finding below — 66 answers whether the rest is worth building.
 3. ~~**[68](batch-68.md)** any time; it is half a day and either confirms every calibration number above it or invalidates them.~~ ✅ **DONE 2026-08-25.** It confirmed them: every calibration number is scored against `outcomes.settled_yes`, which is Kalshi's own `result` read only at `status="finalized"` and no earlier than 1h past close. **No regrade.** It did find two derived-path defects and fixed both — see the `A13 SETTLEMENT-SOURCE AUDIT` entry in `backlog.txt`. **Batch 74 (A9) inherits one rule from it:** METAR is a legitimate pre-settlement *trading signal* (that is all `settlement_monitor.py` and `_metar_lock_in` ever use it for) but is NOT a settlement source for any market family this bot trades — not even the hourly ones, which settle on The Weather Company and the Kalshi Weather Index. A9's "high so far" may gate an exit; it may never be written anywhere a grading consumer reads.
 4. **[65](batch-65.md), [67](batch-67.md)** in parallel, any order. ~~69~~ ✅ landed 2026-08-25 — see the completion table in [INDEX.md](INDEX.md); its alert engine and `cron_gap` scheduler entry are both deliberately dormant pending an operator action.

@@ -3474,6 +3474,22 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.warning("forecast cache flush failed: %s", _e)
 
+    # batch-64: same accumulate-then-batch-flush pattern as the two flushes
+    # above. Member values are forward-only data -- a dropped buffer is a
+    # permanently missing sample, not a cold cache -- so flush explicitly
+    # here rather than relying solely on the atexit hook.
+    try:
+        from weather_markets import flush_member_values as _flush_members
+
+        _flushed_mv = _flush_members()
+        if _flushed_mv:
+            print(
+                dim(f"  [cron] ensemble members: {_flushed_mv} rows saved"),
+                flush=True,
+            )
+    except Exception as _e:
+        _log.warning("member values flush failed: %s", _e)
+
     # Sync data/ to cloud (OneDrive / Google Drive / custom path) after every cron run
     try:
         from cloud_backup import backup_data as _backup

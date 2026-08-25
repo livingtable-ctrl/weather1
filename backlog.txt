@@ -588,6 +588,58 @@ FOLLOW-UPS (not filed as separate entries yet -- they only become real work
     finding 4. Needs its own go/no-go.
   - The maturation-bias measurement in criterion 4 needs somewhere to record
     the two SPC readings per settled event; there is no table for it today.
+[OPEN 2026-08-25 -- found by the opus review (effort=high) of batch-64
+  itself; filed rather than folded in because a retention sweep is its own
+  design decision (how long is A15's rank histogram allowed to look back?)
+  and batch-64's value depends on the writers starting TODAY.] BATCH-64'S
+  TWO FORWARD-ONLY TABLES HAVE NO RETENTION SWEEP, AND ONE OF THEM GROWS
+  ~50x FASTER THAN ITS OWN MIGRATION COMMENT ESTIMATED
+Priority: Medium -- nothing is broken today and the tables are tiny for the
+  first weeks, but predictions.db is already 47 MB and cloud_backup.backup_data
+  pushes it after every cron run, so unbounded growth is paid on every backup.
+  Wants deciding before these have been writing for months, not after.
+Files: tracker.py (ensemble_member_values + orderbook_depth_snapshots
+  migrations; purge_old_predictions as the sibling pattern), weather_markets.py
+  (batch_prewarm_ensemble's combine loop is the volume driver), kalshi_ws.py
+  (_maybe_persist_depth's DEPTH_SNAPSHOT_INTERVAL_SECS throttle)
+
+Problem:
+  Batch-64 added two tables that only ever grow. purge_old_predictions()
+  covers `predictions` and `outcomes` only; a grep for DELETE against either
+  new table finds nothing.
+
+  ensemble_member_values: the migration comment shipped with an estimate of
+  "~24 rows/day (~9k/year)". That was derived from settled-prediction counts
+  and is roughly 50x low. The real driver is batch_prewarm_ensemble's combine
+  loop -- cities x target_dates x 2 vars x ~6 fetched models, times 4 cycle
+  windows/day. At ~21 cities that is of order 1,200 rows/day, ~440k/year, at
+  ~0.3-1 KB of values_json each, i.e. a few hundred MB/year. The comment has
+  been corrected in place; the retention gap has not.
+
+  orderbook_depth_snapshots: plain INSERT with no dedup, one row per
+  subscribed ticker per DEPTH_SNAPSHOT_INTERVAL_SECS (default 60s). N
+  subscribed tickers x 1,440 rows/day, and cron subscribes every scanned
+  market.
+
+Why not now:
+  The retention WINDOW is a real question, not a mechanical fix, and the
+  answer differs per table. A15's rank histogram and A15b's calibration half
+  are explicitly long-horizon ("needs months, not days" per
+  INDEX-PANEL-BACKENDS.md), so member values should probably be kept far
+  longer than depth snapshots, which A4/A17 use for short-horizon replay.
+  Picking either window before batches 70/71 exist to say what they actually
+  read would be guessing. Batch-64's own scope was the writers, and its
+  value decays with delay, so the sweep is deliberately deferred rather than
+  bundled.
+
+Plan:
+  1. Decide a window per table with the user (member values: long, likely
+     tied to whatever A15b needs; depth: short, likely weeks).
+  2. Add a purge alongside purge_old_predictions(), same shape and same
+     call site, so it runs on the existing cron cadence.
+  3. Check actual on-disk growth first -- run the row counts after this has
+     been writing for a week and size the window against measured bytes
+     rather than the estimate above, which has already been wrong once.
 
 [OPEN 2026-08-25 -- found by the round-3 opus review (effort=high) of
   batch-60's own fix rounds; confirmed pre-existing (present in the

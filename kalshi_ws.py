@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import queue
 import threading
 import time
 from datetime import UTC, datetime
@@ -90,6 +91,435 @@ def _ws_url() -> str:
 _orderbook: dict[str, dict] = {}
 _cache_lock = threading.Lock()
 
+# ── Full-depth order book (batch-64 item 4 / panels A4 + A17) ────────────────
+#
+# orderbook_snapshot and orderbook_delta messages have been arriving all
+# along and were being discarded: update_orderbook_cache kept only the single
+# most recent delta under `last_delta`, overwritten by the next one, and
+# get_cached_book()'s docstring says so outright. A4's ladder and its
+# edge-as-you-fill walk, and A17's counterfactual replay, all need depth
+# applied to a real book and snapshotted over time. This is forward-only --
+# depth that was not recorded cannot be recovered.
+#
+# Structure: ticker -> {"yes": {price: qty}, "no": {price: qty},
+#                       "seq": int|None, "ts": iso, "valid": bool}
+#
+# `valid` is the gap guard. A delta is a SIGNED change to one level, not an
+# absolute quantity, so a single missed message leaves the book permanently
+# and silently wrong. On a sequence gap the book is marked invalid and
+# get_cached_depth() returns None until the next full snapshot rebuilds it --
+# a cold book is a correct answer, a drifted one is not.
+_depth_books: dict[str, dict] = {}
+_depth_lock = threading.Lock()
+
+# Last DB snapshot time per ticker (monotonic). A write per delta would put
+# SQLite on the WS hot path; this throttles to one row per ticker per
+# interval. tracker._conn() opens a fresh connection per call in WAL mode, so
+# writing from this background thread is safe once throttled.
+_depth_last_persist: dict[str, float] = {}
+
+# Expected next sequence number per SUBSCRIPTION id, and which tickers belong
+# to each sid. Kalshi's seq counts per subscription, not per market, so a
+# per-ticker contiguity check is wrong: with N tickers on one sid, each
+# ticker's own seq jumps by ~N between its messages and every book would be
+# invalidated on its first delta and never recover. A gap on a sid means the
+# stream lost a message for SOME market on that sid and we cannot tell which,
+# so every book under it is invalidated.
+_depth_seq_by_sid: dict[object, int] = {}
+_depth_sid_tickers: dict[object, set[str]] = {}
+
+# Prices are dollars in (0, 1) per Kalshi's spec (e.g. "0.0800"). A level
+# outside that range means the feed changed representation -- a cents-scaled
+# price would key alongside dollar-scaled ones and sort ABOVE every real
+# level, fabricating a best bid out of nothing. Invalidate rather than serve
+# a book that still reads as depth but is nonsense.
+_DEPTH_PRICE_MIN = 0.0
+_DEPTH_PRICE_MAX = 1.0
+
+# Depth snapshots are handed to a dedicated writer thread rather than written
+# inline. update_orderbook_cache is called synchronously from inside
+# `async for raw in ws:`, so it runs ON the event loop -- an inline
+# sqlite3.connect + PRAGMA + INSERT + commit + close blocks message reading.
+# The throttle bounds the steady state to one write per ticker per interval,
+# but not the subscribe burst: _depth_last_persist starts empty, and cron
+# subscribes every scanned ticker at once, so the first snapshot for each of
+# hundreds of tickers would write immediately, back to back, with nothing
+# yielding to the loop. A stalled loop stops reading messages, which risks a
+# ping timeout and a dropped connection -- degrading get_cached_mid_price,
+# the flash-crash breaker's preferred input, as a side effect of a
+# write-only observation.
+#
+# Bounded queue, drop-newest on overflow: losing a depth snapshot is a
+# tolerable cost, blocking the feed is not.
+_DEPTH_QUEUE_MAX = 512
+_depth_write_queue: queue.Queue = queue.Queue(maxsize=_DEPTH_QUEUE_MAX)
+_depth_writer_thread: threading.Thread | None = None
+_depth_writer_lock = threading.Lock()
+_depth_dropped_writes = 0
+
+
+def _depth_writer_loop() -> None:
+    """Drain the depth-snapshot queue, writing each row to tracker.
+
+    Daemon thread: a pending depth snapshot must never keep the process
+    alive. Every failure is swallowed and logged -- this is a write-only
+    observation and must never disturb the feed.
+    """
+    while True:
+        item = _depth_write_queue.get()
+        try:
+            if item is None:  # shutdown sentinel
+                return
+            import tracker as _tracker
+
+            _tracker.log_orderbook_depth(**item)
+        except Exception as exc:
+            _log.warning("depth snapshot write failed: %s", exc)
+        finally:
+            _depth_write_queue.task_done()
+
+
+def _ensure_depth_writer() -> None:
+    """Start the writer thread on first use, once per process."""
+    global _depth_writer_thread
+    with _depth_writer_lock:
+        if _depth_writer_thread is not None and _depth_writer_thread.is_alive():
+            return
+        _depth_writer_thread = threading.Thread(
+            target=_depth_writer_loop, name="depth-writer", daemon=True
+        )
+        _depth_writer_thread.start()
+
+
+def prune_depth_books(keep: set[str] | None = None) -> int:
+    """Drop depth state for tickers outside `keep` (None = drop everything).
+
+    Weather tickers are date-scoped and `cmd_cron()` is called repeatedly for
+    the lifetime of a `watch` process, so without this the module globals
+    accumulate a book per ticker per day forever. Called from subscribe().
+    Returns the number of tickers dropped.
+    """
+    with _depth_lock:
+        current = set(_depth_books)
+        drop = current if keep is None else current - keep
+        for t in drop:
+            _depth_books.pop(t, None)
+            _depth_last_persist.pop(t, None)
+        for sid, tickers in list(_depth_sid_tickers.items()):
+            tickers -= drop
+            if not tickers:
+                _depth_sid_tickers.pop(sid, None)
+                _depth_seq_by_sid.pop(sid, None)
+    if drop:
+        _log.debug("prune_depth_books: dropped %d ticker(s)", len(drop))
+    return len(drop)
+
+
+def _depth_snapshot_interval() -> float:
+    """Seconds between persisted depth snapshots per ticker.
+
+    Read per call rather than captured at import, so a long-running process
+    picks up a changed env var -- the same reason update_orderbook_cache
+    reads KALSHI_ENV per write. 0 or negative disables persistence entirely
+    (the in-memory book still works).
+    """
+    raw = os.getenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "60")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        _log.warning("DEPTH_SNAPSHOT_INTERVAL_SECS=%r is not a number — using 60", raw)
+        return 60.0
+
+
+def _coerce_price(raw) -> float | None:
+    """Return a price/quantity as a float, or None if it is not a usable number.
+
+    Kalshi's March 2026 migration moved prices to dollar strings ("0.6500")
+    while other fields remain integer cents, and this module's snapshot
+    branch already float()s whatever arrives. Accept both rather than
+    assuming one: a wrong assumption here produces a book keyed on two
+    incompatible price scales, which still reads as depth but is nonsense.
+    Rejects bool explicitly -- it is an int subclass, so True would silently
+    become price 1.0.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _levels_to_map(levels) -> dict[float, int]:
+    """Convert [[price, qty], ...] into {price: qty}, skipping malformed rows."""
+    out: dict[float, int] = {}
+    if not isinstance(levels, list | tuple):
+        return out
+    for lvl in levels:
+        if not isinstance(lvl, list | tuple) or len(lvl) < 2:
+            continue
+        price = _coerce_price(lvl[0])
+        qty = _coerce_price(lvl[1])
+        if price is None or qty is None or qty <= 0:
+            continue
+        out[price] = int(qty)
+    return out
+
+
+def _map_to_levels(book_side: dict[float, int]) -> list[list]:
+    """Render {price: qty} as [[price, qty], ...], best-bid-first.
+
+    Both sides of a Kalshi book are BIDS (yes bids and no bids), so both are
+    best-first sorted high-to-low -- matching parse_message's own
+    "Kalshi sends yes levels sorted best-bid-first per API spec" note.
+    """
+    return [
+        [p, q] for p, q in sorted(book_side.items(), key=lambda kv: -kv[0]) if q > 0
+    ]
+
+
+def _apply_orderbook_snapshot(ticker: str, data: dict) -> None:
+    """Rebuild a ticker's depth book from a full snapshot.
+
+    A snapshot is the only thing that can make a book valid again after a
+    sequence gap, which is why it resets `valid`.
+
+    An all-empty snapshot does NOT produce a valid book. That case is not
+    hypothetical: reading the wrong payload field names yielded exactly this
+    -- an empty book marked confidently valid, which subsequent deltas then
+    built up from nothing (every removal a no-op, every addition a phantom
+    level) with no gap warning and no way to tell afterwards. "A cold book is
+    a correct answer, a drifted one is not" only holds if an empty snapshot
+    counts as cold.
+    """
+    yes_map = _levels_to_map(data.get("yes_levels"))
+    no_map = _levels_to_map(data.get("no_levels"))
+    seq = data.get("seq")
+    sid = data.get("sid")
+
+    with _depth_lock:
+        _depth_books[ticker] = {
+            "yes": yes_map,
+            "no": no_map,
+            "seq": seq,
+            "sid": sid,
+            "ts": data.get("ts"),
+            "valid": bool(yes_map or no_map),
+        }
+        if sid is not None:
+            _depth_sid_tickers.setdefault(sid, set()).add(ticker)
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            _depth_seq_by_sid[sid] = seq
+
+
+def _apply_orderbook_delta(ticker: str, data: dict) -> None:
+    """Apply one delta to a ticker's depth book.
+
+    Kalshi's spec payload is {market_ticker, market_id, price_dollars,
+    delta_fp, side}: `delta_fp` is a SIGNED change to the resting quantity at
+    `price_dollars` on `side` (e.g. "-54.00" = 54 contracts removed), not a
+    new absolute quantity. A level reaching zero is removed rather than kept
+    at 0, so a depth walk never sees a hole.
+
+    Two invariants, both chosen so the book is never confidently wrong:
+
+    * The sequence cursor is keyed on `sid` (the subscription), not on the
+      ticker, because that is what Kalshi counts. A gap invalidates every
+      book on that subscription -- the lost message could have belonged to
+      any market under it, and we cannot tell which.
+    * A delta that arrives but cannot be applied -- unknown side, unparseable
+      price or quantity, a price outside the (0, 1) dollar range -- also
+      invalidates. We know the book changed and we know we failed to track
+      it, so continuing to serve it would be serving a drifted book. The
+      cursor still advances first, so the NEXT message is not additionally
+      misreported as a gap.
+    """
+    seq = data.get("seq")
+    if isinstance(seq, bool):  # bool is an int subclass
+        seq = None
+    sid = data.get("sid")
+
+    with _depth_lock:
+        # Cursor first, and unconditionally for any message carrying a seq --
+        # including one we go on to reject -- so a rejected message costs one
+        # honest invalidation rather than that plus a phantom gap afterwards.
+        gapped = False
+        if isinstance(seq, int):
+            prev_seq = _depth_seq_by_sid.get(sid)
+            _depth_seq_by_sid[sid] = seq
+            gapped = isinstance(prev_seq, int) and seq != prev_seq + 1
+
+        if gapped:
+            affected = _depth_sid_tickers.get(sid) or {ticker}
+            for t in affected:
+                b = _depth_books.get(t)
+                if b is not None:
+                    b["valid"] = False
+            _log.warning(
+                "orderbook depth: sequence gap on sid=%s (%s -> %s) — "
+                "invalidated %d book(s) until the next snapshot",
+                sid,
+                prev_seq,
+                seq,
+                len(affected),
+            )
+            return
+
+        book = _depth_books.get(ticker)
+        if book is None or not book.get("valid"):
+            return
+
+        def _reject(reason: str, *args) -> None:
+            book["valid"] = False
+            _log.warning(
+                "orderbook depth: %s — unapplicable delta for %s; book "
+                "invalidated until the next snapshot",
+                reason % args if args else reason,
+                ticker,
+            )
+
+        inner = data.get("delta")
+        if not isinstance(inner, dict):
+            _reject("payload is not an object")
+            return
+
+        side = inner.get("side")
+        if side not in ("yes", "no"):
+            _reject("unknown side %r", side)
+            return
+
+        # Spec names first (`price_dollars` / `delta_fp`); the bare
+        # `price`/`delta` names do not appear in Kalshi's published schema
+        # and are accepted only so an older capture still parses. Preferring
+        # the spec names is load-bearing: reading only `delta` discarded
+        # every real delta silently, which left the book frozen at its
+        # snapshot and then invalidated on the following message.
+        raw_price = inner.get("price_dollars")
+        if raw_price is None:
+            raw_price = inner.get("price")
+        raw_change = inner.get("delta_fp")
+        if raw_change is None:
+            raw_change = inner.get("delta")
+
+        price = _coerce_price(raw_price)
+        change = _coerce_price(raw_change)
+        if price is None or change is None:
+            _reject("unparseable price %r / delta %r", raw_price, raw_change)
+            return
+        if not _DEPTH_PRICE_MIN < price < _DEPTH_PRICE_MAX:
+            _reject("price %r outside (0, 1) — feed scale changed", price)
+            return
+
+        side_map = book[side]
+        new_qty = int(side_map.get(price, 0) + change)
+        # Evict an exhausted level rather than keeping it at 0. _map_to_levels
+        # would filter a 0 out of the rendered book either way, so this is
+        # about the book itself: retaining every price level ever touched on
+        # every subscribed ticker is a slow leak in a long-lived WS process.
+        if new_qty > 0:
+            side_map[price] = new_qty
+        else:
+            side_map.pop(price, None)
+
+        # Recorded as metadata only -- the gap cursor lives in
+        # _depth_seq_by_sid, keyed by subscription.
+        if seq is not None:
+            book["seq"] = seq
+        if data.get("ts"):
+            book["ts"] = data["ts"]
+
+
+def get_cached_depth(ticker: str) -> dict | None:
+    """Return the full-depth order book for a ticker, or None.
+
+    Shape: {"yes": [[price, qty], ...], "no": [...], "seq": int|None,
+    "ts": iso}, both sides sorted best-bid-first.
+
+    Returns None when no snapshot has been seen, when a sequence gap has
+    invalidated the book, or when the newest message is older than
+    WS_CACHE_TTL_SECS. A caller needing depth for a cold or stale ticker
+    should fall back to kalshi_client.get_orderbook(), the on-demand REST
+    fetch.
+
+    Deliberately a SEPARATE accessor from get_cached_book(), whose return
+    shape is unchanged: the reprice/chase path reads top-of-book only, its
+    docstring's reasoning that "this bot's order sizes don't require walking
+    multiple depth levels" still holds, and adding depth must not move what
+    that path sees.
+    """
+    with _depth_lock:
+        book = _depth_books.get(ticker)
+        if book is None or not book.get("valid"):
+            return None
+        if not _is_fresh(book):
+            return None
+        return {
+            "yes": _map_to_levels(book["yes"]),
+            "no": _map_to_levels(book["no"]),
+            "seq": book.get("seq"),
+            "ts": book.get("ts"),
+        }
+
+
+def _maybe_persist_depth(ticker: str) -> bool:
+    """Throttled hand-off of the current depth book to the writer thread.
+
+    Returns True when a snapshot was ENQUEUED (not when it reached the DB --
+    the write happens off the event loop, see _depth_writer_loop). Every
+    failure is swallowed: this is a write-only observation for A4/A17 and
+    must never disturb the feed.
+    """
+    interval = _depth_snapshot_interval()
+    if interval <= 0:
+        return False
+
+    now = time.monotonic()
+    with _depth_lock:
+        last = _depth_last_persist.get(ticker)
+        if last is not None and (now - last) < interval:
+            return False
+        book = _depth_books.get(ticker)
+        if book is None or not book.get("valid"):
+            return False
+        yes_levels = _map_to_levels(book["yes"])
+        no_levels = _map_to_levels(book["no"])
+        if not yes_levels and not no_levels:
+            # Checked BEFORE reserving the slot: an empty book has nothing
+            # worth writing, and burning the slot here would block the first
+            # real snapshot for a whole interval.
+            return False
+        snapshot_at = book.get("ts")
+        # Reserve the slot before writing, still inside the lock, so a slow
+        # or failing write can't let a second caller straight through.
+        _depth_last_persist[ticker] = now
+
+    global _depth_dropped_writes
+    _ensure_depth_writer()
+    try:
+        _depth_write_queue.put_nowait(
+            {
+                "ticker": ticker,
+                "yes_levels": yes_levels,
+                "no_levels": no_levels,
+                # Read here, at capture time, not in the writer thread: the
+                # row's env must describe the host that actually produced the
+                # book, and the queue can lag.
+                "env": os.getenv("KALSHI_ENV", "demo"),
+                "snapshot_at": snapshot_at,
+            }
+        )
+        return True
+    except queue.Full:
+        _depth_dropped_writes += 1
+        if _depth_dropped_writes % 100 == 1:
+            _log.warning(
+                "depth snapshot queue full — dropped %d snapshot(s) so far; "
+                "the DB writer is not keeping up",
+                _depth_dropped_writes,
+            )
+        return False
+
+
 _ws_alive: bool = False
 _ws_last_message_ts: float = 0.0
 _ws_state_lock = threading.Lock()
@@ -138,13 +568,37 @@ def parse_message(msg: dict) -> dict | None:
     if not msg_type or not inner:
         return None
 
+    # batch-64 item 4: Kalshi stamps every orderbook_delta/snapshot with a
+    # sequence number and a subscription id at the TOP level of the envelope
+    # (beside "type"/"msg"), which this parser previously dropped. A depth
+    # book rebuilt from deltas is only trustworthy if gaps are detectable --
+    # one missed delta silently corrupts every level after it, with no
+    # symptom.
+    #
+    # `seq` counts per SUBSCRIPTION (per `sid`), not per market: the
+    # published AsyncAPI examples show sid=2/seq=2 for a snapshot and
+    # sid=2/seq=3 for the following delta, and cron.py subscribes every
+    # scanned ticker under a single subscribe message, so one sid spans
+    # hundreds of markets. Both are carried through; the gap check keys on
+    # sid (see _apply_orderbook_delta). None when absent.
+    seq = msg.get("seq")
+    sid = msg.get("sid")
+
     ticker = inner.get("market_ticker")
     if not ticker:
         return None
 
     if msg_type == "orderbook_snapshot":
-        yes_levels = inner.get("yes", [])  # [[price_str, qty], ...]
-        no_levels = inner.get("no", [])
+        # Kalshi's published AsyncAPI spec names these `yes_dollars_fp` /
+        # `no_dollars_fp`, e.g. [["0.0800", "300.00"], ["0.2200", "333.00"]]
+        # -- dollar-string prices with fixed-point quantities. The bare
+        # `yes`/`no` names this branch previously read do not appear in the
+        # spec at all, which is why best_yes_bid/best_no_bid below have been
+        # None in production since this was written (nothing consumed them,
+        # so it went unnoticed). Both names are accepted: the new one first,
+        # the legacy one as a fallback, so a capture in either shape works.
+        yes_levels = inner.get("yes_dollars_fp") or inner.get("yes") or []
+        no_levels = inner.get("no_dollars_fp") or inner.get("no") or []
         # Kalshi sends yes levels sorted best-bid-first per API spec
         best_yes_bid = float(yes_levels[0][0]) if yes_levels else None
         best_no_bid = float(no_levels[0][0]) if no_levels else None
@@ -155,6 +609,8 @@ def parse_message(msg: dict) -> dict | None:
             "best_no_bid": best_no_bid,
             "yes_levels": yes_levels,
             "no_levels": no_levels,
+            "seq": seq,
+            "sid": sid,
             "ts": datetime.now(UTC).isoformat(),
         }
 
@@ -163,6 +619,8 @@ def parse_message(msg: dict) -> dict | None:
             "type": "orderbook_delta",
             "ticker": ticker,
             "delta": inner,
+            "seq": seq,
+            "sid": sid,
             "ts": datetime.now(UTC).isoformat(),
         }
 
@@ -197,22 +655,57 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
     """Update in-memory and on-disk cache for a ticker."""
     import safe_io
 
+    _msg_type = data.get("type")
+
     with _cache_lock:
-        if data.get("type") == "orderbook_delta":
-            # Store the raw delta for potential future use (no current
-            # consumer applies it to best_yes_bid/best_no_bid/mid_price --
-            # only a "ticker"-type message ever sets mid_price). Deliberately
-            # do NOT touch `ts` here: get_cached_mid_price()'s freshness
-            # check (_is_fresh) reads this entry's `ts` to gate mid_price
-            # staleness, and a delta doesn't actually refresh mid_price --
-            # bumping `ts` would make a frozen mid_price look "fresh"
-            # indefinitely as long as deltas keep arriving, defeating the
-            # staleness gate on a safety-critical input (get_cached_mid_price
-            # feeds order_executor.py's flash-crash circuit breaker check).
+        if _msg_type == "orderbook_delta":
+            # Store the raw delta. Deliberately do NOT touch `ts` here:
+            # get_cached_mid_price()'s freshness check (_is_fresh) reads this
+            # entry's `ts` to gate mid_price staleness, and a delta doesn't
+            # actually refresh mid_price -- bumping `ts` would make a frozen
+            # mid_price look "fresh" indefinitely as long as deltas keep
+            # arriving, defeating the staleness gate on a safety-critical
+            # input (get_cached_mid_price feeds order_executor.py's
+            # flash-crash circuit breaker check).
+            #
+            # batch-64 item 4: the delta is ALSO applied to the depth book
+            # below, outside this lock. `last_delta` stays exactly as it was
+            # -- the depth book is a separate structure with its own lock, so
+            # nothing that reads this entry changes shape.
             existing = _orderbook.get(ticker, {})
             existing["last_delta"] = data["delta"]
             _orderbook[ticker] = existing
             merged = existing
+        elif _msg_type == "orderbook_snapshot":
+            # batch-64 item 4: MERGE rather than replace. This branch used to
+            # fall into the wholesale `_orderbook[ticker] = data` below, so a
+            # snapshot -- which carries no mid_price/yes_bid/yes_ask, only
+            # levels -- wiped the fields a "ticker" tick had put there, and
+            # get_cached_mid_price()/get_cached_book() went None until the
+            # next tick arrived. That silently withheld readings from the
+            # flash-crash breaker. Snapshots arrive on the orderbook_delta
+            # channel (Kalshi sends one before its deltas), so this fired on
+            # every (re)subscribe, not rarely.
+            #
+            # `ts` is preserved for the same reason the delta branch above
+            # preserves it: a snapshot does not refresh mid_price either, so
+            # it must not make a stale mid_price look fresh.
+            #
+            # Built as a NEW dict and rebound atomically rather than mutated
+            # in place: _get_fresh_ticker_entry takes _cache_lock only to
+            # fetch the reference and then evaluates _is_fresh() on the live
+            # object outside the lock, so an in-place `update()` exposes a
+            # window where the snapshot's fresh ts is already written but the
+            # old mid_price has not yet been restored -- a stale mid_price
+            # reading as fresh, on the input feeding the flash-crash breaker.
+            # The pre-existing wholesale rebind had no such window and this
+            # keeps it that way.
+            existing = _orderbook.get(ticker, {})
+            merged = {**existing, **data}
+            _preserved_ts = existing.get("ts")
+            if _preserved_ts is not None:
+                merged["ts"] = _preserved_ts
+            _orderbook[ticker] = merged
         else:
             _orderbook[ticker] = data
             merged = data
@@ -246,7 +739,7 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
     # fallback for when this WS feed is unavailable or stale. Deliberately
     # outside the _cache_lock above -- flash_crash_cb guards its own state
     # with its own lock and doesn't need this one.
-    if data.get("type") == "ticker":
+    if _msg_type == "ticker":
         mid = data.get("mid_price")
         if mid and mid > 0:
             try:
@@ -255,6 +748,22 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
                 _log.warning(
                     "update_orderbook_cache: flash-crash check failed: %s", exc
                 )
+
+    # batch-64 item 4: maintain the full-depth book and snapshot it. Kept
+    # outside _cache_lock -- _depth_books has its own lock, and the throttled
+    # DB write must not be holding the cache lock that every reader of
+    # get_cached_mid_price()/get_cached_book() contends for. Fully guarded:
+    # this is a write-only observation for A4/A17 and must never be able to
+    # break the feed or change what any existing consumer reads.
+    try:
+        if _msg_type == "orderbook_snapshot":
+            _apply_orderbook_snapshot(ticker, data)
+        elif _msg_type == "orderbook_delta":
+            _apply_orderbook_delta(ticker, data)
+        if _msg_type in ("orderbook_snapshot", "orderbook_delta"):
+            _maybe_persist_depth(ticker)
+    except Exception as exc:
+        _log.warning("update_orderbook_cache: depth book update failed: %s", exc)
 
 
 def read_orderbook_cache() -> dict:
@@ -517,6 +1026,18 @@ class KalshiWebSocket:
         """Start the WebSocket listener in a background thread."""
         if self._running:
             return
+        # batch-64 item 4: drop depth state for tickers this listener is not
+        # subscribing to. cron.py calls cmd_cron() repeatedly for the lifetime
+        # of a `watch` process, constructing a fresh KalshiWebSocket each
+        # cycle while these module globals survive — and weather tickers are
+        # date-scoped, so without this a long-lived process accumulates a
+        # book per ticker per day forever. Done at start(), not subscribe(),
+        # because subscribe() may be called several times before the socket
+        # opens and only the final set is the real subscription.
+        try:
+            prune_depth_books(keep=set(self._tickers))
+        except Exception as exc:  # never block the listener starting
+            _log.debug("prune_depth_books skipped: %s", exc)
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True, name="KalshiWS")
         self._thread.start()

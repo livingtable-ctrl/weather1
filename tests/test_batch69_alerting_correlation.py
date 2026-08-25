@@ -2803,11 +2803,33 @@ class TestRound2MC_MigrationOrdering:
     the round-1 build would skip it forever -- the runner only replays entries
     past the stored cursor, then stamps 65."""
 
-    def test_migrations_are_append_only_index_is_last(self):
+    def test_migrations_are_append_only_index_position_is_pinned(self):
+        """The invariant is that nothing was inserted BEFORE this index, which
+        would shift it past an already-stamped cursor and make a v65 DB skip
+        it forever.
+
+        Originally written as `_MIGRATIONS[-1]` — "the index is the last entry
+        in the whole list". That over-states the invariant: it holds only
+        until any later batch appends, so it made `_MIGRATIONS` permanently
+        un-appendable, contradicting the append-only rule this class exists to
+        defend (see tracker.py's own "_MIGRATIONS is append-only for exactly
+        this reason"). Batch-64 appended six migrations (v66-v71) and turned
+        it red without anything actually being wrong.
+
+        Pinning the INDEX position is strictly stronger than "is last": it
+        still catches an insertion before this entry, which "is last" would
+        miss entirely if the inserter also appended something after it.
+        """
         import tracker
 
-        assert "CREATE INDEX" in tracker._MIGRATIONS[-1]
-        assert "idx_alert_deliveries_rule_fired" in tracker._MIGRATIONS[-1]
+        _V65 = 64  # 0-based position of migration v65
+        assert "CREATE INDEX" in tracker._MIGRATIONS[_V65]
+        assert "idx_alert_deliveries_rule_fired" in tracker._MIGRATIONS[_V65]
+        # Nothing before it may be this index either — i.e. it appears once,
+        # at its pinned position.
+        assert not any(
+            "idx_alert_deliveries_rule_fired" in m for m in tracker._MIGRATIONS[:_V65]
+        )
         assert tracker._SCHEMA_VERSION == len(tracker._MIGRATIONS)
 
     @pytest.mark.parametrize("rewind_to", [61, 62, 63, 64])

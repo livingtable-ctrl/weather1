@@ -14,7 +14,7 @@ import re
 import statistics
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -2491,6 +2491,15 @@ def batch_prewarm_ensemble(
                     _model_key = (model, city_name, date_iso, var_str, None)
                     _ensemble_cache.set_with_ttl(_model_key, member_temps, _cycle_ttl)
                     _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
+                    # batch-64 item 2: persist the raw members here, at the
+                    # same point and for the same reason the per-model cache
+                    # entry is written above -- before bias correction and
+                    # before the weight-replication below. Every fetched
+                    # model, blend or tracking-only, so A15 can build a rank
+                    # histogram for any of them.
+                    _persist_member_values(
+                        city_name, model, date_iso, var_str, member_temps
+                    )
                     if model not in blend_models:
                         # Tracking-only: cached above for accuracy scoring,
                         # must NOT enter the live trading blend below.
@@ -3383,6 +3392,301 @@ def fetch_temperature_ecmwf(
 
 
 # ── Ensemble forecast ────────────────────────────────────────────────────────
+
+
+# ── Real model-run initialisation times (batch-64 item 1 / panel A18) ────────
+#
+# order_executor._current_forecast_cycle() infers a cycle from the wall clock
+# ("12 if now.hour >= 12 else 0"), so it is a wall-clock half-day bucket, not
+# a model-run identifier: a scan at 11:58 UTC consuming the 06z run records
+# 00z, and one at 12:02 consuming the SAME data records 12z. It also models
+# only 00z/12z, while _ttl_until_next_cycle() above and
+# order_executor._in_gfs_update_window() both correctly know NWP runs are
+# 00/06/12/18. That function is deliberately NOT changed -- live order dedup
+# and LivePositionStore key off it.
+#
+# The run time is NOT in the forecast response. Verified live 2026-08-25
+# against both api.open-meteo.com/v1/forecast and
+# ensemble-api.open-meteo.com/v1/ensemble: the only top-level time field is
+# generationtime_ms, which is server processing time, not model run time.
+# Open-Meteo publishes it separately, per dataset, at
+# /data/<dataset>/static/meta.json as last_run_initialisation_time (a Unix
+# timestamp).
+#
+# The bot's model aliases are NOT dataset names -- "icon_seamless" and
+# "gfs_seamless" both return HTTP 500 on that endpoint. This maps each alias
+# to the dataset actually behind it on the ENSEMBLE endpoint (icon_seamless
+# is ICON-EPS, gfs_seamless is GEFS), verified live one name at a time. An
+# alias with no confidently-resolvable dataset is deliberately left out
+# rather than guessed: get_model_run_init returns None for it, which records
+# honestly as "unknown run" instead of a wrong timestamp.
+_MODEL_RUN_META_NAMES: dict[str, str] = {
+    # Live blend models (_QUARANTINE_CANDIDATE_MODELS).
+    "icon_seamless": "dwd_icon_eps",
+    "gfs_seamless": "ncep_gefs025",
+    "ecmwf_aifs025_ensemble": "ecmwf_aifs025_ensemble",
+    # Tracking-only + deterministic models fetched elsewhere in this module.
+    "gem_global": "cmc_gem_geps",
+    "ncep_hrrr_conus": "ncep_hrrr_conus",
+    "nbm": "ncep_nbm_conus",
+    "ecmwf_ifs025": "ecmwf_ifs025",
+    "ecmwf_aifs025": "ecmwf_aifs025_single",
+    # ukmo_global_ensemble_20km is deliberately absent -- neither it nor
+    # ukmo_ensemble_uk_2km exposes meta.json (both 500), and
+    # ukmo_global_deterministic_10km is a different product, not this
+    # ensemble's dataset. None is the honest answer for it.
+}
+
+_MODEL_RUN_META_URL = "https://api.open-meteo.com/data/{dataset}/static/meta.json"
+
+# Short flat TTL rather than _ttl_until_next_cycle(): NBM and HRRR publish
+# hourly (update_interval_seconds=3600) so a cycle-aligned TTL would pin them
+# to a superseded run for hours. The cost is negligible either way -- this is
+# one tiny global (not per-city, not per-date) request per model, and cron
+# runs one-shot so its in-memory cache lives for a single scan regardless.
+_MODEL_RUN_INIT_TTL = 30 * 60
+_model_run_init_cache: ForecastCache[str | None] = ForecastCache(
+    ttl_secs=_MODEL_RUN_INIT_TTL
+)
+
+# Run inits actually OBSERVED at fetch time, keyed by the bot's model alias.
+# Written by _persist_member_values (which runs inside the ensemble fetch, a
+# path that is already doing network I/O) and read by
+# observed_model_run_inits() on analyze_trade's per-market path, which must
+# never itself reach the network -- see that function's docstring for why
+# this split exists rather than calling get_model_run_init() there directly.
+_model_run_init_observed: dict[str, str] = {}
+_model_run_observed_lock = threading.Lock()
+
+
+def get_model_run_init(model: str) -> str | None:
+    """Return the ISO-8601 UTC initialisation time of `model`'s latest run.
+
+    Returns None when the model has no known dataset name, when the endpoint
+    fails, or when the payload is malformed -- never raises. Callers persist
+    this as a write-only observation (tracker.log_prediction's
+    forecast_run_inits, tracker.log_ensemble_members' run_init); nothing in
+    this codebase makes a trading decision from it, and a None must stay a
+    None rather than being backfilled with a wall-clock guess, or A18
+    inherits exactly the defect it exists to measure.
+
+    Uses get_with_ts() rather than get() so a cached failure (a real None) is
+    distinguishable from a cache miss and is not re-requested within the TTL
+    -- the same negative-caching pattern as _NBM_CACHE/_ECMWF_CACHE above.
+
+    The cache read and the store are not atomic, so two prewarm threads that
+    miss simultaneously can both issue the same meta.json request. Left as
+    is deliberately (opus review, LOW): the request is idempotent, rate-
+    limited, and bounded to one extra call per model per 30-minute window,
+    and single-flighting it would mean holding a lock across network I/O on
+    a path that must never block a forecast fetch.
+    """
+    dataset = _MODEL_RUN_META_NAMES.get(model)
+    if dataset is None:
+        return None
+
+    cached, hit, _ts = _model_run_init_cache.get_with_ts(dataset)
+    if hit:
+        return cached
+
+    run_init: str | None = None
+    try:
+        resp = _om_request(
+            "GET", _MODEL_RUN_META_URL.format(dataset=dataset), timeout=8
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict):
+            raw = payload.get("last_run_initialisation_time")
+            # Reject a bool explicitly: bool is a subclass of int, and
+            # True would otherwise become 1970-01-01T00:00:01.
+            if isinstance(raw, int | float) and not isinstance(raw, bool):
+                run_init = datetime.fromtimestamp(float(raw), UTC).isoformat()
+    except Exception as exc:
+        _log.debug("get_model_run_init: %s (%s) failed: %s", model, dataset, exc)
+
+    _model_run_init_cache.set_with_ttl(dataset, run_init, _MODEL_RUN_INIT_TTL)
+    return run_init
+
+
+def observed_model_run_inits(models: Iterable[str]) -> dict[str, str]:
+    """Return {model: iso8601} for `models`, WITHOUT ever hitting the network.
+
+    This is what analyze_trade() calls, and the no-network property is the
+    whole point. analyze_trade runs per market across a thread pool, and this
+    repo has already been bitten once by network calls hiding inside it --
+    see test_weather_markets.py's
+    test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls and the
+    backlog entry behind it, where three separate real HTTP calls sat inside
+    analyze_trade's try/except blocks failing silently in the test suite for
+    months. Calling get_model_run_init() here would have added a fourth.
+
+    Two memory-only sources, in order:
+      1. What the ensemble fetch actually observed this process
+         (_model_run_init_observed) -- the honest answer, since it is the run
+         behind the very members this analysis used.
+      2. An unexpired entry already in _model_run_init_cache.
+
+    A model with neither is omitted rather than mapped to None, so the
+    persisted JSON claims only what was really seen. An all-cache-hit scan
+    (no fetch, cold cache) therefore records nothing, which is correct: we
+    genuinely did not observe a run time for it, and guessing one is exactly
+    the defect item 1 exists to remove.
+    """
+    with _model_run_observed_lock:
+        observed = dict(_model_run_init_observed)
+
+    out: dict[str, str] = {}
+    for m in models:
+        if m in observed:
+            out[m] = observed[m]
+            continue
+        dataset = _MODEL_RUN_META_NAMES.get(m)
+        if dataset is None:
+            continue
+        cached, hit, _ts = _model_run_init_cache.get_with_ts(dataset)
+        if hit and cached:
+            out[m] = cached
+    return out
+
+
+# Pending member-value rows, flushed in one batched transaction. Same shape
+# and same reasoning as _ensemble_disk_pending above: the per-row writer
+# opens its own SQLite connection (~67 ms measured on this project's
+# storage), and batch_prewarm_ensemble() reaches the writer of order 300
+# times per scan, so writing per row added ~20 s to every scan -- paid every
+# scan, since a deduped no-op costs the same as an insert. A write-only
+# observation is not allowed to cost that.
+_member_values_pending: list[dict] = []
+_MEMBER_VALUES_LOCK = threading.Lock()
+# Bound the buffer so a very long-lived process can't accumulate unboundedly
+# between flushes. ~300 rows is a full prewarm; 500 leaves headroom without
+# turning the flush back into a per-row write.
+_MEMBER_VALUES_FLUSH_AT = 500
+
+
+def flush_member_values() -> int:
+    """Write all pending ensemble member rows in one transaction.
+
+    Registered via atexit below and called explicitly by the same cron/main
+    shutdown paths that already call flush_ensemble_disk_cache(). Returns the
+    number of rows actually inserted (deduped rows count as 0).
+    """
+    with _MEMBER_VALUES_LOCK:
+        if not _member_values_pending:
+            return 0
+        batch = list(_member_values_pending)
+        _member_values_pending.clear()
+
+    # The buffer is drained BEFORE the write and a failure is swallowed, so a
+    # failed flush loses that batch permanently. Deliberate (opus review,
+    # LOW): forward-only data makes the loss real, but re-queueing a batch
+    # that failed for a persistent reason (disk full, locked DB) would grow
+    # the buffer without bound on the WS/fetch path, and the alternative --
+    # holding rows until a write succeeds -- trades a bounded, logged loss
+    # for an unbounded memory leak on the exact paths that must not stall.
+    try:
+        import tracker as _tracker
+
+        written = _tracker.log_ensemble_members_bulk(batch)
+        if written:
+            _log.debug("flush_member_values: wrote %d member rows", written)
+        return written
+    except Exception as exc:
+        _log.debug("flush_member_values: skipped %d rows: %s", len(batch), exc)
+        return 0
+
+
+# Same rationale as flush_ensemble_disk_cache's atexit registration above, and
+# more pressing here: member values are forward-only, so a buffer dropped at
+# exit is a permanently missing sample rather than a merely cold cache.
+# Registered at the definition site, not beside the other two -- those are
+# defined near the top of the module and this one is not.
+atexit.register(flush_member_values)
+
+
+def _persist_member_values(
+    city: str,
+    model: str,
+    date_iso: str,
+    var_str: str,
+    member_temps: list[float],
+) -> None:
+    """Persist one model's raw ensemble members (batch-64 item 2 / panel A15).
+
+    Called from the two places that hold raw, per-model member lists:
+    batch_prewarm_ensemble()'s per-model loop (the bulk path a cron scan
+    actually uses) and get_ensemble_temps()'s per-model loop (the per-city
+    fallback). Both call this BEFORE bias correction and BEFORE the
+    `temps * repeats` weight-replication, because a rank histogram built on
+    bias-shifted or weight-replicated members is distorted by exactly those
+    transforms.
+
+    Write-only and fully swallowed: an exception here must never disturb a
+    forecast fetch. A cache hit deliberately does not reach this function --
+    the ensemble cache is cycle-aligned, and log_ensemble_members dedups on
+    (city, model, target_date, var, cycle) anyway, so the row that survives
+    is the first one written in a cycle, whose run_init was observed at the
+    moment of the fetch that produced these members.
+    """
+    if not member_temps:
+        return
+    try:
+        run_init = get_model_run_init(model)
+        if run_init:
+            # Remember what THIS fetch actually saw, so analyze_trade can
+            # report it later without a network call of its own.
+            with _model_run_observed_lock:
+                _model_run_init_observed[model] = run_init
+
+        row = {
+            "city": city,
+            "model": model,
+            "target_date_str": date_iso,
+            "members": list(member_temps),
+            "var": var_str,
+            "cycle": _ensemble_cycle_tag(),
+            "run_init": run_init,
+        }
+        with _MEMBER_VALUES_LOCK:
+            _member_values_pending.append(row)
+            over = len(_member_values_pending) >= _MEMBER_VALUES_FLUSH_AT
+    except Exception as exc:
+        _log.debug(
+            "_persist_member_values: skipped %s/%s/%s: %s", city, model, date_iso, exc
+        )
+        return
+
+    # Flush outside the lock -- the DB write must not hold the buffer lock
+    # that every other fetch thread needs to append.
+    if over:
+        flush_member_values()
+
+
+def _ensemble_cycle_tag(now: datetime | None = None) -> str:
+    """Return the availability-window tag a member fetch belongs to.
+
+    Buckets on the SAME 02/08/14/20 UTC availability boundaries that
+    _ttl_until_next_cycle() uses to expire ensemble cache entries, so the
+    dedup key of ensemble_member_values lines up exactly with the lifetime of
+    the data it describes: one member set stored per model per city per
+    availability window. Deliberately not order_executor's
+    _current_forecast_cycle() -- that is a 00z/12z wall-clock half-day dedup
+    key for orders and would collapse four fetch windows into two.
+    """
+    from datetime import timedelta as _timedelta
+
+    if now is None:
+        now = datetime.now(UTC)
+    hour = now.hour
+    if hour < 2:
+        # Before 02 UTC we are still consuming the previous day's 18z window.
+        prev = now.date() - _timedelta(days=1)
+        return f"{prev.isoformat()}_18z"
+    for avail, init in ((8, 0), (14, 6), (20, 12)):
+        if hour < avail:
+            return f"{now.date().isoformat()}_{init:02d}z"
+    return f"{now.date().isoformat()}_18z"
 
 
 def _fetch_model_ensemble(
@@ -4750,6 +5054,26 @@ def get_ensemble_temps(
             # Replicate members proportionally to apply weight.
             repeats = max(1, round(w * 2))
             all_temps.extend(temps * repeats)
+            # batch-64 item 2: raw members, pre-bias and pre-replication.
+            # Placed AFTER this model's contribution has already been added
+            # to all_temps, deliberately. An opus review flagged the original
+            # placement (immediately after the fetch): anything escaping a
+            # log-only writer there would be caught by the `except` below and
+            # drop that model from the blend entirely, and analyze_trade's
+            # renormalisation would then silently reweight across the
+            # remaining models -- a real probability change with only a
+            # _log.warning to show for it. Nothing may alter a trading
+            # decision here, and that must not depend on the writer's own
+            # internal discipline holding forever.
+            #
+            # Only for daily fetches -- an hourly fetch (hour is not None) is
+            # a different physical quantity that shares this function, and
+            # ensemble_member_values' dedup key has no hour component, so an
+            # hourly member set would insert FIRST for
+            # (city, model, target_date, var, cycle) and INSERT OR IGNORE
+            # would then permanently block the daily set for that window.
+            if hour is None:
+                _persist_member_values(city, model, target_date.isoformat(), var, temps)
         except Exception as _ens_exc:
             _log.warning(
                 "get_ensemble_temps: model fetch failed for %s: %s", city, _ens_exc
@@ -14897,6 +15221,25 @@ def analyze_trade(
     # Initialize here so the return dict can reference it regardless of which path runs.
     disagree_f = None
 
+    # batch-64 item 3 / panels A3 + A7: blend_sources below records only the
+    # sources that SURVIVED (its comprehension filters `v > 0`), so a source
+    # that was considered and dropped is indistinguishable from one that was
+    # never a candidate, and the reason it was dropped lives only in a _log
+    # line. Write-only: nothing reads it until A3.
+    #
+    # Initialised HERE, beside disagree_f and for the identical reason, not
+    # inside the `if not metar_locked:` block below. An opus review caught it
+    # scoped inside that block: the METAR-locked path never assigns it, so
+    # the result dict's read raised UnboundLocalError for every METAR-locked
+    # market -- which is the whole `between` bracket family, since those
+    # require METAR lock-in. analyze_trade's callers swallow the exception,
+    # so the market was simply skipped and no trade placed where one
+    # previously would have been: a silent trading-decision change, from a
+    # field that is supposed to be a write-only observation. On that path it
+    # stays {} -- METAR lock-in bypasses the multi-source blend entirely, so
+    # there is no exclusion decision to record.
+    blend_exclusions: dict[str, str] = {}
+
     if not metar_locked:
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = _daily_var_from_series(series)
@@ -15427,6 +15770,13 @@ def analyze_trade(
                 ens_prob if ens_prob is not None else 0.5
             )
             blend_sources = {"obs": round(_obs_w, 4), "ensemble": round(_ens_w, 4)}
+            # batch-64 item 3: this branch replaces the multi-source blend
+            # outright rather than dropping sources for a data reason, so
+            # record that explicitly. Without it a batch-71 consumer reading
+            # blend_sources ∪ blend_exclusions sees nws/climatology/
+            # persistence as neither blended nor excluded.
+            for _bypassed in ("climatology", "nws", "persistence"):
+                blend_exclusions[_bypassed] = "obs_override"
         else:
             # _local_today (city-local, computed once near the top of this
             # function) rather than utc_today() -- this branch is currently
@@ -15472,6 +15822,14 @@ def analyze_trade(
                 w_nws = w_nws * scale
             else:
                 w_persist = 0.0
+                # batch-64 item 3: record WHY before discarding it. A
+                # persistence baseline that exists but sits outside its
+                # days_out <= 2 window is a different fact from one that
+                # could not be computed, and collapsing them into
+                # "unavailable" is the same conflation the "circuit_open"
+                # reason was added to avoid.
+                if persistence_p is not None:
+                    blend_exclusions["persistence"] = "out_of_window"
                 persistence_p = None
 
             # Reduce NWS weight when it diverges from ensemble by > 0.20.
@@ -15511,12 +15869,19 @@ def analyze_trade(
 
             # Circuit breaker gate: if ensemble is OPEN, treat ens_prob as missing so the
             # renormalization in _active excludes it from the blend automatically.
+            _ens_excluded_by_circuit = False
             if _ensemble_circuit_is_open() and ens_prob is not None:
                 _log.warning(
                     "analyze_trade: ensemble circuit OPEN for %s — excluding ens_prob from blend",
                     enriched.get("ticker", "?"),
                 )
                 ens_prob = None
+                # batch-64 item 3: this is the single most informative
+                # exclusion reason in the function and, before this, it
+                # existed only as the _log.warning above -- "the ensemble was
+                # missing" and "the ensemble was suppressed because its
+                # circuit breaker was open" are very different facts for A3.
+                _ens_excluded_by_circuit = True
 
             # Renormalize weights when sources are unavailable.
             # Previously missing sources were substituted with 0.5 (meaningless
@@ -15557,6 +15922,28 @@ def analyze_trade(
                 if persistence_p is not None and w_persist > 0:
                     _norm["persistence"] = w_persist / _total_w
                 blend_sources = {k: round(v, 4) for k, v in _norm.items() if v > 0}
+                # batch-64 item 3: the complement of blend_sources -- every
+                # named source that was a candidate here and did not make it
+                # in, with why. "unavailable" means the source produced no
+                # probability at all; "zero_weight" means it produced one but
+                # the weighting scheme gave it nothing, which is a different
+                # story for A3 and is invisible in blend_sources either way.
+                for _src_name, _src_w, _src_p in (
+                    ("ensemble", _w_ens_raw, ens_prob),
+                    ("ensemble_cdf", _w_cdf, _ensemble_cdf_prob),
+                    ("gaussian", _w_gauss, gauss_prob),
+                    ("climatology", w_clim, clim_prob),
+                    ("nws", w_nws, _nws_prob),
+                    ("persistence", w_persist, persistence_p),
+                ):
+                    if _src_p is None:
+                        blend_exclusions[_src_name] = (
+                            "circuit_open"
+                            if _src_name == "ensemble" and _ens_excluded_by_circuit
+                            else "unavailable"
+                        )
+                    elif _src_w <= 0:
+                        blend_exclusions[_src_name] = "zero_weight"
                 if ens_prob is None:
                     _log.debug(
                         "analyze_trade: ensemble missing for %s — renormalized blend",
@@ -15637,7 +16024,14 @@ def analyze_trade(
                         else:
                             _n = len(blend_sources)
                             blend_sources = {k: 1.0 / _n for k in blend_sources}
+                        # batch-64 item 3: MOS made it in, so it must not
+                        # also appear as excluded if an earlier pass put it
+                        # there.
+                        blend_exclusions.pop("mos", None)
+                    else:
+                        blend_exclusions["mos"] = "unavailable"
                 except Exception as _mos_pre_exc:
+                    blend_exclusions["mos"] = "error"
                     _log.debug(
                         "MOS pre-bias blend failed for %s: %s", city, _mos_pre_exc
                     )
@@ -16308,6 +16702,20 @@ def analyze_trade(
     # affect fill timing. See order_executor._prediction_kwargs_from_analysis
     # and main.py's two direct log_prediction call sites.
 
+    # batch-64 item 1: the blend models this analysis actually used, for the
+    # run-init lookup below. get_quarantined_members() reads quarantine state
+    # off disk, so it is called ONCE here rather than inside the generator
+    # that feeds observed_model_run_inits -- an inline `if m not in
+    # get_quarantined_members()` re-reads it per model, per market.
+    # observed_model_run_inits itself is memory-only by construction: the
+    # note above about run-trend fetches sitting on the order-placement
+    # critical path applies with equal force here, and is why the network
+    # half of this lives at fetch time instead.
+    _quarantined_for_run_init = get_quarantined_members()
+    _run_init_models = [
+        m for m in _QUARANTINE_CANDIDATE_MODELS if m not in _quarantined_for_run_init
+    ]
+
     _result = {
         # Core
         "forecast_prob": blended_prob,
@@ -16334,6 +16742,16 @@ def analyze_trade(
         "metar_locked": metar_locked,
         "metar_reason": metar_lockout.get("reason", "") if metar_locked else "",
         "blend_sources": blend_sources,
+        # batch-64 item 3 -- log-only companion to blend_sources above.
+        "blend_exclusions": blend_exclusions,
+        # batch-64 item 1 / panel A18 -- the REAL run initialisation times of
+        # the models behind this analysis, keyed by model. Resolved from
+        # Open-Meteo's per-dataset meta.json (see get_model_run_init); the
+        # forecast response itself carries no run timestamp, only
+        # generationtime_ms. Log-only, and explicitly not a replacement for
+        # order_executor._current_forecast_cycle(), which stays the
+        # wall-clock dedup key live order placement depends on.
+        "forecast_run_inits": observed_model_run_inits(_run_init_models),
         "method": method,
         # Ensemble details
         "ensemble_stats": ens_stats,

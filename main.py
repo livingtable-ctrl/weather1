@@ -153,6 +153,7 @@ from weather_markets import (
     fetch_temperature_weatherapi,  # noqa: F401 — used via main.* in cron.py
     flush_ensemble_disk_cache,
     flush_forecast_disk_cache,
+    flush_member_values,
     get_weather_forecast,
     get_weather_markets,
     is_between_bracket_ticker,
@@ -4998,6 +4999,10 @@ def cmd_watch(
             # only a clean shutdown's atexit handler would have flushed it.
             flush_forecast_disk_cache()
             flush_ensemble_disk_cache()
+            # batch-64: same reasoning, and more pressing -- member values
+            # are forward-only, so a crash between cycles loses samples that
+            # cannot be recovered rather than merely a warm cache.
+            flush_member_values()
             time.sleep(REFRESH_SECS)
     except KeyboardInterrupt:
         print(f"\n{dim('Watch mode stopped.')}")
