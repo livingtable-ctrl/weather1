@@ -3,12 +3,21 @@
 import importlib
 
 
-def test_get_state_snapshot_returns_required_keys(tmp_path, monkeypatch):
+def test_get_state_snapshot_returns_required_keys(
+    tmp_path, monkeypatch, repatch_paper_paths
+):
     """get_state_snapshot must return balance, open_trades_count, peak_balance, and snapshot_at."""
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # backlog L24334: reload FIRST, then isolate. The other order silently
+    # discards the patch (the reload recomputes DATA_PATH from
+    # safe_io.project_root()), which pointed these tests at the real
+    # data/paper_trades.json -- and test_cmd_cron_logs_state_snapshot below
+    # runs main.cmd_cron with an `except BaseException: pass` around it, so a
+    # production write would have been swallowed. Opus-review-caught,
+    # batch-62.
     importlib.reload(paper)
+    repatch_paper_paths(paper)
 
     from paper import get_state_snapshot
 
@@ -22,12 +31,21 @@ def test_get_state_snapshot_returns_required_keys(tmp_path, monkeypatch):
     assert snap["open_trades_count"] >= 0
 
 
-def test_state_snapshot_balance_matches_get_balance(tmp_path, monkeypatch):
+def test_state_snapshot_balance_matches_get_balance(
+    tmp_path, monkeypatch, repatch_paper_paths
+):
     """get_state_snapshot balance must equal get_balance()."""
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # backlog L24334: reload FIRST, then isolate. The other order silently
+    # discards the patch (the reload recomputes DATA_PATH from
+    # safe_io.project_root()), which pointed these tests at the real
+    # data/paper_trades.json -- and test_cmd_cron_logs_state_snapshot below
+    # runs main.cmd_cron with an `except BaseException: pass` around it, so a
+    # production write would have been swallowed. Opus-review-caught,
+    # batch-62.
     importlib.reload(paper)
+    repatch_paper_paths(paper)
 
     from paper import get_balance, get_state_snapshot
 
@@ -35,12 +53,21 @@ def test_state_snapshot_balance_matches_get_balance(tmp_path, monkeypatch):
     assert snap["balance"] == get_balance()
 
 
-def test_state_snapshot_peak_matches_get_peak_balance(tmp_path, monkeypatch):
+def test_state_snapshot_peak_matches_get_peak_balance(
+    tmp_path, monkeypatch, repatch_paper_paths
+):
     """get_state_snapshot peak_balance must equal get_peak_balance()."""
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # backlog L24334: reload FIRST, then isolate. The other order silently
+    # discards the patch (the reload recomputes DATA_PATH from
+    # safe_io.project_root()), which pointed these tests at the real
+    # data/paper_trades.json -- and test_cmd_cron_logs_state_snapshot below
+    # runs main.cmd_cron with an `except BaseException: pass` around it, so a
+    # production write would have been swallowed. Opus-review-caught,
+    # batch-62.
     importlib.reload(paper)
+    repatch_paper_paths(paper)
 
     from paper import get_peak_balance, get_state_snapshot
 
@@ -48,15 +75,22 @@ def test_state_snapshot_peak_matches_get_peak_balance(tmp_path, monkeypatch):
     assert snap["peak_balance"] == get_peak_balance()
 
 
-def test_cmd_cron_logs_state_snapshot(tmp_path, monkeypatch):
+def test_cmd_cron_logs_state_snapshot(tmp_path, monkeypatch, repatch_paper_paths):
     """cmd_cron must log a state snapshot line on each run."""
     import logging
 
     import main
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # backlog L24334: reload FIRST, then isolate. The other order silently
+    # discards the patch (the reload recomputes DATA_PATH from
+    # safe_io.project_root()), which pointed these tests at the real
+    # data/paper_trades.json -- and test_cmd_cron_logs_state_snapshot below
+    # runs main.cmd_cron with an `except BaseException: pass` around it, so a
+    # production write would have been swallowed. Opus-review-caught,
+    # batch-62.
     importlib.reload(paper)
+    repatch_paper_paths(paper)
 
     # Patch out everything that would make cron do real work
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])

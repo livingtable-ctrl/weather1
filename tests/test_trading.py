@@ -209,19 +209,91 @@ class TestPriceImprovementTracking:
         assert len(rows) == 2
 
     def test_stats_returns_none_with_fewer_than_5_entries(self, tmp_path):
-        """get_price_improvement_stats returns None when < 5 entries exist."""
+        """get_price_improvement_stats returns None when < 5 entries exist.
+
+        Uses a real-shaped ticker deliberately: get_price_improvement_stats
+        now filters to tracker._REAL_TICKER_SQL, so a synthetic ticker here
+        would make this test pass for the wrong reason (0 matching rows, not
+        2-below-the-threshold).
+        """
         import tracker
 
         db_path = tmp_path / "test2.db"
         with patch.object(tracker, "DB_PATH", db_path):
             tracker._db_initialized = False
             tracker.init_db()
-            tracker.log_price_improvement("TICK1", 0.60, 0.58, 5, "yes")
-            tracker.log_price_improvement("TICK1", 0.60, 0.61, 10, "no")
+            tracker.log_price_improvement("KXHIGHNY-26JUN15-T75", 0.60, 0.58, 5, "yes")
+            tracker.log_price_improvement("KXHIGHNY-26JUN15-T75", 0.60, 0.61, 10, "no")
             result = tracker.get_price_improvement_stats()
             tracker._db_initialized = False
 
         assert result is None
+
+    def test_stats_excludes_synthetic_tickers(self, tmp_path):
+        """backlog L25380: rows whose ticker isn't a real Kalshi weather market
+        must not reach the statistic.
+
+        The production predictions.db had 98 such rows out of 368 (26.6%) left
+        by pre-isolation test runs, spanning three unrelated spellings --
+        TK/TK1/TK2/TK3/TKTEST/TK_*, BE-TICKER, and KXHIGH-25APR10-NYC. The
+        last two are the point of this test: a `TK%` denylist (the obvious
+        reading of the backlog entry) would have let 56 of the 98 through.
+
+        The `real` list below deliberately spans every live ticker family, not
+        just daily temperature -- see the comment on it.
+        """
+        import sqlite3
+
+        import tracker
+
+        db_path = tmp_path / "test3.db"
+        real = [
+            # One per live family -- daily high/low, hourly, monthly rain,
+            # monthly snow, and the two hurricane shapes. The rain/snow/
+            # hurricane entries are the regression guard for the opus-review
+            # HIGH: an earlier predicate required a T/B strike marker in the
+            # third segment, which dropped every one of them (KXRAINMIAM alone
+            # has ~7.9k rows elsewhere in the production DB).
+            ("KXHIGHNY-26JUN15-T75", 0.60, 0.50),
+            ("KXLOWTSFO-26MAY26-B51.5", 0.60, 0.50),
+            ("KXTEMPNYCH-26AUG24H14-T80", 0.60, 0.50),
+            ("KXRAINCHIM-26AUG-6", 0.60, 0.50),
+            ("KXDENSNOWM-26DEC-3", 0.60, 0.50),
+            ("KXNAMEDSTORM-26DEC01EPACTOT-18", 0.60, 0.50),
+            ("KXFIRSTHURRICANE-26DEC01ATL-DOL", 0.60, 0.50),
+        ]
+        synthetic = [
+            ("TK1", 0.60, 0.90),
+            ("TKTEST", 0.60, 0.90),
+            ("TK_CHI", 0.60, 0.90),
+            ("BE-TICKER", 0.60, 0.90),
+            ("TEST-TICKER", 0.60, 0.90),
+            ("SL-TICKER", 0.60, 0.90),
+            ("KXHIGH-25APR10-NYC", 0.60, 0.90),
+        ]
+        with patch.object(tracker, "DB_PATH", db_path):
+            tracker._db_initialized = False
+            tracker.init_db()
+            for tkr, desired, actual in real + synthetic:
+                tracker.log_price_improvement(tkr, desired, actual, 10, "yes")
+            stats = tracker.get_price_improvement_stats()
+            tracker._db_initialized = False
+
+        # Positive control: every row really was written -- so the count check
+        # below is the filter working, not the inserts silently failing.
+        with sqlite3.connect(db_path) as con:
+            assert con.execute("SELECT COUNT(*) FROM price_improvement").fetchone()[
+                0
+            ] == len(real) + len(synthetic)
+
+        assert stats is not None
+        assert stats["count"] == len(real)
+        # Every real row is desired 0.60 / actual 0.50 -> improvement +0.10;
+        # every synthetic one is -0.30. A mean of 0.10 can only come from the
+        # real rows alone (all 10 would average -0.10).
+        assert stats["mean"] == pytest.approx(0.10)
+        assert stats["median"] == pytest.approx(0.10)
+        assert stats["positive_pct"] == pytest.approx(1.0)
 
 
 class TestCorrelationPersistence:

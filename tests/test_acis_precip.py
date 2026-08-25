@@ -294,6 +294,62 @@ class TestApplySeasonalTilt:
         assert all(s >= 0.0 for s in shifted)
 
 
+class TestDryTiltFloorClippingIsAcceptedNotFixed:
+    """backlog L23998 (batch-62): the dry-tilt floor under-application is a
+    KNOWN, accepted limitation of apply_seasonal_tilt, not an oversight.
+
+    A redistribute-the-clipped-remainder fix was written and reverted after
+    review measured that it moves individual members up to 20x the
+    +/-25%-of-mean clamp the function documents, and shifts the exceedance
+    probability _analyze_monthly_rain_trade actually consumes (P(> 3.0 in)
+    0.050 -> 0.000 on the distribution below) where the floor-clip leaves it
+    alone. See apply_seasonal_tilt's docstring.
+
+    These tests pin the CURRENT behaviour so a future graduation change has to
+    update them deliberately rather than silently altering the shadow signal.
+    """
+
+    def test_dry_tilt_is_under_applied_on_a_zero_heavy_distribution(self):
+        full = [10.0] * 20
+        remaining = [0.0] * 19 + [4.0]  # mean 0.2; 19 members pinned at 0.0
+        shifted, applied = acis_precip.apply_seasonal_tilt(
+            remaining, full, 127.0, tilt_strength=1.0
+        )
+        assert applied is True
+
+        n = len(remaining)
+        requested_per_member = -0.05  # ratio clamps to 0.5 -> -0.1, clamped to -0.05
+        realised = (sum(shifted) - sum(remaining)) / n
+        # Only the single member with headroom absorbs anything, so the mean
+        # moves by 1/20th of what was asked for. This is the filed defect.
+        assert realised == pytest.approx(requested_per_member / n)
+        assert shifted == pytest.approx([0.0] * 19 + [3.95])
+
+    def test_floor_clip_leaves_the_far_tail_intact(self):
+        """The flip side, and the reason the redistribution fix was reverted:
+        clipping does not touch the exceedance probability the model reads."""
+        full = [10.0] * 20
+        remaining = [0.0] * 19 + [4.0]
+        shifted, _ = acis_precip.apply_seasonal_tilt(
+            remaining, full, 127.0, tilt_strength=1.0
+        )
+
+        def exceedance(sample, threshold):
+            return sum(1 for s in sample if s > threshold) / len(sample)
+
+        assert exceedance(remaining, 3.0) == pytest.approx(0.05)
+        assert exceedance(shifted, 3.0) == pytest.approx(0.05)
+
+    def test_shift_never_produces_a_negative_member(self):
+        full = [10.0] * 20
+        remaining = [0.05] * 20
+        shifted, applied = acis_precip.apply_seasonal_tilt(
+            remaining, full, 0.1, tilt_strength=1.0
+        )
+        assert applied is True
+        assert all(s >= 0.0 for s in shifted)
+
+
 class TestFetchMonthToDateActual:
     def test_before_first_of_month_returns_none(self):
         result, n_missing = acis_precip.fetch_month_to_date_actual("DEN", 2026, 7, 0)

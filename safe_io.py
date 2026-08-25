@@ -298,6 +298,16 @@ def atomic_write_text(
 
     See atomic_write_json's docstring for `replace_deadline_secs`.
     """
+    # Opus-review-caught (batch-62, F15): since atomic_write_bytes taught the
+    # shared core to pick its file mode from the payload's runtime type,
+    # atomic_write_text(b"...") would otherwise have silently started
+    # succeeding and writing raw binary instead of raising. Reject explicitly
+    # so the two primitives keep distinct, checkable contracts.
+    if not isinstance(text, str):
+        raise TypeError(
+            f"atomic_write_text expects str, got {type(text).__name__} -- "
+            "use atomic_write_bytes for a binary payload"
+        )
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_payload(
@@ -311,8 +321,56 @@ def atomic_write_text(
     )
 
 
+def atomic_write_bytes(
+    data: bytes,
+    path: Path,
+    retries: int = 3,
+    fallback_dir: Path | None = None,
+    *,
+    emergency_copy: bool = True,
+    replace_deadline_secs: float = 1.0,
+) -> None:
+    """
+    Write raw bytes to path atomically -- the binary sibling of
+    atomic_write_text above, with the same write-temp/fsync/rename, retry and
+    emergency-copy behavior, sharing the same _atomic_write_payload core
+    rather than introducing a third write convention.
+
+    backlog L24249: added for ml_bias.py's bias-model `.pkl` write, which was
+    a bare `Path.write_bytes()`. A process kill (or a full disk) mid-write
+    there leaves a truncated pickle whose HMAC sidecar no longer matches, and
+    _load_models() then refuses the file and silently disables bias correction
+    until the next retrain. The sidecar write beside it had already been made
+    atomic (atomic_write_text); this closes the other half.
+
+    See atomic_write_json's docstring for `replace_deadline_secs`, and
+    atomic_write_text's for when to pass emergency_copy=False.
+    """
+    # Opus-review-caught (batch-62, F16): a memoryview/array payload would
+    # otherwise fall through to TEXT mode and only fail after all 3 retries
+    # plus both emergency-copy candidates (~3s) with a confusing
+    # AtomicWriteError. Fail immediately, with the actual type named.
+    if not isinstance(data, bytes | bytearray):
+        raise TypeError(
+            f"atomic_write_bytes expects bytes, got {type(data).__name__} -- "
+            "use atomic_write_text for a str payload, or convert first "
+            "(e.g. bytes(memoryview))"
+        )
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_payload(
+        data,
+        path,
+        retries,
+        fallback_dir,
+        emergency_copy,
+        caller_name="atomic_write_bytes",
+        replace_deadline_secs=replace_deadline_secs,
+    )
+
+
 def _atomic_write_payload(
-    payload: str,
+    payload: str | bytes,
     path: Path,
     retries: int = 3,
     fallback_dir: Path | None = None,
@@ -322,9 +380,12 @@ def _atomic_write_payload(
     replace_deadline_secs: float = 1.0,
 ) -> None:
     """Shared write-temp/fsync/rename/retry/emergency-copy core for
-    atomic_write_json and atomic_write_text -- both public functions only
-    differ in how `payload` is produced (json.dumps vs. raw text), not in
-    how it's durably written. `path` is already coerced to a Path with its
+    atomic_write_json, atomic_write_text and atomic_write_bytes -- the public
+    functions only differ in how `payload` is produced (json.dumps vs. raw
+    text vs. raw bytes), not in how it's durably written. A `bytes` payload
+    switches both this function's temp-file write and its emergency copy to
+    binary mode; everything else (temp naming, fsync, _replace_with_retry,
+    retry/backoff, emergency-copy candidate order) is identical. `path` is already coerced to a Path with its
     parent directory created by the caller; it does not need to (and
     normally does not) already exist -- it's the write target.
 
@@ -336,6 +397,17 @@ def _atomic_write_payload(
     real caller through keeps that pattern matching for JSON callers while
     giving text callers an accurate name instead of a private helper's)."""
     last_exc: Exception | None = None
+    # Bound before the loop: the `except` below reads it, and building the
+    # name itself (str(path.parent / ...)) is inside the try -- if THAT raised
+    # on the first attempt, the handler hit UnboundLocalError instead of the
+    # real error. Opus-review-caught (batch-62, F13); pre-existing and hard to
+    # reach, but free to close while generalising this function.
+    tmp_path_str: str | None = None
+    # A bytes payload must not go through a text-mode handle: "w" would raise
+    # TypeError, and utf-8 encoding would corrupt a pickle even if it didn't.
+    _binary = isinstance(payload, bytes | bytearray)
+    _open_mode = "wb" if _binary else "w"
+    _open_encoding = None if _binary else "utf-8"
 
     for attempt in range(retries):
         try:
@@ -355,7 +427,7 @@ def _atomic_write_payload(
                 path.parent
                 / f".{path.name}_{os.getpid()}_{threading.get_ident()}_{attempt}.tmp"
             )
-            with open(tmp_path_str, "w", encoding="utf-8") as f:
+            with open(tmp_path_str, _open_mode, encoding=_open_encoding) as f:
                 f.write(payload)
                 f.flush()
                 try:
@@ -452,7 +524,7 @@ def _atomic_write_payload(
                     candidate_path.parent
                     / f".{candidate_path.name}_{os.getpid()}_{threading.get_ident()}.emergency.tmp"
                 )
-                with open(candidate_tmp, "w", encoding="utf-8") as f:
+                with open(candidate_tmp, _open_mode, encoding=_open_encoding) as f:
                     f.write(payload)
                     f.flush()
                     try:
@@ -517,7 +589,8 @@ def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
     """Return info about any real recovery copies sitting in the emergency-
     copy fallback location(s) (backlog.txt "SAFE_IO -- NOTHING MONITORS
     data/.emergency/ FOR REAL RECOVERY COPIES"). A file existing here means
-    some real caller's atomic_write_json() or atomic_write_text() (both now
+    some real caller's atomic_write_json(), atomic_write_text() or
+    atomic_write_bytes() (all three now
     expose a per-call emergency_copy opt-out for disposable payloads --
     atomic_write_text got it first, 2026-08-08; atomic_write_json followed
     the same day once a second disposable-cache caller needed it -- so not
@@ -585,8 +658,17 @@ def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
 
         data_dir = project_root() / "data"
         try:
+            # Opus-review-caught (batch-62, F6): this used to be
+            # glob("*.json"), which silently excluded every non-JSON payload
+            # the module can write -- atomic_write_text's HURDAT2 .txt cache
+            # and now atomic_write_bytes' .pkl. The system-temp fallback is
+            # reached exactly when data/'s own volume is unwritable, i.e. the
+            # scenario this monitor exists for, so a name-extension filter
+            # there was a blind spot in the worst case. Still bounded to
+            # basenames that exist in data/ (not a blanket temp scan), so
+            # unrelated processes' temp files are not reported.
             known_names = (
-                {p.name for p in data_dir.glob("*.json")}
+                {p.name for p in data_dir.iterdir() if p.is_file()}
                 if data_dir.is_dir()
                 else set()
             )

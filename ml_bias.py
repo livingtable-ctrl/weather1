@@ -76,9 +76,21 @@ def _write_hmac(pkl_bytes: bytes) -> None:
     a plain write_text(), so a process kill mid-write can't leave a
     truncated/corrupt .hmac file that would then fail _load_models()'s HMAC
     verification and silently disable bias correction until re-trained. The
-    adjacent .pkl write (_MODEL_PATH.write_bytes above this function's only
-    caller) remains non-atomic -- safe_io has no atomic_write_bytes
-    primitive today, and adding one is out of scope here.
+    adjacent .pkl write in this function's only caller gets the same
+    treatment via safe_io.atomic_write_bytes (backlog L24249, batch-62) --
+    it used to be a bare _MODEL_PATH.write_bytes() because safe_io had no
+    binary primitive.
+
+    Each file is individually atomic; the PAIR is not, and this change did
+    not alter that. A kill in the gap between the two replaces still leaves a
+    new .pkl beside an old .hmac, which _load_models() rejects (bias
+    correction off until the next retrain) -- pre-existing, and the gap is
+    the same size as before. What the .pkl fix removed is the different case
+    where a torn/failed .pkl write destroyed an otherwise-good pair in place.
+    Genuine pair-atomicity would mean embedding the digest in the pickle or
+    staging both files and renaming both, neither of which this entry asked
+    for. (Opus-review-caught, batch-62 F9: an earlier draft of this docstring
+    read as if "the other half" closed the pair gap too.)
     """
     from safe_io import atomic_write_text
 
@@ -285,7 +297,35 @@ def train_bias_model(min_samples: int = 200) -> dict:
     if models:
         _MODEL_PATH.parent.mkdir(exist_ok=True)
         pkl_bytes = pickle.dumps(models)
-        _MODEL_PATH.write_bytes(pkl_bytes)
+        # backlog L24249: temp file + fsync + rename, not a bare write_bytes().
+        # A kill (or a full disk) part-way through a multi-hundred-KB pickle
+        # leaves a truncated file whose _HMAC_PATH sidecar no longer matches,
+        # and _load_models() then refuses it and silently runs with no bias
+        # correction until the next retrain.
+        #
+        # emergency_copy=False (opus-review-caught, batch-62 F2 -- an earlier
+        # draft left it at the True default reasoning "a retrain is expensive,
+        # so the payload is irreplaceable"). Three things make the recovery
+        # copy worse than useless here:
+        #   1. On AtomicWriteError this call raises BEFORE _write_hmac below
+        #      ever runs, so the emergency copy is a lone .pkl with no
+        #      matching .hmac sidecar.
+        #   2. An operator following the documented recovery (copy it back
+        #      into data/) therefore gets an HMAC MISMATCH, which _load_models
+        #      turns into a cached empty model set -- bias correction silently
+        #      off for the process lifetime. That is strictly worse than the
+        #      self-consistent previous pkl+hmac pair this atomic write just
+        #      succeeded in preserving. There is no operator command anywhere
+        #      in the repo to recompute the sidecar for a restored .pkl.
+        #   3. The models ARE reproducible -- `train-bias` rebuilds them from
+        #      tracker.db, and cron retrains on its own schedule.
+        # And cron.check_emergency_copies() re-alerts an operator every cycle
+        # until any file in data/.emergency/ is deleted by hand, so leaving it
+        # True would page a human about an artifact they must not use. Same
+        # rule atomic_write_text's own docstring states for re-derivable data.
+        from safe_io import atomic_write_bytes as _atomic_write_bytes
+
+        _atomic_write_bytes(pkl_bytes, _MODEL_PATH, emergency_copy=False)
         try:
             _write_hmac(pkl_bytes)
             _log.info("ml_bias: wrote HMAC sidecar to %s", _HMAC_PATH.name)

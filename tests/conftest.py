@@ -293,9 +293,11 @@ def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets, acis_precip, acis_snow, climatology,
     kalshi_client, AND nws circuit breakers before every test.
 
-    There are eight weather_markets CBs (_forecast_cb, _ensemble_cb,
-    _ensemble_precip_multiday_cb, _ecmwf_om_cb, _nbm_om_cb, _hrrr_om_cb,
-    _weatherapi_cb, _pirate_cb) -- _hrrr_om_cb added batch-50 when
+    weather_markets' CBs come from its canonical CIRCUIT_BREAKERS registry
+    (eight today: _forecast_cb, _ensemble_cb, _ensemble_precip_multiday_cb,
+    _ecmwf_om_cb, _nbm_om_cb, _hrrr_om_cb, _weatherapi_cb, _pirate_cb), so
+    adding one there is enough -- see the loop's own comment. _hrrr_om_cb
+    was added batch-50 when
     _fetch_hrrr_temp was activated as a real network call (previously
     dormant/uncalled, so this gap didn't exist yet), same missed-until-added
     pattern as every other CB in this loop's own history below. acis_precip's
@@ -339,14 +341,16 @@ def reset_open_meteo_circuit_breaker():
     import weather_markets
 
     for cb in (
-        weather_markets._forecast_cb,
-        weather_markets._ensemble_cb,
-        weather_markets._ensemble_precip_multiday_cb,
-        weather_markets._ecmwf_om_cb,
-        weather_markets._nbm_om_cb,
-        weather_markets._hrrr_om_cb,
-        weather_markets._weatherapi_cb,
-        weather_markets._pirate_cb,
+        # backlog L26224 (batch-62): derived from weather_markets' canonical
+        # registry, not re-listed by hand. This loop was the FOURTH
+        # hand-maintained copy of the same eight breakers (the other three
+        # were trade_cycle's probe suppression, web_app's dashboard and cron's
+        # alerter, all now derived) and the anti-drift test only guards the
+        # registry itself -- so a newly added, correctly registered breaker
+        # would still have been missed HERE, reintroducing exactly the
+        # cross-test contamination this fixture's own history records four
+        # separate times. Opus-review-caught.
+        *(reg.breaker for reg in weather_markets.CIRCUIT_BREAKERS),
         acis_precip._acis_cb,
         acis_precip._om_seasonal_cb,
         acis_snow._acis_snow_cb,
@@ -689,6 +693,48 @@ def mock_market():
     }
 
 
+def _point_paper_at(paper, monkeypatch, target_dir):
+    """Repoint paper.py's three import-time path constants at `target_dir`.
+
+    Factored out so the autouse fixture below and every test that has to call
+    ``importlib.reload(paper)`` use ONE definition of "isolated". backlog
+    L24334: a reload re-executes paper.py's module body, recomputing all three
+    from ``safe_io.project_root()`` and silently discarding whatever patches
+    were in place -- so a test that reloads must re-apply them, and several
+    that did re-applied only ``DATA_PATH``, leaving the two override paths
+    pointing at the REAL data/ (opus-review-caught, batch-62).
+    """
+    monkeypatch.setattr(paper, "DATA_PATH", target_dir / "paper_trades.json")
+    monkeypatch.setattr(
+        paper, "_LOSS_OVERRIDE_PATH", target_dir / "loss_limit_override.json"
+    )
+    monkeypatch.setattr(
+        paper,
+        "_ACCURACY_HALT_OVERRIDE_PATH",
+        target_dir / "accuracy_halt_override.json",
+    )
+
+
+@pytest.fixture
+def repatch_paper_paths(monkeypatch, tmp_path):
+    """Callable that re-applies paper.py's path isolation after a reload.
+
+    Usage in a test that must reload paper (e.g. to re-read an env var that
+    paper.py caches at import time)::
+
+        importlib.reload(paper)
+        repatch_paper_paths(paper)
+
+    Pass an explicit directory as the second argument if the test manages its
+    own temp dir rather than using ``tmp_path``.
+    """
+
+    def _apply(paper_module, target_dir=None):
+        _point_paper_at(paper_module, monkeypatch, target_dir or tmp_path)
+
+    return _apply
+
+
 @pytest.fixture(autouse=True)
 def isolate_paper_data(tmp_path, monkeypatch):
     """Redirect paper.DATA_PATH to a per-test temp file.
@@ -715,24 +761,61 @@ def isolate_paper_data(tmp_path, monkeypatch):
     """
     import paper
 
-    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
-    monkeypatch.setattr(
-        paper, "_LOSS_OVERRIDE_PATH", tmp_path / "loss_limit_override.json"
-    )
-    monkeypatch.setattr(
-        paper, "_ACCURACY_HALT_OVERRIDE_PATH", tmp_path / "accuracy_halt_override.json"
-    )
+    _point_paper_at(paper, monkeypatch, tmp_path)
 
 
 @pytest.fixture
-def mock_balance_1000(tmp_path, monkeypatch):
-    """Patch paper to use a temp data file and start with $1000 balance."""
-    monkeypatch.setattr("paper.DATA_PATH", tmp_path / "paper_trades.json")
-    import importlib
+def mock_balance_1000(tmp_path, isolate_paper_data):
+    """Yield the ``paper`` module pointed at a temp ledger seeded to $1000.
 
+    backlog L24334: this fixture used to patch ``paper.DATA_PATH`` and then
+    call ``importlib.reload(paper)``. The reload re-executes paper.py's module
+    body, which recomputes ``DATA_PATH`` from ``safe_io.project_root()`` --
+    silently discarding both this fixture's patch AND the autouse
+    ``isolate_paper_data`` patch above, so every test taking this fixture read
+    (and would have written) the REAL data/paper_trades.json. The reload was
+    present from the fixture's first commit (a7981fee) with no stated reason,
+    and nothing in paper.py needs it: the three module constants derived from
+    ``DATA_PATH`` at import time are already re-pointed by
+    ``isolate_paper_data``, and ``_DATA_LOCK``/``_existed_marker_path()``
+    derive their paths from ``DATA_PATH`` lazily at call time. So it is simply
+    removed rather than re-applied after the reload.
+
+    Depends on ``isolate_paper_data`` explicitly (rather than relying on
+    autouse ordering) so the two can never disagree about which tmp file is
+    the isolated one.
+
+    The ledger is seeded explicitly instead of leaning on ``_load()``'s
+    fresh-install fallback, which returns ``paper.STARTING_BALANCE`` -- that
+    reads ``$STARTING_BALANCE`` at import time, so on a machine that sets it
+    the fixture's documented $1000 would silently become something else.
+
+    One side effect the pre-batch-62 fixture did not have (opus-review-caught):
+    ``_save`` touches ``.paper_trades.json.existed`` in ``tmp_path``. A test
+    that takes this fixture and then DELETES ``paper.DATA_PATH`` to exercise
+    the fresh-install path will therefore get ``CorruptionError`` ("a real
+    ledger was saved here before") rather than a fresh $1000 account -- which
+    is paper.py's #10 guard working as designed, not a bug, but is surprising
+    if you did not expect the marker. No current user of this fixture does
+    that.
+    """
     import paper
 
-    importlib.reload(paper)
+    # Explicit raise rather than `assert`: this is a production-write guard,
+    # and an `assert` in conftest would be compiled away under `python -O`.
+    if paper.DATA_PATH.parent != tmp_path:
+        raise RuntimeError(
+            "mock_balance_1000: paper.DATA_PATH is not isolated "
+            f"({paper.DATA_PATH}) -- refusing to seed a ledger"
+        )
+    paper._save(
+        {
+            "_version": paper._SCHEMA_VERSION,
+            "balance": 1000.0,
+            "peak_balance": 1000.0,
+            "trades": [],
+        }
+    )
     yield paper
 
 

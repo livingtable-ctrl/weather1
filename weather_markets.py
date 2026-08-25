@@ -2829,6 +2829,68 @@ _pirate_cb = CircuitBreaker(
 )
 
 
+@dataclass(frozen=True)
+class CircuitBreakerRegistration:
+    """One data-source circuit breaker plus the metadata its monitors need.
+
+    ``prewarm_scoped`` is True for the forecast-fetch breakers that run inside
+    cron's prewarm + parallel-analyze phase, i.e. the ones whose open circuit
+    would stall that thread pool on a probe timeout. trade_cycle's post-prewarm
+    probe suppression iterates only those; the dashboard and the
+    newly-opened-circuit alerter iterate everything.
+    """
+
+    breaker: CircuitBreaker
+    prewarm_scoped: bool
+
+    @property
+    def name(self) -> str:
+        return self.breaker.name
+
+
+# backlog L26224: the single canonical list of this module's data-source
+# circuit breakers. Three monitors used to hand-maintain their own copies --
+# trade_cycle.py's post-prewarm probe suppression (5 breakers), web_app.py's
+# /api/circuit-status dashboard (7), and cron.py's newly-opened-circuit
+# alerter (4) -- and they had already drifted apart: _ensemble_precip_multiday_cb
+# was in NONE of them, and cron's alerter had never picked up _nbm_om_cb,
+# _ecmwf_om_cb or _hrrr_om_cb either, so an open circuit on any of those data
+# sources produced no alert at all.
+#
+# The lists were not simply stale, though: trade_cycle deliberately omits
+# _weatherapi_cb/_pirate_cb, which are the FALLBACK temperature sources
+# consulted precisely when the Open-Meteo breakers are open -- suppressing
+# their probe would stop the fallback recovering, which is why this registry
+# carries a scope flag instead of being a flat list every monitor iterates.
+#
+# Add a new breaker here and all three monitors pick it up;
+# tests/test_circuit_breaker_registry.py fails if one is defined at this
+# module's level and left out.
+CIRCUIT_BREAKERS: tuple[CircuitBreakerRegistration, ...] = (
+    CircuitBreakerRegistration(_forecast_cb, prewarm_scoped=True),
+    CircuitBreakerRegistration(_ensemble_cb, prewarm_scoped=True),
+    CircuitBreakerRegistration(_nbm_om_cb, prewarm_scoped=True),
+    CircuitBreakerRegistration(_ecmwf_om_cb, prewarm_scoped=True),
+    CircuitBreakerRegistration(_hrrr_om_cb, prewarm_scoped=True),
+    # _fetch_ensemble_precip_multiday runs from _analyze_monthly_rain_trade,
+    # inside the same parallel analyze pass as the temperature fetches above,
+    # so an open circuit here stalls that pool on a probe the same way.
+    # Asymmetry worth knowing (opus-review-caught, batch-62): unlike the five
+    # temperature breakers, this source has NO fallback provider, and
+    # suppress_probe() has no reset path -- so once suppressed under a
+    # long-lived `main.py loop` process, the far-tail rain blend stays dark
+    # until restart. Bounded: it feeds only forecast_blend_signal, an
+    # ungraduated shadow-only registry entry inside its own try/except.
+    CircuitBreakerRegistration(_ensemble_precip_multiday_cb, prewarm_scoped=True),
+    # Fallback observation/temperature providers: reached only when the
+    # Open-Meteo breakers above are already open, so their probes must NOT be
+    # suppressed during the analyze phase -- that is the moment they are
+    # needed. Monitored and alerted on like everything else.
+    CircuitBreakerRegistration(_weatherapi_cb, prewarm_scoped=False),
+    CircuitBreakerRegistration(_pirate_cb, prewarm_scoped=False),
+)
+
+
 def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | None:
     """
     Fetch weather data from Pirate Weather (HRRR/GFS/GEFS blend).
@@ -10586,7 +10648,14 @@ def _analyze_monthly_rain_trade(
                         # window tilt that blended_prob/rec_side/sizing
                         # depend on -- out of this change's scope. Magnitude
                         # is tiny (a fraction of an inch on a 1-3 day tail)
-                        # and this signal is shadow-only.
+                        # and this signal is shadow-only. Re-examined and
+                        # re-confirmed by batch-62 (backlog L23998): a
+                        # redistribute-the-clipped-remainder fix was written
+                        # and reverted, because it moves the wet-tail members
+                        # ~20x past apply_seasonal_tilt's documented
+                        # +/-25%-of-mean per-member clamp and shifts the
+                        # exceedance probability this code actually reads.
+                        # See that function's docstring.
                         tail_sums_tilted, _tail_tilt_applied = (
                             acis_precip.apply_seasonal_tilt(
                                 tail_sums, tail_full_month_sums, seasonal_mean_mm

@@ -1777,3 +1777,184 @@ def test_backup_sqlite_db_does_not_delete_preexisting_good_backup_when_copy_rais
     assert dst.read_bytes() == good_backup_bytes, (
         "the pre-existing good backup's content must be untouched"
     )
+
+
+# ── atomic_write_bytes (backlog L24249 -- ml_bias.py's bias-model .pkl write
+#    was a bare Path.write_bytes()) ─────────────────────────────────────────
+
+
+def test_atomic_write_bytes_round_trip_preserves_non_utf8_payload(
+    tmp_path, monkeypatch
+):
+    """The whole point of the binary primitive: a payload that is NOT valid
+    UTF-8 must survive byte-for-byte.
+
+    Mutation check: dropping the ``_binary``/``_open_mode`` branch in
+    ``_atomic_write_payload`` (i.e. reverting it to the text-only
+    ``open(..., "w", encoding="utf-8")``) makes this fail. The underlying
+    error is a ``TypeError`` ("write() argument must be str, not bytes"), but
+    it surfaces as ``AtomicWriteError`` after ~3s -- the retry loop swallows it
+    on every attempt and both emergency-copy candidates fail the same way.
+    (Opus-review-caught, batch-62: an earlier draft claimed the TypeError
+    propagated directly.)
+    """
+    import pickle
+
+    import safe_io
+
+    # Isolate the default emergency-copy candidate. This test is expected to
+    # succeed, but a regression that made the primary write fail would
+    # otherwise drop a recovery copy into the REAL data/.emergency/ -- which
+    # cron.py's check_emergency_copies() monitor re-alerts on every cycle
+    # until an operator deletes it. (Observed for real while mutation-testing
+    # this very test, 2026-08-24.)
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    payload = pickle.dumps({"NYC": [0.1, -0.2, 3.5], "CHI": [1.0]})
+    assert b"\x80" in payload, "sanity: a pickle is not valid UTF-8 text"
+
+    target = tmp_path / "models" / "bias_models.pkl"
+    safe_io.atomic_write_bytes(payload, target)
+
+    assert target.read_bytes() == payload
+    assert pickle.loads(target.read_bytes())["NYC"] == [0.1, -0.2, 3.5]
+    # No temp file left behind.
+    assert [p.name for p in target.parent.iterdir()] == ["bias_models.pkl"]
+
+
+def test_atomic_write_bytes_overwrites_existing_file_completely(tmp_path, monkeypatch):
+    """A shorter payload must fully replace a longer one (rename semantics),
+    not leave the previous file's tail behind."""
+    import safe_io
+
+    # See the round-trip test above for why project_root is isolated here.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    target = tmp_path / "m.pkl"
+    safe_io.atomic_write_bytes(b"\x00" * 4096, target)
+    safe_io.atomic_write_bytes(b"\xff\xfe", target)
+
+    assert target.read_bytes() == b"\xff\xfe"
+
+
+def test_atomic_write_bytes_shares_retry_and_raise_behavior(
+    tmp_path, monkeypatch, caplog
+):
+    """atomic_write_bytes must go through the same _atomic_write_payload core
+    as atomic_write_json/atomic_write_text -- proven by reproducing the same
+    total-failure scenario, asserting the same AtomicWriteError, and asserting
+    the failure log names *this* caller (the caller_name wiring)."""
+    import logging
+    import os
+
+    import safe_io
+    from safe_io import AtomicWriteError
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    attempted: list[str] = []
+
+    def fail_replace(src, dst):
+        # Positive control, recorded rather than inferred: a temp file really
+        # was written, with the right bytes, before the rename was attempted.
+        # The previous version asserted only that the target dir was empty
+        # afterwards -- two absence assertions an implementation that did
+        # nothing at all would also satisfy. Opus-review-caught, batch-62.
+        attempted.append(src)
+        assert Path(src).exists(), "no temp file was written before os.replace"
+        assert Path(src).read_bytes() == b"\x80\x81"
+        raise OSError("simulated disk full")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    target = tmp_path / "out" / "m.pkl"
+    with caplog.at_level(logging.WARNING, logger="safe_io"):
+        with pytest.raises(AtomicWriteError):
+            safe_io.atomic_write_bytes(b"\x80\x81", target, retries=1)
+
+    assert attempted, "os.replace was never reached -- nothing was written"
+    # caller_name wiring: the log must name atomic_write_bytes, not the
+    # private helper and not the JSON caller whose exact wording backlog.txt
+    # records an operator grep pattern against.
+    assert "atomic_write_bytes attempt 1/1 failed" in caplog.text
+    # And the temp file is cleaned up.
+    assert list(target.parent.iterdir()) == []
+
+
+def test_atomic_write_bytes_emergency_copy_is_binary_identical(tmp_path, monkeypatch):
+    """The emergency-copy path lives in the same shared core and must also
+    switch to binary mode -- a utf-8 text handle there would either raise or
+    silently mangle the recovery copy of an irreplaceable model file."""
+    import os
+
+    import safe_io
+    from safe_io import AtomicWriteError
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+    target = tmp_path / "data" / "bias_models.pkl"
+    payload = bytes(range(256))
+
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_bytes(
+            payload, target, retries=1, fallback_dir=emergency_dir
+        )
+
+    emergency_copy = emergency_dir / "bias_models.pkl"
+    assert emergency_copy.exists(), "no emergency copy written"
+    assert emergency_copy.read_bytes() == payload
+
+
+def test_atomic_write_bytes_failure_leaves_the_previous_file_intact(
+    tmp_path, monkeypatch
+):
+    """The property backlog L24249 actually wanted: a failed write must leave
+    the PREVIOUS bytes on disk, not a truncated file.
+
+    Scoped to safe_io deliberately. An earlier version of this was named
+    test_ml_bias_model_write_is_atomic and claimed "restoring
+    _MODEL_PATH.write_bytes(pkl_bytes) makes this fail" -- it did not, because
+    the body never invoked any ml_bias code (coverage showed the whole
+    ``if models:`` save block unexecuted). Opus-review-caught, batch-62. The
+    ml_bias call site is now pinned properly by
+    tests/test_ml_bias.py::TestModelWriteRoutesThroughAtomicWriteBytes.
+    """
+    import os
+    import pickle
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+    model_path = tmp_path / "data" / "bias_models.pkl"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+
+    previous = pickle.dumps({"NYC": "previous-model"})
+    model_path.write_bytes(previous)
+
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        if Path(dst) == model_path:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    new_payload = pickle.dumps({"NYC": "new-model", "pad": "x" * 10_000})
+    with pytest.raises(safe_io.AtomicWriteError):
+        safe_io.atomic_write_bytes(new_payload, model_path, retries=1)
+
+    # The previous model is byte-for-byte intact and still unpickles.
+    assert model_path.read_bytes() == previous
+    assert pickle.loads(model_path.read_bytes()) == {"NYC": "previous-model"}

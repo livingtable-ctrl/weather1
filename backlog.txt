@@ -24132,7 +24132,7 @@ Resolution (2026-08-22, batch-10):
   Tests: 0 new (pre-existing coverage confirmed sufficient); re-ran tests/test_batch01_live_position_visibility.py -- 48 passed.
   Lint/mypy: N/A, no files changed for this item.
 
-[PARTIALLY RESOLVED 2026-08-22 -- batch-13, AUD-0060; kalshi_client.py's two call sites remain untouched (a fix was reverted mid-session on discovering kalshi_client.py is out of scope, owned by batches 02/05/09), see Resolution] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
+[RESOLVED 2026-08-24 -- batch-62 item 5 closed the two kalshi_client sites; see resolution below.] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
 Priority: LOW (audit id AUD-0060, status CONFIRMED, confidence HIGH, evidence E1)
 Files: schema_validator.py, kalshi_client.py, nws.py, weather_markets.py
 
@@ -24149,6 +24149,49 @@ Resolution (2026-08-22):
   kalshi_client.py's TWO call sites (get_markets' list-build, get_market() singular) were NOT touched -- CORRECTION: a get_markets() list-filter fix was implemented mid-session, then the ENTIRE file was reverted via `git checkout -- kalshi_client.py` (confirmed zero diff, `git log -1 -- kalshi_client.py` still shows batch-09's commit) after discovering kalshi_client.py is owned by batches 02/05/09 (batch-09 already committed, touching this exact file), genuinely out of batch-13's scope despite AUD-0060's own Files line listing it. This item is therefore only PARTIALLY resolved by this session -- both kalshi_client.py call sites remain exactly as documented in the Problem section above, deferred to whichever batch legitimately next touches that file. (Note: get_market() singular would likely stay deliberately warn-only even then, matching this same class's own _validate() helper's existing stance and the 15+ call sites across the codebase that depend on it always returning a dict -- but that's a decision for whoever picks this up, not pre-made here.)
   Testing: weather_markets.py: new test_malformed_response_recorded_as_failure_not_used (mutation-tested). nws.py: new test_malformed_response_records_failure_not_success + a positive-control well-formed-response test (both mutation-tested).
   Independent opus review (effort=high): confirmed both wired call sites (weather_markets.py, nws.py) correct and safe, and independently confirmed kalshi_client.py has zero diff; found only one theoretical (unreproducible against the real Open-Meteo/NWS APIs) false-positive edge case in the wired sites, informational only, no action taken.
+
+Resolution (2026-08-24, batch-62 item 5) -- the two kalshi_client.py sites this
+entry was left partially-resolved for are now decided, differently from each
+other as the 2026-08-22 note predicted:
+
+  get_market() (singular): kept DELIBERATELY warn-only, now with a docstring
+  saying why. Returning None/{} on validation failure would be a breaking
+  contract change for 15+ call sites that all assume a dict, and would convert
+  a data-quality problem into an AttributeError far from here. Matches the
+  class's own _validate() stance for the response envelope.
+
+  get_markets() (list build): filters -- but only on STRUCTURAL failure, via a
+  new local _is_structurally_usable() rather than validate_market's aggregate
+  bool. This corrects the batch's first draft, which gated on that bool
+  directly. Opus review showed validate_market mixes "this dict is unusable"
+  with "this book looks economically odd," and the second half rejects REAL
+  market states -- verified directly: a locked book (yes_bid == yes_ask == 52c)
+  and a settled-YES market (100/100) both trip its inverted-spread check.
+  get_markets feeds settlement sync (refresh_hurricane_count_to_date,
+  settlement_monitor) and compute_hourly_temperature_proxy's ladder, where a
+  dropped entry is a silently WRONG number rather than a missing one -- a
+  dropped rung shifts the computed proxy temperature instead of failing. So
+  only entries no consumer could read at all are dropped: not a dict, no
+  ticker, or no name under either the legacy or current alias for one of
+  bid/ask/volume. Price-range and spread violations still get
+  validate_market's WARNING and still flow through; the caller's gates decide.
+
+  Plus a fail-open guard: if EVERY entry on a non-empty page is unusable, the
+  page is passed through with an ERROR rather than returning []. The likely
+  cause of that state is an API-wide field rename, not N simultaneously-corrupt
+  markets -- and [] would be indistinguishable from "this series has no open
+  markets", which weather_markets._fetch_series would then cache as healthy for
+  its full 60s TTL (it only sets `degraded` on an exception).
+
+  Each dropped ticker is logged at ERROR, not just validate_market's WARNING,
+  so a silently-lost settlement is traceable.
+
+  Testing: test_kalshi_client.py -- 4 new tests (structural drop with the
+  ticker in the log; locked/settled/no-quote markets KEPT, with a positive
+  control that validate_market really did object to them; the all-unusable
+  fail-open page; get_market still warn-only). Mutation-tested: gating on
+  validate_market's bool instead of the structural check fails the
+  "real market states are kept" test.
 
 [RESOLVED 2026-08-24 -- see resolution below.] README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window
 Priority: LOW (audit id AUD-0061, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24225,7 +24268,7 @@ Resolution 2026-08-20 (batch-05): Comment updated exactly per the
   not a forward-looking safeguard. Comment-only change (no behavior
   touched), no test needed.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain climatology blend's additive dry-tilt shift is floor-clipped at 0.0, under-applying the correction for near-zero precipitation distributions
+[PARTIALLY RESOLVED 2026-08-24 -- batch-62 item 6; scope narrowed, fix deliberately deferred to graduation. See resolution below.] Far-tail rain climatology blend's additive dry-tilt shift is floor-clipped at 0.0, under-applying the correction for near-zero precipitation distributions
 Priority: INFO (audit id AUD-0066, status CONFIRMED, confidence HIGH, evidence E1)
 Files: acis_precip.py, weather_markets.py
 
@@ -24236,6 +24279,48 @@ Problem:
   Financial risk: None currently -- confirmed not to feed the live-trading-affecting blended_prob/recommended_side/sizing path.
   Recommendation: Consider a multiplicative or rank-preserving tilt instead of a floor-clipped additive one if/when this signal is graduated out of shadow-only status.
   Full record: audit/AUDIT_REPORT.json (id AUD-0066), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, batch-62 item 6) -- NARROWED, NOT FIXED. Deliberate,
+with the measurement that decided it:
+
+  The defect is real and reproduced: the `max(0.0, s + damped_shift_in)` floor
+  under-applies a dry tilt on a zero-heavy distribution. On [0.0]*19 + [4.0]
+  the realised mean shift is 1/20th of the requested one.
+
+  A redistribute-the-clipped-remainder fix WAS implemented, tested (hand-
+  computed multi-pass cases, degenerate inputs, mutation-tested) and then
+  REVERTED after opus review measured its effect on the quantity the caller
+  actually consumes. _analyze_monthly_rain_trade reads an EXCEEDANCE
+  PROBABILITY -- the fraction of members above a strike -- not a mean.
+  Redistribution preserves the mean shift exactly, but only by moving the
+  surviving wet-tail members far past the +/-25%-of-mean per-member clamp the
+  function documents. Measured:
+    [0.0]*19 + [4.0], dry tilt:  clamp 0.0500, actual max per-member move
+      1.0000 (20x);  P(> 3.0 in) 0.050 -> 0.000  (floor-clip leaves it 0.050)
+    sparse snow-like 20y series: clamp 0.2025, actual 0.8375 (4.1x);
+      P(> 0.1 in) 0.300 -> 0.200  (floor-clip leaves it 0.300)
+  acis_snow re-exports the same function, so the snow ladder inherits it, and
+  snow distributions are more zero-heavy still.
+
+  Trading a documented per-member bound and the tail shape for a mean the
+  consumer never reads is the wrong trade. The correct fix remains the
+  multiplicative / rank-preserving tilt this entry already recommends, which
+  moves central tendency without flattening the tail -- and it belongs WITH
+  graduating rain_forecast_blend, not before it. That registry entry is still
+  ungraduated and shadow-only, so nothing here reaches a live order today.
+
+  RESIDUAL (what keeps this entry open): implement the multiplicative tilt as
+  part of graduating rain_forecast_blend / RAIN_TRADING_ENABLED, and re-verify
+  the exceedance probabilities at that point.
+
+  What DID ship: apply_seasonal_tilt's docstring now states the limitation, the
+  measurement, and why the obvious fix was rejected, instead of leaving a
+  future reader to rediscover it; weather_markets.py's own "accepted,
+  documented limitation" comment at the tail-tilt call site is annotated with
+  the same. New tests (test_acis_precip.py
+  TestDryTiltFloorClippingIsAcceptedNotFixed) PIN the current under-application
+  and the intact far tail, so a future graduation change has to update them
+  deliberately rather than silently altering the shadow signal.
 
 [CLOSED 2026-08-24 -- see resolution below.] cmd_watch and cron confirmed to share one effective safety-gate chain via run_trade_cycle (no residual divergence found)
 Priority: INFO (audit id AUD-0067, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24363,7 +24448,7 @@ Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed
   returning `{"active": False, "t_pinned": ...}` with a TOCTOU comment,
   ahead of the broad `except Exception` corrupt-file branch.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ForecastCache disk snapshot is last-writer-wins across independent processes
+[RESOLVED 2026-08-24 -- batch-62 item 3; see resolution below.] ForecastCache disk snapshot is last-writer-wins across independent processes
 Priority: INFO (audit id AUD-0074, status CONFIRMED, confidence HIGH, evidence E1)
 Files: forecast_cache.py
 
@@ -24375,7 +24460,56 @@ Problem:
   Recommendation: No action needed given the low-impact caches involved; if this pattern is reused for higher-value state in the future, a read-merge-write should be considered.
   Full record: audit/AUDIT_REPORT.json (id AUD-0074), audit/AUDIT_REPORT.md.
 
+Resolution (2026-08-24, batch-62 item 3):
+  Confirmed as filed. dump_to_disk built its payload purely from the calling
+  instance's own _store and did a full atomic_write_json overwrite, so
+  whichever of cron/watch/web_app dumped last silently discarded every key the
+  others had learned.
+
+  Fixed as read-MERGE-write. Conflict rule, stated explicitly: on-disk entries
+  are loaded first and this instance's applied last, so LOCAL WINS on a key
+  collision and disk-only keys are carried through. Newest-fetch-wins is NOT
+  available without a schema change -- the on-disk format is {key: value} with
+  no per-entry timestamp, and the in-memory timestamp is time.monotonic(),
+  which is not comparable across processes. Local-wins is strictly better than
+  the old behaviour regardless: it never loses a key, and on a collision keeps
+  exactly the value the old code kept. For the one real consumer (nws.py's
+  station-ID cache, whose entries are immutable station->coord facts) the
+  collision case is a no-op.
+
+  Opus review caught three things, all fixed:
+  - A corrupt/unparseable snapshot originally RAISED, which would have made
+    every subsequent dump raise forever -- and nws._save_station_cache swallows
+    that at DEBUG, so nothing would ever be persisted again, invisibly. The
+    pre-merge overwrite was at least self-healing. Now logs at ERROR and
+    overwrites, keeping the self-heal while making the loss traceable.
+  - load_from_disk raised on a key str_to_key could not parse, discarding the
+    WHOLE snapshot -- and since dump now carries disk keys through verbatim,
+    that bad key would be written straight back, so the load stayed broken
+    permanently. Now skips the key with an ERROR and keeps the rest.
+  - The class docstring claimed load_from_disk "fully replaces" the store. It
+    does not and never did -- it merges, disk-wins. Corrected.
+
+  Four residual limitations are now documented on dump_to_disk rather than left
+  implicit: not cross-process atomic (window narrowed from "always" to the
+  read-to-rename gap); the file can exceed max_size; DELETION CANNOT BE
+  EXPRESSED (clear()/prune_expired()/eviction no longer reach disk); and on
+  Windows the new read holds the file open, so a concurrent os.replace can hit
+  WinError 5 (bounded by _replace_with_retry's 1s deadline).
+
+  Priority was INFO and the change was kept to that weight -- no schema change,
+  no timestamps added.
+
+  Testing: test_forecast_cache.py -- new tests for the cross-process scenario
+  (mutation-tested: reverting to the overwrite loses STATION_A), the local-wins
+  rule, a first-ever-dump positive control, both self-heal paths, the
+  skipped-bad-key path, the documented deletion limitation, and a
+  lock-held-across-the-read probe.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
+
 [RESOLVED 2026-08-24 -- batch-61 item 2; comment path taken first by b755498e (batch-14), decorators and the helper itself now actually removed] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
+
 Priority: INFO (audit id AUD-0075, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: web_app.py:1911, web_app.py:1952, web_app.py:170-172
 
@@ -24516,7 +24650,7 @@ Resolution (2026-08-24, re-verified during batch-48's backlog review): this
   (web_app.py:3739 `_app.run(...)` with no explicit threaded= flag; Flask's
   default is threaded=True). Closing as a documentation record.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ml_bias.py's HMAC sidecar write bypasses the codebase's atomic-write convention (but fails safe on a torn write anyway)
+[RESOLVED 2026-08-24 -- batch-62 item 4; see resolution below.] ml_bias.py's HMAC sidecar write bypasses the codebase's atomic-write convention (but fails safe on a torn write anyway)
 Priority: INFO (audit id AUD-0078, status CONFIRMED, confidence HIGH, evidence E1)
 Files: ml_bias.py
 
@@ -24528,6 +24662,66 @@ Problem:
   Security risk: None -- the HMAC check also incidentally covers the reliability case.
   Recommendation: Low priority: route _write_hmac (and the adjacent .pkl write) through safe_io.atomic_write_text/atomic_write_bytes for consistency.
   Full record: audit/AUDIT_REPORT.json (id AUD-0078), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, batch-62 item 4):
+  The _write_hmac half was already fixed (b755498e, atomic_write_text). This
+  closes the other half: ml_bias.py's model .pkl write was still a bare
+  _MODEL_PATH.write_bytes(), because safe_io had no binary primitive.
+
+  Added safe_io.atomic_write_bytes, mirroring atomic_write_text's signature and
+  reusing the SAME _atomic_write_payload core rather than introducing a third
+  write convention -- that core was generalised from `payload: str` to
+  `str | bytes`, with the binary branch feeding both of its open() calls (the
+  primary temp write and the emergency copy). ml_bias's call site now uses it.
+
+  emergency_copy=False at that call site, contrary to the first draft
+  (opus-review-caught): on AtomicWriteError the raise happens BEFORE
+  _write_hmac runs, so the emergency copy would be a lone .pkl with no matching
+  sidecar; an operator restoring it gets an HMAC mismatch, which _load_models
+  turns into a cached empty model set -- bias correction silently off, strictly
+  worse than the intact previous pair the atomic write just preserved. There is
+  no command in the repo to recompute the sidecar, the models are reproducible
+  via `train-bias`, and cron.check_emergency_copies() would have paged an
+  operator every cycle about an artifact they must not use.
+
+  Explicitly NOT closed: the .pkl + .hmac PAIR is still non-atomic. A kill
+  between the two replaces still leaves a new .pkl beside an old .hmac, which
+  _load_models rejects. That window is unchanged in size by this fix -- what
+  the fix removed is the different case where a torn .pkl write destroyed an
+  otherwise-good pair in place. Real pair-atomicity needs the digest inside the
+  pickle or a stage-both-rename-both sequence; out of scope, and now stated in
+  _write_hmac's docstring rather than implied away.
+
+  Adjacent safe_io fixes from the same review: atomic_write_text now rejects a
+  bytes payload and atomic_write_bytes rejects a non-bytes one (the shared core
+  picks its mode from the runtime type, so atomic_write_text(b"...") would
+  otherwise have silently started writing raw binary, and a memoryview would
+  have failed only after ~3s of retries); tmp_path_str is bound before the
+  retry loop (its except branch could hit UnboundLocalError); and
+  check_emergency_copies' system-temp scan was keyed to data/*.json, silently
+  excluding every non-JSON payload the module can write -- including
+  atomic_write_text's HURDAT2 .txt cache -- in exactly the disk-full scenario
+  that fallback exists for.
+
+  Guard test: YES, added -- tests/test_bare_write_bytes_guard.py, an AST scan
+  forbidding bare Path.write_bytes() in production code (zero call sites remain
+  after this change). It uses os.walk with in-place pruning rather than rglob:
+  the sibling test_bare_os_replace_guard.py's rglob shape takes ~8 minutes when
+  run from the main clone, whose .claude/worktrees/ holds every checkout
+  (measured; filed separately). Its scope limitation -- it does not catch
+  open(path, "wb") -- is stated in the module docstring; broadening it would
+  need an allowlist for paper.py's fdopen and web_app.py's subprocess log
+  handle.
+
+  Testing: test_safe_io.py -- new atomic_write_bytes tests (non-UTF-8 round
+  trip, full overwrite, retry/raise with a real caller_name log assertion,
+  binary emergency copy, previous-file-intact-on-failure), all mutation-tested.
+  test_ml_bias.py TestModelWriteRoutesThroughAtomicWriteBytes drives the REAL
+  train_bias_model and asserts the call, its path, its payload and
+  emergency_copy=False. The earlier version of that coverage was vacuous -- it
+  never invoked ml_bias at all, so reverting the call site left it green --
+  caught by opus review and replaced. Mutation-tested: restoring the bare
+  write_bytes fails both it and the guard.
 
 [RESOLVED 2026-08-24 -- see resolution below.] Misleading test docstring in test_full_exit_race_loss_does_not_crash_the_caller
 Priority: INFO (audit id AUD-0079, status CONFIRMED, confidence MEDIUM, evidence E1)
@@ -24601,7 +24795,7 @@ Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed
   pyproject.toml:4 now has `addopts = "-m 'not integration'"` under
   `[tool.pytest.ini_options]`, closing the gap the entry confirmed.
 
-[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0001/0002/0005/0009/0012); filed separately since it affects the whole test suite's isolation infrastructure, not that batch's own 5 findings] tests/conftest.py's mock_balance_1000 fixture does not actually isolate paper.DATA_PATH -- tests using it read/write the REAL production data/paper_trades.json
+[RESOLVED 2026-08-24 -- batch-62 item 1; see resolution below.] tests/conftest.py's mock_balance_1000 fixture does not actually isolate paper.DATA_PATH -- tests using it read/write the REAL production data/paper_trades.json
 Priority: HIGH -- real production trading-data corruption risk, though not itself a live-money safety gate
 
 Problem:
@@ -24655,7 +24849,120 @@ Problem:
   avoid this fixture entirely, patching paper.DATA_PATH directly with no
   reload.
 
+Resolution (2026-08-24, batch-62 item 1):
+  Root cause confirmed by reproduction: under the fixture, paper.DATA_PATH
+  resolved to the REAL data/paper_trades.json (248 trades, balance $948.93).
+  monkeypatch.setattr sets the attribute; importlib.reload(paper) then
+  re-executes paper.py's module body, recomputing DATA_PATH (and
+  _LOSS_OVERRIDE_PATH/_ACCURACY_HALT_OVERRIDE_PATH) from
+  safe_io.project_root(), discarding both this fixture's patch AND the autouse
+  isolate_paper_data patch. The reload was present in the fixture's first
+  commit (a7981fee) with no stated reason and nothing needs it, so it was
+  removed rather than re-applied after.
+
+  SCOPE CORRECTION vs. this entry and vs. the batch-62 handoff: real usage is 8
+  tests across 2 files (test_paper.py 6, test_drawdown_tiers.py 2) -- not
+  "~90+ tests", and not the 3 files the handoff claimed.
+  test_batch01_live_position_visibility.py only MENTIONS the fixture in prose;
+  its module docstring documents this very bug as the reason it rolls its own
+  isolation. That docstring is now corrected to say the bug is fixed.
+
+  What shipped:
+  - conftest.py: mock_balance_1000 drops the reload, depends explicitly on
+    isolate_paper_data, seeds a real $1000 ledger via paper._save (so the
+    documented balance no longer depends on $STARTING_BALANCE), and fails
+    closed with an explicit RuntimeError -- not an assert, which -O removes.
+  - New conftest helper _point_paper_at + repatch_paper_paths fixture: ONE
+    definition of "isolated" (all three path constants), reused by the autouse
+    fixture and by every test that must reload paper.
+  - test_paper.py: removed 4 monkeypatch.setattr(paper, "DATA_PATH",
+    mock_balance_1000.DATA_PATH) lines that LOOKED like isolation but
+    re-asserted the post-reload production path, plus a dead _reload() helper.
+  - New tests/test_conftest_paper_isolation.py: the isolation assertion PAIRED
+    with a positive control -- writes a real trade through the fixture, asserts
+    it landed in the temp ledger, asserts the ticker is absent from the real
+    data/paper_trades.json. Compares on content, not bytes+mtime: the live bot
+    writes that file on its own schedule and a cron cycle landing mid-test
+    would otherwise report a fake isolation breach.
+
+  BLAST RADIUS -- the same bug existed outside this entry's cited sites, found
+  by sweeping every importlib.reload in tests/ and classifying each by
+  patch-vs-reload ORDER. All fixed here:
+  - test_p1_remaining.py TestGetAccuracyHaltReason: patch-then-reload in
+    setup_method AND in 3 tests. Probe-confirmed to resolve to the production
+    path. Reloads removed.
+  - test_state_consistency.py (4 sites): one runs main.cmd_cron inside
+    `except BaseException: pass`, so a production write would have been
+    swallowed. Reordered to reload-then-repatch.
+  - test_trade_improvements.py (2 sites): Kelly sizing had been running
+    against the REAL balance and peak.
+  - test_drawdown_tiers.py test_tier_constants_are_absolute: its reload IS
+    load-bearing, so isolation is re-applied after it; the test now also
+    restores the ORIGINAL DRAWDOWN_HALT_PCT and reloads again, with a
+    self-check outside the finally. Without that it left
+    paper.MAX_DRAWDOWN_FRACTION frozen at 0.30 for the rest of the session
+    (mutation-verified: a follow-on test read 0.3 instead of 0.2).
+  - test_starting_balance.py: reloads were never undone, leaving
+    paper.STARTING_BALANCE at 2000.0 and utils.STARTING_BALANCE at 750.0 for
+    the whole session -- demonstrated to break
+    test_paper.py::TestKellyCompounding::test_initial_balance_is_1000 in file
+    order. Fixed with an autouse restore fixture that resets os.environ
+    EXPLICITLY (pytest gives no ordering guarantee between an autouse fixture
+    and one the test requests, and relying on monkeypatch having run first was
+    measured not to work) and reloads both modules.
+
+  Damage check: data/paper_trades.json inspected before and after -- 248
+  trades, balance $948.93, byte-identical across a 298-test run, zero non-KX
+  tickers. One synthetic row WAS found and removed on user authorisation: id
+  236 "KXHIGH-25MAY15-T75" (entered 2026-08-19, city/target_date/thesis/
+  close_time all null, pnl 0.0) -- the exact literal
+  test_batch01_live_position_visibility.py uses ~19 times, and not a shape any
+  analysed trade produces. Note it PASSES the L25380 ticker predicate
+  (KX + HIGH + '-' + 25MAY15 + '-' + T75), so a shape rule would not have
+  caught it -- the null analysis fields are the tell.
+  Backed up first to
+  data/backups/paper_trades_pre-batch62-synthetic-trade-236_2026-08-25.json,
+  removed, and the SHA-256 recomputed exactly the way paper._save does before
+  writing through safe_io.atomic_write_json (hand-editing this file invalidates
+  its embedded checksum and _load() then raises CorruptionError). Verified
+  afterwards by calling paper._load() itself, which validates the checksum:
+  247 trades (was 248), balance $948.93 and peak $960.43 both unchanged -- the
+  row was settled at pnl 0.0, so it never moved the balance -- and zero
+  remaining tickers outside the real daily-temperature shape.
+
+  Two loose assertions that made the isolation irrelevant to the outcome were
+  tightened to equality (opus-review-caught): test_paper.py's two
+  kelly_bet_dollars cap tests asserted only `<= cap`, which a production
+  account in drawdown satisfies with 0.0.
+
+  Three further reload sites were reviewed and DELIBERATELY left alone, with
+  the reasoning stated here rather than silently dropped:
+  - tests/test_backtest.py:384/391/394 -- the reload defeats the autouse
+    isolate_walk_forward_params_dir patch on backtest.DATA_DIR, but no
+    save_walk_forward_params() call happens inside that test and its own
+    `finally` reloads again, so nothing writes and nothing leaks.
+  - tests/test_risk_control.py:297/315 -- reloads `main`, defeating
+    isolate_crash_log/isolate_cron_generated_files for the rest of those
+    tests. Both only assert on MARKET_BASE_URL; nothing writes, and the
+    autouse fixtures re-patch for the next test.
+  - tests/test_backtest.py:606 -- reloads `utils` after delenv'ing
+    DRAWDOWN_HALT_PCT and never restores, so utils.DRAWDOWN_HALT_PCT is left
+    at the 0.20 default. Harmless where .env does not set that var (it does
+    not here); the same shape as the test_starting_balance leak that WAS
+    fixed, but without a demonstrated consumer.
+  All three are latent, in files this batch does not otherwise touch. Fixed
+  the ones with demonstrated impact; recorded these rather than expanding.
+
+  Testing: test_paper.py, test_drawdown_tiers.py, test_p1_remaining.py,
+  test_batch01_live_position_visibility.py, test_state_consistency.py,
+  test_trade_improvements.py, test_starting_balance.py,
+  test_conftest_paper_isolation.py all pass. The isolation test was verified to
+  FAIL before the fix and pass after.
+
+[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0009); filed separately as a different consumer (a dashboard stat) than that batch's own gate-fix scope] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
+
 [RESOLVED 2026-08-25 -- batch-58 item 3] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
+
 Priority: LOW -- informational dashboard stat, not a safety gate
 
 Problem:
@@ -26322,6 +26629,9 @@ RESOLVED 2026-08-25 (batch-58 item 2):
   Files: kalshi_ws.py, tests/test_kalshi_ws.py.
 
 [OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix) while cross-checking the new ticker regex against every real ticker value in data/*.db, unrelated to any code in this batch's diff] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
+
+[RESOLVED 2026-08-24 -- batch-62 item 2; see resolution below.] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
+
 Priority: INFO -- data hygiene, not a code bug; confirmed these values are never passed to kalshi_client.get_market/get_orderbook/get_candlesticks (they'd fail the new ticker-format validation if they were). Round-2 review (F7) found the "no functional impact" framing was too strong, though: tracker.get_price_improvement_stats() (tracker.py:6600) runs `SELECT improvement FROM price_improvement` with no ticker filter at all, so these 6 rows DO skew the mean/median/count/positive_pct it surfaces to the dashboard -- confirmed by reading that function directly.
 Files: data/predictions.db (price_improvement.ticker column) -- producing code not yet identified
 
@@ -26329,6 +26639,67 @@ Problem:
   A one-off query while re-verifying the AUD-0076 fix's ticker regex against `data/*.db` surfaced 6 distinct ticker-like values in predictions.db's price_improvement table that are placeholder/test-fixture names (e.g. "TK_Chicago"), not real Kalshi tickers, sitting in what should be production-only data.
   Root cause: Not yet investigated -- matches this project's known "manual scripts bypass test DB isolation" pattern ([[feedback_manual_scripts_bypass_test_db_isolation]] in Claude's memory: a python -c script or standalone tool importing tracker.py/paper.py writes to the real DB_PATH since no pytest conftest fixture applies outside pytest), but the specific script/session responsible for these 6 rows hasn't been traced.
   Recommendation: Identify which script wrote these rows (grep for "TK_Chi", "TK_NYC" etc. across scripts/one-offs in git history), confirm no downstream code reads price_improvement without filtering them out, and either delete the 6 rows or add a name-based exclusion if deletion is unsafe for any reason.
+
+Resolution (2026-08-24, batch-62 item 2):
+  SCOPE CORRECTION -- the contamination was 14x what this entry describes and
+  2.3x what the batch-62 handoff measured. Actual: 98 synthetic rows of 368
+  (26.6%), not 6 and not 42:
+    KXHIGH-25APR10-NYC  54  (test_paper.py, test_trading.py)
+    TK1 12, TK 12, TKTEST 5, TK2 5, TK_CHI 2, TK3 1,
+    TK_NYC/TK_Chicago/TK_LA/TK_Miami/TK_Dallas 1 each   = 42
+    BE-TICKER            2  (test_paper.py)
+  All but BE-TICKER were written in one burst on 2026-05-10T17:23; the 2
+  BE-TICKER rows on 2026-08-03. price_improvement is the ONLY contaminated
+  table -- predictions, outcomes, analysis_attempts, price_history,
+  trade_history and the rest were checked and are clean.
+
+  This changed the fix. A `TK_%` filter (this entry's obvious reading) catches
+  7 of 98; even "anything not starting with KX is synthetic" catches only 44,
+  because KXHIGH-25APR10-NYC mimics a real ticker.
+
+  Defensive half -- get_price_improvement_stats now filters on
+  tracker._REAL_TICKER_SQL. The first draft was a pure shape allowlist,
+  `ticker GLOB 'KX*-*-[TB]*'`; opus review caught (HIGH) that requiring a T/B
+  strike marker in the third segment DROPS the monthly-rain
+  (KXRAINCHIM-26AUG-6), monthly-snow (KXDENSNOWM-26DEC-3) and hurricane
+  (KXNAMEDSTORM-26DEC01EPACTOT-18, KXFIRSTHURRICANE-26DEC01ATL-DOL) families,
+  all real and already in this DB -- KXRAINMIAM alone has ~7.9k rows in other
+  tables. Silently under-reporting a real fill is worse than admitting a
+  synthetic one, so the shape rule was loosened to `ticker GLOB 'KX*-*'` plus a
+  one-name NOT IN list for KXHIGH-25APR10-NYC, named explicitly so it can never
+  widen to catch real data. Verified against the live table: keeps all 270 real
+  rows / 33 distinct series, drops exactly the 98 synthetic ones.
+  get_price_improvement_stats is the only reader; both web_app endpoints
+  (/api/price-improvement, /api/execution-quality) route through it.
+
+  Cleanup half -- data/predictions.db backed up first via the sqlite backup API
+  to data/backups/predictions_pre-batch62-synthetic-ticker-cleanup_2026-08-24.db
+  (integrity_check ok, all 368 pre-cleanup rows readable), then exactly 98 rows
+  deleted. The statistic moved materially, as it should have:
+                    before(unfiltered)   after
+    mean            0.001091             0.001513   (+39%)
+    median          0.000000             0.002838
+    count           368                  270
+    positive_pct    0.4293               0.5852
+  After the delete the unfiltered and filtered queries agree exactly, and both
+  match the pre-delete filtered value -- so query fix and cleanup are
+  consistent with each other.
+
+  Recurrence is prevented at the source by conftest's autouse
+  isolate_tracker_db fixture (which postdates these rows); the query filter is
+  defence in depth.
+
+  Also corrected frontend/src/useData.js's mapPriceImprovement comment, which
+  claimed to "filter out TKTEST synthetic rows" -- it never filtered anything,
+  it only null-guards; the filtering is server-side.
+
+  Testing: test_trading.py TestPriceImprovementTracking -- new
+  test_stats_excludes_synthetic_tickers covers all 7 real families and 7
+  synthetic spellings, with a positive control that every row really was
+  inserted. Mutation-tested twice: removing the WHERE clause, and reverting to
+  the strike-marker GLOB, each fail it. An existing test that used "TICK1" and
+  asserted None was corrected to a real-shaped ticker, since it would otherwise
+  have passed for the wrong reason.
 
 [RESOLVED 2026-08-22 -- see resolution below.] weather_markets._metar_lock_in never combines current_temp_f with the daily-extreme cache -- the identical AUD-0016 defect class, on the LIVE trade-entry path
 Priority: MEDIUM (found by independent opus review, not the original max-depth audit; not yet independently CONFIRMED by a second pass)
@@ -27165,11 +27536,7 @@ Resolution (2026-08-24, re-verified during batch-48's backlog review): the
   only served frontend). `ls -d "weather app site V_3 (3)"` confirms it no
   longer exists. Moot -- there is no longer a second copy to carry the bug.
 
-[OPEN 2026-08-22 -- found while implementing batch-13 (AUD-0022, giving
-_fetch_ensemble_precip_multiday its own dedicated _ensemble_precip_multiday_cb
-circuit breaker instead of sharing _ensemble_cb); corrected 2026-08-22 by
-round-2 opus review, which found the original framing below overstated how
-cleanly this splits by batch -- see the Root cause update] trade_cycle.py's
+[RESOLVED 2026-08-24 -- batch-62 item 7; see resolution below.] trade_cycle.py's
 pre-scan CB-health check, web_app.py's circuit-breaker status dashboard, AND
 cron.py's own newly-opened-circuit detector don't know about the new
 _ensemble_precip_multiday_cb
@@ -27221,6 +27588,72 @@ Problem:
   Full record: none (not from the original max-depth audit -- surfaced while
   implementing batch-13's AUD-0022 fix this session; corrected same session
   by round-2 opus review of the fix itself).
+
+Resolution (2026-08-24, batch-62 item 7):
+  Verified as filed, and the drift was worse than described: web_app tracked 7
+  (not 6), trade_cycle 5, cron 4, and _ensemble_precip_multiday_cb was in none
+  of them.
+
+  Fixed the class, not the instance -- but NOT as a flat registry, because the
+  drift was not uniform. trade_cycle's list deliberately omits
+  _weatherapi_cb/_pirate_cb: those are the FALLBACK temperature providers
+  consulted precisely when the Open-Meteo circuits are open, so suppressing
+  their probes during the analyze phase would stop the fallback recovering.
+  Collapsing all three monitors onto one flat list would have regressed that.
+
+  So: weather_markets.CIRCUIT_BREAKERS, a tuple of a frozen
+  CircuitBreakerRegistration(breaker, prewarm_scoped) dataclass covering all 8.
+  cron and web_app iterate everything; trade_cycle filters on prewarm_scoped.
+  _ensemble_precip_multiday_cb is prewarm_scoped=True -- it is fetched from
+  _analyze_monthly_rain_trade, inside the same parallel analyze pass, so an
+  open circuit stalls that pool on a probe the same way. Its no-fallback
+  asymmetry (suppress_probe has no reset path, so under a long-lived
+  `main.py loop` the far-tail rain blend stays dark until restart) is noted at
+  the registration.
+
+  OPUS REVIEW CAUGHT A HIGH IN THE FIRST DRAFT, fixed: CircuitBreaker.is_open()
+  is a MUTATOR, not a read. Once recovery_timeout has elapsed it sets
+  _half_open, zeroes _failure_count, persists that and returns False -- "you
+  are the probe." A monitor calling it therefore CONSUMES the one recovery
+  probe; the next real fetch caller sees is_open() == True and skips the
+  source, and trade_cycle's suppress_probe() then pins it open for the process
+  lifetime. Widening cron's Phase 9 snapshot from 4 breakers to all 8 would
+  have dropped _nbm_om_cb/_ecmwf_om_cb/_hrrr_om_cb/_ensemble_precip_multiday_cb
+  -- four LIVE-blend temperature sources -- into exactly that trap, and the
+  stolen probe would also have produced a FALSE "circuit opened" alert.
+  Confirmed empirically. Both cron and web_app now read seconds_open() > 0,
+  a pure read; this also fixes the pre-existing probe-steal for the breakers
+  those monitors already covered.
+
+  Accepted consequence, documented at the cron call site: six of the eight hit
+  Open-Meteo hosts and trip together, so one outage now emits up to six alerts
+  where it emitted two. The per-circuit cooldown key cannot dedupe correlated
+  circuits; kept deliberately, since which source tripped is the actionable
+  detail and a shared key would hide an independent second failure inside an
+  unrelated outage's window.
+
+  A FOURTH hand-maintained copy of the same eight breakers was found by review
+  in tests/conftest.py's per-test reset loop, and is now derived from the
+  registry too -- otherwise a newly added, correctly registered breaker would
+  still have been missed there, reintroducing the cross-test contamination that
+  fixture's own history records four separate times.
+
+  frontend/src/useData.js gained CB_LABELS entries for ecmwf_openmeteo and
+  hrrr_openmeteo (already exposed by the API and rendering as raw keys) plus
+  the new precip one.
+
+  Testing: new tests/test_circuit_breaker_registry.py -- every module-level
+  breaker is registered (with a positive control that the introspection found
+  any at all); no duplicates; the precip breaker is registered and
+  prewarm-scoped; the fallbacks are monitored but NOT probe-suppressed;
+  trade_cycle suppresses exactly the prewarm-scoped set; cron's REAL Phase 9
+  source derives from the registry and does not call is_open(); conftest's
+  reset loop derives from it; and the probe-steal regression itself. An earlier
+  draft of the cron test rebuilt cron's comprehension inline and asserted a
+  tautology over it -- opus-review-caught and replaced with a source-level
+  check. Plus 3 new test_web_app.py tests for /api/circuit-status, which had NO
+  test at all before this change. Mutation-tested: dropping one registration
+  fails 5 of them.
 
 [RESOLVED 2026-08-22 -- see resolution below.] cmd_order (manual CLI buy/sell) bypasses 3 of the 4 live-specific loss/exposure brakes that only exist inside the automated _place_live_order path
 Priority: HIGH -- an operator (or a script driving the CLI) placing repeated manual live orders faces no live daily-loss cap, no live daily-spend cap, and no live open-position-count cap
@@ -32333,7 +32766,7 @@ What it would look like:
   paper-trading dashboard versus what it should be if/when live trading is enabled.
 
 ======================================================
-[OPEN 2026-08-24 -- found during batch-48's backlog re-verification sweep, while confirming AUD-0061 (the original 6-flag README gap) was genuinely fixed; these two flags postdate that entry and were never added, so closing AUD-0061 would have silently left the same class of gap open] README.md's *_TRADING_ENABLED table is missing 2 newer shadow flags (HOLIDAY_TEMP, BETWEEN), and .env.example documents none of the 8 at all
+[RESOLVED 2026-08-24 -- batch-62 item 8; see resolution below.] README.md's *_TRADING_ENABLED table is missing 2 newer shadow flags (HOLIDAY_TEMP, BETWEEN), and .env.example documents none of the 8 at all
 Priority: LOW -- documentation-only, no behavior affected. Both flags fail
   safe when unset (shadow-only is the default; an operator who never sets
   them gets no live orders from those families), so the risk is an
@@ -32374,6 +32807,34 @@ Recommendation:
   out, say so explicitly in the README table's intro line so the omission
   is visibly deliberate rather than looking like the same drift this entry
   describes.
+
+Resolution (2026-08-24, batch-62 item 8):
+  Added HOLIDAY_TEMP_TRADING_ENABLED and BETWEEN_TRADING_ENABLED rows to
+  README.md's env-var table, using the existing sentence template unmodified
+  (both gates have the same "=1/true/yes AND >=20 settled predictions" shape,
+  verified at weather_markets.py:1318 and :1374 against the
+  count_settled_holiday_temp_predictions / count_settled_between_predictions
+  functions they call).
+
+  The .env.example half -- decided, per this entry's own instruction to decide
+  it explicitly rather than leave it ambiguous: the shadow gates stay OUT of
+  .env.example, and the README table's intro now SAYS SO and says why. That
+  file documents flags an operator is expected to set; these are deliberately
+  unset until their market type has accumulated calibration data, so listing
+  them in the file people copy to .env would read as an invitation to enable
+  them, and a commented-out line cannot convey the >=20-settled precondition.
+  The README table is stated to be their canonical list.
+
+  Adjacent gap found by opus review and fixed here: BELOW_GATE_ENABLED
+  (weather_markets._below_gates_active, >=30 settled below predictions) is the
+  same class of manually-activated gate and appeared in neither file -- it just
+  is not spelled *_TRADING_ENABLED, so this entry's own grep missed it. Now
+  documented in the same table, flagged as not a market-type gate.
+  LIVE_TRADING_ENABLED is deliberately NOT in this table -- it is the master
+  live-order interlock, documented in LIVE_TRADING_RUNBOOK.md; the intro says
+  so, to stop a reader conflating them.
+
+  Pure documentation; no code change, no test.
 
 [RESOLVED 2026-08-24 -- built as A14 from the "Weather V3 additions" design
   handoff; the finding arrived before the panel did] MODEL-VS-MARKET BRIER
@@ -33270,3 +33731,56 @@ Recommendation:
   workaround (call graphify.extract.extract() on an explicit file list, merge
   into graph.json by hand, skip Obsidian/HTML regen) is the only path that has
   actually worked here.
+
+[OPEN 2026-08-25 -- found by opus review during batch-62 item 1, while tightening an assertion that had been hiding it] tests/test_trade_improvements.py::test_trades_placed_below_cap has never exercised the 20-position cap it is named for
+Priority: LOW -- a permanently-vacuous test, not a production bug. No live path is affected.
+Files: tests/test_trade_improvements.py (TestMaxConcurrentPositions), order_executor.py (_auto_place_trades sizing gates)
+
+Problem:
+  The test seeds 18 open positions and 5 opportunities, calls
+  main._auto_place_trades, and asserted `result <= 2` -- which 0 satisfies. It
+  places 0. Batch-62 fixed this test's real isolation bug (it patched
+  paper.DATA_PATH then reloaded paper, discarding the patch, so Kelly sizing
+  ran against the REAL balance and peak) and then tightened the bound to
+  `== 2` to prove the isolation mattered. That surfaced two further reasons it
+  never reached the cap, both fixed in batch-62: execution_log was a bare
+  MagicMock whose auto-vivified was_ordered_recently() returned truthy, so all
+  5 opportunities were skipped as ordered_recently; and the market fixture had
+  no volume/open_interest, so liquidity_kelly_scale zeroed adj_kelly.
+  With both fixed it still places 0 -- the synthetic ticker "KXHIGH-CHI-0"
+  does not parse to a real city/target-date, so portfolio_kelly_fraction
+  and/or corr_kelly_scale zero it and every opportunity is skipped as
+  kelly_too_small(0.0000).
+  The bound was therefore left at `<= 2`, with a KNOWN-VACUOUS comment in the
+  test naming this entry, rather than left as a silent green tick.
+Recommendation:
+  Give TestMaxConcurrentPositions opportunity fixtures that survive every
+  sizing gate -- realistic tickers that parse to a city/date, plus whatever
+  portfolio/correlation state those two scales need -- then restore the `== 2`
+  assertion. Belongs with whoever next owns _auto_place_trades' test fixtures;
+  batch-62 owned the isolation, not the fixture realism. Check the sibling
+  test_no_trades_placed_when_at_cap at the same time: it asserts `== 0`, which
+  currently passes for the same wrong reason.
+
+[OPEN 2026-08-25 -- found by opus review during batch-62 item 4, measured while writing its sibling guard] tests/test_bare_os_replace_guard.py's rglob scan takes ~8 minutes when run from the main clone
+Priority: LOW -- test-suite latency only; the guard itself works correctly.
+Files: tests/test_bare_os_replace_guard.py (_all_source_files)
+
+Problem:
+  `_REPO_ROOT.rglob("*.py")` walks the ENTIRE tree and only then filters out
+  dot-directories. From a worktree that is ~250 files (well under a second),
+  but from the MAIN CLONE _REPO_ROOT contains .claude/worktrees/ -- which holds
+  every checked-out worktree -- plus .venv, so it visits ~14,000 files.
+  Measured 488s for one walk, and the test calls _all_source_files() more than
+  once.
+  batch-62's new tests/test_bare_write_bytes_guard.py uses os.walk with
+  in-place `dirs[:]` pruning instead: 52 files in 0.04s from the main clone,
+  same result set. This entry is to apply the same shape to the older sibling,
+  which batch-62 did not own.
+Recommendation:
+  Copy _production_source_files()'s os.walk+prune structure from
+  tests/test_bare_write_bytes_guard.py into tests/test_bare_os_replace_guard.py
+  and hoist its repeated _all_source_files() call into a local. Confirm the
+  allowlist counts are unchanged afterwards -- that guard keys on exact
+  per-file match counts, so any change in the scanned set fails loudly.
+

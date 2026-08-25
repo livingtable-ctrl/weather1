@@ -5,17 +5,17 @@ AUD-0012.
 
 execution_log isolation is handled by conftest.py's autouse isolate_execution_log
 fixture (redirects execution_log.DB_PATH to a per-test temp file). paper.py
-isolation is done directly in this file, NOT via the mock_balance_1000
-fixture -- that fixture patches paper.DATA_PATH and then calls
-importlib.reload(paper), and DATA_PATH is reassigned at paper.py module
-level from _project_root(), so the reload silently re-points DATA_PATH back
-at the REAL project data/paper_trades.json, undoing the patch (confirmed
-empirically this session: paper.DATA_PATH under that fixture resolves to
-the actual production file, which already has 200+ real trades in it,
-colliding with test tickers and polluting exposure-getter results with real
-trading history). Flagged separately as its own finding -- out of scope for
-this batch's fix, but a real production-data risk for any test using that
-fixture that calls place_paper_order or reads open-trade state.
+isolation is done directly in this file, via its own _isolated_paper_data
+fixture, rather than via conftest's mock_balance_1000.
+
+Historical note (backlog L24334): mock_balance_1000 used to patch
+paper.DATA_PATH and then call importlib.reload(paper); the reload re-executed
+paper.py's module body, recomputing DATA_PATH from safe_io.project_root() and
+silently re-pointing it at the REAL data/paper_trades.json. That is why this
+file rolled its own isolation. Batch-62 removed the reload, so the fixture is
+now genuinely isolated (see tests/test_conftest_paper_isolation.py) -- this
+file keeps its local fixture because it seeds specific live/paper state that
+mock_balance_1000 does not, not because the shared fixture is unsafe.
 """
 
 from unittest.mock import MagicMock
@@ -110,8 +110,8 @@ class TestGetLiveOpenPositionsCityDate:
 
 class TestGetAllOpenPositions:
     """AUD-0001/backlog.txt: paper's exposure-cap functions must see live
-    positions, not just paper_trades.json. See module docstring for why this
-    file's own _isolated_paper_data fixture is used instead of
+    positions, not just paper_trades.json. See the module docstring for why
+    this file uses its own _isolated_paper_data fixture rather than
     mock_balance_1000.
     """
 

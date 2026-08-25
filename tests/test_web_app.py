@@ -2898,3 +2898,71 @@ class TestRequestScopedLedgerCache:
             "/api/status previously cost three full ledger reads per poll "
             f"(open trades twice + balance); got {len(calls)}"
         )
+
+
+class TestCircuitStatusEndpoint:
+    """backlog L26224: /api/circuit-status is now built from
+    weather_markets.CIRCUIT_BREAKERS instead of a hand-maintained key->breaker
+    map that had already lost _ensemble_precip_multiday_cb. The route had no
+    test at all before batch-62.
+    """
+
+    def test_returns_every_registered_breaker(self, client):
+        import weather_markets
+
+        resp = client.get("/api/circuit-status")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert "error" not in body, body
+
+        expected = {reg.name for reg in weather_markets.CIRCUIT_BREAKERS}
+        assert set(body) == expected
+        # The breaker the entry was filed about, and the three the pre-batch-62
+        # hardcoded map already covered -- named explicitly so a registry that
+        # silently shrank would still fail here, not just drift in lockstep.
+        assert "open_meteo_ensemble_precip_multiday" in body
+        for legacy_key in (
+            "open_meteo_forecast",
+            "open_meteo_ensemble",
+            "ecmwf_openmeteo",
+            "nbm_openmeteo",
+            "hrrr_openmeteo",
+            "weatherapi",
+            "pirate_weather",
+        ):
+            assert legacy_key in body, (
+                f"{legacy_key} was in the pre-batch-62 response and must remain"
+            )
+
+    def test_every_entry_has_the_documented_shape(self, client):
+        resp = client.get("/api/circuit-status")
+        body = resp.get_json()
+        for key, entry in body.items():
+            assert set(entry) == {
+                "state",
+                "failures",
+                "retry_in_s",
+                "open_for_s",
+            }, key
+            assert entry["state"] in ("open", "closed")
+            assert isinstance(entry["failures"], int)
+
+    def test_open_circuit_is_reported_as_open(self, client, monkeypatch):
+        """Positive control: the endpoint reads live breaker state rather than
+        emitting a constant 'closed' for everything."""
+        import weather_markets
+
+        target = weather_markets._ensemble_precip_multiday_cb
+        # seconds_open() is what the endpoint reads -- is_open() is a mutator
+        # and must never be called by a monitor (see _cb_dict's comment).
+        monkeypatch.setattr(target, "seconds_until_retry", lambda: 42.0)
+        monkeypatch.setattr(target, "seconds_open", lambda: 7.0)
+
+        body = client.get("/api/circuit-status").get_json()
+        entry = body["open_meteo_ensemble_precip_multiday"]
+        assert entry["state"] == "open"
+        assert entry["retry_in_s"] == 42
+        assert entry["open_for_s"] == 7
+        # And an untouched breaker is still reported closed, so the assertion
+        # above isn't passing because everything reads 'open'.
+        assert body["open_meteo_forecast"]["state"] == "closed"

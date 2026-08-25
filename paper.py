@@ -481,8 +481,13 @@ def _save(data: dict) -> None:
         # The default retries=3/deadline_secs=0.5 (~3.5s worst case) can be
         # exhausted by a multi-second scan lock; raise both here since this
         # write's failure mode (a lost/corrupted ledger) is worse than the
-        # added latency. Every _save() call site holds _DATA_LOCK
-        # (_CrossProcessDataLock) across this write, and that lock's own
+        # added latency. Every PRODUCTION _save() call site holds _DATA_LOCK
+        # (_CrossProcessDataLock) across this write -- the one exception is
+        # tests/conftest.py's mock_balance_1000 fixture, which seeds a $1000
+        # ledger into a per-test tmp_path with no concurrent writer, so the
+        # lock would protect nothing (noted by opus review, batch-62, because
+        # the retries=6/deadline=1.0 reasoning below leans on this claim).
+        # That lock's own
         # _acquire_file_lock gives up after a fixed 30s budget and proceeds
         # UNLOCKED on timeout (opus-review-caught: silently trading "lost
         # ledger write" for the arguably worse "unlocked concurrent

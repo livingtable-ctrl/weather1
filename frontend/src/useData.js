@@ -152,6 +152,9 @@ const CB_LABELS = {
   open_meteo_ensemble:  'Open-Meteo Ensemble',
   nbm_openmeteo:        'NWS / NBM',
   nws:                  'NWS / NBM',
+  ecmwf_openmeteo:      'ECMWF (Open-Meteo)',
+  hrrr_openmeteo:       'HRRR (Open-Meteo)',
+  open_meteo_ensemble_precip_multiday: 'Open-Meteo Ensemble (precip)',
   weatherapi:           'WeatherAPI',
   pirate_weather:       'Pirate Weather',
   kalshi_api_read:      'Kalshi REST',
@@ -400,9 +403,11 @@ function mapSamedayCalib(raw) {
  * /api/price-improvement
  * → {avg_improvement_cents, total_trades, median_improvement_cents, positive_pct}
  *
- * Filters out TKTEST synthetic rows — the endpoint may already do this, but
- * guard against total_trades with only synthetic data by checking for
- * avg_improvement_cents === null.
+ * Synthetic test rows are filtered server-side (tracker._REAL_TICKER_SQL
+ * allowlists real Kalshi weather ticker shapes; backlog L25380). This does
+ * NOT filter anything itself — despite what this comment used to claim — it
+ * only guards the "insufficient real data" case, which the endpoint signals
+ * by returning avg_improvement_cents === null.
  */
 function mapPriceImprovement(raw) {
   if (!raw || raw.error) return null;

@@ -4,6 +4,7 @@ Replaces the module-level globals in weather_markets.py.
 """
 
 import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from safe_io import atomic_write_json
+
+_log = logging.getLogger(__name__)
 
 
 class ForecastCache[T]:
@@ -179,8 +182,17 @@ class PersistentForecastCache[T](ForecastCache[T]):
     consumer needs both per-entry TTL AND disk persistence, that's a new,
     deliberate extension -- not something to bolt on here by guessing.
 
+    dump_to_disk() merges into the existing on-disk snapshot rather than
+    replacing it (backlog L24136) -- see that method's docstring for the
+    conflict rule and why it is local-wins. load_from_disk() ALSO merges, in
+    the opposite direction: it writes each file entry over this instance's
+    store without clearing it first, so a key only this instance knows
+    survives a load, and DISK wins on a collision. (Opus-review-caught,
+    batch-62: an earlier draft of this paragraph claimed load fully replaced
+    the store, which is not what the code does and never was.)
+
     dump_to_disk() holds this instance's own (non-reentrant) lock for its
-    ENTIRE duration, including the file write -- deliberately, so two
+    ENTIRE duration, including the file read+write -- deliberately, so two
     threads calling dump_to_disk() concurrently for the same instance can't
     both write the same safe_io.atomic_write_json temp filename at once
     (that filename is derived only from `path`, not per-call, so without
@@ -199,9 +211,61 @@ class PersistentForecastCache[T](ForecastCache[T]):
         """Persist the entire cache to `path` as JSON, atomically (via
         safe_io.atomic_write_json -- temp file + fsync + rename, so a
         process kill mid-write can't leave truncated/corrupt JSON on disk).
-        Creates parent directories if needed; overwrites any existing file.
-        Holds this instance's lock for the full call, including the write
-        itself -- see the class docstring for why.
+        Creates parent directories if needed. Holds this instance's lock for
+        the full call, including the read and the write -- see the class
+        docstring for why.
+
+        backlog L24136: the payload is a read-MERGE-write, not a bare
+        overwrite of whatever this instance happens to hold. cron, watch and
+        web_app each run their own process with their own independent
+        instance, so a plain overwrite made the last process to dump silently
+        discard every key the other two had learned since the last load.
+        Conflict rule: **this instance's in-memory value wins**, and keys
+        present only on disk are carried through untouched.
+
+        That rule is chosen because there is nothing better available, not
+        because it is ideal: the on-disk format is ``{key: value}`` with no
+        per-entry timestamp (the in-memory timestamp is ``time.monotonic()``,
+        which is not comparable across processes), so a genuine
+        newest-fetch-wins merge would need a disk-schema change -- a bigger
+        change than this entry warrants. Local-wins is still strictly better
+        than the previous behaviour: it never loses a key, and on a key
+        collision it keeps exactly the value the old code would have kept.
+        For the one real consumer today (nws.py's station-ID cache, whose
+        entries are immutable station->coord facts) the collision case is a
+        no-op anyway.
+
+        Four residual limitations, all accepted for the permanent
+        (``ttl_secs=inf``) caches this subclass exists for, whose key space is
+        small and bounded (one entry per city/station). A consumer with an
+        unbounded key space, or one that needs deletion, should not be using
+        whole-dict persistence.
+
+        (a) The merge is not cross-process atomic -- two processes can still
+        interleave read/merge/write and lose one side's keys -- but the window
+        is now the read-to-rename gap rather than "every dump, always".
+
+        (b) The on-disk snapshot can exceed this instance's ``max_size``, since
+        disk-only keys are never evicted.
+
+        (c) **Deletion can no longer be expressed.** ``clear()``,
+        ``prune_expired()`` and the base class's LRU eviction now only affect
+        memory: a key already on disk is carried through every subsequent dump.
+        "Clear the cache, then persist" does NOT empty the file.
+
+        (d) On Windows, this method now holds ``path`` open for reading (via
+        ``read_text``) inside its own lock. CPython does not pass
+        FILE_SHARE_DELETE, so a concurrent process's ``os.replace`` onto the
+        same path can fail with WinError 5 during that read. The read is
+        sub-millisecond on a snapshot this size and ``safe_io``'s
+        ``_replace_with_retry`` retries for a full second, so this is bounded
+        -- but it is a channel that did not exist before the merge.
+        Opus-review-caught (batch-62) for (c) and (d).
+
+        A read failure on the existing file is deliberately NOT swallowed:
+        silently degrading back to overwrite-everything is the exact bug this
+        merge exists to fix, so a corrupt/unreadable snapshot surfaces to the
+        caller (nws.py's _save_station_cache already logs-and-continues).
 
         Raises ValueError if any entry was written via set_with_ttl()/
         set_at_with_ttl() (a 3-tuple) -- see the class docstring."""
@@ -213,8 +277,39 @@ class PersistentForecastCache[T](ForecastCache[T]):
                         "with a per-entry TTL (set_with_ttl/set_at_with_ttl) -- "
                         "not supported by dump/load, see the class docstring"
                     )
-            serializable = {key_to_str(k): v[0] for k, v in self._store.items()}
-            atomic_write_json(serializable, path)
+            merged: dict[str, Any] = {}
+            if path.exists():
+                try:
+                    on_disk = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    # Self-heal, loudly. Raising here (an earlier draft did)
+                    # meant a single zero-byte or truncated snapshot -- from a
+                    # partial restore, a hand edit, an out-of-band tool -- made
+                    # EVERY subsequent dump raise forever, and nws.py's
+                    # _save_station_cache swallows that at debug level, so the
+                    # file would never be repaired and nothing would ever be
+                    # persisted again. The pre-merge overwrite was at least
+                    # self-healing. Opus-review-caught (batch-62).
+                    _log.error(
+                        "PersistentForecastCache.dump_to_disk: %s is unreadable "
+                        "(%s) -- overwriting it with this process's own entries. "
+                        "Any keys only that file knew are lost.",
+                        path,
+                        exc,
+                    )
+                    on_disk = {}
+                if not isinstance(on_disk, dict):
+                    _log.error(
+                        "PersistentForecastCache.dump_to_disk: %s does not "
+                        "contain a JSON object (got %s) -- overwriting it.",
+                        path,
+                        type(on_disk).__name__,
+                    )
+                    on_disk = {}
+                merged.update(on_disk)
+            # Local last, so this instance's values win on a key collision.
+            merged.update({key_to_str(k): v[0] for k, v in self._store.items()})
+            atomic_write_json(merged, path)
 
     def load_from_disk(self, path: Path, str_to_key: Callable[[str], Any]) -> None:
         """Load a previously dumped cache from `path` into this instance, if
@@ -237,4 +332,22 @@ class PersistentForecastCache[T](ForecastCache[T]):
         now = time.monotonic()
         with self._lock:
             for k_str, value in raw.items():
-                self._store[str_to_key(k_str)] = (value, now)
+                try:
+                    key = str_to_key(k_str)
+                except Exception as exc:
+                    # Skip the bad key, keep the rest. Letting str_to_key's
+                    # exception propagate (an earlier draft did) meant ONE
+                    # unparseable key discarded the entire snapshot -- and
+                    # because dump_to_disk now carries disk keys through
+                    # verbatim, that bad key would be written straight back on
+                    # the next dump, so the load stayed broken permanently.
+                    # Opus-review-caught (batch-62).
+                    _log.error(
+                        "PersistentForecastCache.load_from_disk: skipping "
+                        "unparseable key %r in %s (%s)",
+                        k_str,
+                        path,
+                        exc,
+                    )
+                    continue
+                self._store[key] = (value, now)

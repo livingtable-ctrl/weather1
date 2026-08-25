@@ -1,6 +1,42 @@
 """P0-7: STARTING_BALANCE must be configurable via environment variable."""
 
 import importlib
+import os
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_reloaded_modules():
+    """Undo each test's importlib.reload after it finishes.
+
+    backlog L24334 family (opus-review-caught, batch-62): monkeypatch restores
+    the ENV VAR at teardown but not the RELOAD, so without this the last test
+    in this file left paper.STARTING_BALANCE frozen at its value (and
+    utils.STARTING_BALANCE at 750.0, and paper's three path constants pointed
+    back at the real data/) for every later test in the session. Under any
+    ordering where this file ran before tests/test_paper.py, that file's
+    TestKellyCompounding::test_initial_balance_is_1000 would read the leaked
+    value and fail.
+
+    Restores os.environ EXPLICITLY rather than relying on monkeypatch having
+    already run: pytest gives no ordering guarantee between an autouse fixture
+    and a fixture the test requests directly, and relying on one was measured
+    not to work here -- STARTING_BALANCE still leaked at 2000.0 into
+    tests/test_paper.py::TestKellyCompounding::test_initial_balance_is_1000.
+    """
+    original = os.environ.get("STARTING_BALANCE")
+    yield
+    if original is None:
+        os.environ.pop("STARTING_BALANCE", None)
+    else:
+        os.environ["STARTING_BALANCE"] = original
+
+    import paper
+    import utils
+
+    importlib.reload(utils)
+    importlib.reload(paper)
 
 
 class TestStartingBalanceEnvVar:
@@ -36,7 +72,9 @@ class TestStartingBalanceEnvVar:
         importlib.reload(utils)
         assert utils.STARTING_BALANCE == 750.0
 
-    def test_reset_paper_uses_starting_balance(self, tmp_path, monkeypatch):
+    def test_reset_paper_uses_starting_balance(
+        self, tmp_path, monkeypatch, repatch_paper_paths
+    ):
         """reset_paper_account must initialise balance from STARTING_BALANCE."""
         monkeypatch.setenv("STARTING_BALANCE", "2000.0")
         import paper
@@ -46,7 +84,9 @@ class TestStartingBalanceEnvVar:
         # resets DATA_PATH to the real production path, causing reset_paper_account()
         # to wipe live data.
         importlib.reload(paper)
-        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        # All three path constants, not just DATA_PATH -- the reload above
+        # reset the two override paths to the real data/ too (batch-62).
+        repatch_paper_paths(paper)
 
         paper.reset_paper_account()
         assert paper.get_balance() == 2000.0

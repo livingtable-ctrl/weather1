@@ -806,6 +806,159 @@ class TestGetMarketsPagination:
         assert client._get.call_count == 2
         assert len(result) == 2
 
+    # ── AUD-0060 / backlog L23905: validate_market()'s return value ─────────
+
+    def test_structurally_unusable_markets_are_dropped(self, caplog):
+        """Entries no consumer could read at all must not reach the caller.
+
+        Mutation check: replacing the `_is_structurally_usable(market)` guard
+        with a bare `validate_market(market, ...)` statement (the pre-batch-62
+        code) makes this fail -- all four entries come back instead of two.
+        """
+        import logging
+
+        client = self._make_client()
+        good_legacy = {
+            "ticker": "KXHIGHNY-26JUN15-T75",
+            "yes_bid": 0.50,
+            "yes_ask": 0.55,
+            "volume": 100,
+        }
+        good_current = {
+            "ticker": "KXLOWTSFO-26MAY26-B51.5",
+            "yes_bid_dollars": 0.20,
+            "yes_ask_dollars": 0.25,
+            "volume_fp": 10,
+        }
+        no_ticker = {"yes_bid": 0.50, "yes_ask": 0.55, "volume": 100}
+        no_volume_under_either_name = {
+            "ticker": "KXHIGHCHI-26JUN02-T81",
+            "yes_bid": 0.50,
+            "yes_ask": 0.55,
+        }
+        client._get = MagicMock(
+            return_value={
+                "markets": [
+                    good_legacy,
+                    no_ticker,
+                    good_current,
+                    no_volume_under_either_name,
+                ]
+            }
+        )
+        client._validate = MagicMock()
+
+        with caplog.at_level(logging.ERROR, logger="kalshi_client"):
+            result = client.get_markets()
+
+        assert [m["ticker"] for m in result] == [
+            "KXHIGHNY-26JUN15-T75",
+            "KXLOWTSFO-26MAY26-B51.5",
+        ]
+        # Dropped entries are recoverable from the log -- get_markets also
+        # feeds settlement sync, where a silent drop is a lost settlement.
+        assert "KXHIGHCHI-26JUN02-T81" in caplog.text
+        assert "<no ticker>" in caplog.text
+
+    def test_economically_odd_but_real_markets_are_kept(self, caplog):
+        """The point of the structural/economic split (opus-review-caught).
+
+        A locked book (bid == ask) and a settled market (100/100) both fail
+        schema_validator.validate_market's inverted-spread check, but they are
+        real states -- and get_markets feeds settlement sync and the hourly
+        ladder proxy, where dropping one yields a silently WRONG number. They
+        must survive, with validate_market's warning still emitted.
+
+        Mutation check: gating the append on `validate_market(...)`'s bool
+        instead of `_is_structurally_usable(...)` makes this fail.
+        """
+        import logging
+
+        client = self._make_client()
+        locked = {
+            "ticker": "KXHIGHNY-26JUN15-T75",
+            "yes_bid": 52,
+            "yes_ask": 52,
+            "volume": 100,
+        }
+        settled_yes = {
+            "ticker": "KXLOWTSEA-26AUG23-T59",
+            "yes_bid": 100,
+            "yes_ask": 100,
+            "volume": 40,
+        }
+        illiquid_no_quote = {
+            "ticker": "KXHIGHTPHX-26JUL04-B99.5",
+            "yes_bid": 0,
+            "yes_ask": 0,
+            "volume": 0,
+        }
+        client._get = MagicMock(
+            return_value={"markets": [locked, settled_yes, illiquid_no_quote]}
+        )
+        client._validate = MagicMock()
+
+        with caplog.at_level(logging.WARNING):
+            result = client.get_markets()
+
+        assert len(result) == 3
+        # Positive control: validate_market really did object to two of them,
+        # so "kept anyway" is the deliberate behaviour and not a case of the
+        # validator silently passing them.
+        assert "inverted spread" in caplog.text
+
+    def test_all_unusable_page_fails_open_instead_of_returning_empty(self, caplog):
+        """A page where EVERY entry is unusable is treated as an API schema
+        change, not as N bad markets.
+
+        Returning [] would be indistinguishable from "this series has no open
+        markets", and weather_markets._fetch_series only sets its `degraded`
+        flag on an exception -- so the empty list would be cached as healthy
+        for the full 60s TTL.
+        """
+        import logging
+
+        client = self._make_client()
+        # Plausible shape after a hypothetical Kalshi rename of every price key.
+        renamed = [
+            {"ticker": "KXHIGHNY-26JUN15-T75", "bid_cents": 50, "ask_cents": 55},
+            {"ticker": "KXLOWTSFO-26MAY26-B51.5", "bid_cents": 20, "ask_cents": 25},
+        ]
+        client._get = MagicMock(return_value={"markets": renamed})
+        client._validate = MagicMock()
+
+        with caplog.at_level(logging.ERROR, logger="kalshi_client"):
+            result = client.get_markets()
+
+        assert len(result) == 2, "must not collapse to an empty (healthy) list"
+        assert "API schema change" in caplog.text
+
+    def test_get_market_singular_stays_warn_only(self, caplog):
+        """The singular getter deliberately still returns the dict it got,
+        warning rather than filtering -- 15+ call sites depend on a dict
+        always coming back. See get_market's own docstring."""
+        import logging
+
+        client = self._make_client()
+        malformed = {
+            "ticker": "KXHIGHNY-26JUN15-T75",
+            "yes_bid": -0.50,
+            "yes_ask": 0.55,
+            "volume": 100,
+        }
+        client._get = MagicMock(return_value={"market": malformed})
+        client._validate = MagicMock()
+
+        with caplog.at_level(logging.WARNING, logger="schema_validator"):
+            result = client.get_market("KXHIGHNY-26JUN15-T75")
+
+        assert result == malformed, "get_market must not start filtering"
+        assert "out of range" in caplog.text, (
+            "positive control: validate_market really did reject this market, "
+            "so 'returned anyway' is the deliberate behaviour and not a case "
+            "of the validator silently passing it"
+        )
+
     def test_page_cap_stops_at_50_pages(self):
         """A server that keeps minting fresh (never-repeated) cursors must
         not hang this synchronous scan indefinitely."""

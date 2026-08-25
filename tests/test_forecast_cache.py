@@ -1,5 +1,8 @@
+import json
 import threading
 import time
+
+import pytest
 
 from forecast_cache import ForecastCache, PersistentForecastCache
 
@@ -277,8 +280,6 @@ def test_load_from_disk_reads_file_written_with_explicit_utf8(tmp_path):
     already resolves to UTF-8 (mutation-tested and confirmed non-
     discriminating here -- kept anyway as real behavioral coverage for
     platforms where the default differs)."""
-    import json
-
     path = tmp_path / "cache.json"
     path.write_text(json.dumps({"40.0,-75.0": "Zürich-é"}), encoding="utf-8")
 
@@ -314,8 +315,6 @@ def test_dump_only_persists_values_not_internal_timestamps(tmp_path):
     c = PersistentForecastCache(ttl_secs=float("inf"))
     c.set((1.0, 2.0), "KTEST")
     c.dump_to_disk(path, _tuple_key_to_str)
-    import json
-
     on_disk = json.loads(path.read_text())
     assert on_disk == {"1.0,2.0": "KTEST"}
 
@@ -417,8 +416,6 @@ def test_dump_to_disk_raises_on_per_entry_ttl_entry(tmp_path):
     *remaining* duration, meaningless once the timestamp it's relative to
     is gone across a dump/load round-trip. Silently dropping it would
     resurrect an entry that should already have expired."""
-    import pytest
-
     c = PersistentForecastCache(ttl_secs=float("inf"))
     c.set_with_ttl((1.0, 2.0), "KTEST", ttl_secs=30)
     with pytest.raises(ValueError, match="per-entry TTL"):
@@ -445,3 +442,183 @@ def test_load_from_disk_does_not_evict_beyond_max_size(tmp_path):
     )
     assert c2.get((0.0, 0.0)) == "STATION_0"
     assert c2.get((599.0, 0.0)) == "STATION_599"
+
+
+# ── dump_to_disk read-merge-write (backlog L24136) ──────────────────────────
+
+
+def test_dump_to_disk_preserves_keys_only_another_process_knows(tmp_path):
+    """backlog L24136: cron, watch and web_app each hold an independent
+    PersistentForecastCache instance over the same file. dump_to_disk used to
+    write only the dumping instance's own store, so whichever process dumped
+    last silently discarded everything the others had learned.
+
+    Mutation check: replacing the merge with the old
+    ``atomic_write_json({key_to_str(k): v[0] ...}, path)`` makes this fail --
+    ``STATION_A`` disappears from the file entirely.
+    """
+    path = tmp_path / "cache.json"
+
+    # "Process A" learns one station and persists it.
+    a = PersistentForecastCache(ttl_secs=float("inf"))
+    a.set((40.0, -74.0), "STATION_A")
+    a.dump_to_disk(path, _tuple_key_to_str)
+
+    # "Process B" started before that, so it never saw A's entry.
+    b = PersistentForecastCache(ttl_secs=float("inf"))
+    b.set((41.0, -87.0), "STATION_B")
+    b.dump_to_disk(path, _tuple_key_to_str)
+
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert on_disk == {"40.0,-74.0": "STATION_A", "41.0,-87.0": "STATION_B"}
+
+    # And a fresh reader sees both.
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.load_from_disk(path, _tuple_str_to_key)
+    assert c.get((40.0, -74.0)) == "STATION_A"
+    assert c.get((41.0, -87.0)) == "STATION_B"
+
+
+def test_dump_to_disk_local_value_wins_on_key_collision(tmp_path):
+    """The documented conflict rule: when both the on-disk snapshot and this
+    instance hold the same key, the in-memory value is the one written."""
+    path = tmp_path / "cache.json"
+
+    stale = PersistentForecastCache(ttl_secs=float("inf"))
+    stale.set((40.0, -74.0), "OLD")
+    stale.dump_to_disk(path, _tuple_key_to_str)
+
+    fresh = PersistentForecastCache(ttl_secs=float("inf"))
+    fresh.set((40.0, -74.0), "NEW")
+    fresh.dump_to_disk(path, _tuple_key_to_str)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"40.0,-74.0": "NEW"}
+
+
+def test_dump_to_disk_still_writes_when_no_file_exists_yet(tmp_path):
+    """Positive control for the merge: the first-ever dump (no file on disk)
+    must still write the full local store, not silently no-op because the
+    read half found nothing."""
+    path = tmp_path / "nested" / "cache.json"
+    assert not path.exists()
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((40.0, -74.0), "STATION_A")
+    c.dump_to_disk(path, _tuple_key_to_str)
+
+    assert path.exists()
+    assert json.loads(path.read_text(encoding="utf-8")) == {"40.0,-74.0": "STATION_A"}
+
+
+def test_dump_to_disk_self_heals_an_unreadable_existing_snapshot(tmp_path, caplog):
+    """A corrupt snapshot must be overwritten LOUDLY, not raise forever.
+
+    An earlier draft raised here so a corrupt file could not silently degrade
+    the merge back to overwrite-everything. Opus review showed that trade was
+    wrong: nws.py's _save_station_cache swallows the exception at DEBUG, so a
+    single zero-byte file would have meant nothing was ever persisted again,
+    invisibly, with no self-repair. The pre-merge overwrite at least healed.
+    """
+    import logging
+
+    path = tmp_path / "cache.json"
+    path.write_text("{not valid json", encoding="utf-8")
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((40.0, -74.0), "STATION_A")
+    with caplog.at_level(logging.ERROR, logger="forecast_cache"):
+        c.dump_to_disk(path, _tuple_key_to_str)
+
+    # Self-healed: the file is now a valid snapshot of this instance.
+    assert json.loads(path.read_text(encoding="utf-8")) == {"40.0,-74.0": "STATION_A"}
+    # Positive control: it was loud about it, so a lost snapshot is traceable.
+    assert "unreadable" in caplog.text
+
+
+def test_dump_to_disk_self_heals_a_non_object_snapshot(tmp_path, caplog):
+    """Same for a JSON array/scalar on disk."""
+    import logging
+
+    path = tmp_path / "cache.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((40.0, -74.0), "STATION_A")
+    with caplog.at_level(logging.ERROR, logger="forecast_cache"):
+        c.dump_to_disk(path, _tuple_key_to_str)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"40.0,-74.0": "STATION_A"}
+    assert "does not contain a JSON object" in caplog.text
+
+
+def test_load_from_disk_skips_an_unparseable_key_and_keeps_the_rest(tmp_path, caplog):
+    """One bad key must not discard the whole snapshot.
+
+    Because dump_to_disk carries disk-only keys through verbatim, a key that
+    str_to_key cannot parse would otherwise be written straight back on the
+    next dump -- so a raise here made the load permanently broken rather than
+    transiently. Opus-review-caught (batch-62).
+    """
+    import logging
+
+    path = tmp_path / "cache.json"
+    path.write_text(
+        json.dumps({"NOCOMMA": "junk", "40.0,-74.0": "STATION_A"}), encoding="utf-8"
+    )
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    with caplog.at_level(logging.ERROR, logger="forecast_cache"):
+        c.load_from_disk(path, _tuple_str_to_key)
+
+    # Positive control: the good key really did load, so "no exception" is not
+    # the whole story -- the rest of the snapshot survived.
+    assert c.get((40.0, -74.0)) == "STATION_A"
+    assert len(c) == 1
+    assert "NOCOMMA" in caplog.text
+
+
+def test_dump_to_disk_carries_cleared_keys_through_documented_limitation(tmp_path):
+    """Pins accepted limitation (c): deletion cannot be expressed.
+
+    clear() empties memory but NOT the file, because dump_to_disk merges
+    disk-only keys back in. Documented in dump_to_disk's docstring; pinned here
+    so a future change to it is deliberate rather than accidental.
+    """
+    path = tmp_path / "cache.json"
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((40.0, -74.0), "STATION_A")
+    c.dump_to_disk(path, _tuple_key_to_str)
+
+    c.clear()
+    c.set((41.0, -87.0), "STATION_B")
+    c.dump_to_disk(path, _tuple_key_to_str)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "40.0,-74.0": "STATION_A",  # cleared in memory, still on disk
+        "41.0,-87.0": "STATION_B",
+    }
+    assert len(c) == 1  # positive control: the clear really did happen
+
+
+def test_dump_to_disk_holds_the_lock_across_the_read(tmp_path):
+    """The class docstring claims the lock covers the read as well as the
+    write. Proven by observing that the lock is already held when the file is
+    read, via a key_to_str callback that tries to re-enter."""
+    path = tmp_path / "cache.json"
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.set((40.0, -74.0), "STATION_A")
+    c.dump_to_disk(path, _tuple_key_to_str)
+
+    observed = {}
+
+    def _probing_key_to_str(key):
+        # _lock is non-reentrant, so a failed non-blocking acquire from this
+        # same thread proves it is held for the duration of the dump.
+        observed["held"] = not c._lock.acquire(blocking=False)
+        if not observed["held"]:
+            c._lock.release()
+        return _tuple_key_to_str(key)
+
+    c.set((41.0, -87.0), "STATION_B")
+    c.dump_to_disk(path, _probing_key_to_str)
+    assert observed["held"] is True

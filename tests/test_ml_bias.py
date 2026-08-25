@@ -2697,3 +2697,110 @@ class TestCmdCalibrateMetarBlock:
         main.cmd_calibrate()
 
         assert not (tmp_path / "metar_lockout_calibration.json").exists()
+
+
+class _PicklableConstantRegressor:
+    """Stand-in for GradientBoostingRegressor in the model-write test.
+
+    A MagicMock cannot be used here: train_bias_model pickles the trained
+    models, and pickling a MagicMock raises PicklingError before the write
+    under test is ever reached. Predicts the training mean, which scores MSE
+    0.0 on a constant-residual dataset and so clears the holdout gate.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.mean = 0.0
+
+    def fit(self, X, y):
+        self.mean = sum(y) / len(y) if y else 0.0
+
+    def predict(self, X):
+        return [self.mean] * len(X)
+
+
+class TestModelWriteRoutesThroughAtomicWriteBytes:
+    """backlog L24249 (batch-62): train_bias_model's .pkl write must go
+    through safe_io.atomic_write_bytes, not a bare Path.write_bytes().
+
+    An earlier version of this coverage lived in tests/test_safe_io.py and was
+    vacuous (opus-review-caught): it monkeypatched ml_bias._MODEL_PATH and then
+    called safe_io.atomic_write_bytes DIRECTLY, never invoking any ml_bias code
+    -- `--cov=ml_bias` showed the entire `if models:` save block unexecuted, so
+    reverting the call site would have left it green. This drives the real
+    function, mirroring tests/test_hmac_bias.py's
+    test_write_hmac_uses_atomic_write.
+    """
+
+    def _seed(
+        self, tracker, ticker, city, market_date, our_prob, settled_yes, condition_type
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 7.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, city, market_date, analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_train_bias_model_uses_atomic_write_bytes(self, tmp_path, monkeypatch):
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        import ml_bias
+        import safe_io
+        import tracker
+        from utils import utc_today
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_MODEL_PATH", tmp_path / "bias_models.pkl")
+        monkeypatch.setattr(ml_bias, "_HMAC_PATH", tmp_path / "bias_models.pkl.hmac")
+        tracker.init_db()
+
+        # Constant residual by construction: our_prob 0.5 with settled_yes=1
+        # gives y = actual - our_prob = +0.5 for every row, so a model that
+        # predicts the training mean scores MSE 0.0 against a baseline of 0.25
+        # and clears train_bias_model's holdout gate (_model_mse < _baseline_mse).
+        for i in range(10):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26JUN{i + 1:02d}-T75",
+                "NYC",
+                utc_today() + timedelta(days=i % 20 + 1),
+                0.5,
+                1,
+                "above",
+            )
+
+        calls = []
+
+        def _recording_atomic_write_bytes(data, path, **kwargs):
+            calls.append({"data": data, "path": path, "kwargs": kwargs})
+            path.write_bytes(data)
+
+        monkeypatch.setattr(
+            safe_io, "atomic_write_bytes", _recording_atomic_write_bytes
+        )
+
+        with patch(
+            "sklearn.ensemble.GradientBoostingRegressor",
+            _PicklableConstantRegressor,
+        ):
+            models = ml_bias.train_bias_model(min_samples=5)
+
+        # Positive control: training really did reach the save block. Without
+        # this, "atomic_write_bytes was called once" could pass vacuously if a
+        # future change made the whole function return early.
+        assert models, "training produced no models -- the save block never ran"
+
+        assert len(calls) == 1, (
+            f"expected exactly one atomic_write_bytes call, got {len(calls)}"
+        )
+        assert calls[0]["path"] == ml_bias._MODEL_PATH
+        assert calls[0]["data"].startswith(b"\x80"), "payload is not a pickle"
+        # emergency_copy=False is deliberate -- the copy would be a lone .pkl
+        # with no matching .hmac, and restoring it silently disables bias
+        # correction. See the call site's comment.
+        assert calls[0]["kwargs"].get("emergency_copy") is False

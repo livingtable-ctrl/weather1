@@ -23,14 +23,6 @@ class TestKellyCompounding(unittest.TestCase):
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _reload(self):
-        import importlib
-
-        import paper
-
-        importlib.reload(paper)
-        return paper
-
     def test_initial_balance_is_1000(self):
         import paper
 
@@ -1163,11 +1155,19 @@ def test_med_edge_and_max_daily_spend_constants_exist():
 
 
 def test_kelly_bet_dollars_respects_explicit_cap(mock_balance_1000):
-    """Explicit cap overrides dynamic Brier cap."""
+    """Explicit cap overrides dynamic Brier cap.
+
+    Asserts equality, not `<= 20.0` (opus-review-caught, batch-62): the loose
+    bound was satisfied by ANY value, including the 0.0 a real production
+    account in drawdown returns -- so it passed identically before and after
+    the fixture's isolation was fixed, proving nothing either way. At the
+    fixture's seeded $1000 with kelly_fraction 0.5, half-Kelly wants $250, so
+    the $20 cap is what binds.
+    """
     from paper import kelly_bet_dollars
 
     result = kelly_bet_dollars(0.5, cap=20.0)
-    assert result <= 20.0
+    assert result == pytest.approx(20.0)
 
 
 def test_kelly_bet_dollars_dynamic_cap_higher_with_good_brier(
@@ -1178,16 +1178,17 @@ def test_kelly_bet_dollars_dynamic_cap_higher_with_good_brier(
 
     monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 125.0)
     result = paper.kelly_bet_dollars(0.5)
-    # kelly_fraction=0.5, balance=1000 → half-Kelly → 0.25 * 1000 = $250, capped at 125
-    assert result <= 125.0
+    # kelly_fraction=0.5, balance=1000 → half-Kelly → 0.25 * 1000 = $250, capped
+    # at 125. Equality, not `<= 125.0` -- same opus-review-caught reason as
+    # test_kelly_bet_dollars_respects_explicit_cap above: the loose bound made
+    # the fixture's isolation irrelevant to the outcome.
+    assert result == pytest.approx(125.0)
 
 
 def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monkeypatch):
     """Poor-performing method (Brier > 0.20) reduces Kelly by 25%."""
     import paper
 
-    # Patch DATA_PATH again after reload (fixture patching is overwritten by reload)
-    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
     monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
@@ -1217,7 +1218,6 @@ def test_kelly_bet_dollars_fraction_cap_reaches_raised_consensus_ceiling(
     import paper
     from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
 
-    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
     monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
@@ -1248,7 +1248,6 @@ def test_kelly_bet_dollars_fraction_cap_never_raises_a_non_consensus_trade(
     import paper
     from utils import KELLY_CAP
 
-    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
     monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
@@ -1264,7 +1263,6 @@ def test_kelly_quantity_propagates_fraction_cap(mock_balance_1000, monkeypatch):
     import paper
     from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
 
-    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
     # A small balance keeps both quantities well under kelly_quantity's own
     # hard 100-contract ceiling (L8-B), so that clamp can't mask the
     # fraction_cap difference this test is checking.

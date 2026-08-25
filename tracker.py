@@ -7811,6 +7811,47 @@ def _inv_normal_cdf(p: float) -> float:
 
 # ── Price improvement tracking (#65) ─────────────────────────────────────────
 
+# backlog L25380: SQL predicate for "this row came from a REAL Kalshi weather
+# market", used to keep synthetic test rows out of get_price_improvement_stats.
+#
+# As of 2026-08-24 the production price_improvement table held 98 synthetic rows
+# out of 368 (26.6%) written by test runs from before conftest.py's autouse
+# isolate_tracker_db fixture existed. They were NOT all identifiable by a "TK"
+# prefix as the original entry assumed -- the spellings were TK/TK1/TK2/TK3/
+# TKTEST/TK_* (42 rows), "KXHIGH-25APR10-NYC" (54) and "BE-TICKER" (2).
+#
+# Two halves, for two different reasons:
+#
+# 1. GLOB 'KX*-*' -- the durable rule. Every real Kalshi weather ticker starts
+#    "KX" and has at least one '-'-separated segment after the series name; no
+#    test fixture name in this repo does (TK*, BE-TICKER, TEST-TICKER,
+#    SL-TICKER, T_INTEGRATION all fail it). Deliberately does NOT require a
+#    T/B strike marker in the third segment: an earlier draft used
+#    GLOB 'KX*-*-[TB]*', which fits the daily-temperature and hourly series
+#    (KXHIGHNY-26JUN15-T75, KXLOWTSFO-26MAY26-B51.5, KXTEMPNYCH-...-T80) but
+#    silently DROPS the monthly-rain (KXRAINCHIM-26AUG-6), monthly-snow
+#    (KXDENSNOWM-26DEC-3) and hurricane (KXNAMEDSTORM-26DEC01EPACTOT-18,
+#    KXFIRSTHURRICANE-26DEC01ATL-DOL) families, all of which are real and
+#    already present in this database -- KXRAINMIAM alone has ~7.9k rows.
+#    Opus-review-caught (batch-62, HIGH). Silently under-reporting a real fill
+#    is worse than admitting a synthetic one, so the shape rule stays loose.
+#
+# 2. The NOT IN list -- a one-name exception for the single synthetic ticker
+#    that happens to be KX-shaped. "KXHIGH-25APR10-NYC" (tests/test_paper.py,
+#    tests/test_trading.py) mimics a real ticker closely enough that no
+#    shape rule can reject it without also rejecting the hurricane families,
+#    whose last segment is likewise non-numeric. It is named explicitly rather
+#    than pattern-matched, so it can never widen to catch real data.
+#
+# Verified against the live table: keeps all 270 real rows (33 distinct
+# KXHIGH*/KXLOWT* series), drops exactly the 98 synthetic ones.
+_SYNTHETIC_KX_TICKERS = ("KXHIGH-25APR10-NYC",)
+_REAL_TICKER_SQL = (
+    "(ticker GLOB 'KX*-*' AND ticker NOT IN ("
+    + ", ".join(f"'{t}'" for t in _SYNTHETIC_KX_TICKERS)
+    + "))"
+)
+
 
 def log_price_improvement(
     ticker: str,
@@ -7854,6 +7895,10 @@ def get_price_improvement_stats() -> dict | None:
     """
     #65: Return aggregate price improvement statistics.
 
+    Only rows whose ticker matches a real Kalshi weather market
+    (``_REAL_TICKER_SQL``) are counted -- see that constant for the shape rule
+    and its one named exception.
+
     Returns None if fewer than 5 entries are recorded (insufficient data).
     Otherwise returns:
       {mean: float, median: float, count: int, positive_pct: float}
@@ -7863,7 +7908,9 @@ def get_price_improvement_stats() -> dict | None:
 
     init_db()
     with _conn() as con:
-        rows = con.execute("SELECT improvement FROM price_improvement").fetchall()
+        rows = con.execute(
+            f"SELECT improvement FROM price_improvement WHERE {_REAL_TICKER_SQL}"
+        ).fetchall()
 
     if len(rows) < 5:
         return None

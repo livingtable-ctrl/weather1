@@ -79,19 +79,64 @@ class TestDrawdownTiersRelativeToHalt:
         assert paper._DRAWDOWN_TIER_3 < paper._DRAWDOWN_TIER_4
         assert paper._DRAWDOWN_TIER_4 <= 1.0
 
-    def test_tier_constants_are_absolute(self, monkeypatch):
+    def test_tier_constants_are_absolute(
+        self, monkeypatch, tmp_path, repatch_paper_paths
+    ):
         """P2-2: tiers must not shift when DRAWDOWN_HALT_PCT is non-default."""
         import importlib
+        import os
 
         import paper
 
+        # Captured before the reload so the restore check at the end of this
+        # test compares against this environment's real value, not a hardcoded
+        # 0.20 that a machine setting DRAWDOWN_HALT_PCT in .env would break.
+        halt_pct_before = paper.MAX_DRAWDOWN_FRACTION
+        env_before = os.environ.get("DRAWDOWN_HALT_PCT")
+
         monkeypatch.setenv("DRAWDOWN_HALT_PCT", "0.30")
         importlib.reload(paper)
-        # With absolute constants, tiers stay at canonical values regardless of halt %
-        assert paper._DRAWDOWN_TIER_1 == 0.80
-        assert paper._DRAWDOWN_TIER_2 == 0.85
-        assert paper._DRAWDOWN_TIER_3 == 0.90
-        assert paper._DRAWDOWN_TIER_4 == 0.95
+        # backlog L24334: the reload above is load-bearing here (the whole point
+        # is re-executing paper.py's module body under the patched env), but it
+        # also recomputes DATA_PATH/_LOSS_OVERRIDE_PATH/_ACCURACY_HALT_OVERRIDE_PATH
+        # from safe_io.project_root(), discarding conftest's autouse
+        # isolate_paper_data patches and re-pointing them at the REAL data/ files
+        # for the rest of this test. Re-apply all three via conftest's shared
+        # helper so there is one definition of "isolated".
+        repatch_paper_paths(paper)
+        try:
+            # With absolute constants, tiers stay at canonical values
+            # regardless of halt %
+            assert paper._DRAWDOWN_TIER_1 == 0.80
+            assert paper._DRAWDOWN_TIER_2 == 0.85
+            assert paper._DRAWDOWN_TIER_3 == 0.90
+            assert paper._DRAWDOWN_TIER_4 == 0.95
+        finally:
+            # Same L24334 family, other direction: monkeypatch.setenv is undone
+            # at teardown but the RELOAD is not, so without this every later
+            # test in the session would see paper.MAX_DRAWDOWN_FRACTION frozen
+            # at 0.30 instead of this environment's real default (paper.py:293
+            # reads the env var at import time). Harmless in this file's own
+            # order; a real hazard for any `-k`-filtered or reordered run, and
+            # for anything that later reads paper.MAX_DRAWDOWN_FRACTION.
+            #
+            # Restore the ORIGINAL value rather than delenv'ing (opus-review-
+            # caught, batch-62): on a machine whose .env sets DRAWDOWN_HALT_PCT,
+            # delenv + reload would rebuild the module from the 0.20 fallback,
+            # not from that machine's real value, and the assertion below would
+            # fail with a misleading "leaked into later tests" message.
+            if env_before is None:
+                monkeypatch.delenv("DRAWDOWN_HALT_PCT", raising=False)
+            else:
+                monkeypatch.setenv("DRAWDOWN_HALT_PCT", env_before)
+            importlib.reload(paper)
+
+        # Deliberately OUTSIDE the finally: this asserts the restore above
+        # actually took effect, but must not be able to mask a genuine failure
+        # from the tier assertions in the try block.
+        assert paper.MAX_DRAWDOWN_FRACTION == halt_pct_before, (
+            "the reload under DRAWDOWN_HALT_PCT=0.30 leaked into later tests"
+        )
 
     def test_halt_at_20pct_drawdown(self, mock_balance_1000, monkeypatch):
         """At 20% drawdown, scaling factor should be 0.0."""

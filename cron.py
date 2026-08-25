@@ -1685,24 +1685,39 @@ def _cmd_cron_body(
 
     # Phase 9 — snapshot circuit state so we can detect newly-opened circuits after scan
     try:
-        from weather_markets import (
-            _ensemble_cb,
-            _forecast_cb,
-            _pirate_cb,
-            _weatherapi_cb,
-        )
+        # backlog L26224 (batch-62): built from the canonical registry rather
+        # than a hand-maintained 4-entry map. That map had never picked up
+        # _nbm_om_cb/_ecmwf_om_cb/_hrrr_om_cb (nor the newer
+        # _ensemble_precip_multiday_cb), so a circuit opening on any of those
+        # data sources mid-scan produced no alert at all. All eight are
+        # alert-worthy -- the registry's prewarm_scoped flag only governs
+        # trade_cycle's probe suppression, not monitoring.
+        #
+        # Accepted consequence (opus-review-caught, batch-62): six of the
+        # eight hit Open-Meteo hosts and will trip together, so a single
+        # Open-Meteo outage now emits up to six "Circuit Opened" alerts where
+        # it previously emitted two. The per-circuit cooldown key below stops
+        # repeats of the SAME circuit for 6h but cannot dedupe correlated
+        # ones. Kept deliberately: which specific source tripped is the
+        # actionable detail, and collapsing them behind a shared key would
+        # hide a genuinely independent second failure inside an unrelated
+        # outage's cooldown window.
+        from weather_markets import CIRCUIT_BREAKERS
 
+        _scan_cbs = {reg.name: reg.breaker for reg in CIRCUIT_BREAKERS}
+        # seconds_open() > 0, NOT is_open(): is_open() is a MUTATOR. Once the
+        # recovery timeout has elapsed it flips the breaker to HALF-OPEN,
+        # zeroes failure_count, persists that, and returns False -- "you are
+        # the probe." A monitor that calls it therefore CONSUMES the one
+        # recovery probe, and the next real fetch caller sees is_open()==True
+        # and skips the source. Combined with trade_cycle's suppress_probe()
+        # (which disables probing for the process lifetime) that wedges the
+        # breaker open until restart. Opus-review-caught (batch-62, HIGH):
+        # widening this snapshot from 4 breakers to all 8 would have put four
+        # live-blend temperature sources (nbm/ecmwf/hrrr/precip) into exactly
+        # that trap. seconds_open() and seconds_until_retry() are pure reads.
         _pre_scan_cb_states = {
-            "open_meteo_forecast": _forecast_cb.is_open(),
-            "open_meteo_ensemble": _ensemble_cb.is_open(),
-            "weatherapi": _weatherapi_cb.is_open(),
-            "pirate_weather": _pirate_cb.is_open(),
-        }
-        _scan_cbs = {
-            "open_meteo_forecast": _forecast_cb,
-            "open_meteo_ensemble": _ensemble_cb,
-            "weatherapi": _weatherapi_cb,
-            "pirate_weather": _pirate_cb,
+            name: cb.seconds_open() > 0 for name, cb in _scan_cbs.items()
         }
     except Exception as _e:
         _log.debug("cmd_cron: circuit state snapshot failed: %s", _e)
@@ -3084,7 +3099,12 @@ def _cmd_cron_body(
             from notify import send_system_alert as _cb_alert
 
             for _cb_name, _cb_obj in _scan_cbs.items():
-                if not _pre_scan_cb_states.get(_cb_name, True) and _cb_obj.is_open():
+                # seconds_open() > 0, not is_open() -- see the Phase 9
+                # snapshot above for why a monitor must never call is_open().
+                if (
+                    not _pre_scan_cb_states.get(_cb_name, True)
+                    and _cb_obj.seconds_open() > 0
+                ):
                     _log.warning(
                         "Circuit '%s' OPENED during cron scan \u2014 notifying",
                         _cb_name,

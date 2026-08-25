@@ -1125,15 +1125,16 @@ def _run_batch_prewarm(ctx: CronContext, markets: list[dict]) -> None:
     # same analysis phase (same-day markets only), so an open HRRR circuit
     # needs the same probe suppression as the other sources here, not just
     # during prewarm.
-    from weather_markets import (
-        _ecmwf_om_cb,
-        _ensemble_cb,
-        _forecast_cb,
-        _hrrr_om_cb,
-        _nbm_om_cb,
-    )
+    # backlog L26224 (batch-62): the hand-maintained tuple this used to carry
+    # is now derived from weather_markets.CIRCUIT_BREAKERS' prewarm_scoped
+    # flag, so a newly added forecast breaker lands here automatically. The
+    # flag (rather than "iterate everything") preserves this list's deliberate
+    # omission of _weatherapi_cb/_pirate_cb: those are the fallbacks consulted
+    # when the Open-Meteo circuits are open, so suppressing their probes here
+    # would stop the fallback path recovering.
+    from weather_markets import CIRCUIT_BREAKERS
 
-    for cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb, _ecmwf_om_cb, _hrrr_om_cb):
+    for cb in (r.breaker for r in CIRCUIT_BREAKERS if r.prewarm_scoped):
         if cb.seconds_open() > 0:
             cb.suppress_probe()
             _log.warning(

@@ -2425,18 +2425,23 @@ setInterval(() => {{
     def api_circuit_status():
         """Live circuit breaker state for all weather data sources."""
         try:
-            from weather_markets import (
-                _ecmwf_om_cb,
-                _ensemble_cb,
-                _forecast_cb,
-                _hrrr_om_cb,
-                _nbm_om_cb,
-                _pirate_cb,
-                _weatherapi_cb,
-            )
+            # backlog L26224 (batch-62): iterate the canonical registry rather
+            # than a hand-maintained key->breaker map that had already lost
+            # _ensemble_precip_multiday_cb. Keys are the breakers' own .name
+            # values, which are exactly the keys this endpoint already
+            # returned, so the response shape is unchanged apart from the
+            # newly-included breaker.
+            from weather_markets import CIRCUIT_BREAKERS
 
             def _cb_dict(cb):
-                is_open = cb.is_open()
+                # seconds_open() > 0, NOT is_open(): is_open() is a mutator
+                # that consumes the breaker's one HALF-OPEN recovery probe
+                # (see cron.py's Phase 9 snapshot for the full explanation).
+                # A dashboard poll must never spend a probe the fetch path
+                # needs. Opus-review-caught (batch-62, HIGH). This also makes
+                # the reported state more honest: a breaker mid-probe is
+                # shown as still open, because it has not recovered yet.
+                is_open = cb.seconds_open() > 0
                 return {
                     "state": "open" if is_open else "closed",
                     "failures": cb.failure_count,
@@ -2445,15 +2450,7 @@ setInterval(() => {{
                 }
 
             return jsonify(
-                {
-                    "open_meteo_forecast": _cb_dict(_forecast_cb),
-                    "open_meteo_ensemble": _cb_dict(_ensemble_cb),
-                    "ecmwf_openmeteo": _cb_dict(_ecmwf_om_cb),
-                    "nbm_openmeteo": _cb_dict(_nbm_om_cb),
-                    "hrrr_openmeteo": _cb_dict(_hrrr_om_cb),
-                    "weatherapi": _cb_dict(_weatherapi_cb),
-                    "pirate_weather": _cb_dict(_pirate_cb),
-                }
+                {reg.name: _cb_dict(reg.breaker) for reg in CIRCUIT_BREAKERS}
             )
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500

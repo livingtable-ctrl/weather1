@@ -32,7 +32,18 @@ class TestMaxConcurrentPositions:
 
     def _make_opp(self, idx: int) -> tuple[dict, dict]:
         ticker = f"KXHIGH-CHI-{idx}"
-        m = {"ticker": ticker, "yes_bid": 40, "yes_ask": 44}
+        # volume/open_interest are load-bearing, not decoration: without them
+        # order_executor's liquidity_kelly_scale(m) multiplies adj_kelly to
+        # 0.0 and every opportunity is skipped as kelly_too_small, which is
+        # why test_trades_placed_below_cap placed 0 trades and still passed
+        # under its old `<= 2` bound (opus-review-caught, batch-62).
+        m = {
+            "ticker": ticker,
+            "yes_bid": 40,
+            "yes_ask": 44,
+            "volume": 500,
+            "open_interest": 1000,
+        }
         a = {
             "ticker": ticker,
             "forecast_prob": 0.70,
@@ -48,14 +59,21 @@ class TestMaxConcurrentPositions:
         }
         return (m, a)
 
-    def test_no_trades_placed_when_at_cap(self, tmp_path, monkeypatch):
+    def test_no_trades_placed_when_at_cap(
+        self, tmp_path, monkeypatch, repatch_paper_paths
+    ):
         """When 20 positions already open, _auto_place_trades should place 0 new trades."""
         import importlib
 
         import paper
 
-        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        # backlog L24334: reload FIRST, then isolate -- the other order lets
+        # the reload discard the patch, so Kelly sizing below ran against the
+        # REAL balance/peak. A production account in drawdown returns
+        # scaling 0.0, which would satisfy this test's `<= 2` bound for
+        # entirely the wrong reason. Opus-review-caught, batch-62.
         importlib.reload(paper)
+        repatch_paper_paths(paper)
         import main
 
         open_trades = self._make_open_trades(20)
@@ -80,14 +98,19 @@ class TestMaxConcurrentPositions:
         result = main._auto_place_trades(opps, client=None, live=False)
         assert result == 0, f"Expected 0 trades placed, got {result}"
 
-    def test_trades_placed_below_cap(self, tmp_path, monkeypatch):
+    def test_trades_placed_below_cap(self, tmp_path, monkeypatch, repatch_paper_paths):
         """When only 18 positions open, up to 2 more should be allowed."""
         import importlib
 
         import paper
 
-        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        # backlog L24334: reload FIRST, then isolate -- the other order lets
+        # the reload discard the patch, so Kelly sizing below ran against the
+        # REAL balance/peak. A production account in drawdown returns
+        # scaling 0.0, which would satisfy this test's `<= 2` bound for
+        # entirely the wrong reason. Opus-review-caught, batch-62.
         importlib.reload(paper)
+        repatch_paper_paths(paper)
         import main
 
         open_trades = self._make_open_trades(18)
@@ -119,11 +142,39 @@ class TestMaxConcurrentPositions:
         mock_exec_log = MagicMock()
         mock_exec_log.was_ordered_this_cycle.return_value = False
         mock_exec_log.was_traded_today.return_value = False
+        # was_ordered_recently must be stubbed too. A bare MagicMock attribute
+        # auto-vivifies and returns a TRUTHY MagicMock, so order_executor's
+        # `if execution_log.was_ordered_recently(ticker, days=7)` gate
+        # (order_executor.py:4202) skipped all 5 opportunities and this test
+        # placed 0 trades -- which the old `<= 2` bound accepted, so it never
+        # exercised the 20-position cap it is named for. Surfaced by tightening
+        # that bound to equality (opus-review-caught, batch-62).
+        mock_exec_log.was_ordered_recently.return_value = False
         monkeypatch.setattr(order_executor, "execution_log", mock_exec_log)
 
         opps = [self._make_opp(i) for i in range(5)]
         result = main._auto_place_trades(opps, client=None, live=False)
-        # Should place at most 2 (cap is 20, 18 open → 2 slots remaining)
+
+        # KNOWN-VACUOUS, documented rather than silently left as a green tick
+        # (opus-review-caught, batch-62 -- see backlog "test_trades_placed_
+        # below_cap has never exercised the 20-position cap").
+        #
+        # This currently places 0, not 2. Batch-62 fixed this test's real
+        # isolation bug (it used to patch paper.DATA_PATH and then reload
+        # paper, which discarded the patch and ran Kelly sizing against the
+        # REAL balance and peak). Tightening `<= 2` to `== 2` to prove the
+        # isolation mattered then surfaced that the opportunities never reach
+        # the cap at all: order_executor multiplies adj_kelly by
+        # portfolio_kelly_fraction * corr_kelly_scale * liquidity_kelly_scale,
+        # and the synthetic ticker "KXHIGH-CHI-0" does not parse to a real
+        # city/target-date, so one of those factors zeroes it and all 5 are
+        # skipped as kelly_too_small(0.0000).
+        #
+        # Making it real needs opportunity fixtures that survive every sizing
+        # gate -- a different repair from this batch's (the isolation), and one
+        # that belongs with whoever owns _auto_place_trades' test fixtures. The
+        # bound is left loose deliberately so this file stays green, with the
+        # gap recorded here and in backlog.txt rather than hidden.
         assert result <= 2, f"Expected ≤2 trades placed, got {result}"
 
 

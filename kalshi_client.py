@@ -440,6 +440,34 @@ def _validate_order_id_format(name: str, value: str) -> None:
         raise ValueError(f"{name} has an invalid format: {value!r}")
 
 
+def _is_structurally_usable(market: object) -> bool:
+    """True if `market` is a dict a downstream consumer could actually read.
+
+    Deliberately narrower than schema_validator.validate_market: this checks
+    only that the SHAPE is present (a dict, with a ticker, and with some name
+    for each of bid / ask / volume), never whether the prices look sensible.
+    See get_markets' own comment for why the two must not be conflated -- a
+    locked or settled book is a real market state, and dropping it from the
+    list would corrupt settlement sync and the hourly ladder proxy.
+
+    Mirrors validate_market's alias handling: Kalshi has emitted both the
+    legacy names (yes_bid/yes_ask/volume) and the current ones
+    (yes_bid_dollars/yes_ask_dollars/volume_fp), and either is fine.
+    """
+    if not isinstance(market, dict):
+        return False
+    if "ticker" not in market:
+        return False
+    for primary, alias in (
+        ("yes_bid", "yes_bid_dollars"),
+        ("yes_ask", "yes_ask_dollars"),
+        ("volume", "volume_fp"),
+    ):
+        if primary not in market and alias not in market:
+            return False
+    return True
+
+
 class OrderStatusUnknownError(Exception):
     """Raised by place_order() when the create-order POST failed AND at
     least one of the 3 reconciliation lookups (_find_order_by_client_id)
@@ -628,9 +656,59 @@ class KalshiClient:
             data = self._get("/markets", params=p, auth=True)
             self._validate(data, "markets", "/markets")
             page = data.get("markets", [])
+            # AUD-0060 / backlog L23905: validate_market()'s bool return was
+            # previously discarded here, so a malformed entry was logged and
+            # then appended anyway. It is now honoured -- but only for the
+            # STRUCTURAL half of what that function checks.
+            #
+            # Opus-review-caught (batch-62, HIGH/MEDIUM): validate_market
+            # returns a single bool that mixes "this dict is unusable" with
+            # "this book looks economically odd." The second half rejects real
+            # market states -- a LOCKED book (yes_bid == yes_ask == 52c) and a
+            # settled-YES market (100/100) both trip its inverted-spread check,
+            # verified directly. get_markets feeds settlement sync
+            # (weather_markets.refresh_hurricane_count_to_date,
+            # settlement_monitor) and the hourly ladder proxy, where a dropped
+            # rung is a silently WRONG number rather than a missing one. So the
+            # filter below drops only entries that no downstream consumer could
+            # use at all: not a dict, no ticker, or no name at all for one of
+            # bid/ask/volume. Price-range and spread violations still get
+            # validate_market's WARNING and still flow through, exactly as
+            # before -- the caller's own gates decide.
+            kept = []
             for market in page:
-                validate_market(market, source="kalshi")
-            all_markets.extend(page)
+                if _is_structurally_usable(market):
+                    # Logging-only; its bool is deliberately not a filter here.
+                    validate_market(market, source="kalshi")
+                    kept.append(market)
+                else:
+                    _log.error(
+                        "get_markets: dropping structurally unusable market "
+                        "%r from /markets response (no ticker, or no "
+                        "bid/ask/volume field under either name)",
+                        market.get("ticker", "<no ticker>")
+                        if isinstance(market, dict)
+                        else market,
+                    )
+            if page and not kept:
+                # Fail open. If EVERY entry on a non-empty page is unusable,
+                # the likely cause is an API-wide field rename, not N
+                # simultaneously-corrupt markets. Returning [] here would be
+                # indistinguishable from "this series has no open markets" --
+                # and weather_markets._fetch_series only sets its `degraded`
+                # flag on an exception, so an empty list would be cached as
+                # healthy for the full 60s TTL. Keep the page and let the
+                # downstream gates reject per market instead.
+                _log.error(
+                    "get_markets: ALL %d markets on this page were "
+                    "structurally unusable -- treating as an API schema "
+                    "change rather than %d bad markets, and passing them "
+                    "through so this does not look like an empty series",
+                    len(page),
+                    len(page),
+                )
+                kept = list(page)
+            all_markets.extend(kept)
             page_count += 1
             cursor = data.get("cursor")
             if not cursor or not page:
@@ -652,6 +730,20 @@ class KalshiClient:
         return all_markets
 
     def get_market(self, ticker: str) -> dict:
+        """Fetch one market by ticker.
+
+        AUD-0060 / backlog L23905: unlike get_markets' list-build above, this
+        site keeps validate_market() DELIBERATELY warn-only, and the two are
+        not the same decision. Dropping a bad entry from a list still leaves
+        the caller a usable list; there is no equivalent for a singular
+        getter. Returning None (or {}) on validation failure would be a
+        breaking contract change for 15+ call sites that all assume a dict
+        comes back, and it would convert a data-quality problem into an
+        AttributeError somewhere far from here. It also matches this class's
+        own _validate() stance for the response envelope directly above:
+        log loudly, hand back what the API actually said, and let the caller's
+        own gates decide. The warning from validate_market() is the signal.
+        """
         _validate_ticker_format("ticker", ticker)
         data = self._get(f"/markets/{ticker}", auth=True)
         self._validate(data, "market", f"/markets/{ticker}")

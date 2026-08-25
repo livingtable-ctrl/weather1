@@ -242,6 +242,18 @@ python main.py cron
 
 All settings have sensible defaults. Override any of them in `.env`:
 
+The eight shadow-gate `*_TRADING_ENABLED` rows near the bottom of the table
+are deliberately **absent from `.env.example`**. Every one of them is meant to
+stay unset until its market type has accumulated real calibration data, so
+listing them in the file an operator copies to `.env` would read as an
+invitation to turn them on. This table is their canonical list; set one in
+`.env` by hand, and only once its ≥20-settled-prediction condition is already
+met. `BELOW_GATE_ENABLED` in the row below them is the same kind of
+manually-activated gate with the same ≥N-settled shape, so it is listed here
+too and is likewise absent from `.env.example`. (`LIVE_TRADING_ENABLED` is a
+different thing — the master live-order interlock, not a shadow gate — and is
+documented in `LIVE_TRADING_RUNBOOK.md`.)
+
 | Variable | Default | Description |
 |---|---|---|
 | `KALSHI_KEY_ID` | — | Your Kalshi API key ID (required) |
@@ -290,6 +302,9 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `HURRICANE_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled hurricane-season-count predictions exist |
 | `HURRICANE_NEXT_EVENT_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled time-to-next-hurricane-event predictions exist |
 | `STORM_ORDER_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled storm-order predictions exist |
+| `HOLIDAY_TEMP_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled holiday-temperature predictions exist |
+| `BETWEEN_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled between-bracket predictions exist |
+| `BELOW_GATE_ENABLED` | — (disabled) | Not a market-type gate: activates two aggressive below-market fixes (extreme-ensemble block, NWS-trim skip). Same shape — set to `1`/`true`/`yes` AND ≥30 settled below-market predictions must exist |
 
 ---
 

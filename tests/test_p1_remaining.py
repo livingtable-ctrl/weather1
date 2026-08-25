@@ -22,9 +22,13 @@ class TestGetAccuracyHaltReason:
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
-        import paper as _paper
-
-        importlib.reload(_paper)
+        # backlog L24334: no importlib.reload(paper) here. A reload re-executes
+        # paper.py's module body, which recomputes DATA_PATH from
+        # safe_io.project_root() and so silently DISCARDS the patch above (and
+        # conftest's autouse isolate_paper_data patch with it), pointing these
+        # tests at the real data/paper_trades.json. Confirmed empirically
+        # 2026-08-24. Nothing here needs the reload -- get_accuracy_halt_reason
+        # reads DATA_PATH at call time.
 
     def teardown_method(self):
         self._patch.stop()
@@ -35,7 +39,6 @@ class TestGetAccuracyHaltReason:
         import paper
 
         monkeypatch.setattr("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
-        importlib.reload(paper)
 
         monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.30, 25))
         reason = paper.get_accuracy_halt_reason()
@@ -48,7 +51,6 @@ class TestGetAccuracyHaltReason:
         import paper
 
         monkeypatch.setattr("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
-        importlib.reload(paper)
 
         monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.60, 25))
         monkeypatch.setattr(
@@ -62,7 +64,6 @@ class TestGetAccuracyHaltReason:
         import paper
 
         monkeypatch.setattr("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
-        importlib.reload(paper)
 
         # Win rate passes but SPRT signals degraded
         monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.60, 5))

@@ -489,7 +489,36 @@ def apply_seasonal_tilt(
     an ADDITIVE shift only (preserves the empirical distribution's shape,
     only moves its central tendency), damped by tilt_strength and clamped
     to +/-25% of the mean -- bounds worst-case tilt error since this is a
-    mean-only signal with no per-member spread of its own."""
+    mean-only signal with no per-member spread of its own.
+
+    backlog L23998 (batch-62, deliberately NOT fixed here -- narrowed, not
+    abandoned): the ``max(0.0, ...)`` floor below UNDER-APPLIES a dry
+    (negative) tilt on a zero-heavy far-tail distribution, because members
+    already at 0.0 absorb none of the shift. Worst case (every member at 0.0)
+    the correction does nothing at all while still reporting
+    tilt_applied=True.
+
+    A redistribute-the-clipped-remainder fix was written and then reverted
+    after review measured what it does to the quantity the caller actually
+    consumes. That caller is ``_analyze_monthly_rain_trade``, which reads an
+    EXCEEDANCE PROBABILITY (the fraction of members above a strike), not a
+    mean. Redistribution preserves the mean shift exactly, but only by moving
+    the surviving wet-tail members far further than the +/-25%-of-mean clamp
+    this docstring promises -- measured at 20x that clamp on
+    ``[0.0]*19 + [4.0]``, taking P(> 3.0 in) from 0.050 to 0.000 where the
+    floor-clip leaves it at 0.050. Trading a documented per-member bound and
+    the tail shape for a mean the consumer never reads is the wrong trade.
+
+    The correct fix is the multiplicative / rank-preserving tilt the original
+    entry recommends, which moves the central tendency without flattening the
+    tail -- and that belongs with GRADUATING this signal, not before it.
+    ``rain_forecast_blend`` is still an ungraduated shadow-only registry entry
+    in weather_markets.py (cited by ``key="rain_forecast_blend"`` rather than
+    by line number, since batch-62's own circuit-breaker registry insertion
+    moved every line below it), so nothing here reaches a live order today.
+    ``acis_snow`` re-exports this same function, so the snow ladder inherits
+    both the limitation and this reasoning.
+    """
     if seasonal_mean_mm is None or len(full_month_sums) < 15:
         return (remaining_sums, False)
 
