@@ -66,6 +66,7 @@ from utils import (
     NO_BID_KEYS,
     RAIN_MAX_DAYS_OUT,
     SNOW_MAX_DAYS_OUT,
+    TORNADO_MAX_DAYS_OUT,
     YES_ASK_KEYS,
     YES_BID_KEYS,
     coalesce_market_price,
@@ -1326,6 +1327,50 @@ def _holiday_temp_gates_active() -> bool:
 
         return (
             count_settled_holiday_temp_predictions() >= _HOLIDAY_TEMP_GATE_MIN_SAMPLES
+        )
+    except Exception:
+        return False
+
+
+# batch-54: KXTORNADO monthly tornado-count markets get their OWN dedicated
+# env var/gate/counter, same one-flag-per-shape precedent every family above
+# follows (rain/snow/hourly/hurricane-count/next-event/storm-order/holiday-
+# temp). The cadence here is the honest reason this floor matters: KXTORNADO
+# settles ONE event per calendar month, and
+# tracker.count_settled_tornado_count_predictions() counts distinct
+# (year, month) EVENTS rather than the 11-17 brackets each event lists -- so
+# 20 settled samples is ~20 MONTHS, not 20 days. Live-verified 2026-08-25:
+# exactly 2 events have ever settled (26JUN, 26JUL), so this gate cannot
+# clear before roughly mid-2028 even if every month settles cleanly from
+# here. Stated plainly in this entry's backlog.txt resolution note rather
+# than glossed over; the point of shipping now is to START the sample clock.
+_TORNADO_COUNT_GATE_MIN_SAMPLES: int = 20
+
+
+def _tornado_count_gates_active() -> bool:
+    """Return True only when TORNADO_TRADING_ENABLED=1 AND >= 20 settled
+    tornado-count predictions (distinct (year, month) events, not the 11-17
+    raw per-bracket rows each event settles -- see
+    tracker.count_settled_tornado_count_predictions's own docstring for why
+    raw rows would inflate this by more than an order of magnitude). Mirrors
+    _hurricane_count_gates_active()'s exact shape. Until both hold,
+    tornado-count opportunities are still fully analyzed and logged
+    (is_shadow=True) so real calibration data accumulates risk-free; no real
+    order (paper or live) is ever placed for one of these tickers before
+    this is True."""
+    import os
+
+    if os.getenv("TORNADO_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_tornado_count_predictions
+
+        return (
+            count_settled_tornado_count_predictions() >= _TORNADO_COUNT_GATE_MIN_SAMPLES
         )
     except Exception:
         return False
@@ -5149,6 +5194,29 @@ KNOWN_WEATHER_SERIES = [
     # threshold shape.
     "KXHOLIDAYTMAX",
     "KXHOLIDAYTMIN",
+    # batch-54: KXTORNADO -- "Number of tornadoes in <Month>?", a monthly
+    # ladder of ">N" brackets (25..275 step 25, extended upward when a month
+    # runs hot: the June 2026 event listed 17 brackets to 425 while every
+    # other event listed 11). Ticker shape "KXTORNADO-26SEP-75" -- series,
+    # YYMON event month, bracket floor; no day component, so parse_city_date()
+    # returns target_date=None for it exactly like the monthly rain/snow
+    # ladders, which is why analyze_trade() gates it on close_time instead.
+    # Live-verified 2026-08-25: 83 markets across 7 events (26JUN..26DEC),
+    # 505,758 cumulative contracts, strike_type "greater" on every single one,
+    # each event opening on the 20th of the prior month and closing at
+    # midnight ET on the 1st of the following month (a ~41-42 day window,
+    # hence TORNADO_MAX_DAYS_OUT). Settles on SPC's PRELIMINARY storm-report
+    # count -- see tornado_climatology.py's module docstring for the source,
+    # the calendar-vs-convective-day trap, and the documented biases.
+    # Distinct from the legacy annual "TORNADO" series (which this repo has
+    # never referenced; re-verified 2026-08-25 that KXTORNADO had zero repo
+    # or backlog mentions before this batch). Real model
+    # (_analyze_tornado_count_trade, dispatched from analyze_trade() on
+    # condition["type"] == "tornado_count"), shadow-only until
+    # _tornado_count_gates_active(). Matched by exact series-ticker
+    # membership in _TORNADO_COUNT_SERIES in check_series_drift() below, not
+    # the startswith/substring chain the rest of this list uses.
+    "KXTORNADO",
 ]
 
 # Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
@@ -5395,6 +5463,11 @@ def check_series_drift(client: KalshiClient) -> None:
                 # unknown-series diff would both silently ignore them
                 # forever, exactly the gap this item exists to close.
                 | _KXHOLIDAY_TEMP_SUFFIX_SERIES
+                # batch-54: same exact-membership reasoning -- "KXTORNADO"
+                # is neither a KXHIGH/KXLOW/KXRAIN prefix nor a SNOW
+                # substring, so without this union its registration would
+                # have zero drift-watch coverage.
+                | _TORNADO_COUNT_SERIES
             )
         )
 
@@ -5433,6 +5506,7 @@ def check_series_drift(client: KalshiClient) -> None:
                 or ticker in _HURRICANE_NEXT_EVENT_SERIES
                 or ticker in _STORM_ORDER_SERIES
                 or ticker in _KXHOLIDAY_TEMP_SUFFIX_SERIES
+                or ticker in _TORNADO_COUNT_SERIES
             ):
                 continue
             if ticker in live_weather:
@@ -5456,8 +5530,12 @@ def check_series_drift(client: KalshiClient) -> None:
         )
         if unknown:
             _log.warning(
+                # Kept in sync with live_weather's own membership test above
+                # (batch-54: it had already gone stale, omitting storm-order
+                # and holiday-temp, before tornado was added).
                 "check_series_drift: live KXHIGH/KXLOW/KXRAIN/*SNOW*/hurricane-count/"
-                "hurricane-next-event series not in KNOWN_WEATHER_SERIES: %s",
+                "hurricane-next-event/storm-order/holiday-temp/tornado series not in "
+                "KNOWN_WEATHER_SERIES: %s",
                 sorted(unknown),
             )
 
@@ -5950,6 +6028,40 @@ def is_storm_order_ticker(ticker: str) -> bool:
     return series in _STORM_ORDER_SERIES
 
 
+# batch-54: KXTORNADO -- the 1 monthly tornado-count series. A frozenset of
+# one, not a bare string comparison, so it plugs into check_series_drift()'s
+# exact-membership unions and tracker's LIKE-prefix pre-filter the same way
+# _STORM_ORDER_SERIES/_HURRICANE_COUNT_SERIES already do. Deliberately does
+# NOT include the legacy annual "TORNADO" series: that is a different product
+# (annual, not monthly), this repo has never referenced it, and nothing here
+# parses its ticker shape.
+_TORNADO_COUNT_SERIES: frozenset[str] = frozenset({"KXTORNADO"})
+
+# Month abbreviations as they appear in a KXTORNADO event ticker's YYMON
+# segment ("KXTORNADO-26SEP-75" -> "26" + "SEP"). Kalshi's own uppercase
+# 3-letter form, live-verified 2026-08-25 across all 7 listed events
+# (26JUN/26JUL/26AUG/26SEP/26OCT/26NOV/26DEC).
+#
+# Aliased to this file's existing MONTH_MAP rather than re-declared:
+# opus-review-caught (batch-54) that the first draft duplicated it
+# byte-for-byte, and two copies of a table five other call sites already
+# share can drift. The alias keeps the local, self-documenting name at the
+# point of use while guaranteeing one source of truth. (An explicit map
+# either way -- never a locale-dependent strptime("%b"), which would
+# mis-parse under a non-English locale.)
+_TORNADO_MONTH_ABBR: dict[str, int] = MONTH_MAP
+
+
+def is_tornado_count_ticker(ticker: str) -> bool:
+    """True only for the 1 monthly tornado-count series with a real
+    probability model (_analyze_tornado_count_trade). Series-ticker-exact,
+    not substring, mirroring is_storm_order_ticker()'s exact shape -- a
+    substring test would also match the legacy annual TORNADO series, which
+    has no parser branch here."""
+    series = ticker.upper().split("-")[0]
+    return series in _TORNADO_COUNT_SERIES
+
+
 def is_between_bracket_ticker(ticker: str) -> bool:
     """True for a KXHIGH*/KXLOW* between-bucket ticker (Kalshi's "-B<val>"
     suffix, e.g. "...-B67.5") -- batch-40 "Between-bracket calibration
@@ -6134,6 +6246,146 @@ def _parse_storm_order_condition(market: dict) -> dict | None:
         "storm_name": storm_name,
         "position": position,
         "season_year": season_year,
+    }
+
+
+def _tornado_month_from_ticker(ticker: str) -> tuple[int, int] | None:
+    """(year, month) for a KXTORNADO ticker, derived ENTIRELY from the ticker
+    string -- "KXTORNADO-26SEP-75" -> (2026, 9). Returns None if the shape
+    doesn't match, so tracker.count_settled_tornado_count_predictions() can
+    dedupe settled rows into distinct monthly EVENTS from a bare ticker,
+    without _parse_tornado_count_condition's full market-dict-shaped
+    contract (same division of labour as
+    _hurricane_count_key_from_ticker/_parse_hurricane_count_condition).
+
+    The 2-digit year is expanded as 20xx. That is safe for the lifetime of
+    this code and matches every other 2-digit-year ticker parser in this
+    file; a market for 1926 does not exist.
+    """
+    parts = ticker.upper().split("-")
+    if len(parts) != 3 or parts[0] not in _TORNADO_COUNT_SERIES:
+        return None
+    ym = parts[1]
+    # Exactly "YYMON": 2 digits + a 3-letter month. A length/shape check up
+    # front, so a malformed segment fails here rather than producing a
+    # plausible-looking wrong month from a partial match.
+    if len(ym) != 5 or not ym[:2].isdigit():
+        return None
+    month = _TORNADO_MONTH_ABBR.get(ym[2:])
+    if month is None:
+        return None
+    return 2000 + int(ym[:2]), month
+
+
+def _parse_tornado_count_condition(market: dict) -> dict | None:
+    """Returns {"type": "tornado_count", "year": int, "month": int,
+    "threshold": float, "strike_type": str} for a KXTORNADO monthly-count
+    market, or None if unparseable (batch-54).
+
+    Reads floor_strike/strike_type directly from Kalshi's own market fields
+    -- the same established convention the KXRAIN*M/KXDENSNOWM/hurricane-
+    count branches use -- and never guesses a threshold or a direction from
+    ticker or title text. The ticker's own "-75" suffix is NOT read as the
+    threshold: it happens to equal floor_strike on every market sampled
+    2026-08-25, but floor_strike is the field Kalshi actually settles
+    against, and relying on the suffix would be exactly the "safe by
+    coincidence" shape _parse_hurricane_count_condition's own history warns
+    about.
+
+    Cross-checks the ticker-derived (year, month) against the market's own
+    close_time, mirroring _parse_hurricane_count_condition's season_year
+    cross-check for the same reason: a malformed ticker could otherwise
+    silently produce a wrong month, which would price the market against the
+    WRONG month's climatology (a materially different distribution -- over
+    2005-2025 the May mean is 291, June 206 and September 57) and mis-key
+    the settled-event
+    dedup that drives the graduation floor. These markets close at midnight
+    ET on the 1st of the FOLLOWING month (live-verified across all 7 listed
+    events), i.e. close_time is always the target month + 1, so that exact
+    relationship is what's asserted -- not a loose same-year test, which
+    would pass a 6-month-off parse.
+    """
+    ticker = market.get("ticker", "")
+    key = _tornado_month_from_ticker(ticker)
+    if key is None:
+        # Distinguish "not this ticker family at all" (silent None, like
+        # every other branch in _parse_market_condition) from a genuine
+        # parse failure on a confirmed series membership -- warn only for
+        # the latter, same discipline _parse_hurricane_count_condition set.
+        if ticker.upper().split("-")[0] in _TORNADO_COUNT_SERIES:
+            _log.warning(
+                "_parse_tornado_count_condition[%s]: could not derive year/month "
+                "from ticker",
+                ticker,
+            )
+        return None
+    year, month = key
+
+    close_dt = _safe_parse_close_time(market.get("close_time", ""))
+    if close_dt is None:
+        _log.warning(
+            "_parse_tornado_count_condition[%s]: missing/unparseable close_time",
+            ticker,
+        )
+        return None
+    # close_time is 03:59Z (EDT) / 04:59Z (EST) on the 1st of the following
+    # month -- i.e. 23:59 ET on the LAST day of the TARGET month, not
+    # midnight on the 1st (opus-review-corrected: an earlier draft of this
+    # comment said the latter, which is the premise that made a UTC-based
+    # "today" look safe elsewhere in this family; see
+    # _analyze_tornado_count_trade). Compare in UTC as Kalshi publishes it:
+    # ET is behind UTC, so 23:59 ET on the last day of month M always lands
+    # on the 1st of M+1 in UTC under BOTH DST regimes, and the UTC calendar
+    # month of close_time is therefore always the month AFTER the target
+    # month (a Dec target closes 2027-01-01T04:59Z). _safe_parse_close_time
+    # now guarantees an actual UTC-normalized datetime, so reading .year and
+    # .month here is offset-form-proof.
+    expected_next = (year + (month // 12), month % 12 + 1)
+    if (close_dt.year, close_dt.month) != expected_next:
+        _log.warning(
+            "_parse_tornado_count_condition[%s]: ticker month %d-%02d doesn't "
+            "match close_time %s (expected close in %d-%02d) -- refusing to "
+            "trust this parse",
+            ticker,
+            year,
+            month,
+            close_dt.isoformat(),
+            expected_next[0],
+            expected_next[1],
+        )
+        return None
+
+    floor_strike = market.get("floor_strike")
+    strike_type = market.get("strike_type")
+    if floor_strike is None:
+        _log.warning("_parse_tornado_count_condition[%s]: missing floor_strike", ticker)
+        return None
+    if strike_type not in ("greater", "greater_or_equal"):
+        # Confirmed live 2026-08-25: "greater" on all 83 markets across all 7
+        # listed events, no exceptions. Fail closed rather than guess a
+        # direction, matching every other branch in this function.
+        _log.warning(
+            "_parse_tornado_count_condition[%s]: unexpected strike_type=%r",
+            ticker,
+            strike_type,
+        )
+        return None
+    try:
+        threshold = float(floor_strike)
+    except (TypeError, ValueError):
+        _log.warning(
+            "_parse_tornado_count_condition[%s]: non-numeric floor_strike=%r",
+            ticker,
+            floor_strike,
+        )
+        return None
+
+    return {
+        "type": "tornado_count",
+        "year": year,
+        "month": month,
+        "threshold": threshold,
+        "strike_type": strike_type,
     }
 
 
@@ -6483,8 +6735,9 @@ def max_days_out_for_ticker(ticker: str) -> int:
     kept here beside the family predicates it's built from.
 
     Mirrors analyze_trade()'s gate branch-for-branch (hurricane families ->
-    HURRICANE_MAX_DAYS_OUT, monthly rain/snow ladders -> RAIN/SNOW_MAX_
-    DAYS_OUT, everything else -> MAX_DAYS_OUT); the gate itself still
+    HURRICANE_MAX_DAYS_OUT, KXTORNADO -> TORNADO_MAX_DAYS_OUT, monthly
+    rain/snow ladders -> RAIN/SNOW_MAX_DAYS_OUT, everything else ->
+    MAX_DAYS_OUT); the gate itself still
     computes days_out per family (target_date for the daily/hurricane
     shapes, close_time for the monthly ladders whose target_date is None by
     design), which is why it isn't rewritten to call this -- only the
@@ -6512,6 +6765,8 @@ def max_days_out_for_ticker(ticker: str) -> int:
     ticker_up = ticker.upper()
     if is_hurricane_ticker(ticker_up):
         return HURRICANE_MAX_DAYS_OUT
+    if is_tornado_count_ticker(ticker_up):
+        return TORNADO_MAX_DAYS_OUT
     if any(ticker_up.startswith(_p) for _p in _KXRAIN_MONTHLY_CITY):
         return RAIN_MAX_DAYS_OUT
     if any(ticker_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY):
@@ -7162,13 +7417,46 @@ def _safe_parse_close_time(close_time_str: str) -> datetime | None:
     SNOW / HURRICANE MARKETS" Step 2) share one parser instead of
     independently re-deriving datetime.fromisoformat(...replace("Z", ...))
     (a second ad-hoc copy of this exact snippet also exists in tracker.py's
-    sync_outcomes -- this doesn't touch that one, just avoids adding a third)."""
+    sync_outcomes -- this doesn't touch that one, just avoids adding a third).
+
+    batch-54, opus-review-caught (MEDIUM): this docstring has always PROMISED
+    an aware UTC datetime, but the body only did the "Z" -> "+00:00" swap, so
+    it returned whatever offset the input carried, and a naive (offset-less)
+    string came back naive. Two real consequences, now closed here rather
+    than at each of the eleven call sites:
+
+    * A caller reading CALENDAR FIELDS would read the wrong calendar day.
+      _parse_tornado_count_condition asserts close_time's UTC (year, month)
+      equals its ticker's target month + 1; an offset-form close_time (e.g.
+      "2026-09-30T23:59:00-04:00", the same instant as "2026-10-01T03:59Z")
+      would read month 9 instead of 10 and reject EVERY market in that
+      family -- silently inert in production behind a per-market warning,
+      the exact failure mode batch-51 item 2 shipped once.
+    * `naive < datetime.now(UTC)` raises TypeError, uncaught. All four
+      past-close gates in analyze_trade (rain/snow/hurricane-next-event/
+      tornado) do exactly that comparison, so a naive close_time would take
+      down the whole analysis call rather than gating the market out.
+
+    Kalshi has only ever emitted "...Z" or "...+00:00" (verified across every
+    close_time literal in this repo), so this is hardening, not a live fix,
+    and it is a no-op for every real input today. A naive string is malformed
+    input rather than a different timezone, so it is STAMPED UTC rather than
+    passed through astimezone() -- the latter would silently reinterpret it
+    as the host's local time and shift the instant.
+    """
     if not close_time_str:
         return None
     try:
-        return datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+        _dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    if _dt.tzinfo is None:
+        _log.warning(
+            "_safe_parse_close_time: %r carries no UTC offset -- assuming UTC",
+            close_time_str,
+        )
+        return _dt.replace(tzinfo=UTC)
+    return _dt.astimezone(UTC)
 
 
 def _days_out_from_close_time(close_dt: datetime) -> int:
@@ -7463,6 +7751,19 @@ def _parse_market_condition(market: dict) -> dict | None:
     # this ticker family also has no city/coords/forecast.
     if ticker_up.split("-")[0] in _STORM_ORDER_SERIES:
         return _parse_storm_order_condition(market)
+
+    # ── Monthly tornado-count markets (batch-54) ──────────────────────────────
+    # Same fail-closed discipline as the 3 hurricane branches just above.
+    # KXTORNADO has no city, no coords and no forecast, and its "-75" bracket
+    # suffix carries no "-T"/"-B" marker, so a fall-through would land in the
+    # generic parser's title path -- where "more than 75 tornadoes" contains
+    # neither "above" nor ">" today, i.e. this family is currently safe only
+    # by an accident of Kalshi's title wording. That is the exact "safe by
+    # coincidence" shape the hurricane-count branch's own comment documents
+    # this project having already been burned by once, so it is closed off
+    # explicitly rather than left to depend on title text.
+    if ticker_up.split("-")[0] in _TORNADO_COUNT_SERIES:
+        return _parse_tornado_count_condition(market)
 
     # ── Precipitation markets ─────────────────────────────────────────────────
     # Whitelist known precipitation series to avoid false positives from
@@ -9569,6 +9870,26 @@ _CONDITION_CONFIDENCE: dict[str, float] = {
     # judgment call, not derived from data -- revisit once real shadow Brier
     # scores exist, same as every other entry here.
     "storm_order": 0.50,
+    # batch-54: KXTORNADO monthly count model. Set explicitly rather than
+    # left to edge_confidence()/_price_and_size()'s `.get(condition_type,
+    # 1.0)` fallback -- omitting it is the exact bug that silently gave
+    # hurricane_next_event the codebase's MAXIMUM confidence multiplier (see
+    # that key's own comment).
+    #
+    # 0.60: above the three hurricane models, below rain's 0.70. Higher than
+    # hurricane because the sample unit is genuinely stronger -- 21 real
+    # observations of THIS calendar month, versus a season-total question
+    # where a season is the sample unit -- and because the count-to-date
+    # tilt for an in-progress month is a large, directly-observed fraction
+    # of the final answer rather than a small nudge. Lower than rain
+    # because this batch's own go/no-go could demonstrate no skill: on the
+    # only 2 settled events that exist (2026-08-25), the model's
+    # decision-time Brier beat the market by 5.5% overall but by only 0.5%
+    # once a single 399-vs-400 coin-flip bracket is excluded, and the
+    # market clearly beat the model on the July event (0.0513 vs 0.0890).
+    # A judgment call, not derived from data -- revisit once real shadow
+    # Brier scores exist, same as every other entry here.
+    "tornado_count": 0.60,
 }
 
 
@@ -12557,6 +12878,304 @@ def _analyze_storm_order_trade(
     }
 
 
+# Minimum window years that must actually load before a tornado-count
+# probability is trusted. Matches tornado_climatology.bootstrap_ci's own
+# `len(totals) < 15` CI floor (and acis_precip's, and hurricane's) -- below
+# it, bootstrap_ci already refuses to produce a real CI, so producing a point
+# probability from the same too-thin sample would be asserting more
+# confidence than the CI machinery is willing to. Genuinely reachable here,
+# unlike in hurricane_climatology: monthly_totals()/conditioned_month_totals()
+# DROP a year whose SPC data failed to load rather than fabricating a 0 for
+# it, so a partly-unavailable source really can return a short list.
+_TORNADO_MIN_HISTORY_YEARS: int = 15
+
+
+def _analyze_tornado_count_trade(
+    enriched: dict,
+    condition: dict,
+    close_dt: datetime,
+    days_out: int,
+) -> dict | None:
+    """
+    Probability analysis for KXTORNADO monthly tornado-count markets
+    (batch-54): "Will there be more than N tornadoes in <Month>?".
+
+    Same no-city/no-forecast/no-target_date shape as the three hurricane
+    models -- just a calendar month and a bracket floor. The evidence base is
+    SPC's own PRELIMINARY national storm-report counts (the number the market
+    literally settles on, see tornado_climatology.py's module docstring),
+    bootstrapped the same "real actual-to-date + historical remaining" way
+    rain/snow's monthly-total models and hurricane's season-count model are,
+    via tornado_climatology.conditioned_month_totals.
+
+    Three phases, decided by where `today` sits relative to the target month:
+
+    * Target month still in the FUTURE (e.g. the September ladder priced in
+      August -- a real, routinely-open case, since each event lists on the
+      20th of the preceding month): count-to-date is 0 by definition and no
+      current-year SPC read is needed at all. Pure climatology.
+    * Target month IN PROGRESS: needs a fresh count-to-date. If
+      tornado_climatology.month_to_date() refuses (stale/missing current-year
+      cache), this returns None rather than pricing a mid-month market as
+      though nothing had happened yet -- see CURRENT_YEAR_MAX_STALENESS's own
+      comment for why a stale count is worse than no count for this family.
+    * Target month already PAST: refuses. Unreachable in practice -- such a
+      market's close_time has passed, so analyze_trade's own past-close gate
+      returns first -- but this function does not rely on that.
+
+    close_dt/days_out are pre-resolved by the caller (analyze_trade's
+    tornado-count gate), matching every other monthly/hourly/hurricane
+    analysis function's "caller resolves once, passes down" shape.
+    """
+    import tornado_climatology as tc
+
+    ticker = enriched.get("ticker", "?")
+    year = condition["year"]
+    month = condition["month"]
+    threshold = condition["threshold"]
+    strike_type = condition["strike_type"]
+
+    # ET, not UTC. Opus-review-caught (batch-54): the first draft used
+    # datetime.now(UTC).date() and justified it as "SPC publishes on a UTC
+    # clock", which does not address the question -- SPC's DAILY block is on
+    # a 12Z-12Z convective basis and the SETTLEMENT basis is a US calendar
+    # month, so neither supports a UTC calendar day as the "as of" reference.
+    # From 20:00 ET (EDT) / 19:00 ET (EST) until local midnight the UTC date
+    # is already tomorrow, which produced three real defects for ~4-5h of
+    # every day: as_of_day silently flipped to the day-omitting convention
+    # the comment below explicitly rejects; a still-open, still-September
+    # market flipped to the "already past" branch at 00:00Z on Oct 1; and a
+    # not-yet-started month flipped to the in-progress branch early, where a
+    # stale current-year cache would decline a ladder the future branch would
+    # have priced fine.
+    #
+    # This is the same fix _analyze_hurricane_next_event_trade already
+    # carries (opus-review-caught there 2026-08-07, same reasoning verbatim)
+    # and the same conversion _metar_lock_in's own "_local_today" uses,
+    # DST included.
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoTornado
+
+        _today = datetime.now(_ZoneInfoTornado("America/New_York")).date()
+    except Exception:
+        _log.warning(
+            "_analyze_tornado_count_trade[%s]: ZoneInfo(America/New_York) "
+            "unavailable -- falling back to UTC",
+            ticker,
+        )
+        _today = datetime.now(UTC).date()
+    _target = (year, month)
+    _now = (_today.year, _today.month)
+
+    if _target > _now:
+        count_to_date = 0
+        as_of_day = 0
+    elif _target == _now:
+        _mtd = tc.month_to_date(year, month, today=_today)
+        if _mtd is None:
+            _log.warning(
+                "_analyze_tornado_count_trade[%s]: no trustworthy SPC count-to-date "
+                "for %d-%02d -- declining to price an in-progress month",
+                ticker,
+                year,
+                month,
+            )
+            return None
+        count_to_date = _mtd
+        # today.day - 1, not today.day: the count-to-date is treated as
+        # complete through YESTERDAY and today onward is bootstrapped from
+        # history. Matches _analyze_monthly_rain_trade's own
+        # `through_day = today_local.day - 1`, which is the real precedent
+        # for this choice.
+        #
+        # Neither convention is exact, and (opus-review-corrected) neither is
+        # "partly self-cancelling": they are mirror images. This one
+        # double-counts whatever of today SPC has already filed, so it is
+        # biased HIGH by an amount that grows through the day; using
+        # today.day instead omits whatever of today is not yet filed, biased
+        # LOW by an amount that shrinks through the day. Which is smaller
+        # depends on the hour, so the tie is broken by matching rain rather
+        # than by a magnitude argument. (An earlier version of this comment
+        # cited "a June day averages ~13 reports" -- the real 2005-2025 June
+        # per-day mean is 6.8, and the busiest month, May, is 9.6.)
+        #
+        # max(0, ...) on the 1st of the month yields as_of_day=0, where
+        # remaining_share is 1.0 -- i.e. a full historical month is added on
+        # top of a non-zero count-to-date. That is the documented convention
+        # taken to its extreme, not a special case being handled: expect the
+        # 1st to be biased high by up to one day's activity.
+        as_of_day = max(0, _today.day - 1)
+    else:
+        # Now genuinely unreachable, given the ET conversion above: at 00:00
+        # ET on the 1st the market's own close_time (03:59Z/04:59Z, i.e.
+        # 23:59 ET on the last day) has already passed, so analyze_trade's
+        # tornado_count_past_close gate returns before this function is
+        # called. Kept as a real guard rather than an assert -- this function
+        # does not rely on its caller.
+        #
+        # Deliberately REFUSES rather than pricing, which is a divergence
+        # from the closest sibling: _analyze_monthly_rain_trade handles the
+        # analogous "accrual period is over but the market hasn't closed"
+        # window by pricing it (it sets remaining_start_day past the end of
+        # the month so the distribution collapses onto the known actual).
+        # The conservative choice is taken here because this family's
+        # count-to-date comes from a feed that keeps maturing after the month
+        # ends -- pricing a "known" total from it would assert a certainty
+        # the data does not have. Logged at debug, not warning: an
+        # unreachable-but-guarded branch should not page anyone if the clock
+        # ever surprises us.
+        _log.debug(
+            "_analyze_tornado_count_trade[%s]: target month %d-%02d is already "
+            "past -- refusing to price a settled month",
+            ticker,
+            year,
+            month,
+        )
+        return None
+
+    totals = tc.conditioned_month_totals(month, as_of_day, count_to_date)
+    if len(totals) < _TORNADO_MIN_HISTORY_YEARS:
+        _log.warning(
+            "_analyze_tornado_count_trade[%s]: only %d usable SPC history years "
+            "for month %02d (need %d) -- SPC data unavailable",
+            ticker,
+            len(totals),
+            month,
+            _TORNADO_MIN_HISTORY_YEARS,
+        )
+        return None
+
+    # batch-54 spec: "late-month markets become arithmetic (count already >=
+    # bracket) -- the model must handle already-decided brackets by pricing
+    # 0/1, and sizing should not treat those as edge." A monthly count only
+    # ever rises, so only a decided-YES is reachable before the month ends;
+    # there is no decided-NO branch (see tc.is_already_decided's docstring).
+    decided = tc.is_already_decided(count_to_date, threshold, strike_type)
+    if decided:
+        # 0.99, not a literal 1.0: every probability this codebase produces
+        # is clamped to [0.01, 0.99] and downstream Kelly sizing assumes a
+        # non-degenerate probability. The zeroing below is what actually
+        # keeps this out of sizing.
+        blended_prob = 0.99
+        ci_low, ci_high = 0.99, 0.99
+    else:
+        blended_prob = tc.exceedance_probability(totals, threshold, strike_type)
+        ci_low, ci_high = tc.bootstrap_ci(totals, threshold, strike_type)
+
+    prices = parse_market_price(enriched)
+    market_prob = prices["implied_prob"]
+    # Forced "yes" for a decided bracket rather than computed: with
+    # blended_prob clamped to 0.99, a market already quoting 0.99 would make
+    # `blended_prob > market_prob` False and label a certainty-YES contract
+    # as a NO recommendation. Harmless numerically (everything is zeroed
+    # below) but actively misleading in shadow logs.
+    rec_side = "yes" if decided or blended_prob > market_prob else "no"
+
+    # Same non-independence caution as rain/snow/hurricane's own consensus
+    # flags: the climatological base and the count-to-date tilt are not two
+    # independent sources -- the tilt is real progress measured against the
+    # SAME historical baseline. Hardcoded False, not computed.
+    consensus = False
+
+    _priced = _price_and_size(
+        blended_prob,
+        prices,
+        condition,
+        rec_side,
+        ci=(ci_low, ci_high),
+        consensus=consensus,
+    )
+    net_edge = _priced["net_edge"]
+    edge = _priced["edge"]
+    entry_side_edge = _priced["entry_side_edge"]
+    fee_kel = _priced["fee_kel"]
+    ci_adj_kelly = _priced["ci_adjusted_kelly"]
+
+    _edge_conf = edge_confidence(days_out, condition_type=condition["type"])
+    adjusted_edge = net_edge * _edge_conf
+
+    if decided:
+        # Zero every edge/size field an already-decided bracket could
+        # otherwise present as opportunity. This is what makes the spec's
+        # "sizing should not treat those as edge" real: with zero edge the
+        # opportunity never reaches order_executor._auto_place_trades' opps
+        # list, so it generates neither an order NOR a shadow prediction
+        # row -- deliberate, since a trivially-certain 0.99 that settles YES
+        # would flatter this family's shadow Brier and make its own
+        # graduation floor easier to clear than it should be.
+        edge = 0.0
+        net_edge = 0.0
+        adjusted_edge = 0.0
+        entry_side_edge = 0.0
+        fee_kel = 0.0
+        ci_adj_kelly = 0.0
+
+    return {
+        "forecast_prob": blended_prob,
+        "market_prob": market_prob,
+        "edge": edge,
+        "signal": _edge_label(edge, rec_side),
+        "net_edge": net_edge,
+        "adjusted_edge": round(adjusted_edge, 6),
+        "edge_confidence_factor": _edge_conf,
+        "net_signal": _edge_label(adjusted_edge, rec_side),
+        "recommended_side": rec_side,
+        "condition": condition,
+        "ensemble_prob": blended_prob,
+        "nws_prob": None,
+        "clim_prob": None,
+        "clim_adj_prob": None,
+        "obs_prob": None,
+        "live_obs": None,
+        "index_adj": 0.0,
+        "bias_correction": 0.0,
+        "blend_sources": {"spc_preliminary_climatology": 1.0},
+        "method": (
+            "tornado_count_decided"
+            if decided
+            else (
+                "tornado_count_bootstrap_tilted"
+                if as_of_day > 0
+                else "tornado_count_bootstrap"
+            )
+        ),
+        "ensemble_stats": None,
+        "n_members": len(totals),
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_width": round(ci_high - ci_low, 4),
+        "kelly": fee_kel,
+        "fee_adjusted_kelly": fee_kel,
+        "ci_adjusted_kelly": ci_adj_kelly,
+        "consensus": consensus,
+        "model_consensus": True,
+        "near_threshold": False,
+        "days_out": days_out,
+        # Synthetic exposure-cap grouping key, same "decide deliberately,
+        # don't silently bypass the caps" treatment hurricane-count's
+        # "HUR_<basin>" got (there is no real city for this family either).
+        # ONE national key covering every bracket of every month, not a
+        # per-month key: two KXTORNADO events are open simultaneously for
+        # ~11 days of each cycle, and while two different calendar months
+        # are genuinely less correlated than two brackets of the same month,
+        # capping the whole family's exposure together is the conservative
+        # reading for a model with zero validated settled predictions.
+        # Mirrors hurricane-count's own season-agnostic per-basin key.
+        # Not added to _CORRELATED_CITY_GROUPS -- there is nothing to
+        # correlate it WITH; it is the only member of its own family.
+        "city": "TORNADO_US",
+        "target_date": close_dt.date().isoformat(),
+        "entry_side_edge": round(entry_side_edge, 4),
+        # Tornado-specific diagnostics, not read by any shared consumer.
+        "year": year,
+        "month": month,
+        "count_to_date": count_to_date,
+        "as_of_day": as_of_day,
+        "already_decided": decided,
+        "n_historical_years": len(totals),
+    }
+
+
 def _analyze_hourly_trade(
     enriched: dict,
     condition: dict,
@@ -13558,18 +14177,30 @@ def analyze_trade(
     # Snow Step 2 (2026-07-30): replaces Step 1's unconditional
     # monthly_snow_not_yet_supported guard -- same treatment as rain now.
     _is_monthly_snow = any(_tkr_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY)
+    # batch-54: KXTORNADO monthly count ladders. Structurally the monthly
+    # rain/snow shape, not the hurricane shape, despite being a count model:
+    # the ticker's "26SEP" segment carries no day, so parse_city_date()
+    # returns target_date=None (unlike hurricane-count, whose "26DEC01"
+    # suffix IS a real embedded date), which is why every no_forecast/
+    # no_date/past-close/days_out branch below treats it like rain/snow and
+    # gates it on close_time. It ALSO has no city/coords (unlike rain/snow),
+    # so it needs the hurricane families' no_city/no_coords bypasses too --
+    # it is the only family in this function that needs both sets.
+    _is_tornado_count = is_tornado_count_ticker(_tkr_up)
     # Initialize early so blend weight calls can read regime even before detection runs.
     # Overwritten by the actual regime detection block further below.
     _regime_info: dict = {}
     _rain_close_dt: datetime | None = None
     _snow_close_dt: datetime | None = None
     _hur_next_event_close_dt: datetime | None = None
+    _tornado_close_dt: datetime | None = None
     if (
         not _is_monthly_rain
         and not _is_monthly_snow
         and not _is_hurricane_count
         and not _is_hurricane_next_event
         and not _is_storm_order
+        and not _is_tornado_count
         and not forecast
     ):
         _log.warning(
@@ -13593,6 +14224,11 @@ def analyze_trade(
         not _is_monthly_rain
         and not _is_monthly_snow
         and not _is_hurricane_next_event
+        # batch-54: KXTORNADO's "26SEP" segment has no day component, so
+        # parse_city_date() returns target_date=None by design -- same
+        # bypass, and same close_time-derived past-close branch below, as
+        # the monthly rain/snow ladders.
+        and not _is_tornado_count
         and not target_date
     ):
         _log.warning("analyze_trade[%s]: gate=no_date city=%s", _tkr, city)
@@ -13603,6 +14239,7 @@ def analyze_trade(
         and not _is_hurricane_count
         and not _is_hurricane_next_event
         and not _is_storm_order
+        and not _is_tornado_count
     ):
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         _count_gate("no_city")
@@ -13682,12 +14319,32 @@ def analyze_trade(
             )
             _count_gate("hurricane_next_event_past_close")
             return None
+    elif _is_tornado_count:
+        # batch-54: same close_time-derived gating as rain/snow/next-event --
+        # target_date is None for this family by design (see the no_date
+        # gate's own comment above). close_time is 23:59 ET on the LAST day
+        # of the target month (published as 03:59Z/04:59Z on the 1st of the
+        # next month) -- the real end of the accrual window Kalshi settles
+        # on. Opus-review-corrected: the "midnight ET on the 1st" framing
+        # this replaces is precisely the premise that made a UTC-based
+        # "today" look safe elsewhere in this family.
+        _tornado_close_dt = _safe_parse_close_time(enriched.get("close_time", ""))
+        if _tornado_close_dt is None or _tornado_close_dt < datetime.now(UTC):
+            _log.debug(
+                "analyze_trade[%s]: gate=tornado_count_past_close close_time=%s",
+                _tkr,
+                enriched.get("close_time"),
+            )
+            _count_gate("tornado_count_past_close")
+            return None
     else:
         # Narrowing for mypy: the no_date gate above only returns None when
         # `not _is_monthly_rain and not _is_monthly_snow and not
-        # _is_hurricane_next_event and not target_date` -- since we're in the
+        # _is_hurricane_next_event and not _is_tornado_count and not
+        # target_date` -- since we're in the
         # `else` of `if _is_monthly_rain`/`elif _is_monthly_snow`/`elif
-        # _is_hurricane_next_event`, that gate already guarantees target_date
+        # _is_hurricane_next_event`/`elif _is_tornado_count`, that gate
+        # already guarantees target_date
         # is truthy here (hurricane-count included -- its ticker's date
         # suffix IS its real close date, so it safely reuses this branch).
         assert target_date is not None
@@ -13734,6 +14391,7 @@ def analyze_trade(
         and not _is_hurricane_count
         and not _is_hurricane_next_event
         and not _is_storm_order
+        and not _is_tornado_count
     ):
         _log.warning("analyze_trade[%s]: gate=no_coords city=%s", _tkr, city)
         _count_gate("no_coords")
@@ -13815,6 +14473,25 @@ def analyze_trade(
                 _tkr,
                 _days_out_check,
                 HURRICANE_MAX_DAYS_OUT,
+            )
+            _count_gate("days_out")
+            return None
+    elif _is_tornado_count:
+        # _tornado_close_dt was already resolved (non-None) by the past-close
+        # check above -- reuse it, same as rain/snow/next-event. Its own
+        # constant, not RAIN_MAX_DAYS_OUT: a KXTORNADO event's listed life is
+        # ~41-42 days, longer than a monthly rain/snow ladder's ~31, so
+        # sharing rain's ceiling would silently gate out the pre-month,
+        # pure-climatology stretch of every event. See TORNADO_MAX_DAYS_OUT's
+        # own comment in utils.py.
+        assert _tornado_close_dt is not None
+        _days_out_check = _days_out_from_close_time(_tornado_close_dt)
+        if _days_out_check > TORNADO_MAX_DAYS_OUT:
+            _log.debug(
+                "analyze_trade[%s]: gate=days_out days=%d max=%d (tornado_count)",
+                _tkr,
+                _days_out_check,
+                TORNADO_MAX_DAYS_OUT,
             )
             _count_gate("days_out")
             return None
@@ -14086,18 +14763,38 @@ def analyze_trade(
             result["edge_calc_version"] = EDGE_CALC_VERSION
         return result
 
+    # ── Monthly tornado-count fast-path (batch-54) ────────────────────────────
+    # Must sit here, alongside the other city-less families and before the
+    # "everything below assumes forecast is non-None" narrowing asserts just
+    # below: KXTORNADO has no city, so enrich_with_forecast() has no coords to
+    # fetch a forecast for and forecast is always None. _tornado_close_dt was
+    # already resolved+validated by the past-close gate above (guaranteed
+    # non-None -- that gate returns None outright otherwise), so it's reused
+    # rather than re-parsed, same as rain/snow/hurricane-next-event.
+    if condition["type"] == "tornado_count":
+        assert _tornado_close_dt is not None
+        result = _analyze_tornado_count_trade(
+            enriched, condition, _tornado_close_dt, _days_out_check
+        )
+        if result is not None:
+            result["time_risk"] = time_risk_label
+            result["edge_calc_version"] = EDGE_CALC_VERSION
+        return result
+
     # Narrowing for mypy: every branch that could leave forecast falsy
     # (_is_monthly_rain=True, _is_monthly_snow=True, _is_hurricane_count=True,
-    # _is_hurricane_next_event=True, or _is_storm_order=True -- the last 3
-    # also have no real city/coords) has already returned above (hourly/
+    # _is_hurricane_next_event=True, _is_storm_order=True, or
+    # _is_tornado_count=True -- the last 4 also have no real city/coords) has
+    # already returned above (hourly/
     # precip/snow-ice/rain/snow-ladder/hurricane-count/hurricane-next-event/
-    # storm-order fast-paths); everything from here to the end of this
-    # function is the daily-only pipeline, where the no_date/no_forecast
-    # gates already guarantee both target_date and forecast are truthy.
+    # storm-order/tornado-count fast-paths); everything from here to the end
+    # of this function is the daily-only pipeline, where the no_date/
+    # no_forecast gates already guarantee both target_date and forecast are
+    # truthy.
     # Never reassigned below. city/coords are asserted too -- the no_coords
     # gate above only bypasses for _is_hurricane_count/_is_hurricane_next_
-    # event/_is_storm_order, all 3 of which have already returned by this
-    # point (their own fast-paths), so both are real here.
+    # event/_is_storm_order/_is_tornado_count, all 4 of which have already
+    # returned by this point (their own fast-paths), so both are real here.
     assert target_date is not None
     assert forecast is not None
     assert city is not None

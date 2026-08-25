@@ -475,7 +475,8 @@ def validate_target_date_freshness(ticker: str, target_date: str | None) -> None
         own comment for the KXHIGHNY-26APR17-B70 incident this closes).
       * FUTURE -- more than the ticker family's own scan horizon
         (weather_markets.max_days_out_for_ticker) ahead, plus the SAME
-        grace, i.e. 8 / 34 / 263 days.
+        grace, i.e. 8 / 34 / 48 / 263 days (temp / monthly rain-snow /
+        KXTORNADO / hurricane).
 
         The grace here is deliberate slack, NOT timezone-skew compensation
         -- an earlier version of this comment claimed the latter and had
@@ -4121,6 +4122,7 @@ def check_position_limits(
         _rain_gates_active,
         _snow_gates_active,
         _storm_order_gates_active,
+        _tornado_count_gates_active,
         is_between_bracket_ticker,
         is_holiday_temp_ticker,
         is_hurricane_count_ticker,
@@ -4130,6 +4132,7 @@ def check_position_limits(
         is_rain_holiday_ticker,
         is_rain_weekend_ticker,
         is_storm_order_ticker,
+        is_tornado_count_ticker,
     )
 
     # Opus-review-caught (2026-08-07): this shared enforcement point checked
@@ -4239,6 +4242,19 @@ def check_position_limits(
             "reason": (
                 "hurricane storm-order markets: shadow-only until "
                 "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+    # batch-54: KXTORNADO monthly count markets own dedicated shadow-only
+    # gate, same treatment as the blocks above.
+    if is_tornado_count_ticker(ticker) and not _tornado_count_gates_active():
+        return {
+            "ok": False,
+            "reason": (
+                "tornado monthly-count markets: shadow-only until "
+                "TORNADO_TRADING_ENABLED=1 and >=20 settled predictions "
                 "exist"
             ),
             "existing_cost": 0.0,

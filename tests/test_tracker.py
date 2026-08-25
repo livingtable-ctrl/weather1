@@ -986,32 +986,42 @@ class TestExcludedBrierConditionTypes(unittest.TestCase):
     so that mutation can't affect it) -- confirming it's a genuine positive
     control for the gate-independence claim, not a redundant duplicate."""
 
-    def test_all_gates_inactive_excludes_all_six(self):
-        """Matches today's real production state (no *_TRADING_ENABLED flag
-        set) -- same 6-type set the old hardcoded tuple always excluded."""
+    @staticmethod
+    def _gate_patches(value):
+        """One patch per gate-coupled family, forced to `value`.
+
+        Derived from tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES rather
+        than re-listing the gate names, so a family added to that registry
+        can never leave this patch set silently short (batch-54, opus-review-
+        caught: three tests here hardcoded the then-5 gates and went RED the
+        moment tornado_count was registered, and two more stayed GREEN while
+        quietly no longer pinning what their docstrings claimed).
+        tests/test_calibration.py already uses this pattern, which is why it
+        did not break.
+        """
         import weather_markets as wm
 
-        with (
-            patch.object(wm, "_rain_gates_active", return_value=False),
-            patch.object(wm, "_snow_gates_active", return_value=False),
-            patch.object(wm, "_hurricane_count_gates_active", return_value=False),
-            patch.object(wm, "_hurricane_next_event_gates_active", return_value=False),
-            patch.object(wm, "_storm_order_gates_active", return_value=False),
-        ):
+        return tuple(
+            patch.object(wm, fn, return_value=value)
+            for _ct, fn in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
+        )
+
+    def test_all_gates_inactive_excludes_every_registered_family(self):
+        """Matches today's real production state (no *_TRADING_ENABLED flag
+        set): every gate-coupled family, plus the always-excluded
+        'between'."""
+        with contextlib.ExitStack() as stack:
+            for cm in self._gate_patches(False):
+                stack.enter_context(cm)
             excluded = tracker._excluded_brier_condition_types()
 
+        self.assertEqual(excluded, tracker._ALWAYS_EXCLUDED_CONDITION_TYPES)
+        # Positive control: the derivation is not vacuously empty, and it
+        # really does track the registry rather than a frozen literal.
+        self.assertIn("between", excluded)
         self.assertEqual(
-            excluded,
-            frozenset(
-                {
-                    "between",
-                    "precip_month_total",
-                    "snow_month_total",
-                    "hurricane_count",
-                    "hurricane_next_event",
-                    "storm_order",
-                }
-            ),
+            excluded - {"between"},
+            frozenset(ct for ct, _fn in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES),
         )
 
     def test_gate_active_removes_its_own_condition_type_from_exclusion(self):
@@ -1036,15 +1046,9 @@ class TestExcludedBrierConditionTypes(unittest.TestCase):
     def test_between_always_excluded_even_when_all_gates_active(self):
         """'between' has no gate of its own -- it must stay excluded even in
         the hypothetical where every other market family has gone live."""
-        import weather_markets as wm
-
-        with (
-            patch.object(wm, "_rain_gates_active", return_value=True),
-            patch.object(wm, "_snow_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
-            patch.object(wm, "_storm_order_gates_active", return_value=True),
-        ):
+        with contextlib.ExitStack() as stack:
+            for cm in self._gate_patches(True):
+                stack.enter_context(cm)
             excluded = tracker._excluded_brier_condition_types()
 
         self.assertEqual(excluded, frozenset({"between"}))
@@ -1317,21 +1321,28 @@ class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
         tracker.log_outcome(ticker, settled_yes)
 
     def _all_gates_active(self):
+        """Derived from tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES rather
+        than re-listing the gate names, so a family added to that registry
+        can never leave this patch set silently short (batch-54, opus-review-
+        caught: three tests here hardcoded the then-5 gates and went RED the
+        moment tornado_count was registered, and two more stayed GREEN while
+        quietly no longer pinning what their docstrings claimed).
+        tests/test_calibration.py already uses this pattern, which is why it
+        did not break.
+        """
         import weather_markets as wm
 
-        return (
-            patch.object(wm, "_rain_gates_active", return_value=True),
-            patch.object(wm, "_snow_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
-            patch.object(wm, "_storm_order_gates_active", return_value=True),
+        return tuple(
+            patch.object(wm, fn, return_value=True)
+            for _ct, fn in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
         )
 
     def test_get_rolling_win_rate_stays_excluded_with_all_gates_active(self):
         self._insert("TK-BASE", 1.0, True, condition_type="above")
         self._insert("TK-SHADOW", 0.0, True, condition_type="precip_month_total")
-        p1, p2, p3, p4, p5 = self._all_gates_active()
-        with p1, p2, p3, p4, p5:
+        with contextlib.ExitStack() as _stack:
+            for _p in self._all_gates_active():
+                _stack.enter_context(_p)
             win_rate, count = tracker.get_rolling_win_rate(window=20)
         # If precip_month_total leaked in, count would be 2 and win_rate < 1.0.
         self.assertEqual(count, 1)
@@ -1356,24 +1367,27 @@ class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
             method="metar_lockout",
             days_out=0,
         )
-        p1, p2, p3, p4, p5 = self._all_gates_active()
-        with p1, p2, p3, p4, p5:
+        with contextlib.ExitStack() as _stack:
+            for _p in self._all_gates_active():
+                _stack.enter_context(_p)
             rows = tracker.get_metar_lockout_calibration_data()
         self.assertEqual(len(rows), 1)
 
     def test_get_multiday_calibration_cli_stays_excluded_with_all_gates_active(self):
         self._insert("TK-BASE", 1.0, True, condition_type="above")
         self._insert("TK-SHADOW", 0.0, True, condition_type="snow_month_total")
-        p1, p2, p3, p4, p5 = self._all_gates_active()
-        with p1, p2, p3, p4, p5:
+        with contextlib.ExitStack() as _stack:
+            for _p in self._all_gates_active():
+                _stack.enter_context(_p)
             result = tracker.get_multiday_calibration_cli()
         self.assertEqual(result["n"], 1)
 
     def test_get_sameday_calibration_cli_stays_excluded_with_all_gates_active(self):
         self._insert("TK-BASE", 1.0, True, condition_type="above", days_out=0)
         self._insert("TK-SHADOW", 0.0, True, condition_type="storm_order", days_out=0)
-        p1, p2, p3, p4, p5 = self._all_gates_active()
-        with p1, p2, p3, p4, p5:
+        with contextlib.ExitStack() as _stack:
+            for _p in self._all_gates_active():
+                _stack.enter_context(_p)
             result = tracker.get_sameday_calibration_cli()
         self.assertEqual(result["n"], 1)
 
@@ -2508,14 +2522,20 @@ class TestBrierFamilyExclusionIsGateCoupled(_Phase3Base):
 
     @staticmethod
     def _gates_active():
+        """One patch per gate-coupled family, all forced ACTIVE.
+
+        Derived from tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES rather
+        than a hand-listed tuple -- this is the third such list batch-54's
+        registry addition broke or silently staled, and this class's own
+        test_precondition_gates_change_the_set is the positive control the
+        rest of the class depends on, so a short list here quietly
+        un-verifies every sibling assertion.
+        """
         import weather_markets as wm
 
-        return (
-            patch.object(wm, "_rain_gates_active", return_value=True),
-            patch.object(wm, "_snow_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
-            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
-            patch.object(wm, "_storm_order_gates_active", return_value=True),
+        return tuple(
+            patch.object(wm, fn, return_value=True)
+            for _ct, fn in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
         )
 
     def _seed_mixed(self, prefix, n=6, days_out=2):

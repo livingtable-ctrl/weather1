@@ -231,6 +231,363 @@ Item 2 (A15a) shipped alongside: tracker.get_station_bias_by_lead() +
   clear the 10-sample floor, 2 significant (Washington min -2.85F cold,
   Minneapolis min -1.43F cold); no per-lead cell clears the floor yet, as
   the batch predicted.
+[OPEN 2026-08-25 (batch-54) -- SHADOW-ONLY GRADUATION GATE. The model itself
+  shipped 2026-08-25; this entry tracks the decision to let it trade, which
+  cannot be made before roughly mid-2028. Nothing here places live orders.]
+  KXTORNADO MONTHLY TORNADO-COUNT MODEL -- GRADUATION CRITERIA AND THE
+  HONEST TIMELINE
+Priority: Low -- there is nothing to do until the sample clock fills. The
+  entry exists so the graduation decision is made against the documented
+  prior below rather than against a hopeful reading of a future Brier
+  number.
+Files: tornado_climatology.py (new), weather_markets.py (series registry,
+  is_tornado_count_ticker, _tornado_month_from_ticker,
+  _parse_tornado_count_condition, _analyze_tornado_count_trade,
+  _tornado_count_gates_active, _CONDITION_CONFIDENCE, check_series_drift,
+  max_days_out_for_ticker, analyze_trade's four bypasses + past-close +
+  days-out + dispatch), utils.py (TORNADO_MAX_DAYS_OUT),
+  tracker.py (count_settled_tornado_count_predictions,
+  _GATE_COUPLED_EXCLUDED_CONDITION_TYPES,
+  _paper_trade_excluded_condition_type), consistency.py (_group_markets
+  exclusion), main.py (4 cmd_order/quick-buy guards), paper.py
+  (check_position_limits guard), order_executor.py (_auto_place_trades
+  shadow routing)
+
+WHAT THE MARKET IS
+  KXTORNADO -- "Number of tornadoes in <Month>?", a monthly ladder of ">N"
+  brackets. Live-verified 2026-08-25: 83 markets across 7 events
+  (26JUN..26DEC), 505,758 cumulative contracts, strike_type "greater" on
+  every one. Brackets are 25..275 step 25 on a normal month; the June 2026
+  event ran to 425 (17 brackets) because the month ran hot -- the ladder
+  length is NOT fixed. Each event opens on the 20th of the PRIOR month and
+  closes at midnight ET on the 1st of the FOLLOWING month (~41-42 days).
+  Ticker shape "KXTORNADO-26SEP-75"; no day component, so target_date is
+  None and the whole path is gated on close_time like the monthly rain/snow
+  ladders. Distinct from the legacy annual TORNADO series, which this repo
+  has never referenced (re-verified 2026-08-25: KXTORNADO had zero repo or
+  backlog mentions before this batch).
+
+  Settlement is SPC's PRELIMINARY storm-report count, from the market's own
+  rules text: "If the preliminary number of tornadoes in Aug is above 150,
+  then the market resolves to Yes", determined by the "Storm Reports Legend"
+  on the "Preliminary Report Summary". Preliminary counts systematically
+  OVERCOUNT the final quality-controlled database (duplicate reports for one
+  tornado are not yet merged), so the model deliberately models the
+  preliminary series itself and never corrects toward final counts.
+
+DATA SOURCE (found by capturing the settlement page's own network traffic)
+  https://www.spc.noaa.gov/climo/summary/<YYYY>/ruf/NAT/NAT.json
+  "ruf" is SPC's path segment for the PRELIMINARY source; NAT is the
+  national aggregate. Its `month` block is exactly the "<year> Monthly
+  Statistics" table the settlement page renders -- verified 2026-08-25 by
+  reading the rendered table and the JSON side by side for 2026.
+  Cross-checked against the only two Kalshi settlements that exist:
+    KXTORNADO-26JUN settled with the count in (375, 400]  <-> SPC month 399
+    KXTORNADO-26JUL settled with the count in (125, 150]  <-> SPC month 136
+  Coverage begins 2004 (1999/2003 404; 2000 is an all-zero placeholder),
+  hence a 21-year window (2005-2025) rather than hurricane's 30.
+
+  TRAP, documented in tornado_climatology.py's header and pinned by two
+  tests: the JSON's `month` block is CALENDAR-month and its `daily` block is
+  SPC CONVECTIVE-day (12Z-12Z). They disagree for 104 of the 259 months in
+  2005-2026. March 2023 is the extreme case -- daily["0331"] = 163 (the Mar
+  31 outbreak), daily March sums to 253, but month["3"] = 161, because 92 of
+  that convective day's reports fell on calendar April 1. `month` is the
+  settlement basis; `daily` is used ONLY for a within-month remaining-SHARE
+  fraction, so the boundary artifact cancels out of the ratio instead of
+  contaminating a subtraction.
+
+THE MODEL
+  Climatology + count-to-date bootstrap, the shape
+  _analyze_hurricane_count_trade established. For each of the 21 window
+  years y:
+      total[y] = count_to_date + month_total(y) * remaining_share(y, as_of)
+  i.e. this month's real progress plus that year's own remaining portion of
+  its own month total. Reduces exactly to plain climatology at as_of=0.
+
+  The remaining term is a rescaled SHARE of that year's month total.
+  Getting that share right was the single biggest correctness issue in this
+  batch, and the first version was WRONG -- see "WHAT THE REVIEW CHANGED"
+  below. Both naive combinations of the two bases carry a one-directional
+  UPWARD bias, so the shipped code re-attributes each month's
+  (daily - month) discrepancy onto the boundary day it must have come from
+  before taking any share, which reconciles to `month` exactly.
+
+  Three phases: a target month still in the FUTURE (the routine case -- each
+  event lists 11 days before its month starts) prices pure climatology and
+  never touches the current-year feed; an IN-PROGRESS month needs a fresh
+  count-to-date and DECLINES outright if the current-year SPC cache is older
+  than 36h (a stale count-to-date biases every bracket down at once, so no
+  count beats a stale one); a PAST month refuses.
+
+  Already-decided brackets (count_to_date already past the floor) are priced
+  0.99 with edge/net_edge/adjusted_edge/kelly/ci_adjusted_kelly all forced
+  to zero, so they generate neither an order NOR a shadow prediction row.
+  Only a decided-YES is reachable -- a monthly count only rises. Zeroing the
+  edge (rather than returning None) satisfies the batch's "price 0/1, don't
+  size off them" requirement while keeping trivially-certain rows out of the
+  shadow Brier that this entry's own graduation decision reads.
+
+GO/NO-GO RESULT: PASS ON THE LITERAL GATE, NO SKILL DEMONSTRATED
+  The batch's gate was "any bracket >10c from a well-calibrated climatology
+  early in a month". It passes -- but the numbers are weaker than that
+  sentence sounds, and the graduation decision must be made against these,
+  not against the headline.
+
+  1. Snapshot, 2026-08-25. The Sep 2026 ladder showed 8 of 11 brackets more
+     than 10c from mid (max 26.2c on the -125). Every one of those 8 has
+     zero volume, zero open interest and a 40-56c bid/ask spread -- the
+     "mid" of a 0.03/0.59 quote is not a price. Confirmed afterwards by
+     running the SHIPPED analyze_trade against the live ladder: all 11
+     September brackets are rejected by the bot's own universal LIQUIDITY
+     gate before the model's number is ever used. The headline gate passed
+     on brackets this bot would never trade.
+
+  2. The only live bracket that survives the universal gates today is
+     KXTORNADO-26AUG-100 (0.68/0.77, 5,289 contracts): model 0.57 vs market
+     0.73, a 15.9c disagreement. That is the one real signal in the family
+     right now, and it is late-month.
+
+  3. Decision-time mini-backtest on the only 2 settled events (116
+     bracket-observations, market price from 1440-min candlesticks at day
+     5/10/15/20/25 of each month, model conditioned on the month-to-date at
+     that same date). ALL NUMBERS BELOW ARE FROM THE SHIPPED ESTIMATOR --
+     re-derived after the review's bias fix, which improved every one of
+     them (the pre-fix figures were +5.5% overall collapsing to +0.5%):
+         model Brier 0.0880 | market Brier 0.0982 | skill +10.4%
+         excluding JUN-400/425 (the 399-vs-400 coin flip): +6.6%
+         JUN only: +34.6%   JUL only: -63.1%
+         non-trivial only (market price in 0.05-0.95): +10.3%
+         decision day <= 15: +8.9%
+     Read this carefully rather than as a win. n=2 EVENTS. The two events
+     disagree violently in opposite directions, which is what a 2-sample
+     estimate of a noisy quantity looks like; the +10.4% is not a skill
+     measurement, it is one good month and one bad month. In July -- the one
+     event where the market disagreed with climatology strongly and EARLY --
+     the market was right: at day 5 the market priced P(>125) at 0.65 vs the
+     model's 0.29, and July finished at 136. The honest summary is unchanged
+     from the pre-fix version: NO SKILL IS DEMONSTRATED EITHER WAY at this
+     sample size. What the fix did change is that the margin no longer
+     vanishes when the single luckiest bracket is removed, so the prior is
+     "unknown" rather than "probably zero".
+
+  4. Honest read: the market appears to be pricing information climatology
+     cannot see (SPC's Day 1-8 convective outlooks). That is the most likely
+     explanation for both the early-month disagreements and July's outcome.
+     Blending an outlook-derived expected-count into the remaining-days term
+     is the obvious next model step; it was scoped OUT of batch-54
+     (AskUserQuestion, 2026-08-25 -- user chose "ship shadow-only as
+     specified") because turning outlook risk areas into an expected report
+     count is its own modelling project needing its own validation.
+
+  The go/no-go therefore does NOT establish edge. It establishes that the
+  market is not simply quoting climatology, which is a necessary but not
+  sufficient condition. Shipping now buys the sample clock, not a signal.
+
+THE TIMELINE, STATED PLAINLY
+  count_settled_tornado_count_predictions() counts distinct (year, month)
+  EVENTS, not the 11-17 brackets each event settles -- all brackets of one
+  month settle from the SAME single SPC number, so ticker-counting would
+  report 28 independent observations where there are 2 (live-verified
+  2026-08-25: 28 settled markets, 2 settled events). At one event per month
+  the 20-sample floor is ~20 MONTHS. Exactly 2 events have ever settled, so
+  _tornado_count_gates_active() cannot open before roughly mid-2028 even if
+  every month settles cleanly from here. This is not a defect to be worked
+  around by loosening the counter.
+
+GRADUATION CRITERIA -- all four, not any of them
+  1. >= 20 settled (year, month) events with shadow predictions, AND
+     TORNADO_TRADING_ENABLED=1. (Mechanical; the gate already enforces it.)
+  2. Shadow Brier beats the decision-time market Brier over those events,
+     measured the way tracker.brier_skill_score() does it (market_prob AT
+     PREDICTION TIME, never the settlement-adjacent last price), computed on
+     brackets that actually cleared the universal liquidity/spread/
+     extreme_price gates -- see finding 1 above for why an all-brackets
+     number would be meaningless here.
+  3. The margin survives dropping the single largest-contribution bracket.
+     Finding 3 is the reason: one 399-vs-400 coin flip moved the headline
+     from +0.5% to +5.5%.
+  4. The preliminary-count MATURATION bias has been measured and found
+     immaterial, or corrected for. Kalshi closes at midnight ET on the 1st
+     and settles ~10h later (expiration_time 14:00Z), so it settles on a
+     FRESH preliminary count, while the climatology this model reads is
+     built from MATURED ones that kept rising for days-to-weeks afterward.
+     The current month's own count-to-date is the freshest number in the
+     whole calculation, so the two biases partially cancel -- but neither is
+     quantified, because historical SPC snapshots cannot be reconstructed
+     from this endpoint. The only evidence today is weakly reassuring: both
+     settled events' Kalshi brackets still contain SPC's matured count
+     (JUN 399 in (375,400], JUL 136 in (125,150]). Measure it forward by
+     recording SPC's count at settlement time and re-reading it 30 days
+     later, for each settled event.
+
+KNOWN APPROXIMATIONS (deliberate, documented, not defects to file)
+  - as_of_day = today.day - 1 for an in-progress month: the count-to-date is
+    treated as complete through yesterday and today onward is bootstrapped
+    from history. This double-counts whatever of today SPC has already
+    filed; using today.day instead would omit a whole day's activity from
+    both terms. The omission is the larger and strictly one-directional
+    error (a June day averages ~13 reports), so the smaller, partly
+    self-cancelling double-count was preferred.
+  - Exposure-cap key is a single national "TORNADO_US" covering every
+    bracket of every month, not a per-month key, even though two events are
+    open simultaneously for ~11 days of each cycle. Conservative reading for
+    an unvalidated family; mirrors hurricane-count's season-agnostic
+    per-basin key.
+  - A flat unweighted 21-year window, no recency weighting: a trend check
+    found none worth correcting (2005-2014 mean annual preliminary count
+    1420.4 vs 2016-2025 mean 1427.6).
+  - The calendar re-attribution assumes the WHOLE (daily - month)
+    discrepancy sits on the month's boundary day. That follows from the
+    documented cause -- only the first and last convective days of a month
+    can move reports across a month boundary -- and it reconciles exactly on
+    every real month checked, but it is an attribution, not an observation:
+    SPC publishes no per-calendar-day series to verify it against.
+  - monthly_totals()/conditioned_month_totals() DROP a year whose SPC data
+    failed to load rather than fabricating a 0 for it -- the opposite of
+    hurricane's choice, and deliberate: there a storm-less season is a real
+    count of 0, here a missing year is a failed fetch and a fabricated 0
+    would be a fake "month with no tornadoes at all" (the smallest month in
+    2005-2025 is 1). _analyze_tornado_count_trade therefore declines when
+    fewer than 15 years load, matching bootstrap_ci's own CI floor.
+
+WHAT THE FOUR OPUS REVIEWS CHANGED (effort=high, split by subsystem, plus
+a fourth round reviewing the fixes themselves)
+  1 HIGH plus ~13 MEDIUM and ~28 LOW, all addressed. Five findings changed
+  behaviour rather than prose, and none was visible to self-review:
+
+  * THE HIGH -- the estimator was biased. The first version took the
+    remaining share straight off the raw convective-day block and argued in
+    its own docstring that sharing a basis between numerator and denominator
+    made the boundary artifact "cancel". It does not. The residual is
+    [s_out*(M - T) + T*s_in] / D with both terms non-negative, i.e.
+    one-directional and UPWARD, growing as the month elapses. Re-derived and
+    measured independently before accepting: across all 21 window years at
+    day 25 the raw form runs +1.4 to +4.2 reports high on average, NEVER ONCE
+    negative, with excursions to +29.5 -- a systematic tilt toward YES on a
+    ">N" ladder, worst exactly when the remaining term matters most. Fixed by
+    re-attributing (daily - month) onto the boundary day; verified exact on
+    both spill directions. This is what moved the backtest from +0.5% to
+    +6.6% on the robustness cut.
+
+  * A UTC-vs-ET "as of" reference. `_today` used datetime.now(UTC).date(),
+    justified as "SPC publishes on a UTC clock" -- which does not address the
+    question, since the settlement basis is a US calendar month. For the ~4-5h
+    between 00:00Z and local midnight this silently flipped as_of_day to the
+    convention the code's own comment rejects, refused to price a still-open
+    still-September market on the evening of Sep 30, and flipped a
+    not-yet-started month into the in-progress branch early. The identical
+    bug had already been opus-review-caught and fixed in
+    _analyze_hurricane_next_event_trade; this diverged from that fix.
+
+  * A live HTTP call inside a unit test. The "positive control" line in the
+    stale-cache test sat OUTSIDE its own patch block, so it reached
+    spc.noaa.gov and asserted against live data that changes daily -- passing
+    offline via the stale cache and taking a different path online.
+
+  Also fixed: _safe_parse_close_time never actually normalized to UTC despite
+  promising it (an offset-form close_time would have rejected the entire
+  family behind a per-market warning); the daily-block validator checked only
+  presence, not contents, so a shape change would have produced a degenerate
+  distribution with a ZERO-WIDTH CI, which _price_and_size reads as maximum
+  confidence; month_to_date validated the year but not the month; a 404 on a
+  not-yet-published year counted against a breaker SHARED by all 21 years;
+  tornado_climatology._spc_cb was missing from conftest's cross-test breaker
+  reset (the live .cb_state.json already held it at 2 of 3 failures); and
+  three separate hand-maintained gate lists in tests/ that hardcoded the
+  then-5 families -- now all derived from
+  tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES, which removes that whole
+  drift class permanently.
+
+  ROUND 4 -- reviewing the fixes themselves -- found the single most
+  important thing in the whole batch, and it is the reason that round exists
+  as a standing workflow step:
+
+  * THE ET FIX DID NOT WORK. `_analyze_tornado_count_trade` was corrected to
+    resolve "today" in America/New_York, but `tornado_climatology.
+    month_to_date()` still resolved its OWN datetime.now(UTC).date() to
+    decide "is this the current month". Two clocks, disagreeing for exactly
+    the window the fix was written to rescue. Reproduced end to end: at
+    22:00 EDT on Sep 30, with the September market still open, the caller
+    correctly entered its in-progress branch and month_to_date then refused
+    with "2026-09 is not the current month (2026-10)" -- so analyze_trade
+    still returned None. Net behaviour change from the round-2 fix on that
+    path: ZERO. And the dedicated regression test could not see it, because
+    it stubbed month_to_date -- the one function still carrying the bug.
+    `today` is now a REQUIRED, KEYWORD-ONLY parameter (a default would just
+    re-create the second clock for the next caller), and that test now
+    drives the real freshness path off a real cache file instead of a stub.
+
+  * The 4xx breaker carve-out was too wide. Exempting the whole band also
+    exempted 403 and 429 -- the two statuses a WAF or rate limiter returns
+    during a real outage -- removing the only backpressure on a fan-out
+    where one scan prices ~105 brackets and NEITHER cache layer stores a
+    failure. A 429 would have been ignored, the burst continued, more 429s:
+    self-reinforcing. Narrowed to 404/410 with 429 and 403 tests pinning
+    both sides.
+
+  Round 4 also corrected two over-claims of mine and found three more
+  fixtures that could not occur in production (an all-malformed daily block
+  and an empty one, both of which the validator rejects one layer earlier,
+  so the branches they claimed to pin were never reached outside the stub).
+  The re-attribution is exact only when at most ONE boundary spills; when
+  both do it nets them and under-corrects by min(s_in, s_out) -- bounded at
+  <= 12 reports in >= 15 of 252 real month-years, documented rather than
+  "fixed", because s_in and s_out are not separately observable from this
+  endpoint.
+
+  Two findings across the rounds were right about a defect but wrong about
+  its mechanism, and one of my own tests was wrong the same way: the first
+  calendar-vs-convective test claimed hurricane's subtraction "would clamp
+  the remaining to 0" on the real March 2023 numbers. It does not -- at
+  as_of=25 the convective to-date (90) is below the calendar total (161), so
+  the clamp never fires. Mutation-testing that specific claim is what
+  surfaced it, and the same technique later caught two of my ROUND-3 tests
+  passing under their own mutation (a day-1 attribution test whose fixture
+  made min(counts) == 1 either way, and a missing 429 test).
+
+TESTS (counts re-derived at the moment of writing, 2026-08-25)
+  tests/test_tornado_climatology.py -- 69 tests, new file.
+  tests/test_weather_markets.py -- 434 total, 61 of them tornado-specific
+    (parser, condition dispatch, registry/drift/arb/exclusion wiring, the
+    gate, the settled-event counter, the four order-path guards, and
+    analyze_trade end to end for all three phases plus the decided-bracket
+    zeroing, the ET evening boundary, and both month-edge as_of_day cases).
+  tests/test_shadow_predictions.py -- 39 total, 4 of them new and
+    BEHAVIOURAL: _auto_place_trades is driven with real opps (shadow when
+    gated, places when open, mixed-batch ordering, sibling-gate
+    independence). The first version of that coverage only asserted that
+    strings appeared in inspect.getsource(), which cannot tell whether the
+    routing block is reachable or correctly ordered.
+  tests/test_batch60_trade_entry_guards.py -- 49, extended: the days-out
+    drift pin now covers _is_tornado_count -> TORNADO_MAX_DAYS_OUT, and its
+    positive control asserts MAX < RAIN < TORNADO < HURRICANE so the
+    parametrized ceiling test cannot pass vacuously.
+  tests/test_tracker.py, tests/test_pnl_attribution.py, tests/conftest.py --
+    gate lists derived from the registry; _spc_cb and _MEM_CACHE isolated.
+
+  33 distinct mutations were applied to production code individually, run,
+  and reverted: 18 in round 1, 9 against the round-2 review fixes, 1 for the
+  re-attribution's negative-day guard, and 5 against the round-3 fixes. All
+  33 are caught by the suite as it now stands -- but TWO of them were NOT
+  caught on first attempt, and both exposed a vacuous test rather than a
+  vacuous mutation:
+    * the day-1 spill-in attribution test used a fixture containing an
+      explicit `1: 0` key, which makes min(counts) == 1, so the test passed
+      whether the code targeted day 1 or min(counts). Refixtured sparse.
+    * there was no 429 test at all, so re-widening the breaker exemption
+      back to the whole 4xx band changed nothing. Added 429 and 403 tests.
+  That is the second and third time in this batch that mutation-testing a
+  specific claim found the TEST at fault rather than confirming the code --
+  which is the whole argument for doing it per-claim instead of trusting a
+  green suite.
+
+FOLLOW-UPS (not filed as separate entries yet -- they only become real work
+  if the gate ever approaches opening)
+  - SPC Day 1-8 convective-outlook tilt on the remaining-days term. See
+    finding 4. Needs its own go/no-go.
+  - The maturation-bias measurement in criterion 4 needs somewhere to record
+    the two SPC readings per settled event; there is no table for it today.
 
 [OPEN 2026-08-25 -- found by the round-3 opus review (effort=high) of
   batch-60's own fix rounds; confirmed pre-existing (present in the

@@ -34,6 +34,7 @@ from weather_markets import (
     is_rain_daily_ticker,
     is_rain_weekend_ticker,
     is_storm_order_ticker,
+    is_tornado_count_ticker,
     market_implied_rain_event_key,
     parse_market_price,
 )
@@ -217,6 +218,31 @@ def _group_markets(markets: list[dict]) -> dict:
         # storm-order series (backlog.txt "HURRICANE MARKETS" -- storm-order
         # model, 2026-08-07).
         if is_storm_order_ticker(ticker):
+            continue
+        # batch-54: same reasoning as the 3 hurricane exclusions just above,
+        # for the 1 monthly tornado-count series. KXTORNADO tickers really
+        # are a ladder of numeric strikes sharing one event
+        # ("KXTORNADO-26SEP-25" .. "-275") -- exactly the shape
+        # _group_markets exists to find violations in -- and find_violations()
+        # feeds _arb_ppo -> paper.place_paper_order with NO shadow-gate check
+        # of its own, so without this a registered KXTORNADO could take REAL
+        # (non-shadow) paper orders on an unvalidated family, bypassing
+        # _tornado_count_gates_active() entirely.
+        #
+        # Opus-review-corrected: an earlier version of this comment said real
+        # KXTORNADO tickers currently miss find_violations() "only because"
+        # _parse_threshold requires a "-T"/"-B" marker. That is not the
+        # operative reason -- they are dropped EARLIER, at the date_str check
+        # below: the date regex needs two digits, three letters, two digits,
+        # and "26SEP-" has no day digits, so date_str is "" and the
+        # `continue` fires before _parse_threshold is ever reached (same
+        # shape as KXDENSNOWM, see its own comment above). The grouping
+        # outcome is therefore redundant today -- but this exclusion is NOT,
+        # because it also skips the L-8 warning just below that check, which
+        # would otherwise fire once per KXTORNADO market per scan: up to
+        # ~100 log lines a cycle across 7 concurrently-listed events x 11-17
+        # brackets.
+        if is_tornado_count_ticker(ticker):
             continue
         # batch-51 item 1: KXRAIN (daily)/KXRAINWKND -- no ladder structure
         # (KXRAINWKND is a single any-precip market per city per weekend;

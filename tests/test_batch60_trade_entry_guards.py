@@ -68,6 +68,9 @@ class TestMaxDaysOutForTicker:
             ("KXNEXTCAT5HURDATE-26DEC01-26SEP15", "HURRICANE_MAX_DAYS_OUT"),
             ("KXFIRSTHURRICANE-26DEC01-ARTHUR", "HURRICANE_MAX_DAYS_OUT"),
             ("KXNAMEDSTORM-26DEC01EPACTOT-T14", "HURRICANE_MAX_DAYS_OUT"),
+            # batch-54: KXTORNADO monthly count ladder -- its own ceiling,
+            # NOT rain/snow's, because its listed life is ~41-42 days.
+            ("KXTORNADO-26SEP-75", "TORNADO_MAX_DAYS_OUT"),
         ],
     )
     def test_family_ceiling_matches_the_gates_own_constant(
@@ -85,14 +88,21 @@ class TestMaxDaysOutForTicker:
         """Positive control for the parametrized test above: if every
         constant happened to hold the same value, that test would pass no
         matter which one each family mapped to. It only proves anything while
-        the temp / monthly / hurricane ceilings are genuinely distinct."""
+        the temp / monthly / tornado / hurricane ceilings are genuinely
+        distinct."""
         from utils import (
             HURRICANE_MAX_DAYS_OUT,
             MAX_DAYS_OUT,
             RAIN_MAX_DAYS_OUT,
+            TORNADO_MAX_DAYS_OUT,
         )
 
-        assert MAX_DAYS_OUT < RAIN_MAX_DAYS_OUT < HURRICANE_MAX_DAYS_OUT
+        assert (
+            MAX_DAYS_OUT
+            < RAIN_MAX_DAYS_OUT
+            < TORNADO_MAX_DAYS_OUT
+            < HURRICANE_MAX_DAYS_OUT
+        )
 
     def test_lowercase_ticker_classifies_the_same(self):
         from weather_markets import max_days_out_for_ticker
@@ -115,6 +125,7 @@ class TestMaxDaysOutForTicker:
             "HURRICANE_MAX_DAYS_OUT",
             "KXNEXTHURDATE-26DEC01-26SEP15",
         ),
+        "_is_tornado_count": ("TORNADO_MAX_DAYS_OUT", "KXTORNADO-26SEP-75"),
         "else": ("MAX_DAYS_OUT", "KXHIGHNY-26AUG30-T75"),
     }
 
@@ -210,7 +221,7 @@ class TestMaxDaysOutForTicker:
         from _GATE_WIRING. An empty or defaulted reader would make the
         comparison vacuous."""
         found = self._gate_branches()
-        assert len(found) == 6
+        assert len(found) == 7
         # Read straight off weather_markets, not off _GATE_WIRING.
         assert found["_is_monthly_rain"] == "RAIN_MAX_DAYS_OUT"
         assert set(found.values()) == {
@@ -218,6 +229,7 @@ class TestMaxDaysOutForTicker:
             "RAIN_MAX_DAYS_OUT",
             "SNOW_MAX_DAYS_OUT",
             "HURRICANE_MAX_DAYS_OUT",
+            "TORNADO_MAX_DAYS_OUT",
         }
 
 

@@ -49,11 +49,13 @@ _RECENCY_HALFLIFE_DAYS = 90  # exponential decay: trade 90 days old gets ~37% we
 # from tracker's canonical registry instead of being a fourth hand-written
 # copy, so a new shadow-only market family added there reaches this file
 # automatically. Sourced from _GATE_COUPLED_EXCLUDED_CONDITION_TYPES (the
-# 5 gate-backed families) rather than _ALWAYS_EXCLUDED_CONDITION_TYPES (the
-# same 5 plus 'between') specifically because of the 'between' carve-out
+# gate-backed families -- 5 at batch-57, 6 since batch-54 added
+# 'tornado_count') rather than _ALWAYS_EXCLUDED_CONDITION_TYPES (the same
+# set plus 'between') specifically because of the 'between' carve-out
 # documented above -- that difference was verified as deliberate scoping,
 # not drift, before consolidating: the pre-batch-57 literal was byte-for-byte
-# these same 5 names in this same order.
+# those same 5 names in this same order, and batch-54 arrived through the
+# registry exactly as this consolidation intended.
 _SHADOW_CONDITION_TYPES: tuple[str, ...] = tuple(
     ct for ct, _gate_fn_name in _GATE_COUPLED_EXCLUDED_CONDITION_TYPES
 )

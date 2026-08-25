@@ -128,15 +128,16 @@ class TestPnLSignalSourceConditionTypeSplit:
         confusing failure (opus-review finding L8). Matches the repo's
         existing convention in TestAlwaysExcludedConditionTypesNotGateCoupled.
         """
+        import tracker as _tracker
         import weather_markets as wm
 
-        for gate in (
-            "_rain_gates_active",
-            "_snow_gates_active",
-            "_hurricane_count_gates_active",
-            "_hurricane_next_event_gates_active",
-            "_storm_order_gates_active",
-        ):
+        # Derived from tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES rather
+        # than a hand-listed tuple: this fixture's docstring promises to pin
+        # EVERY market-family gate inactive, and a hardcoded list quietly
+        # stops doing that the moment a new family is registered (batch-54,
+        # opus-review-caught -- it had already gone stale for tornado_count,
+        # passing only because no assertion here happens to touch that type).
+        for _ct, gate in _tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES:
             monkeypatch.setattr(wm, gate, lambda: False)
 
     @staticmethod

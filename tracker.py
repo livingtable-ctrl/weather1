@@ -2300,7 +2300,7 @@ def get_component_attribution() -> dict[str, dict]:
 
 
 # Every function below that scores/counts settled multi-day predictions for a
-# calibration or live-trading-readiness purpose excludes this same 6-type
+# calibration or live-trading-readiness purpose excludes this same 7-type
 # condition_type set (backlog.txt "BRIER-FAMILY CONDITION_TYPE EXCLUSION LIST
 # HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES" and "SEVERAL
 # BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER") -- previously
@@ -2345,11 +2345,19 @@ _GATE_COUPLED_EXCLUDED_CONDITION_TYPES: tuple[tuple[str, str], ...] = (
     ("hurricane_count", "_hurricane_count_gates_active"),
     ("hurricane_next_event", "_hurricane_next_event_gates_active"),
     ("storm_order", "_storm_order_gates_active"),
+    # batch-54: KXTORNADO monthly count model. Added here rather than at each
+    # consumer -- this registry is what reaches calibration.py's
+    # _SHADOW_CONDITION_TYPES, ml_bias.py's two training excludes, main.py's
+    # cmd_calibrate Platt query, and (via _ALWAYS_EXCLUDED_CONDITION_TYPES)
+    # every permanently-excluded consumer in this module. A storm-report
+    # count is no more a degree-Fahrenheit-scale probability than an
+    # inches-scale rain total is.
+    ("tornado_count", "_tornado_count_gates_active"),
 )
 
 
 # backlog.txt opus-review finding M5 (batch-06): NOT every consumer of the
-# 6-type exclusion is a graduation/live-trading-readiness signal that should
+# 7-type exclusion is a graduation/live-trading-readiness signal that should
 # start counting a market family's rows the moment it goes live. Some are
 # fitting a temperature-SCALE-specific calibration curve or circuit-breaker
 # window that stays structurally invalid for a non-temperature type
@@ -2388,7 +2396,7 @@ def _excluded_brier_condition_types() -> frozenset[str]:
     silent-freeze bug once did.
 
     'between' is NOT gate-coupled and is always excluded unconditionally --
-    unlike the 5 types above, this exclusion isn't about shadow status. It's
+    unlike the 6 types above, this exclusion isn't about shadow status. It's
     excluded because it has a genuinely different, structurally larger
     calibration gap than above/below (T~=6.8 temperature-scaling factor vs.
     global/above/below's much smaller correction -- see backlog.txt's EMOS
@@ -2407,7 +2415,7 @@ def _excluded_brier_condition_types() -> frozenset[str]:
 
     Deliberate no-fix decisions from opus review (documented per-finding,
     not silently dropped):
-    L5 (no memoization -- up to 5 gate-check queries + connections per call,
+    L5 (no memoization -- up to 6 gate-check queries + connections per call,
     x12 call sites): not cached, since a gate's live state can change
     mid-process and this feeds a live-trading safety value -- staleness
     risk outweighs the query cost, which is small relative to this
@@ -2480,7 +2488,7 @@ def _condition_type_not_in_sql(excluded: frozenset[str]) -> tuple[str, list[str]
 
 
 def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
-    """Classify a paper-trade ticker into one of the 6
+    """Classify a paper-trade ticker into one of the 7
     _excluded_brier_condition_types() buckets, or None if it isn't one of
     them. Paper trade records carry no condition_type column of their own --
     only ticker/var -- so this derives the same classification predictions
@@ -2489,7 +2497,8 @@ def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
     classifiers rather than inventing a new parsing scheme (backlog.txt
     "BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO CONDITION_TYPE
     FILTER"). Keep this in sync with _excluded_brier_condition_types()'s
-    6-type vocabulary if that set ever changes.
+    7-type vocabulary if that set ever changes (batch-54 added
+    'tornado_count' as the 7th).
 
     'between' is identified by the ticker's own "-B<value>" strike suffix --
     the same regex weather_markets._parse_market_condition() uses to tell
@@ -2504,7 +2513,7 @@ def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
     a (currently-hypothetical) daily KXSNOW*/KXICE*/KXRAIN*/KXPRECIP*
     ticker ending in "-B<n>" must be excluded from the 'between' match here
     too, or it would be misclassified (opus-review finding L2) -- it isn't
-    one of this function's 6 excluded types either way (precip_snow/
+    one of this function's 7 excluded types either way (precip_snow/
     precip_any/precip_above aren't excluded from Brier), so the correct
     result for it is None, not 'between'.
 
@@ -2535,6 +2544,7 @@ def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
             is_hurricane_count_ticker,
             is_hurricane_next_event_ticker,
             is_storm_order_ticker,
+            is_tornado_count_ticker,
         )
 
         ticker_upper = ticker.upper()
@@ -2544,6 +2554,8 @@ def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
             return "hurricane_next_event"
         if is_storm_order_ticker(ticker_upper):
             return "storm_order"
+        if is_tornado_count_ticker(ticker_upper):
+            return "tornado_count"
         if any(ticker_upper.startswith(p) for p in _KXRAIN_MONTHLY_CITY):
             return "precip_month_total"
         if any(ticker_upper.startswith(p) for p in _KXSNOW_MONTHLY_CITY):
@@ -2596,7 +2608,8 @@ def brier_score(
     without a prior analyze-command prediction log entry.
 
     Primary-source query excludes condition_type='between'/'precip_month_total'/
-    'snow_month_total'/'hurricane_count'/'hurricane_next_event'/'storm_order' — the
+    'snow_month_total'/'hurricane_count'/'hurricane_next_event'/'storm_order'/
+    'tornado_count' — the
     same exclusion list (exact-match, case-sensitive, no whitespace normalization —
     matches how every sibling query already does it, and how log_prediction always
     writes condition_type: lowercase, from a fixed set of literals in
@@ -2665,14 +2678,15 @@ def brier_score(
     sibling that differs from get_sameday_calibration_cli() by design.
     Kept rather than deleted because this docstring is the module's
     permanent record of the M4 over-claim (opus-review finding L2: the
-    stale list said the opposite of the code). All 5 gate-backed types
+    stale list said the opposite of the code). All 6 gate-backed types
     currently resolve to "still excluded" everywhere in this file (no
-    RAIN/SNOW/HURRICANE*/STORM_ORDER_TRADING_ENABLED flag is set today), so
+    RAIN/SNOW/HURRICANE*/STORM_ORDER/TORNADO_TRADING_ENABLED flag is set
+    today), so
     the PRIMARY-SOURCE query's value is unchanged today -- purely closes
     the forward-looking gap there.
 
     Correction (opus-review finding I1): that "unchanged today" claim does
-    NOT extend to the paper-trade fallback below. Unlike the 5 gate-backed
+    NOT extend to the paper-trade fallback below. Unlike the 6 gate-backed
     types, 'between' is excluded from paper trades too and 'between'-bracket
     trading is live today -- so in the (currently rare, DB-state-dependent)
     case where the primary query returns 0 rows and the fallback is
@@ -2867,12 +2881,14 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     None there regardless of the caller's smaller threshold.
 
     Excludes condition_type='between'/'precip_month_total'/'snow_month_total'/
-    'hurricane_count'/'hurricane_next_event'/'storm_order' (same rationale as
-    count_settled_predictions() -- found via adjacency during that entry's
+    'hurricane_count'/'hurricane_next_event'/'storm_order'/'tornado_count'
+    (same rationale as count_settled_predictions() -- found via adjacency during that entry's
     review; the 2 hurricane types added 2026-08-07, opus-review-caught, when
     the time-to-next-event model's own review found this list had never been
     extended for hurricane_count either; 'storm_order' added the same day
-    when that model's own review found the same gap): this feeds
+    when that model's own review found the same gap; 'tornado_count' added
+    2026-08-25 with batch-54, which inherited the whole list by construction
+    -- see _GATE_COUPLED_EXCLUDED_CONDITION_TYPES): this feeds
     paper.is_accuracy_halted(), the live circuit breaker that halts new
     trades on a bad win rate. A monthly rain/snow/hurricane row entering the
     rolling window carries an entirely different win-rate distribution than
@@ -3541,6 +3557,71 @@ def count_settled_holiday_temp_predictions() -> int:
             )
             continue
         events.add((series, city, target_date.isoformat()))
+    return len(events)
+
+
+def count_settled_tornado_count_predictions() -> int:
+    """Count DISTINCT settled tornado-count EVENTS (year, month), NOT raw
+    ticker rows -- batch-54's own dedicated shadow-only rollout gate
+    (2026-08-25). Mirrors count_settled_holiday_temp_predictions()'s
+    event-dedup shape (and, for the same reason,
+    count_settled_snow_predictions()/count_settled_hurricane_predictions()).
+
+    KXTORNADO is a LADDER: every bracket of one month settles from the SAME
+    single SPC monthly report count. Live-verified 2026-08-25 -- 28 settled
+    markets across just 2 settled events (KXTORNADO-26JUN listed 17 brackets,
+    KXTORNADO-26JUL listed 11), i.e. counting raw tickers would report 28
+    where the real number of independent observations is 2, clearing the
+    20-sample floor off a single peak-season month plus change. The bracket
+    count is not even fixed per event (Kalshi extends the ladder upward when
+    a month runs hot), so no constant divisor would fix it either -- the
+    dedup has to be by event.
+
+    Event key is the ticker-derived (year, month) via
+    weather_markets._tornado_month_from_ticker, reusing the same parser
+    _parse_tornado_count_condition is built on rather than a second
+    independent one that could drift out of sync with it. A settled row
+    whose ticker won't parse is warned about and excluded rather than
+    silently counted -- an unparseable ticker cannot be deduped against the
+    others, so counting it could only inflate the floor.
+
+    Same coarse-SQL-LIKE-prefix-then-Python-exact-filter shape as its
+    siblings, for the same reason: the LIKE prefix is only a pre-filter,
+    membership in _TORNADO_COUNT_SERIES is the real gate (it also keeps a
+    hypothetical legacy "TORNADO-..." row from matching, since LIKE
+    'KXTORNADO%' would not, and the exact check would reject it anyway)."""
+    init_db()
+    try:
+        from weather_markets import _TORNADO_COUNT_SERIES, _tornado_month_from_ticker
+
+        prefixes = list(_TORNADO_COUNT_SERIES)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchall()
+    events: set[tuple[int, int]] = set()
+    for row in rows:
+        ticker = row["ticker"]
+        if ticker.upper().split("-")[0] not in prefixes:
+            continue
+        key = _tornado_month_from_ticker(ticker)
+        if key is None:
+            _log.warning(
+                "count_settled_tornado_count_predictions: could not parse "
+                "year/month from settled ticker %r -- excluded from the count",
+                ticker,
+            )
+            continue
+        events.add(key)
     return len(events)
 
 
@@ -6643,10 +6724,11 @@ def get_multiday_calibration_cli() -> dict:
     condition_type='between', matching train_all_temperature_scaling()'s own
     exclusion (ml_bias.py) and both CLI blocks' pre-existing behavior. Also
     excludes 'precip_month_total', 'snow_month_total', 'hurricane_count',
-    'hurricane_next_event', and 'storm_order' (backlog.txt "RAIN / SNOW /
-    HURRICANE MARKETS" Step 2 / Snow Step 2 / HURRICANE MARKETS' three
-    hurricane sub-models) for the same reason -- an inches-scale or
-    basin/season-shaped probability doesn't belong in a °F-tuned multiday
+    'hurricane_next_event', 'storm_order', and 'tornado_count' (backlog.txt
+    "RAIN / SNOW / HURRICANE MARKETS" Step 2 / Snow Step 2 / HURRICANE
+    MARKETS' three hurricane sub-models / batch-54's KXTORNADO monthly count
+    model) for the same reason -- an inches-scale, basin/season-shaped or
+    storm-report-count probability doesn't belong in a °F-tuned multiday
     calibration curve.
 
     Returns {n, gate, gate_met, brier, t_multiday, calibration_buckets} — same shape
@@ -6697,8 +6779,8 @@ def get_multiday_calibration_cli() -> dict:
 def get_sameday_calibration_cli() -> dict:
     """Same population as get_sameday_calibration() but excludes
     condition_type='between', 'precip_month_total', 'snow_month_total',
-    'hurricane_count', 'hurricane_next_event', and 'storm_order', matching
-    the CLI's (validate/backtest) existing scope. The dashboard-
+    'hurricane_count', 'hurricane_next_event', 'storm_order', and
+    'tornado_count', matching the CLI's (validate/backtest) existing scope. The dashboard-
     facing get_sameday_calibration() deliberately keeps 'between' rows —
     the two differ by 69 rows on this repo's live data (2026-07-08) and are NOT
     interchangeable.

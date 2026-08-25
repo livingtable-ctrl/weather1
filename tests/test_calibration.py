@@ -673,7 +673,7 @@ class TestSharedConditionTypeExclusion:
         """The one deliberate difference from _ALWAYS_EXCLUDED is preserved.
 
         'between' is a REAL value calibrate_condition_weights calibrates, so
-        this list must stay the 5 gate-backed families only. Verified as
+        this list must stay the gate-backed families only. Verified as
         deliberate scoping (not drift) before consolidating; asserted here so
         a later "just use the longer list" cleanup fails loudly.
         """

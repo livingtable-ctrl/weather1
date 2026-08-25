@@ -465,6 +465,27 @@ SNOW_MAX_DAYS_OUT = int(os.getenv("SNOW_MAX_DAYS_OUT", "31"))
 # open_time was 2026-04-01, close_time 2026-12-02 -- a ~245-day window).
 # 260 gives headroom above that without being unbounded.
 HURRICANE_MAX_DAYS_OUT = int(os.getenv("HURRICANE_MAX_DAYS_OUT", "260"))
+# batch-54: KXTORNADO monthly count ladders. Same whole-month-accrual
+# reasoning as RAIN/SNOW_MAX_DAYS_OUT, but a genuinely longer window than
+# either -- a KXTORNADO event opens on the 20th of the month BEFORE its
+# target month and closes at 23:59 ET on its LAST day (published as
+# 03:59Z/04:59Z on the 1st of the next month), so
+# its full listed life is ~41-42 days, not ~31 (live-verified 2026-08-25
+# across all 7 listed events, 26JUN..26DEC). Reusing RAIN_MAX_DAYS_OUT's 31
+# would silently gate out the first ~11 days of every event -- the pre-month,
+# pure-climatology stretch -- for no stated reason.
+#
+# The number to size against is NOT that 41-42d timedelta but the integer
+# UTC-date difference _days_out_from_close_time actually computes, which is
+# one higher: (days_in(M-1) - 20) + days_in(M) + 1. Opus-review-caught. That
+# peaks at 43 for January and August events (31-day predecessor AND 31-day
+# target), so 45 clears the worst real case by 2 days, not the 3-4 a naive
+# reading of "41-42" suggests. The ceiling also assumes Kalshi keeps listing
+# on the 20th: a listing on the 15th would produce 48 and silently gate out
+# the first three days of every event at debug level. Its own env var, not a
+# shared MONTHLY_MAX_DAYS_OUT, matching this codebase's per-market-type-
+# constant precedent.
+TORNADO_MAX_DAYS_OUT = int(os.getenv("TORNADO_MAX_DAYS_OUT", "45"))
 MAX_POSITION_AGE_DAYS = int(os.getenv("MAX_POSITION_AGE_DAYS", "7"))
 
 # #120: Betting strategy — kelly | fixed_pct | fixed_dollars

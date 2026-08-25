@@ -242,7 +242,7 @@ python main.py cron
 
 All settings have sensible defaults. Override any of them in `.env`:
 
-The eight shadow-gate `*_TRADING_ENABLED` rows near the bottom of the table
+The nine shadow-gate `*_TRADING_ENABLED` rows near the bottom of the table
 are deliberately **absent from `.env.example`**. Every one of them is meant to
 stay unset until its market type has accumulated real calibration data, so
 listing them in the file an operator copies to `.env` would read as an
@@ -303,6 +303,7 @@ documented in `LIVE_TRADING_RUNBOOK.md`.)
 | `HURRICANE_NEXT_EVENT_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled time-to-next-hurricane-event predictions exist |
 | `STORM_ORDER_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled storm-order predictions exist |
 | `HOLIDAY_TEMP_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled holiday-temperature predictions exist |
+| `TORNADO_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled tornado-count **events** exist. Note the wording: this is the only gate whose floor counts deduped (year, month) EVENTS rather than tickers, because all 11-17 brackets of a KXTORNADO month settle from the same single SPC report count — so 20 samples is ~20 months, not ~20 days |
 | `BETWEEN_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled between-bracket predictions exist |
 | `BELOW_GATE_ENABLED` | — (disabled) | Not a market-type gate: activates two aggressive below-market fixes (extreme-ensemble block, NWS-trim skip). Same shape — set to `1`/`true`/`yes` AND ≥30 settled below-market predictions must exist |
 

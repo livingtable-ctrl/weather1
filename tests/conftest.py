@@ -379,6 +379,7 @@ def reset_open_meteo_circuit_breaker():
     import kalshi_weather_index
     import nearby_station_obs
     import nws
+    import tornado_climatology
     import weather_markets
 
     for cb in (
@@ -416,6 +417,16 @@ def reset_open_meteo_circuit_breaker():
         # missed-until-added gap as every other module in this loop's own
         # history above.
         *hurricane_climatology._hurdat2_cb.values(),
+        # batch-54: tornado_climatology._spc_cb, the same missed-until-added
+        # gap this loop's history now records SEVEN times. It is a
+        # module-level singleton constructed at import, so it LOADS the real
+        # main-clone .cb_state.json -- verified during batch-54 that the live
+        # file already held it at 2 of its 3 failures, i.e. without this line
+        # every session that imports the module starts one failure away from
+        # an open breaker. (It no longer writes back: the _persist=False
+        # toggle just below, which landed on master between this line being
+        # written and its rebase, suppresses that half.)
+        tornado_climatology._spc_cb,
     ):
         # _persist=False for the duration of the reset. record_success() ends
         # in _save_state(), which is a read-modify-write of the SHARED
@@ -458,6 +469,22 @@ def reset_open_meteo_circuit_breaker():
         # churned out for a purely cosmetic cleanup).
         cb._last_failure_at = None
     yield
+
+
+@pytest.fixture(autouse=True)
+def isolate_tornado_climatology_mem_cache():
+    """batch-54: tornado_climatology._MEM_CACHE is a module-level per-year
+    dict. It deliberately never holds the CURRENT year, so the leak is
+    bounded to historical years -- but a test that stubs load_year for one
+    file would still leave a real (or fake) payload visible to the next.
+    Cleared around every test, same treatment as the module's own
+    _clean_module_state fixture gives it inside test_tornado_climatology.py
+    (which does not help any OTHER file that imports the module)."""
+    import tornado_climatology
+
+    tornado_climatology._MEM_CACHE.clear()
+    yield
+    tornado_climatology._MEM_CACHE.clear()
 
 
 @pytest.fixture(autouse=True)

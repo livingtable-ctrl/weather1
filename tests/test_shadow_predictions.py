@@ -999,3 +999,111 @@ def test_kwargs_building_happens_before_the_connection_opens(monkeypatch):
         "positive control: the opp must still actually get logged, proving "
         "the spy didn't just short-circuit real behavior"
     )
+
+
+# ── batch-54: KXTORNADO monthly count markets own dedicated shadow gate.
+# Mirrors the storm-order tests above exactly. These are BEHAVIOURAL (drive
+# _auto_place_trades and inspect what was placed and what landed in the DB) --
+# opus-review-caught that the batch's first version of this coverage only
+# asserted that certain STRINGS appeared in inspect.getsource(), which cannot
+# tell whether the routing block is reachable or correctly ordered relative
+# to _validate_trade_opportunity and the capacity caps.
+
+
+def test_tornado_count_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """A KXTORNADO opp must be shadow-logged, never placed, when
+    _tornado_count_gates_active() is False."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._tornado_count_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXTORNADO-26SEP-75", city="TORNADO_US")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], (
+        "must never place a real order for a gated tornado-count ticker"
+    )
+    rows = _fetch("KXTORNADO-26SEP-75")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_tornado_count_ticker_places_normally_when_gate_active(monkeypatch):
+    """Positive control: once the gate is True, a tornado opp places exactly
+    like any other ticker -- no special-casing beyond the gate check. Without
+    this, the test above would pass even if the ticker were being dropped for
+    some unrelated reason."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._tornado_count_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXTORNADO-26SEP-100", city="TORNADO_US")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXTORNADO-26SEP-100")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 0
+
+
+def test_mixed_batch_tornado_shadow_daily_places_normally(monkeypatch):
+    """The ordering guarantee the source-string test could not give: in ONE
+    batch containing both a gated tornado opp and an ordinary daily-temp opp,
+    only the daily one is placed, and the tornado one still lands as a shadow
+    row.
+
+    This is what fails if someone moves the tornado routing block below
+    _validate_trade_opportunity or the capacity caps -- the strings would
+    still be present and a source-inspection test would still pass."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._tornado_count_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: placed_calls.append(ticker)
+        or {"id": 1, "status": "open", "cost": price * qty},
+    )
+    tornado = _make_flat_opp("KXTORNADO-26SEP-125", city="TORNADO_US")
+    daily = _make_flat_opp("KXHIGHNY-26SEP15-T75", city="NYC")
+
+    order_executor._auto_place_trades([tornado, daily], client=None)
+
+    assert placed_calls == ["KXHIGHNY-26SEP15-T75"]
+    t_rows = _fetch("KXTORNADO-26SEP-125")
+    assert len(t_rows) == 1 and t_rows[0]["is_shadow"] == 1
+    d_rows = _fetch("KXHIGHNY-26SEP15-T75")
+    assert len(d_rows) == 1 and d_rows[0]["is_shadow"] == 0
+
+
+def test_sibling_family_gate_state_does_not_affect_tornado_routing(monkeypatch):
+    """Every family's gate is independent -- a sibling's gate being active
+    must not let a tornado opp place."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hurricane_count_gates_active", lambda: True)
+    monkeypatch.setattr("order_executor._storm_order_gates_active", lambda: True)
+    monkeypatch.setattr("order_executor._tornado_count_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXTORNADO-26SEP-150", city="TORNADO_US")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    assert placed_calls == []
+    rows = _fetch("KXTORNADO-26SEP-150")
+    assert len(rows) == 1 and rows[0]["is_shadow"] == 1

@@ -53,6 +53,7 @@ from weather_markets import (
     _rain_gates_active,
     _snow_gates_active,
     _storm_order_gates_active,
+    _tornado_count_gates_active,
     _var_from_ticker_prefix,
     analyze_trade,
     enrich_with_forecast,
@@ -62,6 +63,7 @@ from weather_markets import (
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
     is_storm_order_ticker,
+    is_tornado_count_ticker,
     parse_market_price,
 )
 
@@ -4511,8 +4513,8 @@ def _auto_place_trades(
     # strong-tier and med-tier calls in trade_cycle.py) or under concurrent
     # settlement writes, which contradicts each gate's own docstring
     # guarantee ("no real order is ever placed... before this is True").
-    # Hoisting makes that guarantee airtight for a single call and cuts 8
-    # redundant lookups down to 8 total instead of 8-per-ticker (opus-
+    # Hoisting makes that guarantee airtight for a single call and cuts 9
+    # redundant lookups down to 9 total instead of 9-per-ticker (opus-
     # review-caught: this count has gone stale twice now as new families
     # were added -- re-derive it from the assignments just below rather
     # than trusting this comment's own number next time).
@@ -4522,6 +4524,7 @@ def _auto_place_trades(
     _hurricane_count_gate_active = _hurricane_count_gates_active()
     _hurricane_next_event_gate_active = _hurricane_next_event_gates_active()
     _storm_order_gate_active = _storm_order_gates_active()
+    _tornado_count_gate_active = _tornado_count_gates_active()
     _between_gate_active = _between_metar_gates_active()
     _holiday_temp_gate_active = _holiday_temp_gates_active()
 
@@ -4608,6 +4611,13 @@ def _auto_place_trades(
         if is_storm_order_ticker(ticker) and not _storm_order_gate_active:
             _shadow_batch.append(item)
             _shadow_batch_labels.append((ticker, "storm_order_shadow_only"))
+            continue
+
+        # batch-54: KXTORNADO monthly count markets, same per-ticker-family
+        # routing as every family above.
+        if is_tornado_count_ticker(ticker) and not _tornado_count_gate_active:
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "tornado_count_shadow_only"))
             continue
 
         # batch-51 item 2: KXHOLIDAYTMAX/TMIN own dedicated shadow gate,

@@ -197,14 +197,16 @@ def train_bias_model(min_samples: int = 200) -> dict:
 
     city_data: dict[str, list] = {}
     # batch-57 item 2: the exclusion list is no longer a hardcoded 6-tuple
+    # (7 since batch-54 added 'tornado_count' to the registry)
     # inlined in this SQL -- it now comes from tracker's canonical registry
     # so a newly-registered shadow-only family reaches this query too.
     # _ALWAYS_EXCLUDED_CONDITION_TYPES (permanent), NOT the gate-coupled
     # _excluded_brier_condition_types(): this is a per-city bias-CURVE fit,
     # the scale-mismatch class of consumer batch-06's opus-review finding M5
     # separated out, so a family going live must not start feeding it.
-    # Behaviour is unchanged today and at every gate state -- the literal
-    # this replaces was exactly this constant's 6 members.
+    # Behaviour was unchanged at batch-57 and at every gate state -- the
+    # literal it replaced was exactly this constant's then-6 members; the 7th,
+    # 'tornado_count', arrived through the registry with batch-54.
     try:
         # Inside the try, not above it (opus-review finding L8): this
         # function's contract is "any failure gathering rows -> warn and
@@ -956,15 +958,16 @@ def train_all_temperature_scaling(
 
     # batch-57 item 2: shared exclusion registry instead of two more inlined
     # 6-tuple literals. _ALWAYS_EXCLUDED_CONDITION_TYPES (permanent), NOT the
-    # gate-coupled _excluded_brier_condition_types(): the five SHADOW families
+    # gate-coupled _excluded_brier_condition_types(): the SHADOW families
+    # (five at batch-57, six since batch-54's 'tornado_count')
     # never reach a temperature-scaling fit in either direction -- each returns
     # out of analyze_trade via its own fast-path before section 7b ever calls
     # apply_temperature_scaling -- so their exclusion here is structural, not
-    # graduation-pending. Same 6 members the replaced literals had, so no
-    # behaviour change at any gate state.
+    # graduation-pending. Held the same 6 members the replaced literals had at
+    # batch-57 (7 since batch-54), so no behaviour change at any gate state.
     #
     # KNOWN DEFECT, deliberately NOT fixed here (opus-review finding M4):
-    # the 6th member is 'between', and excluding it means the per-condition
+    # one member is 'between', and excluding it means the per-condition
     # loop below never sees a 'between' bucket -- so the "between": {"T": 6.8}
     # entry this function's own docstring promises is never actually fit.
     # data/temperature_scale.json currently holds only above/global/sameday,

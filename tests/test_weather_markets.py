@@ -8813,3 +8813,996 @@ class TestMetarLockInUsesBetweenSpecificFork:
             assert _metar._between_dynamic_lock_in_confidence(
                 clearance, hour, margin
             ) == _metar._dynamic_lock_in_confidence(clearance, hour, margin)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# batch-54: KXTORNADO monthly tornado-count markets
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _fixed_datetime(when):
+    """A real datetime SUBCLASS pinning the INSTANT `when`, converted into
+    whatever zone the caller asks for.
+
+    Not a Mock: a plain Mock's now() ignores its tz argument entirely, so a
+    test using one cannot prove which timezone the production code actually
+    asked for. And not a fixed return value either -- opus-review-caught that
+    returning `when` verbatim for every tz makes now(ZoneInfo("America/
+    New_York")).date() yield the UTC date, which would have silently masked
+    the exact UTC-vs-ET defect _analyze_tornado_count_trade was fixed for.
+    Converting the instant is what makes those tests load-bearing; same shape
+    as test_rain_markets.py's own _FakeDT.
+
+    Only now() is overridden -- every other datetime behaviour
+    (fromisoformat, comparison, arithmetic) must keep working, since
+    analyze_trade uses them on real market fields.
+    """
+
+    class _Fixed(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return when.astimezone(tz) if tz is not None else when.replace(tzinfo=None)
+
+    return _Fixed
+
+
+def _tornado_market(
+    ticker="KXTORNADO-26SEP-75",
+    floor_strike=75,
+    strike_type="greater",
+    close_time="2026-10-01T03:59:00Z",
+    **extra,
+):
+    """A live-shaped KXTORNADO market. Field values copied from a real
+    2026-08-25 API response (KXTORNADO-26SEP-150) rather than invented, so a
+    test cannot pass against a shape Kalshi never actually returns."""
+    m = {
+        "ticker": ticker,
+        "event_ticker": ticker.rsplit("-", 1)[0],
+        "title": f"Will there be more than {floor_strike} tornadoes in September?",
+        "yes_sub_title": f"Above {floor_strike}",
+        "no_sub_title": f"Above {floor_strike}",
+        "rules_primary": (
+            f"If the preliminary number of tornadoes in Sep is above "
+            f"{floor_strike} , then the market resolves to Yes."
+        ),
+        "rules_secondary": (
+            'The number of tornadoes will be determined by the "Storm Reports '
+            'Legend" shown in the bottom left corner of the "Preliminary '
+            'Report Summary."'
+        ),
+        "floor_strike": floor_strike,
+        "strike_type": strike_type,
+        "close_time": close_time,
+        "market_type": "binary",
+        "status": "active",
+        "yes_bid": 30,
+        "yes_ask": 40,
+        "last_price": 35,
+        "volume": 5000,
+        "open_interest": 2000,
+        "liquidity": 100000,
+    }
+    m.update(extra)
+    return m
+
+
+class TestTornadoTickerClassification:
+    def test_series_exact_match_only(self):
+        from weather_markets import is_tornado_count_ticker
+
+        assert is_tornado_count_ticker("KXTORNADO-26SEP-75") is True
+        assert is_tornado_count_ticker("kxtornado-26sep-75") is True
+
+    def test_legacy_annual_tornado_series_is_not_matched(self):
+        """The legacy annual TORNADO series is a different product with no
+        parser branch here -- a substring test would have swept it in."""
+        from weather_markets import is_tornado_count_ticker
+
+        assert is_tornado_count_ticker("TORNADO-26-500") is False
+        assert is_tornado_count_ticker("KXTORNADOALLEY-26SEP-5") is False
+
+    def test_month_from_ticker_parses_every_real_month_abbreviation(self):
+        from weather_markets import _tornado_month_from_ticker
+
+        abbrs = [
+            "JAN",
+            "FEB",
+            "MAR",
+            "APR",
+            "MAY",
+            "JUN",
+            "JUL",
+            "AUG",
+            "SEP",
+            "OCT",
+            "NOV",
+            "DEC",
+        ]
+        for i, abbr in enumerate(abbrs, start=1):
+            assert _tornado_month_from_ticker(f"KXTORNADO-26{abbr}-75") == (2026, i)
+
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXTORNADO-26SEP",  # no bracket segment
+            "KXTORNADO-26SEP-75-EXTRA",  # too many segments
+            "KXTORNADO-2026SEP-75",  # 4-digit year
+            "KXTORNADO-26XXX-75",  # not a month
+            "KXTORNADO-XXSEP-75",  # non-numeric year
+            "KXHURCTOT-26DEC01-T5",  # a different family
+        ],
+    )
+    def test_month_from_ticker_rejects_malformed_shapes(self, ticker):
+        from weather_markets import _tornado_month_from_ticker
+
+        assert _tornado_month_from_ticker(ticker) is None
+
+
+class TestTornadoConditionParsing:
+    def test_parses_a_real_market(self):
+        from weather_markets import _parse_market_condition
+
+        cond = _parse_market_condition(_tornado_market())
+        assert cond == {
+            "type": "tornado_count",
+            "year": 2026,
+            "month": 9,
+            "threshold": 75.0,
+            "strike_type": "greater",
+        }
+
+    def test_threshold_comes_from_floor_strike_not_the_ticker_suffix(self):
+        """floor_strike is the field Kalshi settles against; the ticker's own
+        "-75" only happens to equal it. If they ever diverge, the settlement
+        field must win."""
+        from weather_markets import _parse_market_condition
+
+        m = _tornado_market(ticker="KXTORNADO-26SEP-75", floor_strike=80)
+        assert _parse_market_condition(m)["threshold"] == 80.0
+
+    @pytest.mark.parametrize("strike_type", ["greater", "greater_or_equal"])
+    def test_accepts_both_supported_strike_types(self, strike_type):
+        from weather_markets import _parse_market_condition
+
+        cond = _parse_market_condition(_tornado_market(strike_type=strike_type))
+        assert cond["strike_type"] == strike_type
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            {"floor_strike": None},
+            {"floor_strike": "not-a-number"},
+            {"strike_type": "less"},
+            {"strike_type": None},
+            {"close_time": ""},
+            {"close_time": "garbage"},
+        ],
+    )
+    def test_fails_closed_on_unusable_fields(self, override):
+        """A KXTORNADO ticker must NEVER fall through to the generic
+        temperature/threshold parser -- it has no city, coords or forecast, so
+        reaching the daily pipeline would trip a later `assert city is not
+        None` (or silently mis-score under `python -O`). Same fail-closed
+        discipline _parse_hurricane_count_condition established."""
+        from weather_markets import _parse_market_condition
+
+        assert _parse_market_condition(_tornado_market(**override)) is None
+
+    def test_close_time_must_be_the_month_after_the_ticker_month(self):
+        """The cross-check exists to catch a ticker parse that lands on the
+        WRONG month -- June averages ~250 tornadoes and September ~57, so a
+        6-month slip prices against a materially different distribution. A
+        same-year but wrong-month close_time must still be rejected."""
+        from weather_markets import _parse_market_condition
+
+        m = _tornado_market(ticker="KXTORNADO-26MAR-75")  # closes 2026-10-01
+        assert _parse_market_condition(m) is None
+
+    def test_offset_form_close_time_is_normalized_before_the_month_check(self):
+        """ "2026-09-30T23:59:00-04:00" is the SAME INSTANT as
+        "2026-10-01T03:59Z". Before _safe_parse_close_time normalized to UTC
+        it came back carrying the -04:00 offset, so the (year, month) check
+        read September instead of October and rejected EVERY market in the
+        family -- silently inert in production behind a per-market
+        warning."""
+        from weather_markets import _parse_market_condition
+
+        m = _tornado_market(close_time="2026-09-30T23:59:00-04:00")
+        cond = _parse_market_condition(m)
+        assert cond is not None
+        assert (cond["year"], cond["month"]) == (2026, 9)
+
+    def test_naive_close_time_does_not_crash_the_past_close_gate(self, monkeypatch):
+        """`naive < datetime.now(UTC)` raises TypeError, uncaught, taking down
+        the whole analyze_trade call rather than gating the market out. All
+        four close_time-gated families share the comparison, so the fix lives
+        in _safe_parse_close_time."""
+        import weather_markets as wm
+
+        parsed = wm._safe_parse_close_time("2026-10-01T03:59:00")
+        assert parsed is not None and parsed.tzinfo is not None
+        assert parsed == datetime(2026, 10, 1, 3, 59, tzinfo=UTC), (
+            "a naive string is stamped UTC, not reinterpreted as host-local"
+        )
+        # And the end-to-end path must reach a decision (None or a result)
+        # rather than raising: `naive < datetime.now(UTC)` is a TypeError no
+        # caller catches.
+        wm.analyze_trade(_tornado_market(close_time="2026-10-01T03:59:00"))
+
+    def test_december_ticker_crossing_the_year_boundary_is_accepted(self):
+        """A Dec target closes on Jan 1 of the NEXT year -- the cross-check
+        must do real month arithmetic, not a same-year comparison."""
+        from weather_markets import _parse_market_condition
+
+        m = _tornado_market(
+            ticker="KXTORNADO-26DEC-75", close_time="2027-01-01T04:59:00Z"
+        )
+        cond = _parse_market_condition(m)
+        assert cond is not None
+        assert (cond["year"], cond["month"]) == (2026, 12)
+
+    def test_unparseable_tornado_ticker_warns_but_does_not_fall_through(self, caplog):
+        """Membership in the series is confirmed, so the parse failure is real
+        and worth a warning -- unlike a ticker from another family, which
+        returns None silently."""
+        import logging
+
+        from weather_markets import _parse_market_condition
+
+        m = _tornado_market(ticker="KXTORNADO-26XXX-75")
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            assert _parse_market_condition(m) is None
+        assert any(
+            "_parse_tornado_count_condition" in r.message for r in caplog.records
+        )
+
+
+class TestTornadoRegistryWiring:
+    def test_registered_in_known_weather_series(self):
+        from weather_markets import KNOWN_WEATHER_SERIES
+
+        assert "KXTORNADO" in KNOWN_WEATHER_SERIES
+
+    def test_drift_watcher_can_see_it(self):
+        """KXTORNADO is neither a KXHIGH/KXLOW/KXRAIN prefix nor a SNOW
+        substring, so without the exact-membership union in
+        check_series_drift it would have ZERO drift-watch coverage -- the same
+        gap batch-51 item 4 closed for KXHOLIDAYTMAX/TMIN."""
+        import inspect
+
+        import weather_markets as wm
+
+        src = inspect.getsource(wm.check_series_drift)
+        # Two distinct uses: the live_weather membership union, and the
+        # per-ticker missing-days loop. One without the other is a silent
+        # half-registration.
+        assert src.count("_TORNADO_COUNT_SERIES") >= 2
+
+    @staticmethod
+    def _arb_shaped(ticker, thr):
+        """A market crafted to clear BOTH of _group_markets' own filters --
+        a day-level "26SEP01" date the date regex matches AND a "-T<n>"
+        suffix _parse_threshold requires, with a real two-sided quote.
+
+        Real KXTORNADO tickers ("KXTORNADO-26SEP-75") clear NEITHER, which
+        is exactly why the exclusion has to be tested this way: asserting on
+        a real-shaped ticker would pass whether the guard existed or not.
+        The guard is defence-in-depth against Kalshi changing either
+        accident of formatting, and this shape is what makes it observable."""
+        return {
+            "ticker": ticker,
+            "title": f"more than {thr} tornadoes, above",
+            "yes_bid": 30,
+            "yes_ask": 40,
+            "last_price": 35,
+            "volume": 100,
+            "open_interest": 100,
+        }
+
+    def test_excluded_from_arb_grouping(self):
+        """consistency.find_violations() feeds automatic corrective trading
+        with no shadow-gate check of its own, so an unvalidated family must
+        never reach its groups."""
+        from consistency import _group_markets
+
+        groups = _group_markets(
+            [
+                self._arb_shaped("KXTORNADO-26SEP01-T75", 75),
+                self._arb_shaped("KXTORNADO-26SEP01-T100", 100),
+            ]
+        )
+        assert groups == {}
+
+    def test_arb_grouping_positive_control(self):
+        """Proves the empty result above comes from the SERIES exclusion and
+        not from _group_markets rejecting this fixture shape outright: the
+        byte-identical shape under a non-excluded series does group."""
+        from consistency import _group_markets
+
+        groups = _group_markets(
+            [
+                self._arb_shaped("KXTWISTER-26SEP01-T75", 75),
+                self._arb_shaped("KXTWISTER-26SEP01-T100", 100),
+            ]
+        )
+        assert groups != {}
+
+    def test_condition_type_is_in_the_shared_exclusion_registry(self):
+        import tracker
+
+        assert (
+            "tornado_count",
+            "_tornado_count_gates_active",
+        ) in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
+        assert "tornado_count" in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+
+    def test_paper_trade_ticker_classifier_knows_the_family(self):
+        """paper_trades.db carries no condition_type column, so brier_score's
+        fallback derives it from the ticker -- an unmapped family would leak
+        shadow rows into the value graduation_check() gates live trading on."""
+        import tracker
+
+        assert (
+            tracker._paper_trade_excluded_condition_type("KXTORNADO-26SEP-75")
+            == "tornado_count"
+        )
+
+    def test_condition_confidence_key_exists(self):
+        """A missing key means edge_confidence()/_price_and_size() silently
+        fall back to 1.0 -- the codebase's MAXIMUM confidence multiplier --
+        which is exactly the bug hurricane_next_event shipped with once."""
+        from weather_markets import _CONDITION_CONFIDENCE, edge_confidence
+
+        assert "tornado_count" in _CONDITION_CONFIDENCE
+        assert _CONDITION_CONFIDENCE["tornado_count"] < 1.0
+        assert edge_confidence(0, condition_type="tornado_count") == pytest.approx(
+            _CONDITION_CONFIDENCE["tornado_count"]
+        )
+
+
+class TestTornadoGate:
+    def test_gate_is_closed_without_the_env_flag(self, monkeypatch):
+        from weather_markets import _tornado_count_gates_active
+
+        monkeypatch.delenv("TORNADO_TRADING_ENABLED", raising=False)
+        assert _tornado_count_gates_active() is False
+
+    def test_gate_is_closed_below_the_sample_floor(self, monkeypatch):
+        import tracker
+        from weather_markets import (
+            _TORNADO_COUNT_GATE_MIN_SAMPLES,
+            _tornado_count_gates_active,
+        )
+
+        monkeypatch.setenv("TORNADO_TRADING_ENABLED", "1")
+        monkeypatch.setattr(
+            tracker,
+            "count_settled_tornado_count_predictions",
+            lambda: _TORNADO_COUNT_GATE_MIN_SAMPLES - 1,
+        )
+        assert _tornado_count_gates_active() is False
+
+    def test_gate_opens_only_with_flag_and_enough_samples(self, monkeypatch):
+        import tracker
+        from weather_markets import (
+            _TORNADO_COUNT_GATE_MIN_SAMPLES,
+            _tornado_count_gates_active,
+        )
+
+        monkeypatch.setenv("TORNADO_TRADING_ENABLED", "1")
+        monkeypatch.setattr(
+            tracker,
+            "count_settled_tornado_count_predictions",
+            lambda: _TORNADO_COUNT_GATE_MIN_SAMPLES,
+        )
+        assert _tornado_count_gates_active() is True
+
+
+class _FakeCon:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def execute(self, *a, **k):
+        return self
+
+    def fetchall(self):
+        return self._rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class TestTornadoSettledEventCounting:
+    def test_counts_distinct_months_not_brackets(self, monkeypatch):
+        """KXTORNADO is a ladder: all 11-17 brackets of one month settle from
+        the SAME single SPC report count. Live-verified 2026-08-25 -- 28
+        settled markets across just 2 events. Counting tickers would report 28
+        independent observations where there are 2."""
+        import tracker
+
+        rows = [
+            {"ticker": f"KXTORNADO-26JUN-{s}"} for s in (25, 50, 75, 100, 400, 425)
+        ] + [{"ticker": f"KXTORNADO-26JUL-{s}"} for s in (25, 50, 75, 100, 275)]
+        monkeypatch.setattr(tracker, "init_db", lambda: None)
+        monkeypatch.setattr(tracker, "_conn", lambda: _FakeCon(rows))
+        assert tracker.count_settled_tornado_count_predictions() == 2
+
+    def test_unparseable_ticker_is_excluded_not_counted(self, monkeypatch):
+        """An unparseable ticker cannot be deduped against the others, so
+        counting it could only inflate the graduation floor."""
+        import tracker
+
+        rows = [
+            {"ticker": "KXTORNADO-26JUN-25"},
+            {"ticker": "KXTORNADO-BOGUS-25"},
+            {"ticker": "KXHIGHNY-26JUN15-T75"},
+        ]
+        monkeypatch.setattr(tracker, "init_db", lambda: None)
+        monkeypatch.setattr(tracker, "_conn", lambda: _FakeCon(rows))
+        assert tracker.count_settled_tornado_count_predictions() == 1
+
+
+class TestTornadoShadowOnlyRouting:
+    """Every path to a real order must refuse a KXTORNADO ticker while the
+    gate is inactive -- analyze_trade is not the only way in."""
+
+    def test_check_position_limits_refuses(self, monkeypatch):
+        import paper
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_tornado_count_gates_active", lambda: False)
+        result = paper.check_position_limits("KXTORNADO-26SEP-75", qty=1, price=0.10)
+        assert result["ok"] is False
+        assert "tornado" in result["reason"].lower()
+
+    def test_check_position_limits_allows_once_the_gate_opens(self, monkeypatch):
+        """Positive control: proves the refusal above comes from the GATE and
+        not from some unrelated rejection that would fire either way."""
+        import paper
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_tornado_count_gates_active", lambda: True)
+        result = paper.check_position_limits("KXTORNADO-26SEP-75", qty=1, price=0.10)
+        assert "tornado" not in (result.get("reason") or "").lower()
+
+    # The BEHAVIOURAL coverage of _auto_place_trades' routing lives in
+    # tests/test_shadow_predictions.py (shadow-when-gated, places-when-open,
+    # mixed-batch ordering, sibling-gate independence) -- opus-review-caught
+    # that a source-string assertion here cannot tell whether the block is
+    # reachable or correctly ordered relative to _validate_trade_opportunity
+    # and the capacity caps. Only the hoisting property below genuinely needs
+    # to read the source.
+
+    def test_gate_is_hoisted_once_per_batch_not_per_ticker(self):
+        """Each gate's docstring guarantees "no real order is ever placed
+        before this is True" -- recomputing per-ticker would let the value
+        legally diverge mid-batch under concurrent settlement writes."""
+        import inspect
+
+        import order_executor
+
+        src = inspect.getsource(order_executor._auto_place_trades)
+        assert src.count("_tornado_count_gates_active()") == 1
+
+    def test_quick_paper_buy_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        """main._quick_paper_buy reaches the maker-order branch without going
+        through analyze_trade or cmd_order, and check_position_limits' own
+        exception path fails open -- so it carries its own explicit guard.
+        Mirrors TestQuickPaperBuyAndCmdPaperStormOrderGuards exactly."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("TORNADO_TRADING_ENABLED", raising=False)
+        mock_client = MagicMock()
+        _inputs = iter(["KXTORNADO-26SEP-75"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "tornado" in out.lower()
+        assert "TORNADO_TRADING_ENABLED" in out
+        mock_client.get_market.assert_not_called()
+
+    def test_quick_paper_buy_does_not_refuse_when_gate_active(self, monkeypatch):
+        """Positive control: with the gate open the refusal is gone, so the
+        test above is pinning the gate and not an unrelated early return."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._tornado_count_gates_active", lambda: True)
+        mock_client = MagicMock()
+        mock_client.get_market.side_effect = RuntimeError("no real market in test")
+        _inputs = iter(["KXTORNADO-26SEP-75", "q"])
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main._quick_paper_buy(mock_client)
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_paper_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        """web_app's /api/paper-order and the CLI both route through here."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("TORNADO_TRADING_ENABLED", raising=False)
+
+        main.cmd_paper(["buy", "KXTORNADO-26SEP-75", "yes", "0.10", "1"])
+
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "tornado" in out.lower()
+        assert "TORNADO_TRADING_ENABLED" in out
+
+    def test_cmd_paper_does_not_refuse_when_gate_active(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._tornado_count_gates_active", lambda: True)
+
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_paper(["buy", "KXTORNADO-26SEP-75", "yes", "0.10", "1"])
+        except Exception:
+            pass
+        assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_today_guard_is_not_shadowed_by_an_earlier_branch(self):
+        """cmd_today's guard is an elif at position 7 of an 11-branch chain,
+        and nothing pinned that ordering. Every predicate that precedes it
+        must be unable to match a KXTORNADO ticker -- otherwise the guard is
+        dead code and the family falls through to whichever branch caught it
+        first."""
+        import inspect
+
+        import main
+
+        src = inspect.getsource(main.cmd_today)
+        tornado_at = src.index("is_tornado_count_ticker(_ticker1)")
+        preceding = src[:tornado_at]
+        # Positive control for the slice: the branches we expect to precede
+        # it really are there, so `preceding` is not accidentally empty.
+        assert "is_hurricane_count_ticker(_ticker1)" in preceding
+        assert "is_storm_order_ticker(_ticker1)" in preceding
+        for pred in (
+            "is_hurricane_ticker",
+            "is_hurricane_count_ticker",
+            "is_hurricane_next_event_ticker",
+            "is_storm_order_ticker",
+            "is_holiday_temp_ticker",
+            "is_rain_daily_ticker",
+            "is_rain_weekend_ticker",
+        ):
+            assert getattr(main, pred)("KXTORNADO-26SEP-75") is False, pred
+
+    def test_cmd_order_refuses_without_fetching_or_placing(self, monkeypatch, capsys):
+        """cmd_order is a confirmed real bypass of analyze_trade's gates for
+        order EXECUTION -- it must refuse outright, not warn-and-continue.
+        action="buy" because that is what main.py's real CLI dispatch passes."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_tornado_count_gates_active", lambda: False)
+        client = MagicMock()
+
+        main.cmd_order(client, "buy", ["KXTORNADO-26SEP-75", "yes", "5", "0.50"])
+
+        client.get_market.assert_not_called()
+        client.place_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "tornado" in out and "shadow-only" in out
+
+    def test_cmd_order_proceeds_once_the_gate_opens(self, monkeypatch, capsys):
+        """Positive control: with the gate open the refusal message is gone
+        and cmd_order gets as far as touching the client, proving the block
+        above is the gate and not an unrelated early return."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_tornado_count_gates_active", lambda: True)
+        # Answer the interactive confirm with "n": this test is about which
+        # guard fires, not about placing anything.
+        monkeypatch.setattr("builtins.input", lambda *a: "n")
+        client = MagicMock()
+
+        main.cmd_order(client, "buy", ["KXTORNADO-26SEP-75", "yes", "5", "0.50"])
+
+        out = capsys.readouterr().out.lower()
+        assert "tornado monthly-count markets are shadow-only" not in out
+        assert client.get_market.called
+
+
+class TestTornadoAnalyzeTradeDispatch:
+    """End-to-end through the public entry point, not just the analysis
+    function directly -- the gap that made batch-51 item 2 inert in production
+    was in the gates BEFORE dispatch, not in the model."""
+
+    def _patch_climatology(self, monkeypatch, *, mtd=40, totals=None):
+        import tornado_climatology as tc
+
+        # Signature must MATCH the real month_to_date, whose `today` is
+        # required and keyword-only -- a looser stub would silently keep
+        # passing if the caller ever stopped supplying it, which is the
+        # second-clock bug all over again.
+        monkeypatch.setattr(tc, "month_to_date", lambda y, m, *, today: mtd)
+        monkeypatch.setattr(
+            tc,
+            "conditioned_month_totals",
+            lambda month, as_of_day, count_to_date, **k: (
+                totals
+                if totals is not None
+                else [float(count_to_date + 30 + i) for i in range(21)]
+            ),
+        )
+
+    def test_future_month_prices_pure_climatology_without_a_current_year_read(
+        self, monkeypatch
+    ):
+        """A September ladder priced in August is the routine case -- each
+        event lists on the 20th of the preceding month. count_to_date is 0 by
+        definition and month_to_date() must not even be consulted."""
+        import tornado_climatology as tc
+        import weather_markets as wm
+
+        calls = []
+
+        def _mtd(y, m):
+            calls.append((y, m))
+            return 99
+
+        monkeypatch.setattr(tc, "month_to_date", _mtd)
+        monkeypatch.setattr(
+            tc,
+            "conditioned_month_totals",
+            lambda month, as_of_day, count_to_date, **k: [
+                float(20 + i * 6) for i in range(21)
+            ],
+        )
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        wm.reset_gate_counts()
+        result = wm.analyze_trade(_tornado_market())
+        assert result is not None
+        assert calls == [], "a future month must not consult the current-year feed"
+        assert result["method"] == "tornado_count_bootstrap"
+        assert result["count_to_date"] == 0
+        assert result["as_of_day"] == 0
+        assert result["city"] == "TORNADO_US"
+        assert result["target_date"] == "2026-10-01"
+        assert result["n_historical_years"] == 21
+
+    def test_in_progress_month_tilts_on_the_count_to_date(self, monkeypatch):
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=88)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        m = _tornado_market(
+            ticker="KXTORNADO-26AUG-100",
+            floor_strike=100,
+            close_time="2026-09-01T03:59:00Z",
+        )
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert result["method"] == "tornado_count_bootstrap_tilted"
+        assert result["count_to_date"] == 88
+        # today.day - 1: the count-to-date is treated as complete through
+        # yesterday and today onward is bootstrapped from history.
+        assert result["as_of_day"] == 24
+
+    def test_stale_count_to_date_declines_rather_than_pricing_at_zero(
+        self, monkeypatch
+    ):
+        """month_to_date() returning None means the current-year feed cannot
+        be trusted. Pricing the month as though nothing had happened would
+        bias every bracket down at once, so the model declines instead."""
+        import tornado_climatology as tc
+        import weather_markets as wm
+
+        monkeypatch.setattr(tc, "month_to_date", lambda y, m, *, today: None)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        m = _tornado_market(
+            ticker="KXTORNADO-26AUG-100",
+            floor_strike=100,
+            close_time="2026-09-01T03:59:00Z",
+        )
+        assert wm.analyze_trade(m) is None
+
+    def test_thin_history_declines(self, monkeypatch):
+        """monthly_totals/conditioned_month_totals DROP a year whose SPC data
+        failed to load rather than fabricating a 0, so a partly-unavailable
+        source really can return a short list -- below bootstrap_ci's own
+        15-year CI floor there is no trustworthy point estimate either."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, totals=[50.0] * 14)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        assert wm.analyze_trade(_tornado_market()) is None
+
+    def test_already_decided_bracket_is_priced_certain_with_zero_edge(
+        self, monkeypatch
+    ):
+        """batch-54 spec: already-decided brackets are priced 0/1 and must not
+        be treated as edge. With zero edge the opportunity never reaches
+        _auto_place_trades' opps list, so it produces neither an order nor a
+        shadow prediction row that would flatter this family's Brier."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=200)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        m = _tornado_market(
+            ticker="KXTORNADO-26AUG-100",
+            floor_strike=100,
+            close_time="2026-09-01T03:59:00Z",
+        )
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert result["already_decided"] is True
+        assert result["method"] == "tornado_count_decided"
+        assert result["forecast_prob"] == 0.99
+        assert result["recommended_side"] == "yes"
+        assert result["edge"] == 0.0
+        assert result["net_edge"] == 0.0
+        assert result["adjusted_edge"] == 0.0
+        assert result["kelly"] == 0.0
+        assert result["ci_adjusted_kelly"] == 0.0
+
+    def test_undecided_bracket_in_the_same_month_still_carries_edge(self, monkeypatch):
+        """Positive control for the zeroing above: the zeroing must be scoped
+        to the decided bracket, not applied to the whole family."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=200)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        m = _tornado_market(
+            ticker="KXTORNADO-26AUG-275",
+            floor_strike=275,
+            close_time="2026-09-01T03:59:00Z",
+        )
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert result["already_decided"] is False
+        assert result["edge"] != 0.0
+
+    def test_past_close_gates_out_on_close_time(self, monkeypatch):
+        """target_date is None for this family, so the generic past_date
+        branch would TypeError -- it needs its own close_time check."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch)
+        wm.reset_gate_counts()
+        m = _tornado_market(
+            ticker="KXTORNADO-26JUN-75", close_time="2026-07-01T03:59:00Z"
+        )
+        assert wm.analyze_trade(m) is None
+        assert wm.get_gate_counts().get("tornado_count_past_close") == 1
+
+    def test_beyond_the_days_out_ceiling_gates_out(self, monkeypatch):
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        wm.reset_gate_counts()
+        # 26DEC closes 2027-01-01, ~129 days out -- past the 45-day ceiling.
+        m = _tornado_market(
+            ticker="KXTORNADO-26DEC-75", close_time="2027-01-01T04:59:00Z"
+        )
+        assert wm.analyze_trade(m) is None
+        assert wm.get_gate_counts().get("days_out") == 1
+
+    def test_does_not_gate_out_as_no_forecast_no_date_or_no_city(self, monkeypatch):
+        """The family has no city, coords, forecast OR target_date -- it is
+        the only one in analyze_trade needing both the monthly-ladder bypasses
+        and the city-less ones. A miss on any of them makes the whole feature
+        silently inert in production."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        wm.reset_gate_counts()
+        assert wm.analyze_trade(_tornado_market()) is not None
+        counts = wm.get_gate_counts()
+        for gate in (
+            "no_forecast",
+            "no_date",
+            "no_city",
+            "no_coords",
+            "condition_parse",
+        ):
+            assert counts.get(gate) is None, f"unexpectedly gated on {gate}"
+
+    def test_as_of_day_follows_the_ET_calendar_not_the_UTC_one(self, monkeypatch):
+        """22:00 EDT on Aug 24 is already Aug 25 in UTC.
+
+        A UTC-based "today" would compute as_of_day = 25 - 1 = 24 -- which in
+        ET terms is today.day, the day-OMITTING convention the code
+        explicitly rejects -- for the ~4-5h of every evening between 00:00Z
+        and local midnight. The ET conversion keeps the convention stable at
+        ET_day - 1 = 23 around the clock."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=88)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 2, tzinfo=UTC))
+        )
+        m = _tornado_market(
+            ticker="KXTORNADO-26AUG-100",
+            floor_strike=100,
+            close_time="2026-09-01T03:59:00Z",
+        )
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert result["as_of_day"] == 23, "must be ET Aug 24 - 1, not UTC Aug 25 - 1"
+
+    def test_last_evening_of_the_month_still_prices_the_open_market(
+        self, monkeypatch, tmp_path
+    ):
+        """22:00 EDT on Sep 30: still September in the US, market still open
+        (it closes 03:59Z / 23:59 ET). A UTC-based "today" reads Oct 1 and
+        refuses to price a live market for the last ~4h of every month.
+
+        Deliberately does NOT stub month_to_date -- it drives the REAL
+        freshness path off a real cache file. Opus-review-caught (round 2):
+        the first version used self._patch_climatology, which stubs exactly
+        the function that still carried a second, UTC-based clock. Production
+        returned None while this test asserted "not None" and passed, so the
+        fix it exists to pin was never actually pinned. Both modules' clocks
+        are frozen to the same instant, because one clock is the whole
+        point."""
+        import json
+
+        import tornado_climatology as tc
+        import weather_markets as wm
+
+        instant = datetime(2026, 10, 1, 2, tzinfo=UTC)  # 22:00 EDT Sep 30
+        monkeypatch.setattr(wm, "datetime", _fixed_datetime(instant))
+        monkeypatch.setattr(tc, "datetime", _fixed_datetime(instant))
+        monkeypatch.setattr(tc, "DATA_DIR", tmp_path)
+        # Elapsed-dense through Sep 30, 50 reports so far -- the real
+        # current-year payload shape.
+        daily = {
+            f"09{d:02d}": {"torn": (50 if d == 3 else 0), "wind": 0, "hail": 0}
+            for d in range(1, 31)
+        }
+        (tmp_path / "spc_ruf_nat_2026.json").write_text(
+            json.dumps(
+                {
+                    "torn": 50,
+                    "wind": 0,
+                    "hail": 0,
+                    "month": {
+                        str(m): {"torn": (50 if m == 9 else 0), "wind": 0, "hail": 0}
+                        for m in range(1, 13)
+                    },
+                    "daily": daily,
+                    "hour": {},
+                    "state": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            tc,
+            "conditioned_month_totals",
+            lambda month, as_of_day, count_to_date, **k: [
+                float(count_to_date + 30 + i) for i in range(21)
+            ],
+        )
+
+        result = wm.analyze_trade(_tornado_market(floor_strike=75))
+
+        assert result is not None, (
+            "a still-open, still-September market must be priced at 22:00 ET on Sep 30"
+        )
+        assert result["method"] == "tornado_count_bootstrap_tilted"
+        assert result["count_to_date"] == 50, "the REAL month_to_date path ran"
+        assert result["as_of_day"] == 29  # ET Sep 30 - 1
+
+    def test_first_of_the_month_uses_pure_climatology_on_top_of_the_count(
+        self, monkeypatch
+    ):
+        """as_of_day clamps to 0 on the 1st, where remaining_share is 1.0 --
+        i.e. a full historical month is added on top of a non-zero
+        count-to-date. That is the documented convention taken to its
+        extreme, pinned here so it is a known bias rather than a surprise."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=7)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 9, 1, 16, tzinfo=UTC))
+        )
+        result = wm.analyze_trade(_tornado_market(floor_strike=75))
+        assert result is not None
+        assert result["as_of_day"] == 0
+        assert result["count_to_date"] == 7
+
+    def test_last_day_of_the_month_leaves_one_day_of_history(self, monkeypatch):
+        """The other boundary: on Sep 30 the remaining term covers only
+        historical day 30 onward."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=60)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 9, 30, 16, tzinfo=UTC))
+        )
+        result = wm.analyze_trade(_tornado_market(floor_strike=75))
+        assert result is not None
+        assert result["as_of_day"] == 29
+
+    def test_already_past_month_refuses_rather_than_pricing(self, monkeypatch):
+        """Unreachable through analyze_trade once the ET conversion is in
+        place (the past-close gate fires first), so the analysis function is
+        driven directly. It must still refuse: this family's count-to-date
+        comes from a feed that keeps maturing after the month ends, so
+        pricing a "known" total from it would assert a certainty the data
+        does not have -- a deliberate divergence from
+        _analyze_monthly_rain_trade, which DOES price the analogous window."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch, mtd=50)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 11, 5, 16, tzinfo=UTC))
+        )
+        enriched = wm.enrich_with_forecast(_tornado_market(), fetch_forecast=False)
+        assert (
+            wm._analyze_tornado_count_trade(
+                enriched,
+                {
+                    "type": "tornado_count",
+                    "year": 2026,
+                    "month": 9,
+                    "threshold": 75.0,
+                    "strike_type": "greater",
+                },
+                datetime(2026, 10, 1, 3, 59, tzinfo=UTC),
+                0,
+            )
+            is None
+        )
+
+    def test_reaches_dispatch_through_the_real_enrich_producer(self, monkeypatch):
+        """Hand-built enriched dicts systematically mask producer-side bugs
+        (batch-51 item 2's inert-in-production incident) -- drive the real
+        enrich_with_forecast() rather than fabricating _city/_date."""
+        import weather_markets as wm
+
+        self._patch_climatology(monkeypatch)
+        monkeypatch.setattr(
+            wm, "datetime", _fixed_datetime(datetime(2026, 8, 25, 12, tzinfo=UTC))
+        )
+        enriched = wm.enrich_with_forecast(_tornado_market(), fetch_forecast=False)
+        result = wm.analyze_trade(enriched)
+        assert result is not None
+        assert result["condition"]["type"] == "tornado_count"

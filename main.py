@@ -142,6 +142,7 @@ from weather_markets import (
     _rain_gates_active,
     _snow_gates_active,
     _storm_order_gates_active,
+    _tornado_count_gates_active,
     analyze_trade,
     batch_prewarm_forecasts,
     check_ensemble_circuit_health,  # noqa: F401 — used via main.* in cron.py
@@ -164,6 +165,7 @@ from weather_markets import (
     is_rain_holiday_ticker,
     is_rain_weekend_ticker,
     is_storm_order_ticker,
+    is_tornado_count_ticker,
     parse_city_date,
     parse_market_price,
     reset_gate_counts,
@@ -2820,6 +2822,15 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
+        if is_tornado_count_ticker(ticker) and not _tornado_count_gates_active():
+            print(
+                red(
+                    f"  {ticker}: tornado monthly-count markets are shadow-only until "
+                    "TORNADO_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
         if (
             is_hurricane_ticker(ticker)
             and not is_hurricane_count_ticker(ticker)
@@ -3759,10 +3770,14 @@ def cmd_today(client: KalshiClient) -> None:
         # exception (its own shadow-gate checks run FIRST inside that
         # function, before the exposure-cap checks) fails open here too,
         # placing a real order on a shadow-only market. Added the same
-        # checks, in the same order _quick_paper_buy/cmd_paper use (now eight:
+        # checks, in the same order _quick_paper_buy/cmd_paper use (now ten:
         # trading-paused, hurricane-count, hurricane-next-event, storm-order,
-        # blanket-other-hurricane, rain, snow, hourly-directional temperature --
-        # grown one at a time as each new shape shipped its own shadow gate).
+        # tornado-count, holiday-temp, blanket-other-hurricane, rain, snow,
+        # hourly-directional temperature -- grown one at a time as each new
+        # shape shipped its own shadow gate. Opus-review-caught at batch-54
+        # that this count had ALREADY gone stale for holiday-temp before
+        # tornado was added; re-derive it from the branches below rather than
+        # trusting this number next time).
         if is_trading_paused():
             print(
                 red(
@@ -3830,6 +3845,14 @@ def cmd_today(client: KalshiClient) -> None:
                 red(
                     f"  {_ticker1}: hurricane storm-order markets are shadow-only "
                     "until STORM_ORDER_TRADING_ENABLED=1 and >=20 settled "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+        elif is_tornado_count_ticker(_ticker1) and not _tornado_count_gates_active():
+            print(
+                red(
+                    f"  {_ticker1}: tornado monthly-count markets are shadow-only "
+                    "until TORNADO_TRADING_ENABLED=1 and >=20 settled "
                     "predictions exist — refusing to place this order."
                 )
             )
@@ -5575,6 +5598,15 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             red(
                 f"  {ticker}: hurricane storm-order markets are shadow-only until "
                 "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist — refusing to place this order."
+            )
+        )
+        return
+    if is_tornado_count_ticker(ticker) and not _tornado_count_gates_active():
+        print(
+            red(
+                f"  {ticker}: tornado monthly-count markets are shadow-only until "
+                "TORNADO_TRADING_ENABLED=1 and >=20 settled predictions "
                 "exist — refusing to place this order."
             )
         )
@@ -8485,15 +8517,17 @@ def cmd_calibrate() -> None:
         from ml_bias import train_platt_per_city as _train_platt
 
         # batch-57 item 2: exclusion sourced from tracker's canonical registry
-        # rather than a fifth hardcoded copy of the 6-tuple. Permanent
+        # rather than a fifth hardcoded copy of the then-6-tuple. Permanent
         # _ALWAYS_EXCLUDED_CONDITION_TYPES, not the gate-coupled
         # _excluded_brier_condition_types(): Platt scaling fits a per-city
         # temperature-probability calibration curve written to
         # data/platt_models.json and consumed by
         # weather_markets._load_platt_models() -- the scale-mismatch class
         # batch-06's opus-review finding M5 kept permanent, so a shadow
-        # family graduating to live must NOT start feeding this fit. Same 6
-        # members as the literal it replaces: no behaviour change.
+        # family graduating to live must NOT start feeding this fit. Held the
+        # same 6 members as the literal it replaced at batch-57; batch-54's
+        # 'tornado_count' arrived through the registry, which is exactly the
+        # point of sourcing it rather than copying it.
         _cond_clause, _cond_params = _tracker._condition_type_not_in_sql(
             _tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
         )
@@ -11117,6 +11151,15 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 red(
                     f"  {ticker}: hurricane storm-order markets are shadow-only until "
                     "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
+        if is_tornado_count_ticker(ticker) and not _tornado_count_gates_active():
+            print(
+                red(
+                    f"  {ticker}: tornado monthly-count markets are shadow-only until "
+                    "TORNADO_TRADING_ENABLED=1 and >=20 settled predictions "
                     "exist — refusing to place this order."
                 )
             )
