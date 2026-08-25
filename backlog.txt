@@ -35452,3 +35452,116 @@ When to revisit:
   Before any signal is wired live on the strength of a cleared floor. If
   that is about to happen, this entry is the blocker.
 
+[OPEN 2026-08-25 -- found while answering "how long until this could
+  graduate to live trading?". The answer is dominated by one number, and
+  this entry is that number.] SETTLE analysis_attempts.outcome -- THE
+  UNBIASED EVALUATION POPULATION IS ALREADY BEING LOGGED AND NEVER SCORED,
+  WHICH IS THE ONLY REAL LEVER ON THE GRADUATION TIMELINE
+Priority: HIGH -- not a correctness bug; nothing is wrong in production.
+  It is the binding constraint on ever being able to answer "does this
+  model have an edge", and everything else on the roadmap is downstream of
+  it. Cheap: one settlement sweep, no new data source, no trading change.
+Files: tracker.py (settle_analysis_attempt ~8590-8615, get_unselected_bias's
+  KNOWN LIMITATION docstring ~8621-8634, batch_log_analysis_attempts),
+  cron.py (where the sweep would run), order_executor.py
+  (_log_shadow_predictions ~3931, for why `predictions` is selection-biased)
+
+Problem -- two facts that only matter together:
+
+  (1) `predictions` is a selection-biased population. It is written by
+      tracker.log_prediction(), and order_executor._log_shadow_predictions'
+      own docstring states the rule: "_auto_place_trades normally calls
+      tracker.log_prediction() only after a trade is actually placed", and
+      the shadow mirror covers only opps that "would have been traded",
+      applying "the same quality/dedup gates the real placement loop
+      applies". So a row exists only if it cleared the full placement gate
+      chain, including the edge floor.
+
+      Measured consequence: across ALL 563 prediction rows, the minimum
+      |our_prob - market_prob| is 0.0984. There is not one row below ~10pp.
+      Every model-vs-market statistic this repo computes -- including
+      get_model_vs_market_brier's headline -- is therefore computed on the
+      high-conviction tail only, never on the full distribution.
+
+      Note this makes get_model_vs_market_brier's own docstring caveat
+      backwards. It warns the statistic "is unconditional on the SIZE of our
+      disagreement with the price, so every market where we broadly agreed
+      with the mid dilutes the statistic toward zero". There is no such
+      dilution -- there are no low-disagreement rows at all. Worth fixing
+      that comment when this lands.
+
+  (2) The unbiased population IS already being captured, in
+      `analysis_attempts` (ticker, city, condition, target_date,
+      analyzed_at, forecast_prob, market_prob, days_out, was_traded,
+      outcome). Live DB 2026-08-25: 695 rows, all 695 carrying both probs,
+      minimum |forecast_prob - market_prob| = 0.0011, median 0.1507, with
+      25.2% of rows below the 0.08 edge floor that `predictions` never sees.
+
+      But only 84 of 695 have `outcome` populated -- and those 84 are
+      exactly the rows that also have a predictions row. So the one table
+      holding the unbiased sample is scored only on the biased subset.
+
+  tracker.get_unselected_bias's docstring already documents this precisely
+  ("this function currently reflects a selection-biased subset, not the full
+  'markets we rejected' population its docstring implies") and names the
+  fix: "a separate settlement sweep over analysis_attempts tickers lacking a
+  predictions row". It was declined at the time on cost -- "~2,000 tickers
+  on the live DB, i.e. ~2,000 extra Kalshi API calls per cron cycle" -- and
+  because "this function has zero production callers today".
+
+Both of those reasons no longer hold:
+
+  - The cost figure is the wrong SHAPE. Settlement is once per ticker, not
+    once per cron cycle: a settled market never needs re-fetching. Measured
+    2026-08-25: 569 distinct tickers have no predictions row, of which 494
+    are already past their target_date. So the real cost is a ONE-TIME
+    ~494-call backfill plus roughly 22 calls/day steady state (measured:
+    22.4 distinct tickers analysed per day over the last 30 days). That is
+    a rounding error against the existing per-cycle API budget.
+    (The "~2,000" figure was recorded 2026-07-10; the table's data now only
+    starts 2026-07-25, so it appears to have been cleared or rebuilt since
+    -- either way, re-measure before quoting either number.)
+
+  - The reason to do it is no longer get_unselected_bias. It is that this
+    is the ONLY lever on how long evaluation takes. Per-contract PnL has an
+    irreducible sd of 0.4698 (binary outcomes near 47c), so at n=214 the
+    minimum detectable edge is 9.0 cents/contract -- larger than any
+    plausible real edge. Sample size needed, and calendar time at each rate:
+
+        edge     n needed   at 3.5/day   at 22/day
+        +5c          693        0.5 yr      0.09 yr
+        +3c        1,923        1.5 yr      0.24 yr
+        +2c        4,327        3.4 yr      0.54 yr
+        +1c       17,306       13.5 yr      2.2 yr
+
+    Current settled-scoring rate is 3.53 rows/day (342 settled rows over 97
+    days). Settling analysis_attempts moves it to ~22/day -- a 6x
+    improvement, turning a multi-year evaluation into a several-month one.
+
+What the fix looks like:
+  - A settlement sweep over analysis_attempts tickers with target_date in
+    the past and outcome IS NULL, reusing the existing settlement machinery
+    (audit_settlement / sync_outcomes' settlement block). One-time backfill
+    command plus an incremental pass on the existing cron cadence.
+  - Rate-limit/batch it like the other backfills; it is not latency-
+    sensitive and can trickle.
+  - Then re-run the model-vs-market comparison on the FULL population and
+    compare against the tail-only number. They will differ, and the
+    difference is itself the answer to "is our edge concentrated where we
+    trade, or absent everywhere".
+  - Fix get_model_vs_market_brier's dilution caveat while there.
+
+Why not now / open questions:
+  - Does audit_settlement work for a ticker with no predictions row? Check
+    before assuming; it may key off predictions somewhere.
+  - Some analysis_attempts rows have target_date NULL (see
+    settle_analysis_attempt's two UPDATE branches) -- decide whether those
+    are settleable at all.
+  - Kalshi may not serve settlement for very old/delisted tickers; measure
+    the hit rate on the 494 before assuming full recovery.
+
+When to revisit:
+  Before any further work aimed at proving or improving edge. Every such
+  measurement is currently running on the biased tail at 3.5 rows/day, and
+  this is the single change that fixes both properties at once.
+
