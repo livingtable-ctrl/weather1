@@ -12,7 +12,16 @@ Repo: weather1. Written 2026-08-24 against master `223dedadcfd2` — re-verify c
 
 Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `trade_cycle.py`, `weather_markets.py`, `frontend/src/tabs/SignalsTab.jsx`, `frontend/src/tabs/PositionsTab.jsx`, `frontend/src/shared.jsx`. **Not** `config.py` / `param_sweep.py` / `backtest.py` any more — those went with the reassigned item.
 
-**Sequencing update 2026-08-25:** **batch 58 has landed** (`320740aa`) and its item 4 set an explicit precedent that item 1 below must now reason from rather than re-derive — see the callout inside item 1. Batches **60, 61, 62 were still in flight** at the time of writing; item 3 wants a `fetchedAt` staleness primitive that batch 61's item 3 was likely to introduce, so **check whether 61 landed and reuse its primitive** rather than building a second one. If it did not, build one in the shape batch-48 used for `stats.hours_since_cron` and say so in the resolution.
+**Sequencing update 2026-08-25 — two dependencies are now RESOLVED:**
+
+- **Batch 58 landed** (`320740aa`). Its item 4 set an explicit precedent that item 1 below must reason from rather than re-derive — see the callout inside item 1.
+- **Batch 61 landed** (`ebb92599`) and **already built the staleness layer item 3 needs.** Do not build a second one. Reuse:
+  - `useData.js` — `mergeFetchedAt(prev, succeeded, now)` (`:490`), which maintains a per-endpoint `next.fetchedAt` map (`:856`).
+  - `shared.jsx` — `feedFreshness(fetchedAt, { now, maxAgeMs, since, hardMaxAgeMs })`, `formatFeedAge(ageMs)`, `alarmSafeFlag(value, stale)`, and the `useFeedClock(tickMs)` hook, plus the constants `FEED_STALE_MS` (180 000) and `FEED_HARD_STALE_MS` (4×).
+
+  Note `FEED_STALE_MS` is **180 s**, not the ~90 s item 3 speculates about below. 61 picked that for a *display* banner; item 3 is an *order-submission gate*, which may justify a tighter bound. Treat 180 s as the established precedent to argue against, not as the answer — and if you diverge, say why in the resolution so the two do not silently disagree about what "stale" means.
+
+- Batches **60 and 62 were still in flight** at the time of writing. 60 touches `main.py`'s `cmd_order`/`cmd_today`; neither should collide with this batch, but re-check before starting.
 
 ## Items
 
@@ -89,13 +98,15 @@ If you are running 63 and batch 66 has not landed, that is fine — this is a cl
 **Partially mitigated already, do not double-count:** batch-48 made `SignalsTab`'s confirm modal re-derive its opportunity from live data every render (`resolveByKey`), so a poll landing while the modal is open now updates the quoted price. That closes the *stale-modal* half. It does **not** close this one — the underlying `M.opportunities` can itself be minutes old, and `PositionsTab`'s close path was not touched.
 
 **The decisions (three, ask together):**
-- **Threshold:** what age counts as stale? The 60s main-poll interval suggests ~90s, but that is an inference, not a measurement.
+- **Threshold:** what age counts as stale? Batch 61 already established `FEED_STALE_MS = 180_000` for display; the question is whether an order gate should be tighter, and if so, why.
 - **Block vs. warn:** hard-disable the button with a "refreshing…" state, or allow submission behind an explicit confirm naming the age?
 - **Scope:** which actions — Approve (SignalsTab), Close (PositionsTab), bulk variants of both, and does RiskTab have any order-adjacent control that qualifies?
 
-**Recommend: soft-warn with the age named, ~90s, covering Approve + Close + both bulk paths.** A hard block on a paper-trading dashboard risks trapping an operator who *needs* to act on a stale quote (the same trap item 1 is about), while an explicit "this quote is 4 minutes old" confirm gives them the information without removing the capability. Revisit toward hard-block if/when live trading is enabled.
+**Recommend: soft-warn with the age named, covering Approve + Close + both bulk paths** (threshold per the note above). A hard block on a paper-trading dashboard risks trapping an operator who *needs* to act on a stale quote (the same trap item 1 is about), while an explicit "this quote is 4 minutes old" confirm gives them the information without removing the capability. Revisit toward hard-block if/when live trading is enabled.
 
-**Reuse, don't reinvent:** if batch 61 item 3 landed a `fetchedAt` staleness primitive in `useData.js`, build on it. If not, build one here in the same shape batch-48 used for `stats.hours_since_cron`, and say so in the resolution so batch 61 can adopt it.
+**Reuse, don't reinvent — batch 61 already built this.** It landed in `ebb92599`; see the Sequencing note at the top of this file for the full API (`mergeFetchedAt`, `feedFreshness`, `formatFeedAge`, `alarmSafeFlag`, `useFeedClock`, `FEED_STALE_MS`). Building a second staleness path would give the dashboard two disagreeing definitions of "stale."
+
+**One real tension to resolve:** 61 set `FEED_STALE_MS = 180_000` (3 minutes) for a *display* banner. The ~90 s floated above was an inference from the 60 s poll interval, made before 61 existed. An order-submission gate may warrant tighter than a banner — but if you pick a different number, make it a deliberate, stated divergence rather than an accidental second constant.
 
 ## Process
 
