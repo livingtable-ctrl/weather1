@@ -1,7 +1,39 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected, resolveByKey } from '../shared.jsx';
+
+// batch-48 item 1: both confirm modals below render as an unfocusable div
+// with onKeyDown="Enter confirms" -- since nothing inside them ever receives
+// focus, that handler never fires from the keyboard (only a click reaches
+// the buttons). Shared by both modals: once the container itself is
+// focused (tabIndex={-1} + an open-transition autofocus effect), Tab must
+// stay inside it rather than escaping to the page behind the overlay.
+//
+// opus review CRITICAL: also handles the initial container-focused state,
+// not just wrapping between the first/last buttons -- without the `|| active
+// === container` branches, Shift+Tab from the just-opened (container-
+// focused) modal fell through to the browser's default behavior and moved
+// focus to the page behind the overlay instead of into the modal.
+function trapTabFocus(e, containerRef) {
+  if (e.key !== 'Tab') return;
+  const container = containerRef.current;
+  if (!container) return;
+  const focusables = container.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || active === container)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || active === container)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -9,7 +41,18 @@ export default function SignalsTab() {
   const [selectedOpp, setSelectedOpp] = useState(null);
   const [actionMsg, setActionMsg] = useState('');
   const [qtyMap, setQtyMap] = useState({});
-  const [confirmPending, setConfirmPending] = useState(null); // {opp, qty}
+  // batch-48 item 11 (audit F-M4): identity-only state -- the confirmPending
+  // object itself (opp, resolved fresh from live data below) is DERIVED, not
+  // stored, so a poll landing while this modal is open updates the quoted
+  // price the operator is about to confirm instead of submitting against a
+  // frozen pre-refresh snapshot. Same pattern PositionsTab.jsx already uses
+  // (selectedId + useMemo) for the identical class of bug. qty stays a plain
+  // snapshot -- it's the operator's own explicit input at click time (the row
+  // qty box), not something that should silently change under them.
+  const [pendingApprovalKey, setPendingApprovalKey] = useState(null);
+  const [pendingApprovalQty, setPendingApprovalQty] = useState(1);
+  const confirmModalRef = useRef(null);
+  const bulkConfirmModalRef = useRef(null);
   const PLACED_KEY = 'kalshi-placed-signals';
   const [placedSet, setPlacedSet] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem(PLACED_KEY) || '[]')); }
@@ -92,10 +135,48 @@ export default function SignalsTab() {
   );
 
   useEffect(() => {
-    const handler = () => { setSelectedOpp(null); setConfirmPending(null); setBulkConfirmPending(null); };
+    const handler = () => { setSelectedOpp(null); setPendingApprovalKey(null); setBulkConfirmPending(null); };
     document.addEventListener('kalshi:escape', handler);
     return () => document.removeEventListener('kalshi:escape', handler);
   }, []);
+
+  // batch-48 item 11: resolves the live opportunity by key every render,
+  // instead of trusting whatever object was on screen at the moment Approve
+  // was clicked -- if a poll changes its price/edge while this modal is
+  // open, the confirm dialog (and the order it submits) reflects the
+  // CURRENT quote. Searches `filtered` (not raw M.opportunities) so a signal
+  // that gets rejected elsewhere while this modal is open also disappears
+  // here, same as everywhere else this tab treats `filtered` as "what's
+  // actually live right now."
+  const confirmPending = useMemo(() => {
+    const opp = resolveByKey(filtered, pendingApprovalKey, oppKey);
+    return opp ? { opp, qty: pendingApprovalQty } : null;
+  }, [filtered, pendingApprovalKey, pendingApprovalQty]);
+
+  // batch-48 item 11 fix direction: if the referenced opportunity ages out
+  // of live data entirely (scan re-fetch, TTL reject, etc.) while the modal
+  // is open, close it with an explanation instead of leaving a dangling key
+  // (which would just render nothing with no feedback) or letting a stale
+  // reference silently resolve to undefined.
+  useEffect(() => {
+    if (pendingApprovalKey != null && resolveByKey(filtered, pendingApprovalKey, oppKey) == null) {
+      setPendingApprovalKey(null);
+      setActionMsg('✗ Signal no longer available — scan refreshed');
+      setTimeout(() => setActionMsg(''), 3000);
+    }
+  }, [filtered, pendingApprovalKey]);
+
+  // batch-48 item 1: focus the modal container on the open TRANSITION only
+  // (keyed off the boolean, not the derived confirmPending object) -- that
+  // object gets a new identity on every poll while the modal is already
+  // open (item 11's live-data useMemo), and refocusing on every one of those
+  // would yank focus away from wherever the operator had already tabbed to.
+  useEffect(() => {
+    if (pendingApprovalKey != null) confirmModalRef.current?.focus();
+  }, [pendingApprovalKey != null]);
+  useEffect(() => {
+    if (bulkConfirmPending) bulkConfirmModalRef.current?.focus();
+  }, [!!bulkConfirmPending]);
 
   function handleAction(opp, action) {
     if (action === 'reject') {
@@ -112,13 +193,14 @@ export default function SignalsTab() {
     // approve → show confirmation dialog first, sized via bulkOrderQty
     // (opus review LOW-12: this and the bulk-approve path used to hand-
     // duplicate the same sizing expression as two separate copies).
-    setConfirmPending({ opp, qty: bulkOrderQty(opp) });
+    setPendingApprovalKey(oppKey(opp));
+    setPendingApprovalQty(bulkOrderQty(opp));
   }
 
   function handleConfirm() {
     if (!confirmPending) return;
     const { opp, qty } = confirmPending;
-    setConfirmPending(null);
+    setPendingApprovalKey(null);
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -730,19 +812,39 @@ export default function SignalsTab() {
         </section>
       )}
 
-      {/* Confirmation modal — Escape cancels, Enter confirms */}
+      {/* Confirmation modal — Escape cancels, Enter confirms.
+          batch-48 item 1: tabIndex={-1} + the open-transition autofocus
+          effect above make Enter actually reach this handler (previously
+          attached to a div nothing ever focused) -- plus role="dialog" /
+          aria-modal / aria-labelledby and the Tab focus trap for the
+          accessibility gaps noted alongside the same finding.
+          opus review CRITICAL: `e.target === e.currentTarget` is required --
+          keydown bubbles, so without this guard, Enter fires handleConfirm()
+          no matter which element inside the modal is focused, INCLUDING the
+          Cancel button (place the order while dismissing) and Place order
+          itself (double-submit, racing the button's own native Enter-
+          activates-focused-button behavior). With the guard, Enter only
+          confirms when nothing inside has stolen focus from the container
+          (i.e. right after open); once Tab moves focus onto Cancel or Place
+          order, the browser's own native button-activation semantics for
+          Enter on a focused button take over instead. */}
       {confirmPending && (
         <div
-          onKeyDown={e => { if (e.key === 'Enter') handleConfirm(); }}
+          ref={confirmModalRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-trade-title"
+          onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) handleConfirm(); trapTabFocus(e, confirmModalRef); }}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-          }} onClick={() => setConfirmPending(null)}>
+          }} onClick={() => setPendingApprovalKey(null)}>
           <div onClick={e => e.stopPropagation()} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: 14, padding: '24px 28px', minWidth: 340, maxWidth: 420,
           }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
+            <h3 id="confirm-trade-title" style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
             {(() => {
               // batch-26: cost/price shown must match what handleConfirm will
               // actually submit (the side-aware ask price), not the YES mid.
@@ -766,7 +868,7 @@ export default function SignalsTab() {
               );
             })()}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setConfirmPending(null)} style={{
+              <button onClick={() => setPendingApprovalKey(null)} style={{
                 padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer',
               }}>Cancel</button>
@@ -796,7 +898,16 @@ export default function SignalsTab() {
         const remaining = (M.stats.balance || 0) - M.positions.reduce((a, p) => a + p.cost, 0) - totalCost;
         return (
           <div
-            onKeyDown={e => { if (e.key === 'Enter') handleBulkConfirm(); }}
+            ref={bulkConfirmModalRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-bulk-title"
+            // opus review CRITICAL (same as the single-approve modal above):
+            // e.target === e.currentTarget is required so Enter can't fire
+            // handleBulkConfirm() while Cancel is focused, or double-fire it
+            // alongside Place N orders' own native button-activation.
+            onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) handleBulkConfirm(); trapTabFocus(e, bulkConfirmModalRef); }}
             style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
@@ -805,7 +916,7 @@ export default function SignalsTab() {
               background: 'var(--bg-card)', border: '1px solid var(--border)',
               borderRadius: 14, padding: '24px 28px', minWidth: 380, maxWidth: 480,
             }}>
-              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm {rows.length} trade{rows.length !== 1 ? 's' : ''}</h3>
+              <h3 id="confirm-bulk-title" style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm {rows.length} trade{rows.length !== 1 ? 's' : ''}</h3>
               <div style={{ maxHeight: 220, overflowY: 'auto', margin: '10px 0 14px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 {rows.map(({ opp, price, qty, cost }) => (
                   <div key={opp.ticker} style={{

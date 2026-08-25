@@ -301,9 +301,23 @@ export default function PositionsTab() {
           {(() => {
             const deployed = M.positions.reduce((a, p) => a + p.cost, 0);
             const available = (M.stats.balance || 0) - deployed;
+            // batch-48 item 2: this was hardcoded green regardless of sign --
+            // a negative available balance (overcommitted, or a display bug
+            // elsewhere) was painted the same as healthy. Reuse fmtSigned's
+            // sign->colour derivation (batch-42) rather than a fourth ad hoc
+            // mapping; text keeps this file's own sign+$+abs convention
+            // (matches upnlLabel below) rather than fmtSigned's '+'-prefixed
+            // percent-oriented text.
+            // opus review LOW: sign/colour off the ROUNDED cents, not the raw
+            // float -- a sub-cent negative (e.g. -0.004, well within normal
+            // float noise) would otherwise round to "$0.00" but still paint
+            // red with a leading '-', a false overcommitted signal.
+            const availableRounded = Math.round(available * 100) / 100;
+            const availableColor = fmtSigned(availableRounded, 2, '').color;
+            const availableLabel = (availableRounded >= 0 ? '$' : '-$') + Math.abs(availableRounded).toFixed(2);
             return (
               <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                {M.positions.length} positions · <span style={{ color: '#3b82f6', fontWeight: 600 }}>${deployed.toFixed(2)}</span> deployed · <span style={{ color: '#16a34a', fontWeight: 600 }}>${available.toFixed(2)}</span> available
+                {M.positions.length} positions · <span style={{ color: '#3b82f6', fontWeight: 600 }}>${deployed.toFixed(2)}</span> deployed · <span style={{ color: availableColor, fontWeight: 600 }}>{availableLabel}</span> available
               </p>
             );
           })()}
@@ -426,7 +440,14 @@ export default function PositionsTab() {
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => { e.stopPropagation(); setAlertsPanelOpen(true); }}>
+                  <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => {
+                    e.stopPropagation();
+                    // batch-48 item 5: opening the panel from a row's own bell
+                    // used to leave the ticker field blank, forcing the
+                    // operator to re-pick the exact row they just clicked.
+                    setNewAlertTicker(p.ticker);
+                    setAlertsPanelOpen(true);
+                  }}>
                     <button style={{
                       background: hasAlert ? 'rgba(59,130,246,0.12)' : 'transparent',
                       border: 'none', fontSize: 16, cursor: 'pointer', padding: '2px 6px', borderRadius: 4,

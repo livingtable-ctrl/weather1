@@ -118,7 +118,25 @@ export function StatCard({ label, value, delta, deltaTone, sub, tooltip }) {
 // ---------------------------------------------------------------------------
 // TableSkeleton — animated loading placeholder for tables
 // ---------------------------------------------------------------------------
+// batch-48 item 10: the `@keyframes pulse` <style> block used to be rendered
+// inside TableSkeleton's own JSX, so every mounted instance injected its own
+// copy into the page. Hoisted to a single lazy, idempotent injection instead
+// -- guarded by `typeof document` so importing this module in a non-DOM test
+// environment (this repo's vitest suite runs plain functions with no jsdom)
+// never touches `document` at all, and by the module-level flag so a second
+// TableSkeleton instance (or re-render) is a no-op rather than a second
+// <style> tag.
+let pulseKeyframesInjected = false;
+function ensurePulseKeyframes() {
+  if (pulseKeyframesInjected || typeof document === 'undefined') return;
+  const style = document.createElement('style');
+  style.textContent = '@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }';
+  document.head.appendChild(style);
+  pulseKeyframesInjected = true;
+}
+
 export function TableSkeleton({ rows = 5, columns = 8 }) {
+  ensurePulseKeyframes();
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
       <div style={{ padding: '11px 16px', background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
@@ -135,7 +153,6 @@ export function TableSkeleton({ rows = 5, columns = 8 }) {
           ))}
         </div>
       ))}
-      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
     </div>
   );
 }
@@ -769,6 +786,43 @@ export function filterRejected(opportunities, rejectedMap, now = Date.now()) {
     const exp = rejectedMap[oppKey(o)];
     return exp == null || exp <= now;
   });
+}
+
+// ---------------------------------------------------------------------------
+// resolveByKey — batch-48 item 11 (audit F-M4): find the CURRENT object
+// matching `key` in `items`, via caller-supplied `keyFn`. Used to re-derive a
+// pending-confirmation object fresh on every render (SignalsTab's
+// pendingApprovalKey -> live opportunity) instead of trusting whatever
+// object was captured at the moment a confirm dialog was opened -- if a poll
+// lands while the dialog is still open, the next call with the refreshed
+// `items` list returns the object carrying the CURRENT quote, not the stale
+// one. Generalizes the identity-based lookup PositionsTab.jsx already uses
+// inline (selectedId + `M.positions.find(p => rowKey(p) === selectedId)`)
+// into a shared, independently-testable helper. Returns null both when `key`
+// itself is null (nothing pending) and when `key` no longer matches anything
+// in `items` (the referenced item aged out of the live data).
+// ---------------------------------------------------------------------------
+export function resolveByKey(items, key, keyFn) {
+  if (key == null) return null;
+  return items.find(item => keyFn(item) === key) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// heatStatus — batch-48 item 3: RiskTab derived a display string via
+// `.toFixed(0)` and then compared THAT STRING directly against 80/60 (`>`
+// coerces it back to a number, so it happened to work -- but a future
+// refactor touching either side has nothing stopping it from comparing two
+// strings lexicographically instead, e.g. "9" > "80" is true). Keeps the
+// real number the comparisons need separate from the display-only string.
+// ---------------------------------------------------------------------------
+export function heatStatus(totalCost, balance) {
+  const pct = balance > 0 ? (totalCost / balance) * 100 : 0;
+  return {
+    pct,
+    label: pct.toFixed(0) + '%',
+    deltaTone: pct > 80 ? 'neg' : pct > 60 ? undefined : 'pos',
+    sub: pct > 80 ? 'Over limit — halting' : 'Within 80% limit',
+  };
 }
 
 // ---------------------------------------------------------------------------

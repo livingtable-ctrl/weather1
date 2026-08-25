@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
-import { authHeader } from '../useData.js';
 import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier, sumUnrealizedPnl, balanceDeltaPct } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
@@ -61,12 +60,19 @@ export default function OverviewTab() {
   const unrealizedPnl = sumUnrealizedPnl(M.positions);
   const balPct = balanceDeltaPct(s.balance, s.starting_balance);
 
-  const [cronStale, setCronStale] = useState(false);
+  // batch-48 item 8: cronStaleRaw now comes from the shared 60s poll
+  // (useData.js folds /health in) instead of a mount-only fetch owned here,
+  // so a staleness condition that starts or recurs after the tab has been
+  // open for a while is actually re-checked. Dismissal only suppresses the
+  // CURRENT occurrence -- the effect below clears dismissedStale the moment
+  // the condition itself clears, so a later re-trigger shows the banner
+  // again instead of staying permanently dismissed for the session.
+  const cronStaleRaw = (s.hours_since_cron ?? 0) > 48;
+  const [dismissedStale, setDismissedStale] = useState(false);
   useEffect(() => {
-    fetch('/health', { headers: authHeader() }).then(r => r.json())
-      .then(d => { if ((d.hours_since_cron ?? 0) > 48) setCronStale(true); })
-      .catch(() => {});
-  }, []);
+    if (!cronStaleRaw) setDismissedStale(false);
+  }, [cronStaleRaw]);
+  const cronStale = cronStaleRaw && !dismissedStale;
 
   // Compute alert states here so we can render a top-of-page banner — both
   // conditions are operationally critical and easy to miss if only in RiskTab.
@@ -113,7 +119,7 @@ export default function OverviewTab() {
                   py main.py cron
                 </code>
               </span>
-              <button onClick={() => setCronStale(false)}
+              <button onClick={() => setDismissedStale(true)}
                 style={{ marginLeft: 16, background: 'none', border: 'none', color: '#ef4444',
                          cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
             </div>

@@ -554,6 +554,7 @@ const ENDPOINTS = [
   '/api/calibration-status',   // 19
   '/api/scan-stats',           // 20
   '/api/emos-status',          // 21
+  '/health',                   // 22
 ];
 
 /**
@@ -686,7 +687,7 @@ export default function useData(setConnected) {
         brierHistoryR, forecastQualityR,
         samedayCalibR,
         anomalyStatusR, calibStatusR, scanStatsR,
-        emosStatusR,
+        emosStatusR, healthR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -700,6 +701,21 @@ export default function useData(setConnected) {
         // refresh countdown) can resync to an actual poll instead of
         // free-running on their own timer.
         next.stats.timestamp = Date.now();
+
+        // batch-48 item 8: OverviewTab's cron-staleness banner used to fetch
+        // /health itself, once, in a mount-only useEffect -- so a staleness
+        // condition that started (or recurred) after the tab had been open
+        // for a while was never re-checked. Folding it into this same 60s
+        // poll means OverviewTab just derives its banner from stats on every
+        // render instead of owning its own fetch/timer. Only ASSIGNED on a
+        // successful /health response -- but like every other stats.* field
+        // here, a failed fetch doesn't reset it to undefined: statsPatch
+        // (via mapStats's own `base = {...prevStats}`) already carries the
+        // last-known value forward, so a transient /health failure can't
+        // make a real staleness banner flicker off.
+        if (healthR && healthR.hours_since_cron != null) {
+          next.stats.hours_since_cron = healthR.hours_since_cron;
+        }
 
         // Circuit breakers
         const cbs = mapCircuitBreakers(cbsR);

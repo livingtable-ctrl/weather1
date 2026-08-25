@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { DataContext } from '../DataContext.js';
-import { StatCard, brierAlertTier, haltOrResume } from '../shared.jsx';
+import { StatCard, brierAlertTier, haltOrResume, heatStatus } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // BrierAlertCard — P10.3 Brier degradation alert. Fires when weekly Brier
@@ -178,7 +178,12 @@ export default function RiskTab() {
   const M = useContext(DataContext);
   const totalCost = M.positions.reduce((a, p) => a + p.cost, 0);
   const balance = M.stats.balance;
-  const heatPct = balance > 0 ? ((totalCost / balance) * 100).toFixed(0) : 0;
+  // batch-48 item 3: heatStatus (shared.jsx, unit-tested) keeps the real
+  // number every comparison needs separate from the display-only string --
+  // the old inline version compared a `.toFixed()` STRING against 80/60
+  // directly, which only worked because JS coerces a numeric-looking string
+  // during `>`.
+  const heat = heatStatus(totalCost, balance);
   // Guard against division by zero when there are no open positions
   const biasTotal = (M.directionalBias.yes || 0) + (M.directionalBias.no || 0);
   const bullishPct = biasTotal > 0 ? ((M.directionalBias.yes / biasTotal) * 100).toFixed(0) : null;
@@ -192,9 +197,9 @@ export default function RiskTab() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         <StatCard label="Portfolio heat" tooltip="% of capital deployed. Bot halts new trades above 80%."
-          value={heatPct + '%'}
-          deltaTone={heatPct > 80 ? 'neg' : heatPct > 60 ? undefined : 'pos'}
-          sub={heatPct > 80 ? 'Over limit — halting' : 'Within 80% limit'} />
+          value={heat.label}
+          deltaTone={heat.deltaTone}
+          sub={heat.sub} />
         <StatCard label="Aged positions" tooltip="Positions held >36 h. Ties up capital; may signal a stuck trade."
           value={M.agedPositions.length} sub=">36h old" />
         <StatCard label="Correlated events" tooltip="Multiple positions on related markets (same city / same day)."

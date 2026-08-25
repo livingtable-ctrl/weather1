@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -812,5 +812,100 @@ describe('summarizeTradeOutcomes', () => {
 
   it('empty rows: zero everything, no crash', () => {
     expect(summarizeTradeOutcomes([])).toEqual({ wins: 0, losses: 0, other: 0 });
+  });
+});
+
+// -----------------------------------------------------------------------
+// resolveByKey — batch-48 item 11 (audit F-M4): SignalsTab used to freeze
+// an entire opportunity object in confirm-dialog state at the moment Approve
+// was clicked, so a poll landing while the dialog stayed open (or a scan
+// re-fetch) left the operator confirming an order against a stale,
+// pre-refresh quote. This is the core lookup the fix now re-runs on every
+// render instead of trusting a captured snapshot -- these tests are the
+// positive/negative controls for exactly that: a second call with a
+// refreshed list must return the FRESH object (proving the caller isn't
+// reading cached state), and a key that's aged out of the list must resolve
+// to null rather than a stale or undefined object.
+// -----------------------------------------------------------------------
+describe('resolveByKey', () => {
+  const keyFn = (o) => o.ticker;
+
+  it('returns the item matching the key', () => {
+    const items = [{ ticker: 'A', price: 1 }, { ticker: 'B', price: 2 }];
+    expect(resolveByKey(items, 'B', keyFn)).toEqual({ ticker: 'B', price: 2 });
+  });
+
+  it('a null key (nothing pending) resolves to null without scanning items', () => {
+    expect(resolveByKey([{ ticker: 'A' }], null, keyFn)).toBeNull();
+  });
+
+  it('a key no longer present in items (aged out of a poll refresh) resolves to null', () => {
+    const items = [{ ticker: 'A' }, { ticker: 'B' }];
+    expect(resolveByKey(items, 'C', keyFn)).toBeNull();
+  });
+
+  it('positive control: a second call against a refreshed list returns the FRESH object, not a cached stale one -- this is the exact bug the fix closes', () => {
+    const staleList = [{ ticker: 'A', price: 0.32 }];
+    const freshList = [{ ticker: 'A', price: 0.41 }]; // a poll landed with a new quote
+    const first = resolveByKey(staleList, 'A', keyFn);
+    const second = resolveByKey(freshList, 'A', keyFn);
+    expect(first.price).toBe(0.32);
+    expect(second.price).toBe(0.41);
+    expect(second.price).not.toBe(first.price);
+  });
+
+  it('empty items: resolves to null, no crash', () => {
+    expect(resolveByKey([], 'A', keyFn)).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------
+// heatStatus — batch-48 item 3: RiskTab compared a `.toFixed()` DISPLAY
+// STRING directly against 80/60, which only worked because `>` coerces a
+// numeric-looking string back to a number. These tests pin the extracted,
+// genuinely-numeric version and its boundary behavior.
+// -----------------------------------------------------------------------
+describe('heatStatus', () => {
+  it('hand-computed percentage, label, and tone below the 60% band', () => {
+    const { pct, label, deltaTone, sub } = heatStatus(30, 100);
+    expect(pct).toBeCloseTo(30, 10);
+    expect(label).toBe('30%');
+    expect(deltaTone).toBe('pos');
+    expect(sub).toBe('Within 80% limit');
+  });
+
+  it('boundary is strictly greater-than 60, not >=: exactly 60 is still "pos"', () => {
+    expect(heatStatus(60, 100).deltaTone).toBe('pos');
+    expect(heatStatus(60.01, 100).deltaTone).toBeUndefined();
+  });
+
+  it('between 60 and 80 (exclusive/inclusive): neutral tone (undefined), still within-limit sub', () => {
+    const { deltaTone, sub } = heatStatus(70, 100);
+    expect(deltaTone).toBeUndefined();
+    expect(sub).toBe('Within 80% limit');
+  });
+
+  it('boundary is strictly greater-than 80, not >=: exactly 80 is still within-limit', () => {
+    expect(heatStatus(80, 100).sub).toBe('Within 80% limit');
+    expect(heatStatus(80.01, 100).sub).toBe('Over limit — halting');
+  });
+
+  it('above 80%: neg tone and the halting message', () => {
+    const { deltaTone, sub } = heatStatus(95, 100);
+    expect(deltaTone).toBe('neg');
+    expect(sub).toBe('Over limit — halting');
+  });
+
+  it('balance<=0: pct is 0, not NaN/Infinity from a division by zero or negative', () => {
+    expect(heatStatus(50, 0).pct).toBe(0);
+    expect(heatStatus(50, -10).pct).toBe(0);
+  });
+
+  it('positive control: pct is a real number the caller can compare directly, not a string', () => {
+    // The exact bug this guards: the old code's heatPct was a toFixed()
+    // string reused for both display AND comparison. Confirm pct here is
+    // numeric so a future `pct > 80` can never silently become a string
+    // comparison again.
+    expect(typeof heatStatus(85, 100).pct).toBe('number');
   });
 });

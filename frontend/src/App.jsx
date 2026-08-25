@@ -135,6 +135,17 @@ const THEMES = {
 };
 function applyTheme(t) {
   Object.entries(THEMES[t]).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
+  // opus review LOW (batch-48 item 7 follow-up): index.html's pre-mount
+  // script sets these same three direct style properties (not just the CSS
+  // custom properties) so nothing paints unthemed before React mounts --
+  // but that script only runs once, at load. Without mirroring it here, a
+  // manual theme-toggle click after mount left backgroundColor/color/
+  // colorScheme pinned at the LOAD-time theme forever, most visibly in
+  // native form chrome (a <select>'s dropdown panel, scrollbars) that keeps
+  // rendering the old scheme after the operator switches.
+  document.documentElement.style.backgroundColor = THEMES[t]['--bg-page'];
+  document.documentElement.style.color = THEMES[t]['--text'];
+  document.documentElement.style.colorScheme = t;
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +457,16 @@ export default function App() {
     const hash = window.location.hash.slice(1);
     return VALID_TABS.includes(hash) ? hash : 'Overview';
   });
-  const [theme, setTheme] = useState(() => localStorage.getItem('kalshi-theme') || 'light');
+  // batch-48 item 7: mirrors index.html's inline pre-mount script's fallback
+  // (stored preference, else prefers-color-scheme) so this state never
+  // disagrees with the CSS vars that script already applied before mount --
+  // an initial 'light' default here would fight a dark-mode OS user's synced
+  // vars the instant this component's own theme useEffect below runs.
+  const [theme, setTheme] = useState(() => {
+    const stored = localStorage.getItem('kalshi-theme');
+    if (stored) return stored;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
   const [connected, setConnected] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null });
@@ -458,8 +478,13 @@ export default function App() {
     localStorage.setItem('kalshi-theme', theme);
   }, [theme]);
 
+  // batch-48 item 6: Date.now() gave two toasts fired within the same
+  // millisecond the same id, so the first one's removal timeout matched
+  // (and removed) both. A monotonic ref counter can't collide regardless of
+  // firing rate.
+  const toastIdRef = useRef(0);
   const addToast = useCallback((message, type = 'success', duration = 4000) => {
-    const id = Date.now();
+    const id = ++toastIdRef.current;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);

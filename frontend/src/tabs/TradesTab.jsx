@@ -66,7 +66,12 @@ export default function TradesTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `trades_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    // batch-48 item 4: revoking synchronously right after .click() raced the
+    // download in some browsers -- the click's navigation to the blob: URL
+    // hadn't necessarily completed yet, so a same-tick revoke could cancel
+    // it. Deferring by a couple seconds gives the download time to start
+    // while still freeing the URL well before the operator would export again.
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
   return (
