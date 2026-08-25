@@ -17,6 +17,7 @@ from paths import DATA_DIR
 
 try:
     from fpdf import FPDF  # type: ignore[import-untyped]
+    from fpdf.enums import XPos, YPos  # type: ignore[import-untyped]
 
     _HAS_FPDF = True
 except ImportError:
@@ -72,14 +73,22 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
 
     # Title
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 12, _pdf("Kalshi Weather Trading - Weekly Report"), ln=True)
+    pdf.cell(
+        0,
+        12,
+        _pdf("Kalshi Weather Trading - Weekly Report"),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, f"Generated: {data['generated_at']}", ln=True)
+    pdf.cell(
+        0, 6, f"Generated: {data['generated_at']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
     pdf.ln(4)
 
     # Portfolio summary
     pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, "Portfolio Summary", ln=True)
+    pdf.cell(0, 8, "Portfolio Summary", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Helvetica", "", 10)
     pnl_str = (
         f"+${data['pnl']:.2f}" if data["pnl"] >= 0 else f"-${abs(data['pnl']):.2f}"
@@ -96,15 +105,21 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
         f"Fear/Greed:   {data['fg_score']} - {data['fg_label']}",
     ]
     for line in summary_lines:
-        pdf.cell(0, 6, _pdf(line), ln=True)
+        pdf.cell(0, 6, _pdf(line), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(4)
 
     # Open positions
     pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, f"Open Positions ({len(data['open_trades'])})", ln=True)
+    pdf.cell(
+        0,
+        8,
+        f"Open Positions ({len(data['open_trades'])})",
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
     pdf.set_font("Helvetica", "", 9)
     if not data["open_trades"]:
-        pdf.cell(0, 6, "No open positions.", ln=True)
+        pdf.cell(0, 6, "No open positions.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     else:
         col_w = [55, 18, 15, 22, 28, 32]
         headers = ["Ticker", "Side", "Qty", "Entry", "Cost", "Date"]
@@ -129,11 +144,13 @@ def _generate_pdf(data: dict, output_path: Path) -> None:
 
     # Recent settled trades
     pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, "Recent Settled Trades (last 10)", ln=True)
+    pdf.cell(
+        0, 8, "Recent Settled Trades (last 10)", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
     settled = data["recent_settled"]
     if not settled:
         pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, "No settled trades.", ln=True)
+        pdf.cell(0, 6, "No settled trades.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     else:
         col_w2 = [55, 18, 22, 20, 25]
         headers2 = ["Ticker", "Side", "Outcome", "P&L", "Date"]
