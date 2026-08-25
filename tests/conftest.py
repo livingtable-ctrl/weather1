@@ -977,6 +977,27 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
         tmp_path / "nearby_station_shadow.json",
     )
 
+    # kalshi_weather_index._STATE_PATH -- _cmd_cron_body() calls
+    # check_miami_index_config_version(client) on every cycle. With a
+    # MagicMock client, get_live_weather_index() auto-returns a truthy
+    # mock, so the `data is None` fail-soft never trips and
+    # data.get("config_version") is ALSO a truthy mock --
+    # _check_config_version_drift() then persisted that mock's repr into
+    # the real main-clone data/miami_index_state.json. The next REAL cron
+    # cycle read it back as a changed version and fired the red "Miami
+    # settlement methodology may have changed" alert: a false positive on
+    # a red-severity channel, once per test-suite run (observed live
+    # 2026-08-25). tests/test_kalshi_weather_index.py already patches
+    # _STATE_PATH in every one of its own tests; this covers the OTHER
+    # call site (cron.py), which ~20 test files reach via cmd_cron.
+    import kalshi_weather_index
+
+    monkeypatch.setattr(
+        kalshi_weather_index,
+        "_STATE_PATH",
+        tmp_path / "miami_index_state.json",
+    )
+
 
 def pytest_sessionfinish(session, exitstatus):
     """Clear weather_markets' forecast/ensemble disk-cache pending-write
