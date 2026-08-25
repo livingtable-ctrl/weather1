@@ -30958,3 +30958,118 @@ Recommendation:
   out, say so explicitly in the README table's intro line so the omission
   is visibly deliberate rather than looking like the same drift this entry
   describes.
+
+[RESOLVED 2026-08-24 -- built as A14 from the "Weather V3 additions" design
+  handoff; the finding arrived before the panel did] MODEL-VS-MARKET BRIER
+  SHOWS NO MEASURABLE FORECAST SKILL
+Priority: High -- the scanner's claimed edge is unsupported by forecast
+  accuracy on every slice with usable sample size.
+Files: tracker.py (_paired_advantage, _brier_series_stats,
+  get_model_vs_market_brier, brier_skill_score), web_app.py (/api/analytics),
+  tests/test_model_vs_market_brier.py
+
+Problem:
+  Nothing scored the market's own mid-price with the same yardstick we score
+  ourselves with, so "our probability disagrees with the price" was never
+  separated into "we have edge" versus "we are wrong". brier_skill_score()
+  came closest but reads the multiday_predictions view, which filters
+  days_out >= 1 OR NULL and therefore discards D+0 -- 56% of settled rows --
+  and pooled every remaining horizon into one number with no climatology
+  reference.
+
+  Measured on 214 settled, non-disputed, condition-filtered rows:
+    model Brier 0.2596  vs  market 0.2201  vs  climatology 0.2482
+    skill -0.179
+  Unfiltered (n=342): skill -0.142, paired t=2.59 on per-row Brier
+  differences, 95% CI [+0.008, +0.057], bootstrap P(model worse) = 0.9965.
+  Against a flat 0.50 forecast: t=0.69 -- statistically indistinguishable
+  from a coin flip. Every slice agrees in sign and rough magnitude
+  (D+0 real -0.144, D+1 real -0.173, shadow -0.057, real -0.178).
+
+  Verified apples-to-apples before trusting it: market_prob is the YES mid
+  (yes_bid+yes_ask)/2 from weather_markets.parse_market_price's
+  "implied_prob", our_prob is the blended YES probability, and
+  outcomes.settled_yes is 1 when YES won -- all three in YES-space.
+
+What shipped:
+  get_model_vs_market_brier() scores both against the same outcome, split by
+  lead (D+0 / D+1 / D+2+) and by is_shadow, with in-sample climatology
+  reported and leave-one-out climatology used for gating. Joins
+  outcomes_valid and applies _excluded_brier_condition_types() like every
+  other Brier-quality query. Served via /api/analytics as
+  `model_vs_market_brier`, replacing brier_skill_score in that payload so
+  the dashboard cannot show two disagreeing "skill vs market" figures.
+
+  The `policy` label is display-only -- nothing in the sizing, gating or
+  order path reads it, same convention as log_prediction()'s gated_edge. It
+  is gated on a paired significance test (beat both the market and
+  leave-one-out climatology by more than 1.645 SE) rather than a fixed
+  sample floor. A first attempt used n >= 100; an opus review measured that
+  emitting "trade" on ~22% of pure-noise samples at this bot's own
+  disagreement level (sd(our_prob - market_prob) = 0.22), because a fixed
+  relative threshold cannot track a noise floor that shrinks as 1/sqrt(n).
+
+  brier_skill_score() now delegates its arithmetic to _brier_series_stats
+  (verified bit-identical over 200k randomised row-sets) so the two can never
+  drift. Its ROW SELECTION is deliberately unchanged, so it remains listed on
+  the open "MORE BRIER-FAMILY FUNCTIONS WITH NO CONDITION_TYPE FILTER" entry.
+
+  Tests: 46 in tests/test_model_vs_market_brier.py. Regression sweep 651
+  passed across test_tracker, test_calibration, test_disputed_row_guard,
+  test_web_app. Two opus review rounds (16 + 11 findings, all addressed) and
+  9 mutation checks. Round 2 caught a sign inversion in _paired_advantage
+  that made "significantly better" test the opposite of its name, and a
+  surviving mutant proving the significance margin itself was untested; both
+  are now pinned by dedicated tests.
+
+  Caveats are in the docstring and must not be dropped: Brier measures
+  calibration, not P&L; the statistic is unconditional on the SIZE of the
+  disagreement with the price; the population is self-selected. See the
+  follow-up entry below before concluding anything about profitability.
+
+
+[OPEN 2026-08-24 -- follow-up to the A14 no-skill finding above] MEASURE
+  BRIER SKILL CONDITIONED ON THE SIZE OF OUR DISAGREEMENT WITH THE PRICE
+Priority: High -- decides whether the A14 finding means "no edge anywhere"
+  or "no edge on average, with edge in the tail we actually trade".
+Files: tracker.py (get_model_vs_market_brier)
+
+Problem:
+  A14's pooled Brier skill is unconditional: it scores every market the
+  scanner analyzed, including the many where our probability broadly agreed
+  with the mid. Those rows contribute almost nothing to the model-minus-
+  market difference and pull the statistic toward zero. Trading edge, if it
+  exists, lives specifically in the subset where the disagreement was large
+  enough to act on -- which is exactly the subset the pooled number cannot
+  see.
+
+  So a pooled skill of -0.179 is consistent with real edge on the traded
+  tail, and a positive pooled skill would have been consistent with no edge
+  there. The measurement as it stands cannot distinguish these.
+
+  Two further confounders, both already noted in the A14 docstring:
+  - Population is self-selected. `predictions` holds only markets the
+    scanner chose to analyze; is_shadow=0 holds only those it chose to
+    trade. There is no record of markets it never looked at.
+  - Brier measures probability calibration, not P&L. A model can be badly
+    calibrated and still profitable if it is directionally right at the
+    moments it trades, and well calibrated yet unprofitable after fees and
+    spread.
+
+Recommendation:
+  Add an optional `min_edge` parameter to get_model_vs_market_brier() and
+  report a second series conditioned on
+  abs(our_prob - market_prob) >= min_edge, at the edge floor the scanner
+  actually uses. Report n alongside it -- the tail will be small, and the
+  same paired significance test the policy gate already uses should decide
+  whether anything can be concluded from it rather than a raw threshold.
+
+  Pair it with a P&L-side read before drawing any conclusion about the
+  strategy: realized return on settled trades bucketed by claimed edge is
+  the A1 "edge attribution" panel from the same design handoff, and answers
+  the profitability half that Brier structurally cannot.
+
+  Until this lands, treat the A14 headline as "the forecast is not better
+  calibrated than the price on average", NOT as "the strategy has no edge".
+  Live trading is dormant; this is a reason to keep it dormant pending the
+  conditional read, not evidence to rebuild the model.
