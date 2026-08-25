@@ -35276,3 +35276,179 @@ When to revisit:
   future analysis that joins forecast_temp_f to settled_temp_f. All three
   would silently inherit the corruption.
 
+[OPEN 2026-08-25 -- found by batch-53's replay while trying to test whether
+  the market prices temperature uncertainty wider than realized; the test
+  could not be run because this signal is unusable.]
+  fit_market_implied_distribution() RETURNS A DEGENERATE FIT ON ~19% OF
+  ROWS AND ITS SANITY BOUNDS ARE TOO LOOSE TO CATCH IT
+Priority: Medium -- log-only signal, no live consumer today, so nothing is
+  mispriced by it. But it is recorded as if it were usable, and the one
+  analysis that tried to use it got nonsense. Any future "market-implied
+  volatility" work inherits this.
+Files: weather_markets.py (fit_market_implied_distribution ~7950, its
+  sigma_bounds default at :7952, the bounds check at :8095), tracker.py
+  (predictions.implied_sigma / implied_mean / fit_residual columns),
+  sigma_audit.py (diagnostic reader)
+
+Problem:
+  fit_market_implied_distribution() fits a Normal to an event's sibling
+  bracket ladder by weighted least squares and stores implied_mean /
+  implied_sigma / fit_residual. Its guard is
+  `sigma_bounds: tuple[float, float] = (0.1, 50.0)` (:7952), enforced at
+  :8095. For a daily temperature market a 50F upper bound is not a sanity
+  check -- it accepts essentially any degenerate solution.
+
+  Measured over all 160 rows carrying implied_sigma (live DB, 2026-08-25):
+
+    p5   0.702    p25  1.286    p50  1.820    p75  2.211
+    p90 13.052    p95 20.819    p99 41.630    max 47.298
+
+    implied_sigma >  5F:  30 rows (18.8%)
+    implied_sigma > 20F:   9 rows ( 5.6%)
+
+  The median (1.82F) is entirely sensible. The distribution is bimodal:
+  roughly 81% good fits and 19% garbage. fit_residual does NOT flag them --
+  its median is 0.0035 and p90 0.0794, so the optimizer is "succeeding"
+  numerically; it is finding a genuinely flat/thin ladder and fitting a
+  huge sigma to it.
+
+  implied_mean goes with it: |implied_mean - forecast_temp_f| > 20F on 10
+  of 82 comparable rows (12.2%).
+
+  Direct test of usability, on the 69 settled non-metar_lockout rows that
+  have implied_sigma: z = (settled_temp_f - implied_mean) / implied_sigma
+  has mean -3.288 and sd 6.563. A usable fit would give mean ~0, sd ~1.
+  For comparison the bot's own sigma on the same rows gives mean z +0.228,
+  sd 1.194 -- imperfect (about 19% too narrow) but usable.
+
+  Consequence for the analysis that surfaced this: the question "does the
+  market price temperature uncertainty wider than we do" could not be
+  answered on the mean (market/our = 3.41x, driven entirely by the garbage
+  tail). On medians it is 1.41x, with the market wider on 55.1% of rows --
+  suggestive, not conclusive, and not worth acting on until the fit is
+  trustworthy.
+
+Prior art in this same function, worth reading before choosing a fix:
+  A tighter bound was ALREADY added for the rain ladders (see the
+  "Sanity bounds for fit_market_implied_distribution()'s fitted sigma when
+  fitting KXRAIN*M monthly-rain siblings" comment, weather_markets.py
+  ~5823). Its own text says the function's "default bounds of (0.1, 50.0)
+  were tuned for temperature and never validated at rain's much smaller
+  scale" -- so the rain caller got a real bound and the temperature caller
+  was left on the untightened default. This entry is the temperature half
+  of that same observation.
+
+What the fix looks like:
+  - Tighten the temperature sigma bound to something defensible. Realized
+    forecast-error RMSE on clean rows is ~3F and the bot's own capped sigma
+    tops out at _SIGMA_2DAY_CAP = 4.0F, so a bound in the 8-12F range would
+    reject every observed degenerate fit while leaving enormous headroom
+    over any plausible real ladder. Derive it, don't guess it.
+  - Decide what a rejected fit should do: return None (the function already
+    has that path) vs. store the fit with a quality flag. Returning None
+    loses the ability to count how often it fails, which is how this stayed
+    invisible.
+  - Consider WHY the flat fits happen -- likely thin ladders with few finite
+    boundaries. If so, a minimum-bracket-count precondition is a better
+    guard than a post-hoc sigma bound, and would fail loudly instead of
+    silently.
+  - Backfill decision for the ~30 existing bad rows: leave, NULL, or
+    recompute.
+
+Why not now:
+  No live consumer, so no urgency. Wants the bound derived from real ladder
+  geometry rather than picked, and that is a small analysis in its own
+  right.
+
+When to revisit:
+  Before ANY use of implied_sigma/implied_mean in a live path, and before
+  any market-implied-volatility analysis -- the "is the market wider than
+  us" question is genuinely interesting (see the measured 1.41x median) and
+  is blocked on this.
+
+[OPEN 2026-08-25 -- found by batch-53's replay while validating the NBM
+  quantile signal, which had just cleared its floor. The floor turned out
+  not to mean what it looks like it means, and nine signals share it.]
+  THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27% STATISTICAL POWER --
+  IT CANNOT DISTINGUISH A REAL SIGNAL FROM NOISE
+Priority: Medium-High -- no signal has been wired live on the strength of a
+  cleared floor yet, so nothing is broken today. But the floor is the
+  headline number on the graduation surface (`main.py`'s report prints
+  "20/20 -- floor cleared" in GREEN and _notify_feature_activation fires an
+  alert saying "ready for the correlation check"), and it is the thing a
+  future session will most plausibly act on. This is a bad-decision trap,
+  filed before it springs rather than after.
+Files: weather_markets.py (_SignalRegistryEntry ~8623, the nine
+  sample_floor=20 entries between ~8721 and ~8850,
+  get_signal_graduation_report's floor_cleared / _notify_feature_activation
+  block ~8918-8945), main.py (the report printer ~7418-7440)
+
+Problem:
+  Nine of the eleven registry entries use sample_floor=20: run_trend,
+  market_implied, market_implied_rain, gated_edge, richer_ml_features,
+  nbm_quantile_prob, ecmwf_consensus_gap, gem_graduation, ukmo_graduation,
+  hrrr_graduation. (cross_city_pooling and rain_forecast_blend use None.)
+
+  At n=20-26, a binary-outcome signal cannot be distinguished from noise.
+  Worked through on nbm_quantile_prob, which cleared the floor with 26
+  settled rows on 2026-08-25 and has the best-looking point estimate of any
+  component measured (AUC 0.657, Brier 0.2162 against the market's 0.2102
+  on the same rows). Hanley-McNeil SE at that AUC and base rate:
+
+     n     SE(AUC)    95% CI at the observed AUC    power vs 0.5
+     26     0.1176         [0.426, 0.887]                27%
+     50     0.0845         [0.491, 0.822]                46%
+    100     0.0589         [0.541, 0.772]                76%
+    200     0.0418         [0.575, 0.739]                96%
+
+  So at the floor, a signal with a genuinely good AUC of 0.657 has a 27%
+  chance of being called better than a coin flip -- and, symmetrically, a
+  worthless signal has ample room to look good. The floor is cleared before
+  the evidence exists either way.
+
+  The registry's own design already hedges this: correlation_note is a
+  free-text "still a human call", and main.py's header prints
+  "Sample-floor status only -- the correlation check for each signal is
+  still a manual judgment call". So the intent was never "20 = graduate".
+  The problem is the affordance: a GREEN "floor cleared" plus a proactive
+  notification reads as an invitation, and nothing anywhere states what
+  sample size would actually settle the question.
+
+What the fix looks like:
+  - Raise sample_floor to a power-derived number rather than a round one.
+    ~150-200 gives 76-96% power at a plausible effect size; pick per signal
+    if their effect sizes differ meaningfully.
+  - Or keep 20 as a "start looking" tripwire and add a SECOND, higher
+    "enough to decide" threshold, with the report distinguishing them. This
+    is probably better -- 20 is genuinely useful as "the pipeline works and
+    rows are arriving", which is a real thing to be notified about.
+  - Either way, soften the notification text and the green: "floor cleared"
+    should not be the loudest thing on the screen when it means "you may now
+    begin collecting evidence".
+  - Record the power basis next to the number so the next person does not
+    have to re-derive it.
+
+Cross-reference:
+  The nbm_quantile_prob signal is the concrete case and is worth its own
+  look regardless -- it is the only component measured that has resolution
+  comparable to the market's (see the batch-53 replay findings recorded in
+  the "IDR/EasyUQ AS A CALIBRATION CHALLENGER" entry). It should NOT be
+  wired live on 26 rows; it should keep accumulating. Its data only starts
+  2026-07-25 and it is skipped entirely on the METAR-locked path
+  (weather_markets.py:14752).
+
+  See also the cross_city_pooling precedent, which is exactly this failure
+  mode having already happened once: an r=0.38 signal was wired live on
+  2026-08-22, an opus review found a contamination path, and re-validating
+  against the fix gave r=0.08 (n=35), sign agreement 51%. It was reverted.
+  That signal used sample_floor=None, so the floor is not what let it
+  through -- but the "looked good on a thin sample" shape is identical.
+
+Why not now:
+  Wants the replacement number derived rather than picked, and a decision on
+  one-threshold-vs-two, which is a judgment call for the user.
+
+When to revisit:
+  Before any signal is wired live on the strength of a cleared floor. If
+  that is about to happen, this entry is the blocker.
+
