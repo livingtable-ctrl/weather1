@@ -14,6 +14,10 @@ from colors import bold, dim, edge_color, green, prob_color, red, yellow
 from kalshi_client import KalshiClient
 from paper import get_profit_factor
 from tracker import (
+    _PNL_EXCLUDED_FAMILY_KEY as EXCLUDED_FAMILY_KEY,  # reserved sub-dict key
+)
+from tracker import (
+    _excluded_brier_condition_types,
     brier_score_by_method,
     brier_score_rolling_with_n,
     get_calibration_by_city,
@@ -518,15 +522,8 @@ def cmd_positions(client: KalshiClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def cmd_pnl_attribution() -> None:
-    """Show P&L attribution by signal source."""
-    data = get_pnl_by_signal_source(min_samples=5)
-    if not data:
-        print("Not enough data per signal source (need 5+ settled per source).")
-        return
-
-    print(f"\n{'Signal Source':<20} {'Brier':>8} {'Win%':>8} {'N':>6} {'Shadow':>7}")
-    print("-" * 54)
+def _print_pnl_rows(data: dict) -> None:
+    """Render one signal-source table body, sorted best-Brier-first."""
     for src, d in sorted(data.items(), key=lambda x: x[1]["brier"]):
         brier = d["brier"]
         color_fn = green if brier < 0.20 else (yellow if brier < 0.25 else red)
@@ -536,7 +533,57 @@ def cmd_pnl_attribution() -> None:
             f"{src:<20} {color_fn(f'{brier:>8.4f}')} {d['win_rate']:>8.1%} "
             f"{d['n']:>6} {shadow_str}"
         )
-    if any(d.get("n_shadow") for d in data.values()):
+
+
+def cmd_pnl_attribution() -> None:
+    """Show P&L attribution by signal source."""
+    raw = get_pnl_by_signal_source(min_samples=5)
+    # batch-57 item 3: sources whose rows are an excluded market family come
+    # back segregated under a reserved key, not mixed into the headline table.
+    # Separate it BEFORE the emptiness check and before sorting -- its value is
+    # a nested {source: stats} dict, so leaving it in would both make an
+    # excluded-only corpus look non-empty and blow up the sort's
+    # x[1]["brier"] lookup. Built as a new dict rather than raw.pop(): the
+    # returned dict is fresh per call today, but mutating a callee's return
+    # value would silently drop this section on the second call if
+    # get_pnl_by_signal_source is ever memoised (opus-review finding L5).
+    excluded = raw.get(EXCLUDED_FAMILY_KEY, {})
+    data = {k: v for k, v in raw.items() if k != EXCLUDED_FAMILY_KEY}
+    if not data and not excluded:
+        # min_samples applies independently within each section, so the floor
+        # is per source per section, not per source overall (finding L6).
+        print(
+            "Not enough data per signal source "
+            "(need 5+ settled per source within a section)."
+        )
+        return
+
+    print(f"\n{'Signal Source':<20} {'Brier':>8} {'Win%':>8} {'N':>6} {'Shadow':>7}")
+    print("-" * 54)
+    if data:
+        _print_pnl_rows(data)
+    else:
+        print(dim("  (no scored sources outside the excluded market families)"))
+
+    if excluded:
+        # Label derived from the live exclusion set, not hardcoded: the set is
+        # gate-coupled and shrinks as a family graduates to real capital, so a
+        # static "rain/snow/hurricane" list would go stale silently (finding
+        # L3). Deliberately NOT called "shadow-only" -- 'between' is in this
+        # set for a scale-mismatch reason and IS live-tradeable, and this table
+        # already has a `Shadow` column meaning something else entirely
+        # (finding L4).
+        families = ", ".join(sorted(_excluded_brier_condition_types()))
+        print()
+        print(
+            dim(
+                f"  Excluded market families ({families}) — kept out of the "
+                "scores above, shown here for their own calibration:"
+            )
+        )
+        _print_pnl_rows(excluded)
+
+    if any(d.get("n_shadow") for d in (*data.values(), *excluded.values())):
         print(
             dim(
                 "  Shadow = never-traded signals logged while blocked (e.g. TRADING_PAUSED)."

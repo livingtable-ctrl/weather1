@@ -7641,6 +7641,21 @@ def cmd_walkforward(client: KalshiClient) -> None:
 
         from tracker import DB_PATH as _DB_PATH
 
+        # NOT wired to tracker's shared exclusion registry, deliberately
+        # (batch-57 opus-review finding M5). This is a sixth hand-written
+        # condition_type predicate in the codebase, but it is not a duplicate
+        # of the five batch-57 consolidated: those all feed a POOLED statistic,
+        # where a shadow family's rows contaminate a shared number. This query
+        # GROUPS BY condition_type downstream, so each family lands in its own
+        # bucket and nothing is pooled -- the shadow exclusion would remove
+        # rows without fixing any contamination.
+        #
+        # Its 'between' drop IS questionable on its own terms: this is billed
+        # as a per-condition Brier breakdown, yet it omits one of the three
+        # temperature conditions, so 'between' never appears in a comparison
+        # whose whole purpose is per-condition. Left unchanged here (it alters
+        # `py main.py walkforward` output) and filed in backlog.txt as
+        # "CMD_WALKFORWARD'S PER-CONDITION BRIER SILENTLY DROPS 'BETWEEN'".
         _calib_rows = (
             _sql.connect(str(_DB_PATH))
             .execute(
@@ -7847,8 +7862,22 @@ def cmd_calibrate() -> None:
         import sqlite3 as _sqlite3
 
         import safe_io as _safe_io
+        import tracker as _tracker
         from ml_bias import train_platt_per_city as _train_platt
 
+        # batch-57 item 2: exclusion sourced from tracker's canonical registry
+        # rather than a fifth hardcoded copy of the 6-tuple. Permanent
+        # _ALWAYS_EXCLUDED_CONDITION_TYPES, not the gate-coupled
+        # _excluded_brier_condition_types(): Platt scaling fits a per-city
+        # temperature-probability calibration curve written to
+        # data/platt_models.json and consumed by
+        # weather_markets._load_platt_models() -- the scale-mismatch class
+        # batch-06's opus-review finding M5 kept permanent, so a shadow
+        # family graduating to live must NOT start feeding this fit. Same 6
+        # members as the literal it replaces: no behaviour change.
+        _cond_clause, _cond_params = _tracker._condition_type_not_in_sql(
+            _tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        )
         with _sqlite3.connect(str(DB_PATH)) as _con:
             _con.row_factory = _sqlite3.Row
             _platt_rows = [
@@ -7857,10 +7886,8 @@ def cmd_calibrate() -> None:
                     "SELECT p.city, p.our_prob, o.settled_yes "
                     "FROM multiday_predictions p JOIN outcomes_valid o ON p.ticker = o.ticker "
                     "WHERE o.settled_yes IS NOT NULL AND p.our_prob IS NOT NULL"
-                    "  AND (p.condition_type IS NULL"
-                    "       OR p.condition_type NOT IN"
-                    "          ('between', 'precip_month_total', 'snow_month_total', "
-                    "           'hurricane_count', 'hurricane_next_event', 'storm_order'))"
+                    f"  AND {_cond_clause}",
+                    _cond_params,
                 ).fetchall()
             ]
         platt = _train_platt(_platt_rows, min_samples=50)

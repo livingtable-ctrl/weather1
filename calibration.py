@@ -17,6 +17,10 @@ from pathlib import Path
 from paths import CITY_WEIGHTS_PATH as _CITY_WEIGHTS_PATH
 from paths import CONDITION_WEIGHTS_PATH, DATA_DIR
 from paths import SEASONAL_WEIGHTS_PATH as _SEASONAL_WEIGHTS_PATH
+from tracker import (
+    _GATE_COUPLED_EXCLUDED_CONDITION_TYPES,
+    _condition_type_not_in_sql,
+)
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -39,12 +43,19 @@ _RECENCY_HALFLIFE_DAYS = 90  # exponential decay: trade 90 days old gets ~37% we
 # (seasonal/city calibration is above/below-only, 'between' has its own
 # separate condition-weight model) -- callers add it to this list
 # themselves where it needs excluding, rather than baking it in here.
-_SHADOW_CONDITION_TYPES = (
-    "precip_month_total",
-    "snow_month_total",
-    "hurricane_count",
-    "hurricane_next_event",
-    "storm_order",
+#
+# batch-57 item 2 (backlog.txt "CALIBRATION.PY/ML_BIAS.PY/MAIN.PY STILL HAVE
+# THE STATIC HARDCODED BRIER CONDITION_TYPE EXCLUSION TUPLE"): now DERIVED
+# from tracker's canonical registry instead of being a fourth hand-written
+# copy, so a new shadow-only market family added there reaches this file
+# automatically. Sourced from _GATE_COUPLED_EXCLUDED_CONDITION_TYPES (the
+# 5 gate-backed families) rather than _ALWAYS_EXCLUDED_CONDITION_TYPES (the
+# same 5 plus 'between') specifically because of the 'between' carve-out
+# documented above -- that difference was verified as deliberate scoping,
+# not drift, before consolidating: the pre-batch-57 literal was byte-for-byte
+# these same 5 names in this same order.
+_SHADOW_CONDITION_TYPES: tuple[str, ...] = tuple(
+    ct for ct, _gate_fn_name in _GATE_COUPLED_EXCLUDED_CONDITION_TYPES
 )
 
 
@@ -161,8 +172,22 @@ def _best_weights(
     return {"ensemble": best[0], "climatology": best[1], "nws": best[2]}
 
 
+# 'between' added back here by the caller, exactly as _SHADOW_CONDITION_TYPES's
+# own comment above prescribes: this pool is the seasonal/city blend-weight
+# population, which is above/below-only ('between' has its own separate
+# condition-weight model). Losing this line would silently let 'between' rows
+# -- with their structurally larger calibration gap -- into the grid search
+# that fits weights feeding live analyze_trade blending, so it is asserted in
+# tests/test_calibration.py rather than left to the comment alone
+# (opus-review finding L2).
 _LOAD_ROWS_EXCLUDED_TYPES = ("between", *_SHADOW_CONDITION_TYPES)
-_LOAD_ROWS_EXCLUDE_SQL = ", ".join(f"'{t}'" for t in _LOAD_ROWS_EXCLUDED_TYPES)
+# batch-57 opus-review finding L1: build the clause with tracker's shared
+# parameterised helper rather than hand-writing the NULL-OR-NOT-IN wrapper and
+# interpolating the values unescaped. Keeps clause SHAPE, not just the name
+# list, from drifting away from the other consolidated sites.
+_LOAD_ROWS_COND_CLAUSE, _LOAD_ROWS_COND_PARAMS = _condition_type_not_in_sql(
+    frozenset(_LOAD_ROWS_EXCLUDED_TYPES)
+)
 
 
 def _load_rows(db_path: Path) -> list[sqlite3.Row]:
@@ -179,10 +204,9 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ({_LOAD_ROWS_EXCLUDE_SQL}))
-            """
+              AND {_LOAD_ROWS_COND_CLAUSE}
+            """,
+            _LOAD_ROWS_COND_PARAMS,
         ).fetchall()
 
 
@@ -323,6 +347,15 @@ _CONDITION_MIN = (
     60  # 60 * 0.2 = 12 val rows — minimum for improvement gate to be meaningful
 )
 
+# Same shared-helper treatment as _LOAD_ROWS_COND_CLAUSE (opus-review finding
+# L1), but WITHOUT 'between': this function calibrates above/below/between, so
+# 'between' is one of the three types it is here to fit and must stay in the
+# population. That asymmetry with _LOAD_ROWS_EXCLUDED_TYPES is the whole reason
+# _SHADOW_CONDITION_TYPES omits 'between' and leaves it to callers.
+_COND_WEIGHTS_COND_CLAUSE, _COND_WEIGHTS_COND_PARAMS = _condition_type_not_in_sql(
+    frozenset(_SHADOW_CONDITION_TYPES)
+)
+
 
 def calibrate_condition_weights(
     db_path: str | Path,
@@ -350,10 +383,9 @@ def calibrate_condition_weights(
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ({", ".join(f"'{t}'" for t in _SHADOW_CONDITION_TYPES)}))
-            """
+              AND {_COND_WEIGHTS_COND_CLAUSE}
+            """,
+            _COND_WEIGHTS_COND_PARAMS,
         ).fetchall()
     finally:
         con.close()

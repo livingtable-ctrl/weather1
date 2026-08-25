@@ -247,7 +247,16 @@ def min_prob_edge_for_days_out(days_out: int) -> float:
                              accuracy are statistically indistinguishable
                              (0.270 n=138 vs 0.269 n=93, checked 2026-07-12).
                              Revisit if get_brier_by_days_out()'s same_day
-                             and 1-2d buckets diverge.)
+                             and 1-2d buckets diverge -- but note that
+                             2026-07-12 baseline PREDATES batch-57, which
+                             added a condition_type filter to that function,
+                             so the buckets now measure a different
+                             population (0.2628 n=120 vs 0.2555 n=94 as of
+                             2026-08-25). Re-measure BOTH sides before
+                             acting on any apparent divergence; comparing a
+                             filtered number against that unfiltered
+                             baseline would be a false signal in a value
+                             that gates real trade sizing.)
       days_out == 1 → 12pp  (next-day: model is reasonably accurate)
       days_out == 2 → 15pp  (2-day: meaningful ensemble spread)
       days_out >= 3 → 18pp  (3-5 day: high uncertainty, demand strong edge)

@@ -644,3 +644,239 @@ def test_calibrate_condition_weights_excludes_shadow_condition_types():
     assert "hurricane_count" not in weights, (
         "shadow condition-type family must never gain a live blend-weight entry"
     )
+
+
+# ── batch-57 item 2: shared condition_type exclusion registry ────────────────
+
+
+class TestSharedConditionTypeExclusion:
+    """calibration.py / ml_bias.py / main.py all source the exclusion from tracker.
+
+    batch-57 item 2 replaced five independently hand-written copies of the
+    exclusion tuple with derivations from tracker's two canonical
+    definitions. These tests pin that wiring so a site can't silently drift
+    back to a local literal -- the exact failure mode the entry
+    "CALIBRATION.PY/ML_BIAS.PY/MAIN.PY STILL HAVE THE STATIC HARDCODED BRIER
+    CONDITION_TYPE EXCLUSION TUPLE" was filed about.
+    """
+
+    def test_calibration_shadow_list_is_derived_from_tracker(self):
+        """_SHADOW_CONDITION_TYPES tracks the gate-coupled registry exactly."""
+        import calibration
+        import tracker
+
+        assert calibration._SHADOW_CONDITION_TYPES == tuple(
+            ct for ct, _ in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
+        )
+
+    def test_calibration_list_excludes_between_by_design(self):
+        """The one deliberate difference from _ALWAYS_EXCLUDED is preserved.
+
+        'between' is a REAL value calibrate_condition_weights calibrates, so
+        this list must stay the 5 gate-backed families only. Verified as
+        deliberate scoping (not drift) before consolidating; asserted here so
+        a later "just use the longer list" cleanup fails loudly.
+        """
+        import calibration
+        import tracker
+
+        assert "between" not in calibration._SHADOW_CONDITION_TYPES
+        assert "between" in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        assert set(calibration._SHADOW_CONDITION_TYPES) | {"between"} == set(
+            tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        )
+        # The OTHER half of the carve-out (opus-review finding L2): the
+        # omission is only correct because _load_rows's caller adds 'between'
+        # back. Pinning only the omission would let a "simplification" to
+        # _LOAD_ROWS_EXCLUDED_TYPES = _SHADOW_CONDITION_TYPES pass silently,
+        # letting 'between' rows into the seasonal/city blend-weight grid
+        # search whose weights feed live analyze_trade blending.
+        assert "between" in calibration._LOAD_ROWS_EXCLUDED_TYPES
+        assert set(calibration._LOAD_ROWS_EXCLUDED_TYPES) == set(
+            tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        )
+        # And the clause actually built from it carries 'between' too, so the
+        # constant and the SQL cannot drift apart.
+        assert "between" in calibration._LOAD_ROWS_COND_PARAMS
+        assert "between" not in calibration._COND_WEIGHTS_COND_PARAMS
+
+    def test_new_family_reaches_calibration_via_registry(self, monkeypatch, request):
+        """Adding a family to tracker's registry propagates on reimport.
+
+        The behavioural half of the first test: proves the value is DERIVED
+        at import rather than a literal that merely happens to match today.
+
+        Restore discipline (opus-review finding L7): the registry is patched
+        via monkeypatch and the restoring reload is registered as a finalizer,
+        so pytest guarantees it even if this test body raises AND even if the
+        restoring reload itself would have been skipped. A bare
+        try/finally with the reload inside the finally could leave calibration
+        holding the mutated 6-family list for the whole session if that reload
+        raised -- which is a live hazard, since a concurrent editor can make
+        tracker.py briefly unparseable.
+
+        Note tracker._ALWAYS_EXCLUDED_CONDITION_TYPES is computed once at
+        tracker import and is deliberately NOT updated by this patch, so
+        tracker is briefly self-inconsistent inside the window. Harmless here
+        (nothing in the window reads it); don't extend this test to assert on
+        it without also patching it.
+        """
+        import importlib
+
+        import calibration
+        import tracker
+
+        original = tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
+
+        # Registered BEFORE anything is mutated, so pytest runs it however
+        # this test exits. It restores the registry ITSELF rather than relying
+        # on monkeypatch's undo having already run: an earlier draft assumed
+        # that ordering and was wrong -- this finalizer fires BEFORE
+        # monkeypatch's teardown, so the reload rebuilt calibration from the
+        # still-mutated registry and leaked a 6-family list into the rest of
+        # the session. test_registry_mutation_did_not_leak below caught it.
+        # Self-sufficient restore + reload is order-independent; monkeypatch's
+        # own undo afterwards is then a harmless no-op.
+        def _restore():
+            tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES = original
+            importlib.reload(calibration)
+
+        request.addfinalizer(_restore)
+
+        monkeypatch.setattr(
+            tracker,
+            "_GATE_COUPLED_EXCLUDED_CONDITION_TYPES",
+            (*original, ("locust_swarm_count", "_locust_gates_active")),
+        )
+        importlib.reload(calibration)
+        assert "locust_swarm_count" in calibration._SHADOW_CONDITION_TYPES
+
+    def test_registry_mutation_did_not_leak(self):
+        """Positive control for the finalizer in the test above.
+
+        Deliberately a SEPARATE test rather than a trailing assertion inside
+        the mutating one: an assertion in the same test body runs before
+        teardown, so it can only prove an inline restore, never that pytest's
+        finalizer actually fired. Ordering is safe -- this file runs without
+        pytest-randomly and unittest-style declaration order holds.
+        """
+        import calibration
+        import tracker
+
+        assert "locust_swarm_count" not in calibration._SHADOW_CONDITION_TYPES
+        assert calibration._SHADOW_CONDITION_TYPES == tuple(
+            ct for ct, _ in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES
+        )
+
+    @staticmethod
+    def _max_inlined_family_names(source: str) -> int:
+        """Largest count of exclusion-family names appearing in one literal group.
+
+        AST-based rather than a substring scan (opus-review finding M1). The
+        original scan looked for "'hurricane_next_event', 'storm_order'" --
+        single-quoted, comma-space, same line -- which NEVER matched
+        calibration.py, whose literal was a double-quoted tuple with one name
+        per line. That made the test vacuous for the very file it headlined.
+        This counts family names per *container* (tuple/list/set literal) and
+        per *string constant*, so it is quote-, order-, and whitespace-
+        agnostic.
+        """
+        import ast
+
+        import tracker
+
+        families = set(tracker._ALWAYS_EXCLUDED_CONDITION_TYPES)
+        best = 0
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                best = max(best, sum(1 for f in families if f in node.value))
+            elif isinstance(node, ast.Tuple | ast.List | ast.Set):
+                names = {
+                    e.value
+                    for e in node.elts
+                    if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                }
+                best = max(best, len(names & families))
+        return best
+
+    def test_no_hardcoded_family_list_remains_in_consumer_files(self):
+        """No consumer inlines the exclusion family list, in any quoting style."""
+        from pathlib import Path
+
+        root = Path(__file__).parent.parent
+        for name in ("calibration.py", "ml_bias.py", "main.py"):
+            src = (root / name).read_text(encoding="utf-8")
+            assert self._max_inlined_family_names(src) < 4, (
+                f"{name} appears to inline the exclusion family list again -- "
+                "derive it from tracker's registry instead"
+            )
+
+    def test_inlined_family_detector_actually_detects(self):
+        """Positive control for the detector above.
+
+        Without this, the previous version of the scan silently passed on an
+        unfixed file. Both the pre-batch-57 literal SHAPES must trip it: the
+        double-quoted multi-line tuple calibration.py used, and the
+        single-quoted single-line SQL string ml_bias.py/main.py used.
+        """
+        tuple_form = (
+            "X = (\n"
+            '    "precip_month_total",\n'
+            '    "snow_month_total",\n'
+            '    "hurricane_count",\n'
+            '    "hurricane_next_event",\n'
+            '    "storm_order",\n'
+            ")\n"
+        )
+        sql_form = (
+            'Q = """WHERE (p.condition_type IS NULL OR p.condition_type NOT IN '
+            "('between', 'precip_month_total', 'snow_month_total', "
+            "'hurricane_count', 'hurricane_next_event', 'storm_order'))\"\"\"\n"
+        )
+        assert self._max_inlined_family_names(tuple_form) >= 4
+        assert self._max_inlined_family_names(sql_form) >= 4
+        # Negative control: a derivation from the registry must NOT trip it.
+        derived = "X = tuple(ct for ct, _ in tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES)\n"
+        assert self._max_inlined_family_names(derived) == 0
+
+    def test_ml_bias_and_main_use_the_permanent_constant(self):
+        """Both take _ALWAYS_EXCLUDED, not the gate-coupled function (M5 test).
+
+        Their exclusion reason is scale mismatch (they fit temperature-shaped
+        calibration curves), so a family graduating to live capital must NOT
+        start feeding them.
+
+        Scoped to the specific FUNCTIONS, not whole files (opus-review finding
+        M2). A whole-file ban was wrong in both directions: main.py is the
+        CLI entry point for the entire system, so a future diagnostic command
+        that legitimately wants the dynamic gate-coupled set would have failed
+        this test with a misleading message; and `in src` only proved the
+        permanent constant appeared *somewhere* in a 7,900-line file, so a
+        revert inside cmd_calibrate could still have passed.
+        """
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).parent.parent
+        targets = {
+            "ml_bias.py": ("train_bias_model", "train_all_temperature_scaling"),
+            "main.py": ("cmd_calibrate",),
+        }
+        for name, fn_names in targets.items():
+            tree = ast.parse((root / name).read_text(encoding="utf-8"))
+            found = {
+                n.name: n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name in fn_names
+            }
+            for fn_name in fn_names:
+                assert fn_name in found, f"{name}: {fn_name} not found"
+                # ast.unparse drops comments, so the rationale prose that
+                # mentions the gate-coupled function can't false-positive.
+                body = ast.unparse(found[fn_name])
+                assert "_ALWAYS_EXCLUDED_CONDITION_TYPES" in body, (
+                    f"{name}:{fn_name} must use the permanent constant"
+                )
+                assert "_excluded_brier_condition_types(" not in body, (
+                    f"{name}:{fn_name} must not gate-couple a calibration-curve fit"
+                )

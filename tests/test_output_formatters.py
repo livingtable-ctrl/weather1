@@ -256,3 +256,92 @@ class TestCmdPnlAttribution:
         out = capsys.readouterr().out
 
         assert "Shadow = never-traded" not in out
+
+    # ── batch-57 item 3: excluded shadow-family section ──────────────────
+    def test_excluded_families_render_in_their_own_section(self, monkeypatch, capsys):
+        """The reserved sub-dict renders below the headline table, not in it."""
+        import output_formatters as of
+
+        monkeypatch.setattr(
+            of,
+            "get_pnl_by_signal_source",
+            lambda min_samples=5: {
+                "ensemble": {"brier": 0.26, "win_rate": 0.49, "n": 90, "n_shadow": 0},
+                of.EXCLUDED_FAMILY_KEY: {
+                    "rain_boot": {
+                        "brier": 0.17,
+                        "win_rate": 0.81,
+                        "n": 16,
+                        "n_shadow": 16,
+                    }
+                },
+            },
+        )
+
+        of.cmd_pnl_attribution()
+        out = capsys.readouterr().out
+
+        assert "ensemble" in out
+        assert "rain_boot" in out
+        assert "Excluded market families" in out
+        # The reserved key itself is machinery, never a rendered row label.
+        assert of.EXCLUDED_FAMILY_KEY not in out
+        # Ordering: the excluded section comes after the headline row.
+        assert out.index("ensemble") < out.index("rain_boot")
+        # Kills a surviving mutant (opus-review finding M3): the n_shadow
+        # footnote scans BOTH sections. Here `ensemble` has n_shadow=0 and
+        # only the excluded `rain_boot` has n_shadow=16 -- exactly the live
+        # shape, since the rain family is entirely shadow -- so narrowing the
+        # scan to data.values() would drop the footnote and leave a "16" in
+        # the Shadow column with nothing explaining it.
+        assert "Shadow = never-traded" in out
+        # The family label is derived from the live exclusion set, not a
+        # hardcoded "rain/snow/hurricane" string (finding L3).
+        for family in of._excluded_brier_condition_types():
+            assert family in out
+        # 'between' must NOT be described as shadow-only (finding L4).
+        assert "Shadow-only" not in out
+
+    def test_shadow_only_corpus_is_not_reported_as_no_data(self, monkeypatch, capsys):
+        """A result holding ONLY the reserved key must still render.
+
+        Regression guard for the emptiness check: `data` is truthy when it
+        holds just the reserved key, so popping it before the check is what
+        keeps this from either printing the wrong hint or crashing the
+        sort on a nested dict.
+        """
+        import output_formatters as of
+
+        monkeypatch.setattr(
+            of,
+            "get_pnl_by_signal_source",
+            lambda min_samples=5: {
+                of.EXCLUDED_FAMILY_KEY: {
+                    "rain_boot": {
+                        "brier": 0.17,
+                        "win_rate": 0.81,
+                        "n": 16,
+                        "n_shadow": 16,
+                    }
+                },
+            },
+        )
+
+        of.cmd_pnl_attribution()
+        out = capsys.readouterr().out
+
+        assert "Not enough data" not in out
+        assert "rain_boot" in out
+        assert "no scored sources outside the excluded market families" in out
+
+    def test_truly_empty_still_prints_hint(self, monkeypatch, capsys):
+        """Positive control for the two tests above: {} is still 'no data'."""
+        import output_formatters as of
+
+        monkeypatch.setattr(of, "get_pnl_by_signal_source", lambda min_samples=5: {})
+
+        of.cmd_pnl_attribution()
+        out = capsys.readouterr().out
+
+        assert "Not enough data" in out
+        assert "Excluded market families" not in out

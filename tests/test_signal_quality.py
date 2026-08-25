@@ -306,29 +306,34 @@ class TestGetBrierByTier:
         tracker._db_initialized = self._orig_init
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def _seed(self, ticker, edge, our_prob, settled_yes):
+    def _seed(self, ticker, edge, our_prob, settled_yes, ct="above"):
         import sqlite3
 
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
             con.execute(
                 "INSERT OR REPLACE INTO predictions"
-                " (ticker, our_prob, edge, predicted_at) VALUES (?,?,?,?)",
-                (ticker, our_prob, edge, "2026-04-01T00:00:00"),
+                " (ticker, our_prob, edge, predicted_at, condition_type)"
+                " VALUES (?,?,?,?,?)",
+                (ticker, our_prob, edge, "2026-04-01T00:00:00", ct),
             )
             con.execute(
                 "INSERT OR REPLACE INTO outcomes (ticker, settled_yes) VALUES (?,?)",
                 (ticker, settled_yes),
             )
 
+    # These exercise the tier-SPLIT arithmetic, which is independent of the
+    # display floor batch-57 added, so they pass min_samples=1 explicitly
+    # rather than relying on the default 5 (which would suppress the very
+    # brier value they assert on). The floor has its own tests below.
     def test_strong_tier_computed(self):
         self._seed("T1", edge=0.35, our_prob=0.85, settled_yes=1)
-        result = tracker.get_brier_by_tier()
+        result = tracker.get_brier_by_tier(min_samples=1)
         assert result["strong"]["n"] == 1
         assert result["strong"]["brier"] == pytest.approx((0.85 - 1) ** 2)
 
     def test_med_tier_computed(self):
         self._seed("T2", edge=0.20, our_prob=0.70, settled_yes=0)
-        result = tracker.get_brier_by_tier()
+        result = tracker.get_brier_by_tier(min_samples=1)
         assert result["med"]["n"] == 1
         assert result["med"]["brier"] == pytest.approx((0.70 - 0) ** 2)
 
@@ -345,10 +350,83 @@ class TestGetBrierByTier:
     def test_multiple_predictions_averaged(self):
         self._seed("A1", edge=0.35, our_prob=0.80, settled_yes=1)
         self._seed("A2", edge=0.40, our_prob=0.90, settled_yes=1)
-        result = tracker.get_brier_by_tier()
+        result = tracker.get_brier_by_tier(min_samples=1)
         expected = ((0.80 - 1) ** 2 + (0.90 - 1) ** 2) / 2
         assert result["strong"]["brier"] == pytest.approx(expected)
         assert result["strong"]["n"] == 2
+
+    # ── batch-57: min_samples display floor ──────────────────────────────
+    def test_under_floor_suppresses_brier_but_keeps_n(self):
+        """A tier below min_samples reports brier=None with its real n.
+
+        web_app.py renders whatever comes back, so a two-sample tier must
+        not surface a number that reads like a real signal. n stays truthful
+        so a caller can tell "too few to score" from "tier absent".
+        """
+        self._seed("F1", edge=0.35, our_prob=0.80, settled_yes=1)
+        self._seed("F2", edge=0.40, our_prob=0.90, settled_yes=1)
+        result = tracker.get_brier_by_tier(min_samples=5)
+        assert result["strong"]["n"] == 2
+        assert result["strong"]["brier"] is None
+        # Positive control: the same rows DO produce a real brier once the
+        # floor allows them, so the None above is the floor acting rather
+        # than the rows having silently failed to load at all.
+        allowed = tracker.get_brier_by_tier(min_samples=2)
+        assert allowed["strong"]["n"] == 2
+        assert allowed["strong"]["brier"] == pytest.approx(
+            ((0.80 - 1) ** 2 + (0.90 - 1) ** 2) / 2
+        )
+
+    def test_all_three_keys_present_below_floor(self):
+        """Every tier key survives the floor -- only the value goes None.
+
+        web_app.py indexes the result by tier name; dropping a sparse tier
+        entirely would KeyError on a thin corpus.
+        """
+        self._seed("K1", edge=0.35, our_prob=0.80, settled_yes=1)
+        result = tracker.get_brier_by_tier()
+        assert set(result) == {"strong", "med", "weak"}
+        assert all("n" in v and "brier" in v for v in result.values())
+
+    def test_default_floor_is_five(self):
+        """Default min_samples is 5, matching get_brier_by_days_out's."""
+        for i in range(4):
+            self._seed(f"D{i}", edge=0.35, our_prob=0.80, settled_yes=1)
+        assert tracker.get_brier_by_tier()["strong"]["brier"] is None
+        self._seed("D4", edge=0.35, our_prob=0.80, settled_yes=1)
+        assert tracker.get_brier_by_tier()["strong"]["brier"] is not None
+
+    def test_excluded_condition_type_rows_dropped(self):
+        """batch-57 item 3: shadow-only/'between' rows leave the tier pool.
+
+        Hand-computed: two 'above' rows at our_prob 0.80/0.90 both settling
+        YES give ((0.8-1)^2 + (0.9-1)^2)/2 = 0.025. Counting the 'between'
+        row at our_prob 0.10 settling YES would drag that to
+        (0.04 + 0.01 + 0.81)/3 = 0.286667 -- a numerically distinct value,
+        so this assertion fails if the filter is removed.
+        """
+        self._seed("E1", edge=0.35, our_prob=0.80, settled_yes=1, ct="above")
+        self._seed("E2", edge=0.40, our_prob=0.90, settled_yes=1, ct="above")
+        self._seed("E3", edge=0.50, our_prob=0.10, settled_yes=1, ct="between")
+        result = tracker.get_brier_by_tier(min_samples=1)
+        # Value first: this is the assertion that proves the filter changed
+        # the NUMBER, not merely the row count.
+        assert result["strong"]["brier"] == pytest.approx(0.025)
+        assert result["strong"]["brier"] != pytest.approx(0.286667, abs=1e-6)
+        assert result["strong"]["n"] == 2, "the 'between' row must not be counted"
+        # Positive control: the excluded row really is in the table and
+        # settled, so n==2 above is the filter working rather than the
+        # insert or the outcomes join having silently failed.
+        import sqlite3
+
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            assert (
+                con.execute(
+                    "SELECT COUNT(*) FROM predictions p JOIN outcomes_valid o"
+                    " ON p.ticker = o.ticker WHERE p.condition_type = 'between'"
+                ).fetchone()[0]
+                == 1
+            )
 
 
 # ── Phase 3: Adaptive ensemble weights ───────────────────────────────────────

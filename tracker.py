@@ -1857,15 +1857,36 @@ def get_brier_by_days_out() -> dict[str, float]:
     Brier score segmented by forecast horizon.
     Returns {"same_day": brier, "1-2d": brier, "3-5d": brier, "6-10d": brier, "11+d": brier}
     Only buckets with >= 5 settled predictions are included.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "MORE BRIER-FAMILY FUNCTIONS WITH NO
+    CONDITION_TYPE FILTER, FOUND VIA ADJACENCY", batch-57 item 3 --
+    previously unfiltered). Dynamic gate-coupled set, not
+    _ALWAYS_EXCLUDED_CONDITION_TYPES: horizon-segmented Brier is a
+    model-quality signal, so a graduated family belongs in it (the M5 test).
+
+    This reads raw `predictions`, NOT the multiday_predictions view, and
+    that stays deliberate -- the function segments by days_out in Python
+    and needs the days_out=0 rows for its own same_day bucket
+    (docs/grade_audit/preamble.md lists it under "intentionally
+    unfiltered"). That known-intentional note is about days_out only; it
+    never covered condition_type, which is what this filter adds.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
-        rows = con.execute("""
+        rows = con.execute(
+            f"""
             SELECT p.our_prob, o.settled_yes, p.days_out
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.days_out IS NOT NULL
-        """).fetchall()
+              AND {cond_clause}
+            """,
+            cond_params,
+        ).fetchall()
 
     buckets: dict[str, list[float]] = {
         "same_day": [],  # days_out == 0 (METAR-locked)
@@ -2226,6 +2247,35 @@ def get_component_attribution() -> dict[str, dict]:
 # Consolidated here as the single source of truth, matching this codebase's
 # established convention for shared classification data (e.g.
 # weather_markets._KXRAIN_MONTHLY_CITY).
+#
+# batch-57 item 2 (backlog.txt "CALIBRATION.PY/ML_BIAS.PY/MAIN.PY STILL HAVE
+# THE STATIC HARDCODED BRIER CONDITION_TYPE EXCLUSION TUPLE"): this pair of
+# definitions is now the SINGLE SOURCE OF TRUTH across module boundaries, not
+# just within tracker.py. Cross-module consumers, and which of the two each
+# one takes (the M5 shadow-status-vs-scale-mismatch test, applied per site):
+#   calibration.py  _SHADOW_CONDITION_TYPES  <- _GATE_COUPLED (names only;
+#       'between' deliberately carved out -- see that constant's comment)
+#   ml_bias.py      train_bias_model / train_all_temperature_scaling (x2)
+#                                            <- _ALWAYS_EXCLUDED
+#   main.py         cmd_calibrate's Platt query
+#                                            <- _ALWAYS_EXCLUDED
+# Adding a family here now reaches all of them. tests/test_calibration.py's
+# TestSharedConditionTypeExclusion pins that wiring so a site can't silently
+# revert to a local literal.
+#
+# These two names keep their leading underscore for continuity with the rest
+# of this module, but they are now a de-facto PUBLIC cross-module API -- four
+# other modules import them. Treat a rename or a signature change here as a
+# breaking change, not a private-symbol tidy-up (opus-review finding I7).
+#
+# NOT consolidated, deliberately: main.py's cmd_walkforward carries its own
+# one-element `p.condition_type != 'between'` predicate (main.py, "Per-condition
+# Brier" query). It is not a duplicate of this registry -- that query GROUPS BY
+# condition_type, so nothing is pooled and the shadow-family exclusion these
+# constants exist to provide would be meaningless there. Its 'between' drop is
+# a separate question (a per-condition breakdown that omits one of the three
+# conditions), filed as its own backlog entry rather than changed here
+# (opus-review finding M5).
 _GATE_COUPLED_EXCLUDED_CONDITION_TYPES: tuple[tuple[str, str], ...] = (
     ("precip_month_total", "_rain_gates_active"),
     ("snow_month_total", "_snow_gates_active"),
@@ -2311,6 +2361,12 @@ def _excluded_brier_condition_types() -> frozenset[str]:
     """
     excluded = {"between"}
     try:
+        # This import MUST stay function-local. calibration.py imports tracker
+        # at module scope (batch-57 item 2) and weather_markets imports
+        # calibration at module scope, so hoisting this to tracker's module
+        # scope would close the loop weather_markets -> calibration -> tracker
+        # -> weather_markets and deadlock on a partially-initialised tracker
+        # (opus-review finding I1).
         import weather_markets as _wm
     except Exception as exc:
         _log.warning(
@@ -2534,7 +2590,19 @@ def brier_score(
     design -- see get_sameday_calibration_cli()'s own docstring). None of
     these were named by any of the 3 backlog entries this fix closes; see
     backlog.txt "MORE BRIER-FAMILY FUNCTIONS WITH NO CONDITION_TYPE FILTER,
-    FOUND VIA ADJACENCY" for the follow-up. All 5 gate-backed types
+    FOUND VIA ADJACENCY" for the follow-up.
+
+    UPDATE 2026-08-25 (batch-57 closed that follow-up): the paragraph above
+    is now HISTORICAL. Four of those five are filtered
+    (get_brier_by_days_out, get_brier_by_tier, brier_skill_score,
+    get_brier_by_version) and the fifth, get_pnl_by_signal_source, splits
+    excluded families into a separate reported section rather than pooling
+    them. get_sameday_calibration() is the ONLY member of that list still
+    unfiltered, and remains so deliberately -- it is the dashboard-facing
+    sibling that differs from get_sameday_calibration_cli() by design.
+    Kept rather than deleted because this docstring is the module's
+    permanent record of the M4 over-claim (opus-review finding L2: the
+    stale list said the opposite of the code). All 5 gate-backed types
     currently resolve to "still excluded" everywhere in this file (no
     RAIN/SNOW/HURRICANE*/STORM_ORDER_TRADING_ENABLED flag is set today), so
     the PRIMARY-SOURCE query's value is unchanged today -- purely closes
@@ -3820,6 +3888,7 @@ def sprt_model_health(
 def get_brier_by_tier(
     strong_threshold: float = 0.30,
     med_threshold: float = 0.15,
+    min_samples: int = 5,
 ) -> dict[str, dict]:
     """
     Brier score split by signal tier based on abs(edge) at prediction time.
@@ -3830,17 +3899,51 @@ def get_brier_by_tier(
       weak   — abs(edge) < med_threshold
 
     Returns {"strong": {"brier": float, "n": int}, "med": ..., "weak": ...}
-    with None brier for tiers with no settled predictions.
+    with None brier for tiers holding fewer than `min_samples` settled
+    predictions. All three keys are ALWAYS present with a real `n` --
+    only the brier value goes None -- so a caller can tell "too few
+    samples to score" apart from "tier missing".
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "MORE BRIER-FAMILY FUNCTIONS WITH NO
+    CONDITION_TYPE FILTER, FOUND VIA ADJACENCY", batch-57 item 3 --
+    previously unfiltered). Dynamic gate-coupled set, not
+    _ALWAYS_EXCLUDED_CONDITION_TYPES: tier-segmented Brier is a
+    model-quality signal, so a graduated family belongs in it (the M5 test).
+
+    `min_samples` (default 5, matching get_brier_by_days_out's existing
+    per-bucket floor) is new in batch-57 and is a fix for a defect that
+    filter aggravates rather than creates: the tier split is by abs(edge),
+    which is NOT independent of condition_type, so removing the excluded
+    families guts the sparse tiers specifically. On the live corpus
+    2026-08-24 'strong' fell from n=10 to n=2 and 'weak' from n=7 to n=3,
+    and a two-sample 0.5658 would have been published as a real
+    "strong-signal Brier". 5 is a floor on *displayability*, not a
+    statistical sufficiency claim; a tier at n=5 is still noisy.
+
+    Scope of that risk, stated accurately (opus-review finding L3): this
+    result is served through /api/analytics, but NOTHING currently renders
+    it -- frontend/src/useData.js's mapAnalytics() maps only brier_by_days,
+    city_calibration, roc_auc and component_attribution, and no .js/.jsx
+    reads brier_by_tier at all. So the floor is forward-looking hygiene on
+    a public JSON surface, NOT a fix for a live dashboard bug. An earlier
+    draft of this docstring claimed web_app.py would KeyError without it;
+    that was invented -- web_app.py never indexes the result by tier name.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, p.edge, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.edge IS NOT NULL
-            """
+              AND {cond_clause}
+            """,
+            cond_params,
         ).fetchall()
 
     tiers: dict[str, list[float]] = {"strong": [], "med": [], "weak": []}
@@ -3856,7 +3959,15 @@ def get_brier_by_tier(
 
     return {
         tier: {
-            "brier": round(sum(errs) / len(errs), 6) if errs else None,
+            # max(1, ...) mirrors _brier_series_stats's own guard: without it
+            # a caller passing min_samples=0 ("show me everything") would hit
+            # ZeroDivisionError on an empty tier, where the pre-batch-57
+            # `if errs else None` was total (opus-review finding L1).
+            "brier": (
+                round(sum(errs) / len(errs), 6)
+                if len(errs) >= max(1, min_samples)
+                else None
+            ),
             "n": len(errs),
         }
         for tier, errs in tiers.items()
@@ -3927,20 +4038,56 @@ def brier_skill_score(city: str | None = None) -> float | None:
 
     The arithmetic is delegated to _brier_series_stats() rather than repeated
     here, so the two cannot drift apart and report different skill numbers for
-    the same data (opus-review finding M3). Row selection is deliberately NOT
-    changed: this function still lacks the condition_type exclusion its
-    siblings apply, tracked as its own open backlog entry rather than widened
-    into this change.
+    the same data (opus-review finding M3).
+
+    Row selection: as of batch-57 this function DOES apply the condition_type
+    exclusion (the sentence here previously said it deliberately did not --
+    that was true when get_model_vs_market_brier landed and is now stale).
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "BRIER_SKILL_SCORE() HAS NO CONDITION_TYPE
+    FILTER", batch-57 item 1 -- previously unfiltered). The DYNAMIC
+    gate-coupled set, not _ALWAYS_EXCLUDED_CONDITION_TYPES: this is a
+    model-QUALITY signal of the same kind as brier_score(), so a market
+    family that graduates to real capital should start counting here (the
+    M5 test in _ALWAYS_EXCLUDED_CONDITION_TYPES's docstring).
+
+    Measured impact of adding the filter, on the live corpus 2026-08-24:
+    BSS went -0.147866 (n=152, unfiltered) -> -0.272531 (n=94, filtered).
+    The verdict did NOT flip -- it was already negative, i.e. the model has
+    shown no skill against the market either way -- but the shortfall is
+    roughly twice as large as the unfiltered number implied. The filter
+    removes 58 of the 152 rows: 41 'between' plus 17 'precip_month_total'
+    (the full breakdown -- the population is above 59 / between 41 /
+    below 35 / precip_month_total 17). Those rows were dragging the
+    MARKET's baseline Brier up (0.2186 -> 0.2008 once they're gone) while
+    barely moving the model's (0.2509 -> 0.2555), so their presence
+    flattered the model's relative standing. Consistent with the independent whole-corpus
+    measurement (model 0.2596 vs market 0.2201, n=214, t=2.59) taken over
+    `predictions` rather than this function's `multiday_predictions` view.
+
+    NOTE (deliberately NOT changed here): this function reads
+    multiday_predictions, the view that drops days_out=0, so it still scores
+    only ~44% of settled rows -- same-day METAR predictions have separate
+    tracking by design across this whole module. That is a separate
+    question from condition_type filtering and is out of batch-57's scope;
+    see backlog.txt's own entry for it rather than widening this one --
+    get_model_vs_market_brier() is the function that answers the whole-corpus
+    version of the question.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
-        query = """
+        query = f"""
             SELECT p.ticker, p.our_prob, p.market_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
+              AND {cond_clause}
         """
-        params: list = []
+        params: list = list(cond_params)
         if city:
             query += " AND p.city = ?"
             params.append(city)
@@ -7857,16 +8004,40 @@ def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
 
     Returns {version: {"brier": float, "n": int}} for versions with enough settled
     predictions. Enables formal comparison across strategy releases.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "MORE BRIER-FAMILY FUNCTIONS WITH NO
+    CONDITION_TYPE FILTER, FOUND VIA ADJACENCY", batch-57 item 3 --
+    previously unfiltered). Dynamic gate-coupled set, not
+    _ALWAYS_EXCLUDED_CONDITION_TYPES: comparing model quality across
+    strategy releases is a quality signal, so a graduated family belongs
+    in it (the M5 test).
+
+    This is the clearest pooled-aggregate case of the four adjacency
+    functions: an edge_calc_version spans every condition_type at once, so
+    an unfiltered per-version Brier mixed °F-shaped above/below rows with
+    'between' and shadow-family rows into one number. On the live corpus
+    2026-08-24 v1.0 read 0.2451 (n=145) unfiltered vs 0.2583 (n=90)
+    filtered -- the contamination was making the only shipped version look
+    better than it is, exactly the direction AUD-0004 found for
+    graduation_check().
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
-        rows = con.execute("""
+        rows = con.execute(
+            f"""
             SELECT p.edge_calc_version, p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND p.edge_calc_version IS NOT NULL
-        """).fetchall()
+              AND {cond_clause}
+            """,
+            cond_params,
+        ).fetchall()
 
     by_version: dict[str, list[float]] = {}
     for r in rows:
@@ -7881,6 +8052,18 @@ def get_brier_by_version(min_samples: int = 10) -> dict[str, dict]:
     }
 
 
+# Named "_excluded_family", NOT "_excluded_shadow" (opus-review finding L4,
+# raised independently by both reviewers): the set this key holds is
+# _excluded_brier_condition_types(), which includes 'between' -- and 'between'
+# is NOT a shadow-only family. It trades with real capital today and is
+# excluded for a scale-mismatch reason, as _excluded_brier_condition_types()'s
+# own docstring is emphatic about. Calling the bucket "shadow" would tell an
+# operator that a live-capital family is dormant, and would collide with the
+# ORTHOGONAL per-prediction is_shadow flag this same function already reports
+# as n_shadow.
+_PNL_EXCLUDED_FAMILY_KEY = "_excluded_family"
+
+
 def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
     """
     Compute Brier score and win rate grouped by signal_source.
@@ -7893,8 +8076,49 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
     (so the score stays representative of forecast quality), but n_shadow is
     reported separately so a caller can tell how many of the n samples had no
     real money behind them.
+
+    condition_type exclusion (batch-57 item 3, backlog.txt "MORE BRIER-FAMILY
+    FUNCTIONS WITH NO CONDITION_TYPE FILTER, FOUND VIA ADJACENCY"): the
+    _excluded_brier_condition_types() population is kept OUT of the top-level
+    per-source entries, but is NOT discarded -- excluded-family sources are
+    scored the same way and returned under the reserved
+    _PNL_EXCLUDED_FAMILY_KEY ("_excluded_family") sub-dict instead.
+
+    Why this function alone gets the split rather than a plain filter like
+    its four batch-57 siblings: it is the only one already segmented by a
+    dimension that is ~1:1 with condition_type, so a plain filter would not
+    have cleaned any group -- it would have deleted whole groups. On the
+    live corpus 2026-08-24, 'ensemble' was 100% above/below/between and
+    'monthly_rain_bootstrap_tilted' was 100% precip_month_total (n=16,
+    brier 0.1713); filtering would have erased the rain row outright, which
+    is the one place a shadow signal's own calibration currently surfaces
+    and the entire reason it is being run in shadow. The exclusion still
+    earns its keep on the mixed groups: 'ensemble' drops its 'between' rows
+    (n 130 -> 90, brier 0.2641 -> 0.2623), which is the structural
+    scale-mismatch reason, not a shadow-status one.
+
+    This mirrors the label-don't-drop convention this function already
+    established for the ORTHOGONAL is_shadow flag (a per-prediction
+    "analyzed but never traded" marker, unrelated to shadow-only market
+    FAMILIES): shadow data stays visible, segregated rather than deleted.
+
+    The reserved key is safe against collision with a real source: every
+    signal_source written is a code-controlled method identifier
+    (order_executor.py passes analysis["method"], web_app.py passes
+    "dashboard") and none begins with an underscore.
+
+    `min_samples` applies independently within each of the two sections.
+    One consequence, stated because the "NOT discarded" claim above is not
+    unconditional (opus-review finding L5): a source split across BOTH
+    populations can now fall below the floor in each and disappear from the
+    output entirely, where the old pooled count would have cleared it -- at
+    the real caller's min_samples=5, a source with 4 'above' and 4 'between'
+    rows pooled to n=8 before and is dropped from both sections now. No
+    source has this shape on the live corpus today, but nothing enforces
+    that.
     """
     init_db()
+    excluded_types = _excluded_brier_condition_types()
     with _conn() as con:
         rows = con.execute(
             """
@@ -7902,31 +8126,58 @@ def get_pnl_by_signal_source(min_samples: int = 10) -> dict[str, dict]:
                 COALESCE(p.signal_source, 'unknown') AS source,
                 p.our_prob,
                 o.settled_yes,
-                p.is_shadow
+                p.is_shadow,
+                p.condition_type
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
             """
         ).fetchall()
 
+    # Split before grouping so a source spanning both populations (none do
+    # today, but nothing enforces it) contributes to each section separately
+    # rather than being assigned wholesale by its first row.
     groups: dict[str, list[tuple[float, bool, bool]]] = {}
-    for source, our_prob, settled_yes, is_shadow in rows:
-        groups.setdefault(source, []).append(
+    excluded_groups: dict[str, list[tuple[float, bool, bool]]] = {}
+    for source, our_prob, settled_yes, is_shadow, condition_type in rows:
+        target = excluded_groups if condition_type in excluded_types else groups
+        target.setdefault(source, []).append(
             (float(our_prob), bool(settled_yes), bool(is_shadow))
         )
 
-    result = {}
-    for source, samples in groups.items():
-        if len(samples) < min_samples:
-            continue
-        brier = sum((p - (1 if y else 0)) ** 2 for p, y, _ in samples) / len(samples)
-        wins = sum(1 for p, y, _ in samples if (y and p > 0.5) or (not y and p <= 0.5))
-        result[source] = {
-            "brier": round(brier, 4),
-            "n": len(samples),
-            "win_rate": round(wins / len(samples), 3),
-            "n_shadow": sum(1 for _, _, shadow in samples if shadow),
-        }
+    def _score(
+        grouped: dict[str, list[tuple[float, bool, bool]]],
+    ) -> dict[str, dict]:
+        scored: dict[str, dict] = {}
+        for source, samples in grouped.items():
+            if len(samples) < min_samples:
+                continue
+            brier = sum((p - (1 if y else 0)) ** 2 for p, y, _ in samples) / len(
+                samples
+            )
+            wins = sum(
+                1 for p, y, _ in samples if (y and p > 0.5) or (not y and p <= 0.5)
+            )
+            scored[source] = {
+                "brier": round(brier, 4),
+                "n": len(samples),
+                "win_rate": round(wins / len(samples), 3),
+                "n_shadow": sum(1 for _, _, shadow in samples if shadow),
+            }
+        return scored
+
+    result = _score(groups)
+    excluded = _score(excluded_groups)
+    if excluded:
+        # Cheap guard for the collision the docstring argues can't happen
+        # (opus-review finding I4): if a signal_source ever WERE named
+        # "_excluded_family", this assignment would silently overwrite its
+        # stats dict with the nested sub-dict, and the only symptom would be
+        # a caller crashing on d["brier"] somewhere else entirely.
+        assert _PNL_EXCLUDED_FAMILY_KEY not in result, (
+            f"signal_source collided with the reserved key {_PNL_EXCLUDED_FAMILY_KEY!r}"
+        )
+        result[_PNL_EXCLUDED_FAMILY_KEY] = excluded
     return result
 
 

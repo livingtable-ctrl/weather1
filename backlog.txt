@@ -25011,7 +25011,8 @@ Recommendation: before (or as part of) ever activating EMOS, check whether
   spread. Not urgent while EMOS stays inactive; revisit at the EMOS
   activation decision itself, not before.
 
-[OPEN 2026-08-20 -- adjacency finding during batch-06 (item 3, "SEVERAL
+[RESOLVED 2026-08-24 -- batch-57 item 1; see Resolution below. Originally
+  filed 2026-08-20 as an adjacency finding during batch-06 (item 3, "SEVERAL
   BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER"): a genuinely
   separate consumer (web_app.py dashboard display only), not a duplicate of
   the tuple that fix unified -- filed as its own entry per workflow step 27
@@ -25038,7 +25039,182 @@ Why not now: out of batch-06's scope (never had the hardcoded tuple this
   use the same tracker._excluded_brier_condition_types()/
   _condition_type_not_in_sql() helpers batch-06 added when picked up.
 
-[OPEN 2026-08-20 -- adjacency note surfaced during batch-06 item 2's
+Resolution (2026-08-24, batch-57 item 1):
+  brier_skill_score() now filters via _condition_type_not_in_sql(
+  _excluded_brier_condition_types()) -- the DYNAMIC gate-coupled set, not
+  the permanent _ALWAYS_EXCLUDED_CONDITION_TYPES. Applying batch-06's own
+  M5 test: this is a model-QUALITY signal of the same kind as
+  brier_score(), so a market family that graduates to real capital SHOULD
+  start counting here; the M5 exception is for scale-specific
+  calibration-curve fits, which this is not.
+
+  MATERIAL FINDING -- the number moved a lot, but the verdict did not
+  flip. Measured on the live corpus 2026-08-24:
+      before (unfiltered):  BSS = -0.147866   n=152
+      after  (filtered):    BSS = -0.272531   n=94
+  The model already showed NO skill against the market before this fix,
+  and shows roughly twice as large a shortfall after it. Mechanism: the
+  41 'between' rows the filter removes were dragging the MARKET's baseline
+  Brier UP (0.2186 -> 0.2008 once gone) while barely moving the model's
+  (0.2509 -> 0.2555) -- i.e. the market is much better than our model at
+  the bracket markets specifically, and pooling them in was flattering our
+  relative standing. Same direction as AUD-0004's graduation_check()
+  finding (contamination made the model look better than it is), just on a
+  display statistic rather than a gate.
+
+  Consistent with, and now closer to, the independently-measured
+  whole-corpus number recorded in memory
+  (project_weather1_no_brier_skill_vs_market): model 0.2596 vs market
+  0.2201, n=214, t=2.59. That measurement was taken over `predictions`
+  (all days_out); this function reads the `multiday_predictions` view, so
+  the two are measured over different populations and are not expected to
+  be identical. Reconfirmed both directly during this batch:
+      predictions       (all days_out), filtered: BSS -0.179304  n=214
+      multiday view (days_out>=1 only), filtered: BSS -0.272531  n=94
+  No change to that memory's conclusion is warranted -- it is confirmed,
+  not revised.
+
+  NOT changed, deliberately: this function still reads
+  multiday_predictions, so it still scores only ~44% of settled rows
+  (days_out=0 same-day METAR predictions have separate tracking across
+  this whole module by design). That is a genuinely separate question
+  from condition_type filtering and was left out of batch-57's scope
+  rather than widened into it; the docstring now says so explicitly so
+  the next reader doesn't mistake it for an oversight.
+
+  Tests: 5 new in tests/test_tracker.py (TestBrierSkillScore's
+  'between' exclusion, gate-backed shadow-family exclusion, and a
+  city-filter test that guards the positional-param binding, since the
+  city predicate's "?" is appended AFTER the exclusion clause's; plus
+  TestBrierByDaysOutExclusion). Mutation-tested: neutralising the clause
+  to (1=1 OR ...) makes the exclusion test fail with BSS = -0.454545
+  instead of 0.0 -- a numerically distinct value, not just a different n.
+
+  REBASE NOTE: this work was rebased onto the A14 model-vs-market commit
+  (7f0acc7a), which landed on master mid-batch and rewrote this exact
+  function -- brier_skill_score() now delegates its arithmetic to
+  _brier_series_stats() and its SELECT carries p.ticker (required by that
+  helper for n_markets). Both were preserved; only the row-selection
+  WHERE clause is this batch's change. That commit's docstring said "Row
+  selection is deliberately NOT changed: this function still lacks the
+  condition_type exclusion its siblings apply, tracked as its own open
+  backlog entry" -- correct when written, now stale, and updated in place
+  rather than left to contradict the code. All five functions were
+  re-measured against the rebased tree and returned identical values
+  (BSS -0.272531 through the new helper path too).
+  Also checked as adjacency: get_model_vs_market_brier(), the new
+  function that same commit added, ALREADY applies
+  _condition_type_not_in_sql(_excluded_brier_condition_types()) -- no
+  work needed there.
+
+OPUS REVIEW (two parallel effort:high reviewers, split by subsystem;
+  every finding addressed, none dropped):
+
+  Reviewer A (tracker.py). No HIGH findings.
+  M1 (the most valuable finding in either review) -- the dynamic-vs-
+    permanent choice, which is this batch's entire design decision, had
+    ZERO test coverage: with every gate inactive (today's state, and the
+    state all tests run in) the two sets are IDENTICAL, so every batch-57
+    test passed unchanged if all five sites were "tidied up" to the
+    permanent constant. FIXED: added
+    TestBrierFamilyExclusionIsGateCoupled (6 tests) patching all five
+    gates active and asserting the shadow rows come BACK. Mutation-proven:
+    applying that exact refactor (12 SQL sites + the split site) makes 5
+    of the 6 fail; before this class, it was green.
+  L1 -- get_brier_by_tier(min_samples=0) newly raised ZeroDivisionError
+    (the old `if errs` guard was total). FIXED with max(1, min_samples),
+    matching _brier_series_stats's own documented guard 200 lines away.
+  L2 -- brier_score()'s canonical "NOT every sibling / still unfiltered"
+    paragraph now said the opposite of the code. FIXED with a dated UPDATE
+    block; get_sameday_calibration() is the only member still unfiltered.
+  L3 -- the min_samples floor's stated rationale ("web_app.py would
+    KeyError") was invented: nothing renders brier_by_tier at all
+    (mapAnalytics maps 4 other keys; zero .js/.jsx reads it). FIXED --
+    restated as forward-looking hygiene on a public JSON surface, and the
+    two test docstrings repeating the claim corrected.
+  L4 -- the reserved key "_excluded_shadow" misdescribed 'between', which
+    trades with real capital. BOTH reviewers raised this independently.
+    FIXED: renamed to _PNL_EXCLUDED_FAMILY_KEY / "_excluded_family".
+  L5 -- "NOT discarded" was unconditional but a source split across both
+    populations can now fall below the per-section floor in each and
+    vanish. FIXED (documented with the concrete 4+4 shape).
+  L6 -- utils.min_prob_edge_for_days_out()'s comment cites a 2026-07-12
+    same-day-vs-1-2d baseline measured on the UNFILTERED function and says
+    "revisit if the buckets diverge"; that trigger feeds a real trade-
+    sizing gate. FIXED: noted the baseline predates this filter, with the
+    post-filter numbers, and that both sides must be re-measured.
+  L7 -- docs/grade_audit/preamble.md lists get_brier_by_days_out under
+    "intentionally unfiltered". FIXED: narrowed to days_out explicitly.
+  L8 -- two P&L tests silently depended on rain gates being inactive via
+    the developer's .env. FIXED with an autouse gate-pinning fixture.
+  L9 -- the NULL-condition_type path through the Python split was correct
+    but unpinned (condition_type arrived as a v1->v2 ALTER TABLE, so
+    legacy rows really are NULL). FIXED with a dedicated test.
+  I3 -- the BSS docstring's row accounting invited reading "41 'between'"
+    as the whole 58-row delta. FIXED: full breakdown stated (above 59 /
+    between 41 / below 35 / precip_month_total 17; 41+17=58 closes).
+    Reviewer inferred at most 57 and suspected an off-by-one; re-derived
+    from the DB and the real precip count is 17, so nothing was wrong.
+  I4 -- added an assert guarding the reserved-key collision the docstring
+    argues is impossible.
+  I1/I5/I6/I7 (informational) -- all verifications, no action needed
+    beyond the notes already added.
+
+  Reviewer B (calibration/ml_bias/main/output_formatters). No HIGH.
+  M1 -- test_no_hardcoded_six_tuple_remains_in_consumer_files was VACUOUS
+    for calibration.py, the file it headlined: the scan string
+    ("'hurricane_next_event', 'storm_order'") matched ml_bias (3x) and
+    main.py (1x) but NEVER calibration.py, whose literal was a
+    double-quoted tuple one-name-per-line. Verified against
+    `git show b67fe864:calibration.py` -- 0 matches. FIXED: replaced with
+    an AST scan counting family names per literal container, plus a
+    positive control asserting it trips on BOTH pre-change literal shapes
+    and does NOT trip on a registry derivation.
+  M2 -- test_ml_bias_and_main_use_the_permanent_constant asserted over
+    WHOLE FILES: over-strict (a future main.py diagnostic legitimately
+    wanting the dynamic set would fail with a misleading message) and
+    under-strict ("in src" only proved the constant appeared somewhere in
+    7,900 lines). FIXED: scoped via ast to the three specific functions.
+  M3 -- surviving mutant: narrowing the n_shadow footnote scan to
+    data.values() passed every test, yet the live shape (rain family
+    entirely shadow, ensemble not) is exactly the case it breaks. FIXED
+    with an assertion in the two-section render test.
+  M4/M5 -- two genuine defects OUTSIDE this batch's scope, both filed as
+    their own backlog entries rather than silently widened or dropped:
+    the 'between' temperature-scaling T that is never fit, and
+    cmd_walkforward's sixth hand-written exclusion. Both now carry
+    in-code comments recording the finding at the site.
+  L1 -- calibration.py shared the NAMES but still hand-wrote the
+    NULL-OR-NOT-IN wrapper twice and interpolated values unescaped, so
+    clause SHAPE could still drift. FIXED: both queries now use
+    tracker._condition_type_not_in_sql; row-identity re-verified against
+    the live DB (89/89 and 127/127).
+  L2 -- the carve-out's other half (that _load_rows adds 'between' back)
+    was unpinned, so a "simplification" would have let 'between' into the
+    seasonal/city grid search feeding live blending. FIXED with
+    assertions on both the constant and the built params.
+  L3/L4 -- the excluded-section header was statically worded against a
+    dynamic set, and called 'between' "shadow-only". FIXED: label derived
+    from the live set, "shadow-only" removed.
+  L5/I4 -- data.pop() mutated tracker's return value (safe today, breaks
+    silently if the function is ever memoised). FIXED: non-mutating.
+  L6 -- the "not enough data" hint no longer described the per-section
+    rule. FIXED.
+  L7 -- the reload test's finally-based restore could leave calibration
+    poisoned. FIXED with a self-sufficient finalizer -- and the new
+    separate positive-control test IMMEDIATELY caught a real leak in the
+    first attempt (the finalizer ran BEFORE monkeypatch's undo, so the
+    reload rebuilt from the still-mutated registry). Exactly the failure
+    the reviewer predicted.
+  L8 -- clause construction sat outside the try/except, changing both
+    ml_bias functions' "warn and return {}" contract. FIXED: moved inside.
+  I1/I6 -- import-cycle note added to _excluded_brier_condition_types()
+    (this import must stay function-local now that calibration.py imports
+    tracker at module scope); private-name-is-now-public-API note added.
+  I2/I3/I5/I7 -- verifications and cosmetics, no action beyond notes.
+
+[RESOLVED 2026-08-24 -- batch-57 item 2; see Resolution below. Originally
+  filed 2026-08-20 as an adjacency note surfaced during batch-06 item 2's
   resolution (see that entry's own "NOTE for whoever next touches..."
   paragraph); filed as its own entry so it's discoverable independent of
   that resolution note] CALIBRATION.PY/ML_BIAS.PY/MAIN.PY STILL HAVE THE
@@ -25095,7 +25271,58 @@ Why not now: requires touching files batch-06 doesn't own; whichever batch
   a gate actually flips (if it should have been dynamic) or repeat M5's
   original mistake (if it should have stayed permanent).
 
-[OPEN 2026-08-20 -- opus-review finding M4 during batch-06's own review of
+Resolution (2026-08-24, batch-57 item 2):
+  All 5 sites now derive from tracker's registry; none carries a literal.
+
+  DIFFED FIRST, as the entry asked. The five were NOT all identical:
+    calibration.py _SHADOW_CONDITION_TYPES  = 5 names (no 'between')
+    ml_bias.py x3, main.py x1               = the same 5 + 'between'
+  That difference is DELIBERATE SCOPING, not drift -- verified against
+  _SHADOW_CONDITION_TYPES's own comment, which predates this batch and
+  spells out the reason: 'between' is a REAL value that
+  calibrate_condition_weights() calibrates (one of the three condition
+  types it fits), so baking it into that constant would break the
+  function; callers that need it excluded add it themselves. So the
+  "longest list is correct" assumption was explicitly wrong here, and the
+  two lists were consolidated onto two DIFFERENT canonical sources rather
+  than collapsed into one:
+    calibration.py  <- _GATE_COUPLED_EXCLUDED_CONDITION_TYPES (names only)
+    ml_bias.py x3   <- _ALWAYS_EXCLUDED_CONDITION_TYPES
+    main.py         <- _ALWAYS_EXCLUDED_CONDITION_TYPES
+  ml_bias/main.py take the PERMANENT constant, per the M5 test this entry
+  itself demanded be applied per-site: all four fit temperature-shaped
+  calibration curves (per-city bias model, global/per-condition/sameday
+  temperature scaling, per-city Platt), so their exclusion reason is
+  scale mismatch, not shadow status -- a family graduating to live capital
+  must NOT start feeding them.
+
+  Behaviour-neutral, and verified as such rather than assumed: each
+  rewritten query was run against the live DB alongside its pre-change
+  text and returned byte-identical rows (94/94, 94/94, 83/83, 94/94).
+  The sameday query in ml_bias is the one with real risk here -- it
+  concatenates _hourly_exclude_sql after the exclusion clause, so the two
+  positional-param groups had to be ordered (*_cond_params,
+  *_hourly_exclude_params); the 83-row identity check with 6 hourly
+  prefixes active is what proves that ordering.
+
+  Done FIRST in the batch, so items 1 and 3 landed on the shared helper
+  rather than becoming a 6th and 7th hand-written copy.
+
+  Tests: 5 new in tests/test_calibration.py
+  (TestSharedConditionTypeExclusion) -- derivation equality, the
+  'between' carve-out asserted explicitly so a later "just use the longer
+  list" cleanup fails loudly, a behavioural propagation test (inject a
+  fake family into tracker's registry, reload calibration, assert it
+  arrives), a source-scan that no consumer still inlines the literal, and
+  an M5-conformance check that ml_bias/main.py reference the permanent
+  constant and never call the gate-coupled function. Mutation-tested
+  twice: reverting calibration.py to the literal passes the two equality
+  tests (the literal matches today) but FAILS the propagation test --
+  which is exactly why that test exists; reverting one ml_bias query to
+  its literal fails the source-scan test.
+
+[RESOLVED 2026-08-24 -- batch-57 item 3; see Resolution below. Originally
+  filed 2026-08-20 as opus-review finding M4 during batch-06's own review of
   items 1-3 (audit/handoff_prompts/batches/batch-06.md): a broader version
   of an over-claim caught in brier_score()'s docstring, corrected there but
   filed here as its own entry since fixing it requires touching more
@@ -25134,6 +25361,112 @@ Why not now: out of batch-06's scope (that batch's item 3 named a specific
   distinction) when picked up -- verify caller/consumer for each function
   first, the same "confirm before assuming display-only" lesson M6 caught
   in this same batch's own review.
+
+Resolution (2026-08-24, batch-57 item 3):
+  All four remaining functions now filter (brier_skill_score was closed
+  separately above as item 1). Consumers re-grepped first, as the entry
+  asked -- all four are display/reporting, none gates live trading:
+    get_brier_by_days_out    -> web_app.py:516 (dashboard)
+    get_brier_by_tier        -> web_app.py:526 (dashboard)
+    get_brier_by_version     -> main.py:6519 cmd_version_compare (CLI)
+    get_pnl_by_signal_source -> output_formatters.py:523 (CLI)
+  All four take the DYNAMIC gate-coupled set (M5 test: each is a
+  model-quality signal, not a scale-specific curve fit).
+
+  Measured before/after on the live corpus 2026-08-24:
+    get_brier_by_days_out  same_day 0.2665 (n=190) -> 0.2628 (n=120)
+                           1-2d     0.2588 (n=137) -> 0.2555 (n=94)
+                           (3-5d and 6-10d fall below the existing
+                            5-per-bucket floor and stop being reported)
+    get_brier_by_tier      med      0.2500 (n=135) -> 0.2543 (n=89)
+    get_brier_by_version   v1.0     0.2451 (n=145) -> 0.2583 (n=90)
+  get_brier_by_version is the clearest pooled-aggregate case: a version
+  spans every condition_type at once, and the contamination was making
+  the only shipped version look better than it is -- same direction as
+  AUD-0004.
+
+  get_pnl_by_signal_source: EXCLUSION APPLIED, BUT AS A SPLIT, NOT A DROP.
+  The entry was right to flag it, and the data confirmed the concern is
+  real rather than hypothetical. Checked first, and the name is
+  misleading in BOTH directions:
+   (a) it is not P&L -- its own docstring says so ("this is a calibration
+       hit-rate, not real trade P&L -- it has never joined against
+       placed-trade data"); it computes a Brier and a win rate. So the
+       "a shadow signal's P&L may be genuinely interesting" concern does
+       not apply on those grounds: it is a Brier function like its
+       siblings.
+   (b) BUT it is the only one of the five already segmented by a
+       dimension that is ~1:1 with condition_type, so a plain filter
+       would not have CLEANED any group -- it would have DELETED whole
+       groups. Live cross-tab 2026-08-24: 'ensemble' is 100%
+       above/below/between; 'monthly_rain_bootstrap_tilted' is 100%
+       precip_month_total (n=16, brier 0.1713). A plain filter erases the
+       rain row outright -- the one place a shadow signal's own
+       calibration currently surfaces, and the entire reason it is being
+       run in shadow.
+  Resolution: excluded rows are scored the same way and returned under a
+  reserved sub-dict key (tracker._PNL_EXCLUDED_SHADOW_KEY,
+  "_excluded_shadow") instead of entering the top-level per-source
+  entries. This mirrors the label-don't-drop convention the function
+  ALREADY established for the orthogonal is_shadow flag (n_shadow is
+  reported separately rather than the rows being dropped). The exclusion
+  still earns its keep on the mixed group: 'ensemble' sheds its 'between'
+  rows, 0.2641 (n=130) -> 0.2623 (n=90), with the shed rows visible as
+  their own 0.2682 (n=40) entry in the excluded section. The split
+  happens per-ROW before grouping, not per-source, so a source spanning
+  both populations contributes to each section separately rather than
+  being assigned wholesale by its first row. output_formatters.py's
+  cmd_pnl_attribution renders the excluded set as a labelled second
+  section. The reserved key cannot collide with a real source: every
+  signal_source written is a code-controlled method identifier
+  (order_executor.py passes analysis["method"], web_app.py passes
+  "dashboard") and none begins with an underscore.
+  Decision confirmed with the user before implementing.
+
+  ADJACENCY FIX, same change (workflow step 18/27 -- same payload):
+  get_brier_by_tier had NO min-sample floor, so it would render a Brier
+  computed over any n >= 1. The tier split is by abs(edge), which is not
+  independent of condition_type, so the new filter guts the sparse tiers
+  specifically: 'strong' n=10 -> 2, 'weak' n=7 -> 3, and the dashboard
+  would have shown a two-sample 0.5658 as a real "strong-signal Brier".
+  Added min_samples (default 5, matching get_brier_by_days_out's existing
+  per-bucket floor); under-populated tiers now report brier=None with
+  their real n, and all three keys stay present so web_app.py cannot
+  KeyError on a thin corpus. Pre-existing defect, but this change makes
+  it materially more likely to fire, so it was fixed here rather than
+  deferred. Confirmed with the user before implementing.
+
+  NOT changed, as the entry itself already established:
+  get_sameday_calibration() stays unfiltered -- it is the dashboard-facing
+  sibling that deliberately differs from get_sameday_calibration_cli() by
+  design (see that function's own docstring). The entry classed it as
+  "NOT itself a bug, just an existing asymmetry this note is tracking";
+  re-read and still true, so it was left alone rather than swept in.
+  Also verified NOT a contradiction: docs/grade_audit/preamble.md lists
+  get_brier_by_days_out under "SQL -- intentionally unfiltered". That
+  note is about days_out only (the function segments by horizon in
+  Python and needs the raw `predictions` table for its own same_day
+  bucket); it never covered condition_type. The function still reads raw
+  `predictions`, and a test pins that the same_day bucket keeps working.
+
+  Tests: 12 new across tests/test_tracker.py (days-out exclusion +
+  same_day-still-populated), tests/test_signal_quality.py (tier
+  exclusion, floor suppresses-but-keeps-n with a positive control, all
+  three keys survive, default floor is 5), tests/test_p9_p10.py (version
+  exclusion), tests/test_pnl_attribution.py (excluded family moves to the
+  reserved key, a mixed source splits across both sections, reserved key
+  absent on a clean corpus, min_samples enforced per-section) and
+  tests/test_output_formatters.py (two-section render, shadow-only corpus
+  is not reported as "no data", truly-empty still prints the hint).
+  Every exclusion assertion is value-first and mutation-tested to a
+  numerically distinct number, not just a different row count:
+    days_out bucket  0.04     -> 0.34     unfiltered
+    tier brier       0.025    -> 0.286667 unfiltered
+    version brier    0.09     -> 0.29     unfiltered
+    pnl ensemble     0.09     -> 0.365    unsplit
+  The min_samples floor was mutation-tested separately (reverting to the
+  old `if errs` makes the two floor tests fail with 0.025 and 0.04
+  instead of None).
 
 [RESOLVED 2026-08-21 -- see resolution below.] MEMBER QUARANTINE DETECTION
 STATISTIC SWAPPED FROM MAE TO PER-MODEL BRIER SCORE
@@ -31437,3 +31770,89 @@ Next step (cheap, and it is a measurement not a change):
   settled-sample gate (see the batch-52 opus-review M-1 entry above). If five more cities are
   also mis-referenced, that pooled fit is not "one bad city among five good ones" -- it is six
   for six, which changes the reading of M-1 entirely.
+Open follow-up (not blocking):
+  If a Synoptic free-tier key is ever registered, add a SynopticSource implementing the same
+  StationSource protocol and re-run get_shadow_report() side by side -- the density gain from
+  CWOP/mesonet stations is the one thing this build cannot measure. Note also that KTMB is
+  discovered by NWS but never appears in the aviationweather payload (confirmed live twice); it
+  is silently skipped, which is correct, but a station that permanently never reports is
+  effectively reducing k from 8 to 7 for Miami.
+
+[OPEN 2026-08-25 -- opus-review finding M4 during batch-57's own review;
+  filed rather than fixed inline because the fix moves live trade
+  probabilities, which is out of a condition_type-filtering batch's scope]
+  TRAIN_ALL_TEMPERATURE_SCALING NEVER FITS THE 'BETWEEN' T ITS OWN DOCSTRING
+  PROMISES
+Priority: Medium -- affects the probability every 'between' bracket market
+  is priced with, and 'between' trades with real capital today (it is NOT
+  a shadow-only family). Not High only because the fallback is a real
+  fitted value (the global T), not a no-op, so the effect is
+  under-compression rather than an unbounded error.
+
+Problem:
+  ml_bias.train_all_temperature_scaling()'s docstring says, verbatim,
+  "Condition-specific T values capture the fact that 'between' markets
+  have a much larger calibration gap than 'above'/'below' markets and need
+  a different compression factor," and gives the example
+  {"global": {...}, "between": {"T": 6.8, ...}}.
+
+  But its row query excludes tracker._ALWAYS_EXCLUDED_CONDITION_TYPES,
+  whose 6th member IS 'between'. So the per-condition loop never sees a
+  'between' bucket, existing["between"] is never written, and
+  data/temperature_scale.json currently holds only above/global/sameday --
+  confirmed live 2026-08-25:
+      {'above': 1.2739, 'global': 4.6013, 'sameday': 3.8294}
+  apply_temperature_scaling() therefore falls through
+  table.get("between") -> None to table.get("global") = 4.60, versus the
+  ~6.8 the design calls for. There is no _T_BETWEEN_PRIOR either (only
+  _T_BELOW_PRIOR/_T_ABOVE_PRIOR), so nothing else supplies it.
+
+  PRE-EXISTING, not a batch-57 regression: the hardcoded literal batch-57
+  replaced already contained 'between', so the consolidation is
+  behaviour-identical. Raised because batch-57's new comment initially
+  asserted the permanent constant was the right choice here, which would
+  have converted an unnoticed defect into a documented decision. That
+  comment now records the defect instead of blessing it.
+
+  The reasoning that makes 'between' permanently excluded elsewhere does
+  NOT transfer to this one site: everywhere else the reason is "don't let
+  a structurally different calibration gap distort a SHARED AGGREGATE."
+  This loop is not a shared aggregate -- it is precisely the per-condition
+  split that exists to give 'between' its own T.
+
+Why not now: changing it re-fits a value consumed by
+  weather_markets.apply_temperature_scaling() on the live pricing path, so
+  it needs its own before/after measurement and its own review, not a
+  drive-by edit inside a filtering batch. Suggested shape when picked up:
+  pass frozenset(_ALWAYS_EXCLUDED_CONDITION_TYPES - {"between"}) for the
+  multi-day `rows` query ONLY, leaving sameday_rows and hourly_rows alone,
+  then verify a "between" key actually appears in temperature_scale.json
+  and compare the fitted T against the ~6.8 the docstring predicts.
+
+[OPEN 2026-08-25 -- opus-review finding M5 during batch-57's own review]
+  CMD_WALKFORWARD'S PER-CONDITION BRIER SILENTLY DROPS 'BETWEEN'
+Priority: Low -- display-only (`py main.py walkforward`), no gate or
+  pricing consumer.
+
+Problem:
+  main.py's cmd_walkforward builds a "Per-condition Brier" breakdown from
+  a query carrying its own hand-written one-element exclusion:
+      AND (p.condition_type IS NULL OR p.condition_type != 'between')
+  It is billed as a per-condition comparison yet unconditionally omits one
+  of the three temperature conditions, so 'between' never appears in a
+  breakdown whose entire purpose is comparing conditions.
+
+  Found while consolidating batch-57 item 2's five exclusion sites: this
+  is a sixth site, missed by that item's enumeration because its literal
+  has a different shape (a single != rather than a NOT IN list). Batch-57
+  deliberately did NOT wire it to tracker's shared registry, and that part
+  is correct: the query GROUPS BY condition_type downstream, so each
+  family lands in its own bucket and nothing is pooled -- the shadow-family
+  exclusion the registry provides would remove rows without fixing any
+  contamination. An in-code comment at that site now records both halves.
+
+Why not now: it changes `py main.py walkforward` output, which is a
+  behaviour change rather than the consolidation batch-57 was scoped to.
+  Whoever picks it up should decide whether 'between' belongs in a
+  per-condition breakdown (probably yes, clearly labelled) rather than
+  simply deleting the predicate.

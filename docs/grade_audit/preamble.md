@@ -164,7 +164,7 @@ at −2 total with other deductions).
 ## Known-Intentional Patterns — Do NOT deduct for any of these
 
 **SQL — intentionally unfiltered (these are correct by design):**
-- `tracker.get_brier_by_days_out()` — segments by days_out in Python; needs all rows
+- `tracker.get_brier_by_days_out()` — segments by days_out in Python; needs all **days_out** values (it reads raw `predictions`, not the `multiday_predictions` view, because its own `same_day` bucket requires `days_out=0`). Note this "unfiltered" note covers days_out ONLY: as of batch-57 the function DOES apply the shared `condition_type` exclusion, so a missing `condition_type` filter there would now be a real finding.
 - `tracker.get_history()` — trade history display; should show everything
 - `tracker.sync_outcomes()` — must check ALL unsettled tickers regardless of days_out
 - `tracker.get_market_calibration()` — measures Kalshi market prices vs outcomes

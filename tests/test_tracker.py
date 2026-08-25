@@ -4,6 +4,7 @@ Uses an in-memory database so tests don't touch production data.
 """
 
 # Patch the DB path to an in-memory database before importing tracker
+import contextlib
 import json
 import shutil
 import sqlite3
@@ -2338,6 +2339,318 @@ class TestBrierSkillScore(_Phase3Base):
         self.assertIsNotNone(bss)
         assert bss is not None
         self.assertAlmostEqual(bss, 0.0, places=4)
+
+    # ── batch-57 item 1: condition_type exclusion ────────────────────────
+    def test_excludes_between_rows_from_both_briers(self):
+        """'between' rows must not enter BS_model or BS_reference.
+
+        Hand-computed. 10 'above' rows at our_prob=0.6/market_prob=0.6, all
+        settling YES: BS_model = BS_ref = (0.6-1)^2 = 0.16, so BSS = 0.0
+        exactly. The 5 'between' rows added at our_prob=0.6/market_prob=0.9
+        leave BS_model at 0.16 but would pull BS_ref down to
+        (10*0.16 + 5*0.01)/15 = 0.11 if they were counted, giving
+        BSS = 1 - 0.16/0.11 = -0.454545. The two outcomes are numerically
+        distinct, so this assertion fails if the filter is removed -- it is
+        not merely a sample-count check.
+        """
+        for i in range(10):
+            self._add(f"TKBSS-EX-A-{i}", "NYC", 0.6, 0.6, True, condition_type="above")
+        for i in range(5):
+            self._add(
+                f"TKBSS-EX-B-{i}", "NYC", 0.6, 0.9, True, condition_type="between"
+            )
+        bss = tracker.brier_skill_score()
+        self.assertIsNotNone(bss)
+        assert bss is not None
+        self.assertAlmostEqual(bss, 0.0, places=6)
+        self.assertNotAlmostEqual(bss, -0.454545, places=4)
+        # Positive control: the 'between' rows really are present and
+        # settled, so the 0.0 above is the filter excluding them rather
+        # than the seeding or the outcomes join having silently no-opped.
+        with tracker._conn() as con:
+            n_between = con.execute(
+                "SELECT COUNT(*) FROM multiday_predictions p"
+                " JOIN outcomes_valid o ON p.ticker = o.ticker"
+                " WHERE p.condition_type = 'between'"
+            ).fetchone()[0]
+        self.assertEqual(n_between, 5)
+
+    def test_excludes_shadow_family_rows(self):
+        """A gate-backed shadow family (precip_month_total) is excluded too.
+
+        Scope of what this proves (opus-review finding M1 corrected an
+        over-claim here): with every gate inactive -- today's real state and
+        the state this test runs in -- the dynamic and permanent sets are
+        IDENTICAL, so this test cannot distinguish them. It proves the
+        family is excluded, nothing about gate-coupling. The gate-coupling
+        claim is pinned separately by
+        TestBrierFamilyExclusionIsGateCoupled below, which patches the gates
+        active and asserts the rows come BACK.
+        """
+        for i in range(10):
+            self._add(f"TKBSS-SH-A-{i}", "NYC", 0.6, 0.6, True, condition_type="above")
+        for i in range(5):
+            self._add(
+                f"TKBSS-SH-R-{i}",
+                "NYC",
+                0.6,
+                0.9,
+                True,
+                condition_type="precip_month_total",
+            )
+        self.assertIn(
+            "precip_month_total",
+            tracker._excluded_brier_condition_types(),
+            "precondition: rain must still be gated off for this test to mean anything",
+        )
+        bss = tracker.brier_skill_score()
+        self.assertIsNotNone(bss)
+        assert bss is not None
+        self.assertAlmostEqual(bss, 0.0, places=6)
+
+    def test_city_filter_still_applies_alongside_exclusion(self):
+        """The city predicate and the exclusion params must not cross-bind.
+
+        Both are positional "?" params in the same statement and the city
+        one is appended AFTER the exclusion clause, so a wrong param order
+        would silently filter on the wrong values rather than error.
+        """
+        for i in range(10):
+            self._add(f"TKBSS-CT-N-{i}", "NYC", 1.0, 0.5, True, condition_type="above")
+        for i in range(10):
+            self._add(
+                f"TKBSS-CT-B-{i}", "Boston", 0.0, 0.5, True, condition_type="above"
+            )
+        nyc = tracker.brier_skill_score("NYC")
+        boston = tracker.brier_skill_score("Boston")
+        self.assertIsNotNone(nyc)
+        self.assertIsNotNone(boston)
+        assert nyc is not None and boston is not None
+        # NYC is a perfect model (BSS > 0), Boston maximally wrong (BSS < 0).
+        self.assertGreater(nyc, 0.0)
+        self.assertLess(boston, 0.0)
+        self.assertIsNone(tracker.brier_skill_score("Denver"))
+
+
+# ── batch-57 item 3: get_brier_by_days_out() condition_type exclusion ─────────
+
+
+class TestBrierByDaysOutExclusion(_Phase3Base):
+    """get_brier_by_days_out() excludes shadow-only / 'between' rows."""
+
+    def test_excluded_rows_do_not_enter_buckets(self):
+        """Hand-computed: 5 'above' rows at our_prob=0.8 settling YES give a
+        1-2d bucket of (0.8-1)^2 = 0.04. The 5 'between' rows at our_prob=0.2
+        settling YES would drag that bucket to
+        (5*0.04 + 5*0.64)/10 = 0.34 if counted -- numerically distinct, so
+        removing the filter breaks this assertion rather than just changing n.
+        """
+        for i in range(5):
+            self._add(f"TKBDO-A-{i}", "NYC", 0.8, 0.5, True, condition_type="above")
+        for i in range(5):
+            self._add(f"TKBDO-B-{i}", "NYC", 0.2, 0.5, True, condition_type="between")
+        result = tracker.get_brier_by_days_out()
+        self.assertIn("1-2d", result)
+        self.assertAlmostEqual(result["1-2d"], 0.04, places=6)
+        self.assertNotAlmostEqual(result["1-2d"], 0.34, places=4)
+        # Positive control: the excluded rows exist and are settled.
+        with tracker._conn() as con:
+            self.assertEqual(
+                con.execute(
+                    "SELECT COUNT(*) FROM predictions p"
+                    " JOIN outcomes_valid o ON p.ticker = o.ticker"
+                    " WHERE p.condition_type = 'between'"
+                ).fetchone()[0],
+                5,
+            )
+
+    def test_same_day_bucket_still_populated(self):
+        """days_out=0 rows still reach the same_day bucket after the fix.
+
+        This function deliberately reads raw `predictions`, not the
+        multiday_predictions view; the batch-57 filter must not have
+        narrowed it to multi-day rows as a side effect.
+        """
+        for i in range(5):
+            self._add(
+                f"TKBDO-SD-{i}",
+                "NYC",
+                0.8,
+                0.5,
+                True,
+                condition_type="above",
+                days_out=0,
+            )
+        result = tracker.get_brier_by_days_out()
+        self.assertIn("same_day", result)
+        self.assertAlmostEqual(result["same_day"], 0.04, places=6)
+
+
+# ── batch-57: the exclusion is GATE-COUPLED, not permanent ───────────────────
+
+
+class TestBrierFamilyExclusionIsGateCoupled(_Phase3Base):
+    """batch-57's five sites use the DYNAMIC set, not the permanent constant.
+
+    Closes the coverage hole opus-review finding M1 identified: with every
+    market-family gate inactive (today's real state),
+    _excluded_brier_condition_types() and _ALWAYS_EXCLUDED_CONDITION_TYPES
+    are IDENTICAL, so every other batch-57 test passes unchanged if all five
+    call sites are "tidied up" to reference the permanent constant. That
+    refactor would look harmless and be green -- and would silently keep a
+    graduated market family excluded forever, which is precisely the gap
+    _excluded_brier_condition_types() exists to close.
+
+    These tests patch the gates ACTIVE and assert the shadow rows come back.
+    Mirrors TestAlwaysExcludedConditionTypesNotGateCoupled, which pins the
+    same property from the permanent side.
+    """
+
+    @staticmethod
+    def _gates_active():
+        import weather_markets as wm
+
+        return (
+            patch.object(wm, "_rain_gates_active", return_value=True),
+            patch.object(wm, "_snow_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
+            patch.object(wm, "_storm_order_gates_active", return_value=True),
+        )
+
+    def _seed_mixed(self, prefix, n=6, days_out=2):
+        """`n` 'above' rows (err 0.04) + `n` 'precip_month_total' rows (0.64).
+
+        Seeds directly rather than via _Phase3Base._add: this class needs
+        signal_source and edge_calc_version populated (both of which _add
+        leaves NULL, and get_brier_by_version filters NULL versions out
+        entirely), and needs days_out >= 1 so rows land in the
+        multiday_predictions view AND in get_brier_by_days_out's 1-2d
+        bucket rather than same_day.
+
+        n defaults to 6 so every consumer's floor is cleared on the 'above'
+        side alone (get_brier_by_days_out needs >= 5 per bucket).
+        Pooled-with-rain value is (n*0.04 + n*0.64)/2n = 0.34 for any n.
+        """
+        for label, ctype, prob in (
+            ("A", "above", 0.8),
+            ("R", "precip_month_total", 0.2),
+        ):
+            for i in range(n):
+                ticker = f"{prefix}-{label}-{i}"
+                tracker.log_prediction(
+                    ticker,
+                    "NYC",
+                    date(2026, 4, 1),
+                    {
+                        "condition": {"type": ctype, "threshold": 70.0},
+                        "forecast_prob": prob,
+                        "market_prob": 0.5,
+                        "edge": abs(prob - 0.5),
+                        "method": "ensemble",
+                        "n_members": 20,
+                        "bias_correction": 0.0,
+                    },
+                    signal_source="ensemble",
+                    edge_calc_version="v1.0",
+                )
+                tracker.log_outcome(ticker, True)
+                with tracker._conn() as con:
+                    con.execute(
+                        "UPDATE predictions SET days_out = ? WHERE ticker = ?",
+                        (days_out, ticker),
+                    )
+
+    def test_precondition_gates_change_the_set(self):
+        """Positive control: patching the gates really does move the set.
+
+        Without this, every assertion below could pass vacuously if the
+        patch targets stopped matching the real gate function names.
+        """
+        import weather_markets as wm  # noqa: F401
+
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            active = tracker._excluded_brier_condition_types()
+        self.assertEqual(active, frozenset({"between"}))
+        self.assertIn("precip_month_total", tracker._excluded_brier_condition_types())
+
+    def test_brier_by_version_counts_graduated_family(self):
+        """Rain rows re-enter get_brier_by_version once rain trades live.
+
+        Hand-computed: 4 'above' at 0.04 alone -> 0.04. With the 4 rain rows
+        at 0.64 counted, (4*0.04 + 4*0.64)/8 = 0.34. Distinct values.
+        """
+        self._seed_mixed("GCV")
+        before = tracker.get_brier_by_version(min_samples=1)["v1.0"]
+        self.assertAlmostEqual(before["brier"], 0.04, places=6)
+        self.assertEqual(before["n"], 6)
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            after = tracker.get_brier_by_version(min_samples=1)["v1.0"]
+        self.assertEqual(after["n"], 12)
+        self.assertAlmostEqual(after["brier"], 0.34, places=4)
+
+    def test_brier_by_tier_counts_graduated_family(self):
+        self._seed_mixed("GCT")
+        before = tracker.get_brier_by_tier(min_samples=1)
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            after = tracker.get_brier_by_tier(min_samples=1)
+        before_n = sum(t["n"] for t in before.values())
+        after_n = sum(t["n"] for t in after.values())
+        self.assertEqual(before_n, 6)
+        self.assertEqual(after_n, 12)
+
+    def test_brier_by_days_out_counts_graduated_family(self):
+        self._seed_mixed("GCD")
+        before = tracker.get_brier_by_days_out()
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            after = tracker.get_brier_by_days_out()
+        self.assertAlmostEqual(before["1-2d"], 0.04, places=6)
+        self.assertAlmostEqual(after["1-2d"], 0.34, places=4)
+
+    def test_brier_skill_score_counts_graduated_family(self):
+        """BSS needs >= 10 rows, so seed 6+6 rather than 4+4."""
+        for i in range(6):
+            self._add(f"GCB-A-{i}", "NYC", 0.6, 0.6, True, condition_type="above")
+        for i in range(6):
+            self._add(
+                f"GCB-R-{i}",
+                "NYC",
+                0.6,
+                0.9,
+                True,
+                condition_type="precip_month_total",
+            )
+        # Gates inactive: only 6 rows survive the filter, below the 10 floor.
+        self.assertIsNone(tracker.brier_skill_score())
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            after = tracker.brier_skill_score()
+        self.assertIsNotNone(after)
+
+    def test_pnl_by_signal_source_promotes_graduated_family(self):
+        """A graduated family leaves the reserved sub-dict for the top level."""
+        self._seed_mixed("GCP")
+        before = tracker.get_pnl_by_signal_source(min_samples=1)
+        self.assertIn(tracker._PNL_EXCLUDED_FAMILY_KEY, before)
+        with contextlib.ExitStack() as stack:
+            for p in self._gates_active():
+                stack.enter_context(p)
+            after = tracker.get_pnl_by_signal_source(min_samples=1)
+        self.assertNotIn(
+            tracker._PNL_EXCLUDED_FAMILY_KEY,
+            after,
+            "rain rows must rejoin the headline table once rain trades live",
+        )
+        self.assertEqual(after["ensemble"]["n"], 12)
 
 
 # ── Task 3: get_confusion_matrix() with threshold in return dict ──────────────

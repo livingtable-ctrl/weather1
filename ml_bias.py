@@ -184,10 +184,26 @@ def train_bias_model(min_samples: int = 200) -> dict:
     tracker.init_db()
 
     city_data: dict[str, list] = {}
+    # batch-57 item 2: the exclusion list is no longer a hardcoded 6-tuple
+    # inlined in this SQL -- it now comes from tracker's canonical registry
+    # so a newly-registered shadow-only family reaches this query too.
+    # _ALWAYS_EXCLUDED_CONDITION_TYPES (permanent), NOT the gate-coupled
+    # _excluded_brier_condition_types(): this is a per-city bias-CURVE fit,
+    # the scale-mismatch class of consumer batch-06's opus-review finding M5
+    # separated out, so a family going live must not start feeding it.
+    # Behaviour is unchanged today and at every gate state -- the literal
+    # this replaces was exactly this constant's 6 members.
     try:
+        # Inside the try, not above it (opus-review finding L8): this
+        # function's contract is "any failure gathering rows -> warn and
+        # return {}". Building the clause outside the guard would let an
+        # exception from the helper escape to the caller instead.
+        _cond_clause, _cond_params = tracker._condition_type_not_in_sql(
+            tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        )
         with tracker._conn() as con:
             rows = con.execute(
-                """
+                f"""
                 SELECT
                     p.city, p.our_prob,
                     CAST(strftime('%m', p.market_date) AS INTEGER) AS month,
@@ -196,11 +212,10 @@ def train_bias_model(min_samples: int = 200) -> dict:
                 FROM multiday_predictions p
                 JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.city IS NOT NULL AND p.our_prob IS NOT NULL
-                  AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
+                  AND {_cond_clause}
                 ORDER BY p.predicted_at ASC
-                """
+                """,
+                _cond_params,
             ).fetchall()
     except Exception as exc:
         _log.warning("ml_bias: DB query failed: %s", exc)
@@ -899,33 +914,61 @@ def train_all_temperature_scaling(
     )
     _hourly_exclude_params = tuple(f"{p}%" for p in _hourly_prefixes)
 
+    # batch-57 item 2: shared exclusion registry instead of two more inlined
+    # 6-tuple literals. _ALWAYS_EXCLUDED_CONDITION_TYPES (permanent), NOT the
+    # gate-coupled _excluded_brier_condition_types(): the five SHADOW families
+    # never reach a temperature-scaling fit in either direction -- each returns
+    # out of analyze_trade via its own fast-path before section 7b ever calls
+    # apply_temperature_scaling -- so their exclusion here is structural, not
+    # graduation-pending. Same 6 members the replaced literals had, so no
+    # behaviour change at any gate state.
+    #
+    # KNOWN DEFECT, deliberately NOT fixed here (opus-review finding M4):
+    # the 6th member is 'between', and excluding it means the per-condition
+    # loop below never sees a 'between' bucket -- so the "between": {"T": 6.8}
+    # entry this function's own docstring promises is never actually fit.
+    # data/temperature_scale.json currently holds only above/global/sameday,
+    # so 'between' markets fall back to the global T (~4.60) instead of the
+    # larger compression the design calls for. This predates batch-57 (the
+    # literal being replaced already contained 'between'), so this change is
+    # behaviour-preserving and does NOT bless the exclusion -- fixing it moves
+    # live trade probabilities and needs its own entry. Filed in backlog.txt
+    # as "TRAIN_ALL_TEMPERATURE_SCALING NEVER FITS THE 'BETWEEN' T ITS OWN
+    # DOCSTRING PROMISES".
+
     # Fetch settled rows split by days_out:
     # - Multi-day (days_out >= 1 or NULL) are ensemble-derived — use for global + per-condition T
     # - Same-day (days_out = 0) are METAR-derived — different distribution, need their own T
     #   (hourly trades explicitly excluded -- they get their own pool below)
     try:
+        # Inside the try, not above it (opus-review finding L8) -- see the
+        # matching note in train_bias_model: this function degrades to {} on
+        # any row-gathering failure, and the helper call belongs under that
+        # same guard.
+        _cond_clause, _cond_params = tracker._condition_type_not_in_sql(
+            tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        )
         with tracker._conn() as con:
+            # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly
+            # rain trades log with a real (large, ~0-31) days_out once
+            # placed, so they'd otherwise land in this multi-day pool and
+            # get pooled into a temperature-scaling calibration tuned for
+            # °F-shaped probabilities. condition_type is already the exact
+            # mechanism this query uses to exclude 'between' rows -- rain's
+            # condition_type ("precip_month_total") is a new, unique
+            # string, unlike hourly's ("above"/"below", indistinguishable
+            # from ordinary daily rows by string alone, which is why
+            # hourly needs ticker-prefix exclusion instead, below).
             rows = con.execute(
-                """
+                f"""
                 SELECT p.our_prob, o.settled_yes, p.condition_type
                 FROM predictions p
                 JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND (p.days_out IS NULL OR p.days_out >= 1)
-                  AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
-                """
-                # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly
-                # rain trades log with a real (large, ~0-31) days_out once
-                # placed, so they'd otherwise land in this multi-day pool and
-                # get pooled into a temperature-scaling calibration tuned for
-                # °F-shaped probabilities. condition_type is already the exact
-                # mechanism this query uses to exclude 'between' rows -- rain's
-                # condition_type ("precip_month_total") is a new, unique
-                # string, unlike hourly's ("above"/"below", indistinguishable
-                # from ordinary daily rows by string alone, which is why
-                # hourly needs ticker-prefix exclusion instead, below).
+                  AND {_cond_clause}
+                """,
+                _cond_params,
             ).fetchall()
             # metar_lockout rows excluded: analyze_trade's METAR-locked branch
             # never calls apply_temperature_scaling (bypasses section 7b
@@ -934,21 +977,29 @@ def train_all_temperature_scaling(
             # was training on data the transform is never actually applied
             # to. metar_lockout now gets its own dedicated beta-calibration
             # fit (fit_metar_calibration above) instead.
+            # Param order is load-bearing: _cond_params bind the {_cond_clause}
+            # placeholders, which appear BEFORE _hourly_exclude_sql's own "?"s
+            # in the concatenated statement, so they must come first in the
+            # tuple. SQLite binds "?" positionally by order of appearance.
             sameday_rows = con.execute(
-                """
+                f"""
                 SELECT p.our_prob, o.settled_yes
                 FROM predictions p
                 JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
                   AND (p.method IS NULL OR p.method != 'metar_lockout')
-                  AND (p.condition_type IS NULL
-                       OR p.condition_type NOT IN
-                          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
+                  AND {_cond_clause}
                 """
                 + _hourly_exclude_sql,
-                _hourly_exclude_params,
+                (*_cond_params, *_hourly_exclude_params),
             ).fetchall()
+            # No condition_type exclusion here, unlike its two siblings above
+            # (opus-review finding I6): this pool is already narrowed to the
+            # KXTEMP*H hourly ticker prefixes, which are directional
+            # temperature markets and therefore always 'above'/'below' -- none
+            # of the six excluded types can appear. Pre-existing asymmetry,
+            # noted rather than changed so the difference reads as deliberate.
             hourly_rows = (
                 con.execute(
                     """

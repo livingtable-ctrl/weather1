@@ -38,7 +38,9 @@ def tmp_tracker(tmp_path, monkeypatch):
     return tracker
 
 
-def _log_and_settle(t, ticker, method, our_prob, settled_yes, version="v1.0"):
+def _log_and_settle(
+    t, ticker, method, our_prob, settled_yes, version="v1.0", condition_type="above"
+):
     """Helper: log a prediction + outcome in the temp tracker DB."""
     from datetime import date as _date
 
@@ -51,7 +53,7 @@ def _log_and_settle(t, ticker, method, our_prob, settled_yes, version="v1.0"):
             "market_prob": 0.50,
             "edge": our_prob - 0.50,
             "method": method,
-            "condition": {"type": "above", "threshold": 70},
+            "condition": {"type": condition_type, "threshold": 70},
         },
         edge_calc_version=version,
     )
@@ -92,6 +94,50 @@ class TestStrategyVersioning:
         assert "v2.0" in result
         assert result["v1.0"]["n"] == 12
         assert result["v2.0"]["n"] == 12
+
+    def test_get_brier_by_version_excludes_condition_types(self, tmp_tracker):
+        """batch-57 item 3: shadow-only / 'between' rows leave the per-version pool.
+
+        A version spans every condition_type at once, so this is the most
+        clearly-contaminated of the four adjacency functions. Hand-computed:
+        12 'above' rows at our_prob=0.70 settling YES give (0.7-1)^2 = 0.09.
+        The 12 'between' rows at our_prob=0.70 settling NO would pull the
+        version's Brier to (12*0.09 + 12*0.49)/24 = 0.29 if counted --
+        numerically distinct from 0.09, so this fails if the filter is
+        removed rather than merely reporting a different n.
+        """
+        for i in range(12):
+            _log_and_settle(
+                tmp_tracker, f"BV-ABOVE-{i}", "ensemble", 0.70, True, version="v1.0"
+            )
+        for i in range(12):
+            _log_and_settle(
+                tmp_tracker,
+                f"BV-BETWEEN-{i}",
+                "ensemble",
+                0.70,
+                False,
+                version="v1.0",
+                condition_type="between",
+            )
+
+        result = tmp_tracker.get_brier_by_version(min_samples=10)
+        # Value first: this is the assertion that proves the filter changed
+        # the NUMBER, not merely the row count.
+        assert result["v1.0"]["brier"] == pytest.approx(0.09)
+        assert result["v1.0"]["brier"] != pytest.approx(0.29)
+        assert result["v1.0"]["n"] == 12, "'between' rows must not be counted"
+        # Positive control: the excluded rows really are in the DB and
+        # settled, so n==12 is the filter working, not a seeding no-op.
+        with tmp_tracker._conn() as con:
+            assert (
+                con.execute(
+                    "SELECT COUNT(*) FROM multiday_predictions p"
+                    " JOIN outcomes_valid o ON p.ticker = o.ticker"
+                    " WHERE p.condition_type = 'between'"
+                ).fetchone()[0]
+                == 12
+            )
 
     def test_log_prediction_stores_edge_calc_version(self, tmp_tracker):
         """edge_calc_version kwarg is stored and retrievable."""
