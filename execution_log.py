@@ -153,7 +153,7 @@ def init_log() -> None:
                 quantity       INTEGER NOT NULL,
                 price          REAL    NOT NULL,
                 order_type     TEXT,              -- "market" or "limit"
-                status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled", "amended", "unknown" (AUD-0007: placement outcome ambiguous -- see kalshi_client.OrderStatusUnknownError)
+                status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled", "amended", "unknown" (AUD-0007: placement outcome ambiguous -- see kalshi_client.OrderStatusUnknownError), "unresolved" (batch-58 item 5: an 'unknown' row that stayed unresolvable past _UNRESOLVED_AGE_MINUTES -- terminal, operator-actionable, see park_unresolved_order)
                 response       TEXT,              -- JSON-encoded API response
                 error          TEXT,              -- error message if failed
                 placed_at      TEXT    NOT NULL
@@ -292,13 +292,47 @@ def log_order_result(
     first detected (see order_executor._poll_pending_orders) — used with
     COALESCE so a later log_order_result() call on the same row (e.g. an
     unrelated field update) can never accidentally null them back out.
+
+    Batch-58 item 7 (backlog L27399): response and fill_quantity now get the
+    same COALESCE treatment, for the same reason. Both were unconditional
+    column writes, so ANY caller that omitted them wiped whatever the row
+    already held. That is the bug class the backlog records as "L-10(a)",
+    and it was live in at least two places:
+      - order_executor._amend_live_order's bare
+        log_order_result(row_id=replaces_order_id, status="amended") call,
+        which nulled the amended-away order's recorded response (where
+        order_id lives) and its fill quantity.
+      - order_executor._recover_pending_orders' pending-resolve branch,
+        which passes fill_quantity but not response, wiping the order_id
+        the row was recovered by.
+    Two other sites already worked around it by hand -- _recover_pending_
+    orders' resting branch re-passes response purely to avoid the wipe, and
+    _finalize_cancel re-reads the row and passes its own prior values back
+    in. Those pass-throughs are now redundant but harmless (an explicitly
+    passed value still wins over the stored one); they are left in place
+    rather than removed, since each also documents WHY the field matters at
+    that specific site.
+
+    COALESCE only ever protects a None: an explicitly passed value --
+    including fill_quantity=0 -- still overwrites, because 0 is not NULL in
+    SQLite. One edge (opus review, batch-58): `response` is bound as
+    `json.dumps(response) if response else None`, so an explicitly passed
+    EMPTY dict is falsy and reaches the COALESCE as None, i.e. it preserves
+    rather than clears. No production caller passes {}, and clearing a row's
+    response is exactly what this change exists to prevent, so the behaviour
+    is correct -- but "only protects a None" is a hair stronger than the
+    code, and this is the gap. No caller in this repo relies on log_order_result nulling either
+    column back out; the only writer that intentionally REDUCES
+    fill_quantity is record_live_partial_exit, which uses its own atomic
+    UPDATE and is unaffected.
     """
     init_log()
     with _conn() as con:
         con.execute(
             """UPDATE orders SET
-               status=?, response=?, error=?,
-               fill_quantity=?, error_code=?, error_type=?,
+               status=?, response=COALESCE(?, response), error=?,
+               fill_quantity=COALESCE(?, fill_quantity),
+               error_code=?, error_type=?,
                filled_at=COALESCE(?, filled_at),
                market_mid_at_fill=COALESCE(?, market_mid_at_fill)
                WHERE id=?""",
@@ -911,6 +945,110 @@ def get_unknown_live_orders() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_unresolved_live_orders() -> list[dict]:
+    """Return every live order parked at the terminal status='unresolved',
+    unbounded.
+
+    Batch-58 item 5 (backlog L24457): an 'unknown' row whose true state
+    still could not be determined after _UNRESOLVED_AGE_MINUTES. Parking it
+    here is what stops order_executor._recover_pending_orders re-checking
+    it against Kalshi forever; an operator alert fires once at the moment of
+    parking (see LIVE_TRADING_RUNBOOK.md).
+
+    'unresolved' is deliberately NOT 'failed'. Every dedup/spend guard in
+    this module keys off status via NOT-IN lists that exclude
+    'failed'/'canceled'/'cancelled'/'amended' -- a parked row keeps
+    blocking a re-placement (get_recent_order_for_market,
+    has_order_this_cycle) and keeps counting toward
+    get_today_live_spend(), exactly as it did while 'unknown'. Reusing
+    'failed' would have unblocked dedup and let the bot re-place an order
+    that may genuinely be resting live on the exchange.
+    """
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT * FROM orders WHERE live = 1 AND status = 'unresolved' "
+            "ORDER BY placed_at",
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def park_unresolved_order(row_id: int) -> bool:
+    """Atomically move an 'unknown' row to the terminal 'unresolved' status,
+    ONLY if it is still 'unknown' at the moment of this UPDATE. Returns
+    whether THIS call won the transition.
+
+    Batch-58 item 5. Mirrors claim_unknown_order/claim_sent_order's exact
+    atomicity pattern for the identical reason: _recover_pending_orders can
+    run concurrently from more than one process (cron.py's own cycle vs
+    cmd_watch's standalone call, deliberately NOT serialized per AUD-0013),
+    so a plain unconditional UPDATE here could park a row another process
+    had just resolved to 'pending'/'filled', silently reverting real
+    settlement data. The rowcount check is also what stops a losing
+    concurrent pass re-alerting for a row it did not park. (Opus review,
+    batch-58, M1: "exactly once per row" was the intent but not the
+    behaviour until the caller switched to a per-ROW send_system_alert
+    cooldown_key -- a single shared key meant only one parked row per 6
+    hours ever alerted.)
+
+    Deliberately does NOT touch response -- the stored client_order_id is
+    the only handle an operator has for reconciling this row against Kalshi
+    by hand.
+    """
+    init_log()
+    with _conn() as con:
+        cur = con.execute(
+            "UPDATE orders SET status = 'unresolved' "
+            "WHERE id = ? AND status = 'unknown'",
+            (row_id,),
+        )
+    return cur.rowcount > 0
+
+
+def count_open_live_positions() -> int:
+    """Count open live positions -- the single definition of "open" shared by
+    order_executor._count_open_live_orders (the max_open_positions safety
+    gate) and get_live_pnl_summary's open_count (the dashboard stat).
+
+    Batch-58 item 3 (backlog L24388): get_live_pnl_summary computed its own
+    `status = 'pending'` COUNT, which is the exact undercount AUD-0009
+    already fixed for the gate -- both gaps that entry named (filled-
+    unsettled AND unknown) were still present. Extracted here rather than
+    duplicated in SQL so the two consumers cannot drift apart again.
+
+    The union, and why each arm is in it (see _count_open_live_orders'
+    docstring for the full history):
+      - status='pending'    -- a resting entry order is real capital that
+                               could fill at any moment.
+      - status='unknown'    -- an ambiguous placement (AUD-0007) could turn
+                               out to be a real fill.
+      - status='unresolved' -- batch-58 item 5's terminal park for an
+                               'unknown' row that never resolved. It counted
+                               here while it was 'unknown'; dropping it on
+                               the status change would have silently LOOSENED
+                               max_open_positions, which is why parking a row
+                               adds it to this union rather than removing it.
+      - filled-but-unsettled positions.
+    closes_position_id IS NULL on the three non-settled arms excludes a
+    protective EXIT order's own row, which would otherwise be double-counted
+    alongside the position it is closing.
+    """
+    init_log()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT COUNT(*) AS open_count FROM orders
+            WHERE live = 1
+              AND closes_position_id IS NULL
+              AND (
+                    status IN ('pending', 'unknown', 'unresolved')
+                 OR (status = 'filled' AND settled_at IS NULL)
+              )
+            """,
+        ).fetchone()
+    return row["open_count"] or 0
+
+
 def get_sent_live_orders(older_than_minutes: int = 0) -> list[dict]:
     """Return every live order still at status='sent' (log_order()'s
     transient pre-placement default), unbounded.
@@ -1417,27 +1555,47 @@ def record_live_exit_fill(
     old docstring's "the entry side already paid $0, always a resting maker
     order" assumption: that's false for a position entered via
     main.cmd_order's live buy (always IOC/taker post-e5331a8d) or the
-    auto-path's taker-cross reprice fallback -- but this function only ever
-    models the EXIT leg's own fee, so that assumption never actually
-    affected THIS formula's own math; it's called out here only because the
-    stale comment previously implied otherwise.
+    auto-path's taker-cross reprice fallback. That assumption used to be
+    harmless here because this function only modelled the EXIT leg; as of
+    batch-58 item 8 (below) it models both legs, and the entry leg's real
+    maker/taker status is read from the row rather than assumed.
 
-    KNOWN GAP (opus review, batch-22 follow-up, filed as its own backlog
-    entry -- deliberately not fixed in this change): for a taker-entered
-    position, the ENTRY leg's own taker fee is never charged anywhere once
-    the position is closed via THIS function (early exit) rather than
-    natural settlement -- order_executor._poll_pending_orders' settlement
-    branch is the only place that computes an entry-side fee, and it never
-    runs for a row this function has already marked settled_at. Realized
-    P&L on every taker-entered, early-exited live position is overstated by
-    the unrecorded entry fee. Not fixed here because it needs its own
-    signature change (this function/position dict would need the ORIGINAL
-    entry quantity, not just the currently-remaining quantity, to correctly
-    prorate a one-time entry fee across potentially more than one partial
-    exit -- recognizing the full fee on the first partial exit would be
-    fine for a single exit but wrong the moment a position closes across
-    two or more separate exit events) -- a genuinely separate piece of
-    surgery, not a same-payload adjacency fix.
+    ENTRY-LEG FEE (batch-58 item 8, backlog L26637 -- the gap this
+    docstring previously recorded as a deliberate deferral, now closed).
+    Both legs are charged here. The entry leg's fee is looked up from the
+    POSITION ROW itself, not from the caller's dict: order_type is the
+    maker/taker discriminator AUD-0003 established for exactly this purpose
+    ("limit" = a resting GTC maker fill, anything else = a taker fill), and
+    an unreadable/missing order_type conservatively falls back to the TAKER
+    rate -- same direction AUD-0003 chose, since understating realized P&L
+    is the safe failure direction and assuming free maker fills is not.
+    Before this, only the exit leg was ever charged on an early exit
+    (order_executor._poll_pending_orders' settlement branch is the only
+    other place an entry-side fee is computed, and it never runs for a row
+    this function has already marked settled_at), so realized P&L on every
+    taker-entered, early-exited live position was overstated by the
+    unrecorded entry fee.
+
+    The entry fee is charged on the CONTRACTS BEING CLOSED BY THIS FILL
+    (clamped_fill_count at entry_price), not as a lump sum on the first
+    partial exit. That is what makes it correct across more than one exit
+    event -- the original deferral's stated blocker was needing the
+    ORIGINAL entry quantity to prorate a one-time fee, which this sidesteps
+    entirely by charging per contract with the same curved per-contract
+    formula the exchange itself uses. For a position that closes in a
+    single exit, the total charged is exactly the real entry fee. For a
+    position that closes across k separate exits, the total can exceed it
+    by at most k-1 cents, because kalshi_taker_fee rounds UP to the whole
+    cent independently per call -- an overstatement of cost, i.e. the same
+    safe direction as the order_type fallback above.
+
+    SCOPE (decided explicitly, batch-58): this is a forward-only fix, and
+    no backfill of stored rows is needed or performed. Verified 2026-08-24
+    against the production data/execution_log.db: zero live=1 rows and zero
+    settled_at rows exist, in the live database and in every retained
+    backup of it -- the bot has never settled a live position, so there is
+    no historical corpus carrying the overstated P&L and no date boundary
+    introduced by fixing it here.
 
     This exit is always an IOC/taker fill for every caller of this function
     (order_executor._exit_live_position and main.cmd_order's live sells both
@@ -1468,13 +1626,28 @@ def record_live_exit_fill(
     writer before this call's UPDATE landed -- add_live_loss is deliberately
     NOT called in that case, so the same exit's P&L is never double-counted.
     """
-    from utils import kalshi_taker_fee
+    from utils import kalshi_maker_fee, kalshi_taker_fee
 
     qty = position["quantity"]
     entry_price = position["entry_price"]
     clamped_fill_count = min(fill_count, qty)
     gross_pnl = clamped_fill_count * (exit_price - entry_price)
-    pnl = round(gross_pnl - kalshi_taker_fee(clamped_fill_count, exit_price), 4)
+
+    # Batch-58 item 8: entry leg. order_type lives on the row, not on the
+    # caller-supplied position dict (order_executor._get_live_open_positions
+    # and main.cmd_order both build that dict without it), so read it back
+    # here rather than widening every caller's dict shape. A row that can't
+    # be read at all falls through to the taker rate, same conservative
+    # default AUD-0003 applies to a missing/unrecognized order_type.
+    _entry_row = get_order_by_id(position["id"])
+    _entry_is_maker = _entry_row is not None and _entry_row.get("order_type") == "limit"
+    _entry_fee = (
+        kalshi_maker_fee(clamped_fill_count, entry_price)
+        if _entry_is_maker
+        else kalshi_taker_fee(clamped_fill_count, entry_price)
+    )
+    _exit_fee = kalshi_taker_fee(clamped_fill_count, exit_price)
+    pnl = round(gross_pnl - _entry_fee - _exit_fee, 4)
     resolved_reason = "manual_close" if reason is None else reason
 
     if clamped_fill_count < qty:
@@ -1622,7 +1795,9 @@ def get_live_pnl_summary() -> dict:
         today_pnl:     sum of pnl for live orders settled today (UTC),
                        excluding exit_reason='unmatched_sell' placeholders
         total_pnl:     sum of all settled live order pnl, same exclusion
-        open_count:    count of live orders with status='pending'
+        open_count:    count of open live positions -- see
+                       count_open_live_positions() for the union this
+                       delegates to
         settled_count: count of live orders with settled_at IS NOT NULL --
                        NOT exclusion-filtered (see AUD-0057 note below)
 
@@ -1640,6 +1815,23 @@ def get_live_pnl_summary() -> dict:
     settled_count too) keeps that one true fact ("N live orders have
     settled") accurate while still not counting the placeholder's $0
     toward either P&L total.
+
+    Batch-58 item 3 (backlog L24388): open_count was its own
+    `status = 'pending'` COUNT, documenting the undercount as if it were
+    intended -- the identical bug AUD-0009 fixed for
+    order_executor._count_open_live_orders, with both gaps that entry named
+    (filled-but-unsettled positions AND ambiguous 'unknown' placements)
+    still present here. It now delegates to count_open_live_positions(),
+    the shared definition the safety gate uses, so the dashboard stat and
+    the gate can no longer disagree about what "open" means.
+
+    Opus review (batch-58, L10): open_count is therefore read on its OWN
+    connection, after this function's `with _conn()` block closes, rather
+    than alongside the two P&L sums as it was before. A concurrent writer
+    can make the returned dict internally inconsistent (a position settling
+    between the two reads). Accepted deliberately for a dashboard stat --
+    the alternative is either a nested connection or duplicating the union
+    SQL here, and duplication is exactly what this item existed to remove.
     """
     init_log()
     today = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -1664,17 +1856,10 @@ def get_live_pnl_summary() -> dict:
             WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
             """,
         ).fetchone()
-        open_row = con.execute(
-            """
-            SELECT COUNT(*) AS open_count
-            FROM orders
-            WHERE live = 1 AND status = 'pending'
-            """,
-        ).fetchone()
     return {
         "today_pnl": round(today_row["today_pnl"] or 0.0, 4),
         "total_pnl": round(totals_row["total_pnl"] or 0.0, 4),
-        "open_count": open_row["open_count"] or 0,
+        "open_count": count_open_live_positions(),
         "settled_count": totals_row["settled_count"] or 0,
     }
 

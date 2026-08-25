@@ -180,6 +180,40 @@ stays `unknown` for more than a few cycles, check the order manually against
 Kalshi's own order history (`c.get_open_orders()` / the Kalshi web UI) for
 the ticker in question before assuming it's safe to ignore.
 
+**`status == 'unresolved'`**: an `unknown` ENTRY order that stayed
+unresolvable for longer than `UNRESOLVED_ORDER_AGE_MINUTES` (default 1440 =
+24h). The bot fires a system alert ("Live order stuck unresolved") once at
+the moment of parking and then **stops re-checking the row** — this status
+is terminal and only an operator clears it. It is not the same as `failed`:
+`failed` means the bot positively confirmed the order never landed, while
+`unresolved` means it never found out. So a parked row deliberately keeps
+behaving like an open one — it still counts toward open positions and daily
+live spend, and still blocks an automated re-placement for that ticker+side
+— precisely because it might be a real resting order on the exchange.
+
+A row is only parked when the reconciliation lookup itself actually
+succeeded. If Kalshi's order-history endpoints are failing, rows stay
+`unknown` and keep being retried however old they get.
+
+To clear one: find its stored `client_order_id` (it is in the row's
+`response` JSON, and the alert message includes it), reconcile that against
+Kalshi's own order history by hand, then update the row's status to whatever
+the exchange actually shows (`filled` / `pending` / `failed`). A row usually
+lands here for one of two reasons — the order aged out past what Kalshi's
+order-history endpoints still return, or the row never had a usable
+`client_order_id` stored at all.
+
+**Unresolvable EXIT orders are never parked.** An order row with
+`closes_position_id` set is a protective SELL, and the recovery pass is what
+eventually settles the POSITION it closed. Parking it would leave that
+position at `live=1 / status='filled' / settled_at=NULL` — which is exactly
+what the bot reads as "still open" — so the automated exit scanner would
+keep placing fresh real SELL orders for contracts the account no longer
+holds, every cycle, forever. Instead the bot alerts ("Live exit order stuck
+unresolved", naming both the exit row and the position it was closing) and
+keeps retrying. Treat that alert as urgent: reconcile the exit against
+Kalshi by hand and settle the position row.
+
 ### Alert thresholds — take action if:
 
 | Metric | Action threshold | Action |
@@ -190,6 +224,9 @@ the ticker in question before assuming it's safe to ignore.
 | Any circuit breaker opens | Any source | Check data source; review any live orders touched by bad data |
 | Brier score (after 10+ trades) | > 0.25 | Pause and investigate |
 | `status == 'unknown'` order row | Persists past a few cron/watch cycles | Manually check that ticker against Kalshi's own order history before assuming it's safe to ignore |
+| `status == 'unresolved'` order row | Any (the bot alerts once when it parks the row) | Reconcile the row's stored `client_order_id` against Kalshi by hand and set its real status — the bot will not re-check it again |
+| "Live exit order stuck unresolved" alert | Any | Urgent. A protective SELL could not be reconciled, so the position it closed is still tracked as open and the exit scanner will keep firing real SELLs at it. Reconcile the exit against Kalshi and settle the position row by hand |
+| "Live exit blocked" alert | Any | A protective exit could not be placed because TRADING_PAUSED or the kill switch is engaged. The position is still open and unprotected. Note `py main.py sell` runs the FULL gate and is blocked by the same condition, so clearing the block is what re-enables any in-bot close — Kalshi's own web UI is the only path that bypasses it |
 
 ### Weekly review
 

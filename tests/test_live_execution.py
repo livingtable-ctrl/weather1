@@ -3,6 +3,49 @@
 import pytest
 
 
+def _live_gates_open():
+    """Patch BOTH live gates open, for a test that only cares about the code
+    path past them.
+
+    Batch-58 item 4 split the single live gate in two: _exit_live_position
+    now calls trading_gates.pre_live_exit_check (the reduced gate that a
+    risk-REDUCING order runs) while every other live-order path still calls
+    pre_live_trade_check. Tests that just need "assume the gate permits this
+    order" patch both, so a caller moving between the two can never silently
+    turn one of these tests into a no-op against an unpatched real gate.
+
+    Tests that assert a gate BLOCKS something deliberately do not use this --
+    they patch the one specific gate their path is supposed to consult.
+    """
+    from unittest.mock import MagicMock, patch
+
+    return patch.multiple(
+        "trading_gates",
+        pre_live_trade_check=MagicMock(return_value=None),
+        pre_live_exit_check=MagicMock(return_value=None),
+    )
+
+
+def _batched_lookup(order, uncertain=False):
+    """side_effect for a mock client's _find_orders_by_client_ids.
+
+    Batch-58 item 6 hoisted _recover_pending_orders' per-row
+    client._find_order_by_client_id() call out of the loop and replaced it
+    with ONE client._find_orders_by_client_ids(set_of_ids) call per recovery
+    pass. These tests previously stubbed the per-row form; they now stub the
+    batched one, returning `order` as the match for every id the code asks
+    about (each of these tests exercises exactly one unknown row, so
+    "matches everything asked for" and "matches this row" are the same
+    thing). Pass order=None for the not-found case.
+    """
+
+    def _impl(client_order_ids):
+        matches = {} if order is None else {c: order for c in client_order_ids}
+        return matches, uncertain
+
+    return _impl
+
+
 class TestMidpointPrice:
     """_midpoint_price is still used for live order placement/repricing
     (order_executor._place_live_order, _reprice_or_cancel_pending_orders) --
@@ -1145,7 +1188,7 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {"order_id": "ord_found", "status": "executed", "fill_count_fp": "2.00"},
             False,
         )
@@ -1156,7 +1199,9 @@ class TestRecoverUnknownOrders:
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "filled"
         assert row["fill_quantity"] == 2
-        mock_client._find_order_by_client_id.assert_called_once_with("coid_recheck1")
+        mock_client._find_orders_by_client_ids.assert_called_once_with(
+            {"coid_recheck1"}
+        )
 
     def test_confirmed_not_found_resolves_to_failed(self):
         """An 'unknown' row where reconciliation NOW genuinely completes
@@ -1178,7 +1223,9 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (None, False)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            None, False
+        )
 
         _recover_pending_orders(mock_client)
 
@@ -1222,7 +1269,9 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (None, False)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            None, False
+        )
 
         _recover_pending_orders(mock_client)
 
@@ -1283,7 +1332,9 @@ class TestRecoverUnknownOrders:
         assert new_token is not None
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (None, False)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            None, False
+        )
 
         _recover_pending_orders(mock_client)
 
@@ -1316,7 +1367,7 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (None, True)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
 
         _recover_pending_orders(mock_client)
 
@@ -1359,7 +1410,7 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_exit_found",
                 "status": "executed",
@@ -1419,7 +1470,7 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_partial_found",
                 "status": "canceled",
@@ -1484,7 +1535,7 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_settle_fail",
                 "status": "executed",
@@ -1626,7 +1677,9 @@ class TestRecoverUnknownOrders:
         )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (None, False)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            None, False
+        )
 
         # No pending rows exist at all -- get_pending_live_orders() returns [].
         _recover_pending_orders(mock_client)
@@ -1675,7 +1728,7 @@ class TestRecoverUnknownOrders:
             "status": "executed",
             "fill_count_fp": "3.00",
         }
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {"order_id": "ord_unknown_1", "status": "resting"},
             False,
         )
@@ -1756,7 +1809,7 @@ class TestRecoverSentOrders:
             )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_found_from_sent",
                 "status": "executed",
@@ -1770,8 +1823,8 @@ class TestRecoverSentOrders:
         orders = execution_log.get_recent_orders(limit=10)
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "filled"
-        mock_client._find_order_by_client_id.assert_called_once_with(
-            "coid_sent_recover"
+        mock_client._find_orders_by_client_ids.assert_called_once_with(
+            {"coid_sent_recover"}
         )
 
     def test_sent_row_without_client_order_id_stays_sent(self):
@@ -1798,7 +1851,7 @@ class TestRecoverSentOrders:
         orders = execution_log.get_recent_orders(limit=10)
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "sent"
-        mock_client._find_order_by_client_id.assert_not_called()
+        mock_client._find_orders_by_client_ids.assert_not_called()
 
     def test_pending_row_with_no_order_id_preserves_client_order_id_through_to_sent(
         self,
@@ -1845,7 +1898,7 @@ class TestRecoverSentOrders:
         # pending->sent transition well enough to be correctly re-checked at
         # all (a wiped response would have skipped the re-check entirely,
         # per test_sent_row_without_client_order_id_stays_sent above).
-        mock_client._find_order_by_client_id.return_value = (None, True)
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
         _recover_pending_orders(mock_client)
 
         with execution_log._conn() as con:
@@ -1857,7 +1910,9 @@ class TestRecoverSentOrders:
         import json as _json
 
         assert _json.loads(row["response"])["client_order_id"] == "coid_preserved"
-        mock_client._find_order_by_client_id.assert_called_once_with("coid_preserved")
+        mock_client._find_orders_by_client_ids.assert_called_once_with(
+            {"coid_preserved"}
+        )
 
     def test_pending_to_sent_to_unknown_resolves_within_one_recovery_call(self):
         """End-to-end: a 'pending' row with no order_id but a captured
@@ -1890,7 +1945,7 @@ class TestRecoverSentOrders:
             )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_full_chain",
                 "status": "executed",
@@ -1938,7 +1993,7 @@ class TestRecoverSentOrders:
             "recovery -- promoting it risks racing the process still "
             "placing it"
         )
-        mock_client._find_order_by_client_id.assert_not_called()
+        mock_client._find_orders_by_client_ids.assert_not_called()
 
     def test_old_sent_row_past_the_age_guard_is_promoted(self):
         """Positive control for the test above: once a 'sent' row is
@@ -1967,7 +2022,7 @@ class TestRecoverSentOrders:
             )
 
         mock_client = MagicMock()
-        mock_client._find_order_by_client_id.return_value = (
+        mock_client._find_orders_by_client_ids.side_effect = _batched_lookup(
             {
                 "order_id": "ord_stale_found",
                 "status": "executed",
@@ -1980,7 +2035,7 @@ class TestRecoverSentOrders:
         orders = execution_log.get_recent_orders(limit=10)
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "filled"
-        mock_client._find_order_by_client_id.assert_called_once_with("coid_stale")
+        mock_client._find_orders_by_client_ids.assert_called_once_with({"coid_stale"})
 
     def test_paper_sent_rows_are_never_promoted(self):
         """F8: get_sent_live_orders (and therefore the promotion loop) must
@@ -2013,7 +2068,7 @@ class TestRecoverSentOrders:
         orders = execution_log.get_recent_orders(limit=10)
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "sent"
-        mock_client._find_order_by_client_id.assert_not_called()
+        mock_client._find_orders_by_client_ids.assert_not_called()
 
     def test_claim_sent_order_fails_if_row_already_resolved(self):
         """Opus review follow-up (F3): claim_sent_order must be an atomic
@@ -2732,7 +2787,7 @@ class TestPlaceLiveOrderDedup:
 
         with (
             # Pass the env / gate checks
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch.dict(
                 os.environ,
                 {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"},
@@ -2787,7 +2842,7 @@ class TestPlaceLiveOrderDedup:
         }
 
         with (
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch.dict(
                 os.environ,
                 {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"},
@@ -3043,7 +3098,18 @@ class TestFinalizeCancelReturnValue:
         assert status == "canceled"
         assert fill_count == -1
         row = execution_log.get_order_by_id(row_id)
-        assert row["response"] is None
+        # Batch-58 item 7: this used to assert response was None. That was
+        # incidental, not intended -- the fallback's json.loads failed, so it
+        # passed response=None, and log_order_result's then-unconditional
+        # UPDATE nulled the column. log_order_result now COALESCEs response,
+        # so a caller that passes None leaves the stored value alone. The
+        # corrupt string is preserved verbatim instead of being destroyed,
+        # which is the better outcome for a value an operator may need to
+        # inspect. What this test actually exists to prove -- that the
+        # defensive json.loads does not raise out of an already-handling
+        # except block -- is the three assertions around this one.
+        assert row["response"] == "{not valid json"
+        assert row["status"] == "canceled"
 
     def test_raw_api_status_preserved_when_still_resting(self):
         """A cancel that hasn't propagated yet (Kalshi still reports
@@ -3411,14 +3477,14 @@ class TestReplaceLiveOrder:
         mock_client.place_order.assert_not_called()
 
     def test_success_logs_replaces_order_id(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _replace_live_order
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {"order_id": "ord_new"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _replace_live_order(
                 "KXHIGH-25MAY15-T75",
                 "yes",
@@ -3439,14 +3505,14 @@ class TestReplaceLiveOrder:
         assert new_row["order_type"] == "limit"
 
     def test_place_order_failure_logs_failed_status(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _replace_live_order
 
         mock_client = MagicMock()
         mock_client.place_order.side_effect = ConnectionError("down")
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _replace_live_order(
                 "KXHIGH-25MAY15-T75",
                 "yes",
@@ -3465,14 +3531,14 @@ class TestReplaceLiveOrder:
         assert new_row["status"] == "failed"
 
     def test_taker_cross_logged_as_market_order_type(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _replace_live_order
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {"order_id": "ord_taker"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _replace_live_order(
                 "KXHIGH-25MAY15-T75",
                 "yes",
@@ -3497,13 +3563,13 @@ class TestReplaceLiveOrder:
         original GTC entry order would silently dedupe against it (same
         client_order_id) and never actually re-enter the position, while
         logging success."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from order_executor import _replace_live_order
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {"order_id": "ord_new"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _replace_live_order(
                 "KXHIGH-25MAY15-T75",
                 "yes",
@@ -3524,13 +3590,13 @@ class TestReplaceLiveOrder:
         ticker/side/quantity/price, different replaces_order_id) must not
         collide with each other either -- each original order gets its own
         replacement key."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from order_executor import _replace_live_order
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {"order_id": "ord_new"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _replace_live_order(
                 "KXHIGH-25MAY15-T75",
                 "yes",
@@ -3594,7 +3660,7 @@ class TestReplaceLiveOrder:
 
         with (
             patch.object(execution_log, "log_order", side_effect=_spy_log_order),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _replace_live_order(
                 "KXHIGH-25MAY15-T75",
@@ -4110,7 +4176,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.48, "yes_ask": 0.52},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4216,7 +4282,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4266,7 +4332,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4316,7 +4382,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4363,7 +4429,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4396,7 +4462,7 @@ class TestRepriceOrCancelPendingOrders:
         }
 
         with (
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch(
                 "execution_log.log_order_result",
                 side_effect=RuntimeError("database is locked"),
@@ -4429,7 +4495,7 @@ class TestRepriceOrCancelPendingOrders:
         -- otherwise the second amend back to price A regenerates an
         identical key to the first A-priced amend and Kalshi treats it as a
         resubmit, silently no-op'ing the second reprice."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from order_executor import _amend_live_order
 
@@ -4443,7 +4509,7 @@ class TestRepriceOrCancelPendingOrders:
             "ts_ms": 123,
         }
 
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _amend_live_order(
                 "ord_orig",
                 ticker,
@@ -4467,7 +4533,7 @@ class TestRepriceOrCancelPendingOrders:
         back within one cycle) must still get distinct keys -- proving a
         real retry actually reaches the exchange as a fresh attempt rather
         than deduping against the earlier one."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from order_executor import _amend_live_order
 
@@ -4481,7 +4547,7 @@ class TestRepriceOrCancelPendingOrders:
             "ts_ms": 123,
         }
 
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _amend_live_order(
                 "ord_orig",
                 ticker,
@@ -4589,7 +4655,7 @@ class TestRepriceOrCancelPendingOrders:
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.53, "yes_ask": 0.57},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _reprice_or_cancel_pending_orders(
                 mock_client, config={}, liquid_opps=[(market, analysis)]
@@ -4701,7 +4767,7 @@ class TestGetLiveOpenPositions(_LiveDBTestBase):
         _get_live_open_positions() must see the reduced quantity, not the
         original -- otherwise a second protective-exit attempt would try to
         sell more contracts than are actually still held."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position, _get_live_open_positions
@@ -4723,7 +4789,7 @@ class TestGetLiveOpenPositions(_LiveDBTestBase):
         }
         position = _get_live_open_positions()[0]
         assert position["quantity"] == 10
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -4830,6 +4896,27 @@ class TestExitLivePosition(_LiveDBTestBase):
         base.update(overrides)
         return base
 
+    def _position_with_row(self, **overrides):
+        """A position dict backed by a REAL execution_log row.
+
+        _position()'s default id=1 does not exist in the per-test temp DB, so
+        _exit_live_position's claim_position_for_exit() finds nothing to claim
+        and bails before ever reaching place_order. Tests that assert an exit
+        actually PLACES need a real row; tests that only assert it does not
+        can use the bare _position().
+        """
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        return self._position(id=row_id, **overrides)
+
     def test_full_exit_race_loss_does_not_crash_the_caller(self):
         """Opus review (2026-08-17), NEW-H2: execution_log.record_live_exit_fill
         raises RuntimeError when it loses a settled_at/quantity race to a
@@ -4884,7 +4971,7 @@ class TestExitLivePosition(_LiveDBTestBase):
 
         position = self._position(id=row_id)
         with (
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch.object(
                 execution_log,
                 "record_live_exit_fill",
@@ -4943,7 +5030,7 @@ class TestExitLivePosition(_LiveDBTestBase):
 
         position = self._position(id=row_id)
         with (
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch.object(
                 execution_log,
                 "record_live_exit_fill",
@@ -5009,7 +5096,7 @@ class TestExitLivePosition(_LiveDBTestBase):
 
         position = self._position(id=row_id)
         with (
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             patch.object(
                 execution_log,
                 "record_live_exit_fill",
@@ -5031,13 +5118,19 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert execution_log.claim_position_for_exit(row_id) is not None
 
     def test_gate_blocked_returns_false_and_places_nothing(self):
+        """Batch-58 item 4: the exit path now consults pre_live_exit_check,
+        not pre_live_trade_check. Patching the REDUCED gate (and leaving the
+        full one alone) is what keeps this test proving the exit is gated.
+        The positive control below is what distinguishes "blocked by the
+        gate under test" from "blocked by accident": with the same gate
+        patched open, the identical call DOES reach place_order."""
         from unittest.mock import MagicMock, patch
 
         from order_executor import _exit_live_position
 
         mock_client = MagicMock()
         with patch(
-            "trading_gates.pre_live_trade_check",
+            "trading_gates.pre_live_exit_check",
             side_effect=RuntimeError("TRADING_PAUSED"),
         ):
             result = _exit_live_position(
@@ -5047,11 +5140,198 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert result is False
         mock_client.place_order.assert_not_called()
 
+        # Positive control for the assert_not_called() above.
+        allowed_client = MagicMock()
+        allowed_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with _live_gates_open():
+            _exit_live_position(
+                allowed_client,
+                self._position_with_row(),
+                0.20,
+                "stop_loss",
+                "2026-05-15_12z",
+            )
+        allowed_client.place_order.assert_called()
+
+    def test_daily_loss_halt_does_not_block_a_protective_exit(self):
+        """Batch-58 item 4 (backlog L24423), the behavioural heart of the
+        change: with the daily-loss halt ACTIVE, a protective exit must
+        still be placed. Before this, _exit_live_position ran the FULL gate,
+        so a tripped daily-loss halt silently disabled every protective exit
+        -- the bot stopped being able to close losing positions at exactly
+        the moment it most needed to.
+
+        Patches the real paper-side halt predicates rather than the gate
+        itself, so this exercises the actual gate wiring end to end. The
+        pre_live_trade_check assertion is the mutation-proof half: it proves
+        the halt genuinely IS blocking on the full gate, so the exit getting
+        through is the reduced gate's doing and not a mis-set fixture."""
+        from unittest.mock import MagicMock, patch
+
+        import trading_gates
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        mock_client.base_url = "https://api.elections.kalshi.com/trade-api/v2"
+
+        with (
+            patch.dict("os.environ", {"LIVE_TRADING_ENABLED": "true"}, clear=False),
+            patch("trading_gates.is_trading_paused", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=True),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.graduation_check", return_value={"ok": True}),
+        ):
+            # Positive control: the FULL gate really is blocked right now.
+            with pytest.raises(RuntimeError, match="Daily loss limit reached"):
+                trading_gates.pre_live_trade_check(mock_client)
+
+            # The reduced gate lets the risk-reducing order through...
+            trading_gates.pre_live_exit_check(mock_client)
+            # ...and so the exit actually places.
+            result = _exit_live_position(
+                mock_client,
+                self._position_with_row(),
+                0.20,
+                "stop_loss",
+                "2026-05-15_12z",
+            )
+
+        assert result is True
+        mock_client.place_order.assert_called()
+
+    def test_kill_switch_still_blocks_a_protective_exit(self):
+        """The other half of item 4: the reduced gate is reduced, not
+        absent. TRADING_PAUSED and the kill switch are the operator's
+        explicit "touch nothing" instruction and stay absolute -- backlog
+        L30045 (batch 63) owns giving the operator a deliberate way to close
+        a position while they are engaged."""
+        from unittest.mock import MagicMock, patch
+
+        import trading_gates
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.base_url = "https://api.elections.kalshi.com/trade-api/v2"
+
+        with (
+            patch.dict("os.environ", {"LIVE_TRADING_ENABLED": "true"}, clear=False),
+            patch("trading_gates.is_trading_paused", return_value=False),
+            patch("trading_gates.KILL_SWITCH_PATH") as mock_ks,
+        ):
+            mock_ks.exists.return_value = True
+            with pytest.raises(RuntimeError, match="Kill switch"):
+                trading_gates.pre_live_exit_check(mock_client)
+            result = _exit_live_position(
+                mock_client, self._position(), 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        mock_client.place_order.assert_not_called()
+
+    def test_trading_paused_still_blocks_a_protective_exit(self):
+        """Sibling of the kill-switch case -- the second of the two operator
+        "touch nothing" instructions the reduced gate deliberately keeps."""
+        from unittest.mock import MagicMock, patch
+
+        import trading_gates
+
+        mock_client = MagicMock()
+        mock_client.base_url = "https://api.elections.kalshi.com/trade-api/v2"
+        with (
+            patch.dict("os.environ", {"LIVE_TRADING_ENABLED": "true"}, clear=False),
+            patch("trading_gates.is_trading_paused", return_value=True),
+        ):
+            with pytest.raises(RuntimeError, match="TRADING_PAUSED"):
+                trading_gates.pre_live_exit_check(mock_client)
+
+    def test_reduced_exit_gate_still_requires_the_real_money_interlocks(self):
+        """The reduced gate drops RISK LIMITS, never the interlocks that
+        decide whether this process may talk to the real exchange at all --
+        otherwise a misconfigured demo/shadow run could fire real SELLs."""
+        from unittest.mock import MagicMock, patch
+
+        import trading_gates
+
+        demo_client = MagicMock()
+        demo_client.base_url = "https://demo-api.kalshi.co/trade-api/v2"
+        prod_client = MagicMock()
+        prod_client.base_url = "https://api.elections.kalshi.com/trade-api/v2"
+
+        with (
+            patch.dict("os.environ", {"LIVE_TRADING_ENABLED": "true"}, clear=False),
+            patch("trading_gates.is_trading_paused", return_value=False),
+        ):
+            with pytest.raises(RuntimeError, match="not pointed at prod"):
+                trading_gates.pre_live_exit_check(demo_client)
+            # Positive control: the same call with a prod client passes, so
+            # the rejection above is the base_url check and nothing else.
+            trading_gates.pre_live_exit_check(prod_client)
+
+        with (
+            patch.dict("os.environ", {"LIVE_TRADING_ENABLED": ""}, clear=False),
+            patch("trading_gates.is_trading_paused", return_value=False),
+        ):
+            with pytest.raises(RuntimeError, match="LIVE_TRADING_ENABLED"):
+                trading_gates.pre_live_exit_check(prod_client)
+
+    def test_gate_blocked_exit_fires_an_operator_alert(self):
+        """Batch-58 item 4: a blocked exit means an open position cannot be
+        closed automatically -- that must reach an operator, not only the
+        log. Paired with a negative control: an ALLOWED exit must not fire
+        the alert, so this cannot pass by the alert being unconditional."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        with (
+            patch(
+                "trading_gates.pre_live_exit_check",
+                side_effect=RuntimeError("Kill switch active (data/.kill_switch)"),
+            ),
+            patch("notify.send_system_alert") as mock_alert,
+        ):
+            _exit_live_position(
+                mock_client, self._position(), 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert mock_alert.called
+        _title, _message = mock_alert.call_args.args
+        assert "Kill switch" in _message
+        assert mock_alert.call_args.kwargs["cooldown_key"] == "live_exit_blocked"
+
+        allowed_client = MagicMock()
+        allowed_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with (
+            _live_gates_open(),
+            patch("notify.send_system_alert") as mock_alert_ok,
+        ):
+            _exit_live_position(
+                allowed_client,
+                self._position_with_row(),
+                0.20,
+                "stop_loss",
+                "2026-05-15_12z",
+            )
+        mock_alert_ok.assert_not_called()
+
     def test_exit_cycle_key_scoped_to_this_attempts_log_id(self):
         """AUD batch-23 #1: NOT the bare forecast cycle -- a protective exit
         that doesn't fill (illiquid book) must be able to actually retry
         with a fresh key, not one that would dedupe against itself."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5070,7 +5350,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5086,7 +5366,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         scan -- prior to this fix, that retry would regenerate the SAME
         client_order_id as the first no-op attempt and Kalshi would dedupe
         it, so the protective exit could never actually be re-placed."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5105,7 +5385,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result1 = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5116,7 +5396,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             "order_id": "ord_exit_2",
             "fill_count_fp": "0.00",
         }
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5180,7 +5460,7 @@ class TestExitLivePosition(_LiveDBTestBase):
                 "log_order_result",
                 side_effect=_spy_log_order_result,
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
@@ -5203,7 +5483,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         both could call place_order() and both real SELLs could land. The
         loser must skip the position entirely (return False, place_order
         never called), not race into it."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5223,7 +5503,7 @@ class TestExitLivePosition(_LiveDBTestBase):
 
         mock_client = MagicMock()
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5238,7 +5518,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         anything, matching the existing dedup-key test's expectation that
         two sequential no-fill attempts on the same position both actually
         reach place_order()."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5257,7 +5537,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5275,7 +5555,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         exact double-sell window the claim exists to close, so unlike the
         no-fill/failed cases, the claim must stay held (a second immediate
         attempt is blocked) until the TTL expires or the row settles."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from kalshi_client import OrderStatusUnknownError
@@ -5294,7 +5574,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5311,7 +5591,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         """A confirmed-not-landed placement failure (place_order raises a
         plain Exception, not OrderStatusUnknownError) is safe to release
         immediately for a retry next scan."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5327,7 +5607,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5336,7 +5616,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert execution_log.claim_position_for_exit(row_id) is not None
 
     def test_full_fill_records_fee_adjusted_pnl(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5355,7 +5635,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5389,7 +5669,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         branch) -- a refactor that moved closes_position_id into only the
         partial branch would silently reopen this gap for full exits, which
         are the common case."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position, _get_live_open_positions
@@ -5408,7 +5688,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5433,7 +5713,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         fires on a favorable move) DOES get the taker-fee discount -- and
         (batch-22 items 3+6) so does a loss, since the fee is charged on the
         taker fill itself regardless of outcome."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5452,7 +5732,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
             )
@@ -5467,7 +5747,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert row["pnl"] == pytest.approx(1.83)
 
     def test_ioc_no_fill_leaves_position_open(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5486,7 +5766,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5500,7 +5780,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert row["settled_at"] is None
 
     def test_partial_fill_reconciles_quantity_and_realizes_pnl(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5520,7 +5800,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         )
         execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5554,7 +5834,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         """Mirrors test_gain_case_applies_fee_discount for the partial-fill
         branch -- the sold portion's realized P&L must get the same
         gain-only fee discount as a full exit."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5574,7 +5854,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         )
         execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
             )
@@ -5590,7 +5870,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert row["fill_quantity"] == 6
 
     def test_place_order_exception_logs_failed_status(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5606,7 +5886,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -5620,7 +5900,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         """entry_price/exit_price are already side-normalized (see
         _midpoint_price/_liquidation_price) -- the pnl formula must not
         re-derive a yes-price conversion for the "no" side."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5641,7 +5921,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         position = self._position(
             id=row_id, side="no", entry_price=0.30, quantity=5, cost=1.5
         )
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.15, "stop_loss", "2026-05-15_12z"
             )
@@ -5660,7 +5940,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         position row, which must stay open for the remainder) so the sold
         lot gets a real pnl/settled_at instead of only ever landing in the
         daily aggregate total via add_live_loss."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5679,7 +5959,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             result = _exit_live_position(
                 mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
             )
@@ -5709,7 +5989,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         pnl counted in get_live_pnl_summary/export_live_tax_csv, not just
         the final leg -- proves the fix closes the exact gap the entry
         described, not just that some pnl shows up somewhere."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5731,7 +6011,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             "fill_count_fp": "3.00",
         }
         position = self._position(id=row_id, quantity=10)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             leg1_result = _exit_live_position(
                 mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
             )
@@ -5747,7 +6027,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             "fill_count_fp": "7.00",
         }
         position2 = self._position(id=row_id, quantity=7)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             leg2_result = _exit_live_position(
                 mock_client2, position2, 0.30, "stop_loss", "2026-05-15_12z"
             )
@@ -5791,7 +6071,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         exit-order row -- not just the first one -- since every
         _exit_live_position call creates a fresh log_order row regardless of
         how many partial legs already happened against the same position."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         import execution_log
         from order_executor import _exit_live_position
@@ -5809,7 +6089,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         # 0.60*0.40*100)/100=0.06, pnl=0.54.
         mock1 = MagicMock()
         mock1.place_order.return_value = {"order_id": "ord1", "fill_count_fp": "3.00"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             r1 = _exit_live_position(
                 mock1,
                 self._position(id=row_id, quantity=10),
@@ -5825,7 +6105,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         # loss too). pnl=-0.46.
         mock2 = MagicMock()
         mock2.place_order.return_value = {"order_id": "ord2", "fill_count_fp": "4.00"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             r2 = _exit_live_position(
                 mock2,
                 self._position(id=row_id, quantity=7),
@@ -5840,7 +6120,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         # ceil(0.07*3*0.50*0.50*100)/100=0.06, pnl=0.24.
         mock3 = MagicMock()
         mock3.place_order.return_value = {"order_id": "ord3", "fill_count_fp": "3.00"}
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with _live_gates_open():
             r3 = _exit_live_position(
                 mock3,
                 self._position(id=row_id, quantity=3),
@@ -5925,7 +6205,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.10, "yes_ask": 0.15},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _check_live_position_exits(mock_client)
 
@@ -5965,7 +6245,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 10, "yes_ask": 15},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _check_live_position_exits(mock_client)
 
@@ -6017,7 +6297,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.10, "yes_ask": 0.15},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _check_live_position_exits(mock_client)
 
@@ -6050,7 +6330,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.10, "yes_ask": 0.15},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _check_live_position_exits(mock_client)
 
@@ -6096,7 +6376,7 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
                 "order_executor._get_current_book",
                 return_value={"yes_bid": 0.10, "yes_ask": 0.15},
             ),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             _check_live_position_exits(mock_client)
 
@@ -6186,7 +6466,7 @@ class TestCheckLiveModelExits(_LiveDBTestBase):
                 return_value={"forecast_prob": 0.35},
             ),
             patch("order_executor._get_current_book", return_value=None),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             closed = _check_live_model_exits(mock_client)
 
@@ -6274,7 +6554,7 @@ class TestCheckLiveModelExits(_LiveDBTestBase):
             patch("order_executor.enrich_with_forecast", side_effect=lambda m: m),
             patch("order_executor.analyze_trade", side_effect=_fake_analyze),
             patch("order_executor._get_current_book", return_value=None),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
         ):
             closed = _check_live_model_exits(mock_client)
 
@@ -6351,7 +6631,7 @@ class TestCheckLiveModelExits(_LiveDBTestBase):
                 return_value={"forecast_prob": 0.35},  # shift 0.30 > threshold
             ),
             patch("order_executor._get_current_book", return_value=None),
-            patch("trading_gates.pre_live_trade_check", return_value=None),
+            _live_gates_open(),
             caplog.at_level("WARNING"),
         ):
             closed = _check_live_model_exits(mock_client)
@@ -6362,3 +6642,830 @@ class TestCheckLiveModelExits(_LiveDBTestBase):
         assert "[LiveModelExit] Error checking" in caplog.text, (
             "the malformed position must be logged, not silently dropped"
         )
+
+
+class TestUnresolvedOrderAgeCap:
+    """Batch-58 item 5 (backlog L24457): an 'unknown' live order whose true
+    state genuinely could not be determined was re-checked forever -- 3
+    authenticated GETs per recovery pass, with no age cap, no terminal state
+    and no escalation of any kind. It now alerts an operator once and parks
+    at the terminal 'unresolved' status."""
+
+    def _unknown_row(self, age_minutes, *, client_order_id="coid_stuck"):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="unknown",
+            live=True,
+            response=({"client_order_id": client_order_id} if client_order_id else {}),
+        )
+        placed = datetime.now(UTC) - timedelta(minutes=age_minutes)
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?",
+                (placed.isoformat(), row_id),
+            )
+        return row_id
+
+    def _client_that_cannot_resolve(self):
+        """A client whose lookup completes but matches nothing, with
+        uncertain=True -- i.e. the row genuinely stays unknown."""
+        from unittest.mock import MagicMock
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        return client
+
+    def test_a_fresh_unresolvable_row_is_left_alone(self):
+        """Negative control for the age cap. Without this, the parking test
+        below could pass simply because EVERY unresolvable row gets parked,
+        which would abandon rows that are only transiently unresolvable."""
+        from unittest.mock import patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=5)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(self._client_that_cannot_resolve())
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unknown"
+        mock_alert.assert_not_called()
+
+    def test_a_stale_row_alerts_but_is_not_parked_when_the_lookup_failed(self):
+        """Opus review (batch-58, L2): _client_that_cannot_resolve models a
+        FAILING lookup (uncertain=True), which is the state where the bot
+        cannot tell whether the order landed. Escalate, but keep retrying --
+        abandoning a possibly-real order because our own API access is
+        broken is the wrong failure direction."""
+        from unittest.mock import patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=60 * 48)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(self._client_that_cannot_resolve())
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unknown"
+        assert execution_log.get_unresolved_live_orders() == []
+        assert mock_alert.called
+        title, message = mock_alert.call_args.args
+        assert "lookup failing" in title.lower()
+        assert "coid_stuck" in message
+        assert (
+            mock_alert.call_args.kwargs["cooldown_key"]
+            == f"unresolved_live_order:{row_id}"
+        )
+
+    def test_a_fresh_row_does_not_alert_even_when_the_lookup_failed(self):
+        """Negative control for the age cap on the uncertain path -- a
+        transient outage must not page anyone."""
+        from unittest.mock import patch
+
+        from order_executor import _recover_pending_orders
+
+        self._unknown_row(age_minutes=5)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(self._client_that_cannot_resolve())
+        mock_alert.assert_not_called()
+
+    def test_a_parked_row_is_never_polled_again(self):
+        """The performance half of the fix: the recovery pass must stop
+        spending API round-trips on a row it has already given up on.
+
+        Uses a no-client_order_id row, which is the genuinely
+        certain-and-unresolvable case -- there is no handle to re-check by,
+        the lookup is not failing, and nothing about waiting longer can
+        change the answer."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=60 * 48, client_order_id=None)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert"):
+            _recover_pending_orders(client)
+        assert execution_log.get_order_by_id(row_id)["status"] == "unresolved"
+
+        client._find_orders_by_client_ids.reset_mock()
+        with patch("notify.send_system_alert"):
+            _recover_pending_orders(client)
+        # Nothing left in the unknown queue -> the batched lookup is never
+        # even reached on the second pass.
+        client._find_orders_by_client_ids.assert_not_called()
+
+    def test_a_row_that_resolves_this_pass_is_never_parked(self):
+        """However old it is. Parking is terminal and operator-visible, so
+        it must only ever happen to a row that actually failed to resolve."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=60 * 48)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            {"order_id": "ord_found", "status": "executed", "fill_count_fp": "10.00"},
+            False,
+        )
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "filled"
+        mock_alert.assert_not_called()
+
+    def test_a_stale_row_with_no_client_order_id_is_parked(self):
+        """This branch was the worst dead end before the fix: it had no
+        handle to re-check by at all, so it logged the same warning on every
+        pass, forever."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=60 * 48, client_order_id=None)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unresolved"
+        assert "MISSING" in mock_alert.call_args.args[1]
+
+    def test_a_fresh_row_with_no_client_order_id_is_left_alone(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=5, client_order_id=None)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unknown"
+        mock_alert.assert_not_called()
+
+    def test_park_is_atomic_against_a_concurrent_resolution(self):
+        """park_unresolved_order mirrors claim_unknown_order/claim_sent_order:
+        the status predicate is what stops a losing pass reverting a row a
+        concurrent process just resolved, and what makes the alert fire
+        exactly once per row rather than once per process."""
+        import execution_log
+
+        row_id = self._unknown_row(age_minutes=60 * 48)
+        assert execution_log.park_unresolved_order(row_id) is True
+        # Second attempt loses: the row is no longer 'unknown'.
+        assert execution_log.park_unresolved_order(row_id) is False
+
+        execution_log.log_order_result(row_id, status="filled")
+        assert execution_log.park_unresolved_order(row_id) is False
+        assert execution_log.get_order_by_id(row_id)["status"] == "filled"
+
+    def test_parking_preserves_the_stored_client_order_id(self):
+        """It is the only handle an operator has for reconciling the row by
+        hand, so parking must not touch response."""
+        import json
+
+        import execution_log
+
+        row_id = self._unknown_row(age_minutes=60 * 48)
+        execution_log.park_unresolved_order(row_id)
+
+        row = execution_log.get_order_by_id(row_id)
+        assert json.loads(row["response"])["client_order_id"] == "coid_stuck"
+
+    def test_get_unresolved_live_orders_returns_parked_rows_only(self):
+        import execution_log
+
+        parked = self._unknown_row(age_minutes=60 * 48)
+        still_unknown = self._unknown_row(age_minutes=5)
+        execution_log.park_unresolved_order(parked)
+
+        unresolved = execution_log.get_unresolved_live_orders()
+        assert [r["id"] for r in unresolved] == [parked]
+        # Positive control: the other row is still in the unknown queue, so
+        # this is a real partition and not an empty-table artefact.
+        assert [r["id"] for r in execution_log.get_unknown_live_orders()] == [
+            still_unknown
+        ]
+
+    def test_a_parked_row_still_blocks_a_re_placement(self):
+        """'unresolved' is deliberately NOT 'failed'. It appears on none of
+        this module's dedup NOT-IN lists, so a parked row keeps blocking a
+        retry exactly as it did while 'unknown' -- reusing 'failed' would
+        have unblocked dedup and let the bot re-place an order that may be
+        resting live on the exchange right now.
+
+        Uses a row placed TODAY (parked directly rather than through the age
+        cap) because both guards below are date-scoped."""
+        import execution_log
+
+        row_id = self._unknown_row(age_minutes=0)
+        assert execution_log.park_unresolved_order(row_id) is True
+
+        assert execution_log.was_traded_today("KXHIGH-25MAY15-T75", "yes", live=True)
+        assert execution_log.was_recently_ordered(
+            "KXHIGH-25MAY15-T75", "yes", within_minutes=60
+        )
+
+        # Positive control for the choice of terminal status: parked as
+        # 'failed' instead, both guards would unblock an immediate retry.
+        execution_log.log_order_result(row_id, status="failed")
+        assert not execution_log.was_traded_today(
+            "KXHIGH-25MAY15-T75", "yes", live=True
+        )
+        assert not execution_log.was_recently_ordered(
+            "KXHIGH-25MAY15-T75", "yes", within_minutes=60
+        )
+
+    def test_a_parked_row_still_counts_toward_daily_live_spend(self):
+        """Same reasoning as the dedup guards: get_today_live_spend's NOT-IN
+        list excludes failed/canceled/cancelled/amended, so a parked row's
+        capital stays counted. Dropping it would have silently loosened the
+        daily spend cap at the moment the row became operator-actionable."""
+        import execution_log
+
+        row_id = self._unknown_row(age_minutes=0)
+        before = execution_log.get_today_live_spend()
+        assert before > 0
+
+        assert execution_log.park_unresolved_order(row_id) is True
+        assert execution_log.get_today_live_spend() == pytest.approx(before)
+
+        # Positive control: 'failed' really does drop out of the total, so
+        # the equality above is the status choice and not a no-op query.
+        execution_log.log_order_result(row_id, status="failed")
+        assert execution_log.get_today_live_spend() == pytest.approx(0.0)
+
+    def test_an_unparseable_placed_at_does_not_park_or_crash(self):
+        """Parking is terminal, so it must never happen on a guess."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=60 * 48, client_order_id=None)
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?", ("not-a-date", row_id)
+            )
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unknown"
+        mock_alert.assert_not_called()
+
+    def test_an_alert_failure_does_not_abort_the_recovery_pass(self):
+        """The row is already parked by the time the alert is attempted, so
+        a notify failure must not lose the rest of the pass."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_a = self._unknown_row(age_minutes=60 * 48, client_order_id=None)
+        row_b = self._unknown_row(age_minutes=60 * 48, client_order_id=None)
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert", side_effect=RuntimeError("no net")):
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_a)["status"] == "unresolved"
+        assert execution_log.get_order_by_id(row_b)["status"] == "unresolved"
+
+    def test_the_age_threshold_is_configurable(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import order_executor
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row(age_minutes=30, client_order_id=None)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with (
+            patch.object(order_executor, "_UNRESOLVED_AGE_MINUTES", 10),
+            patch("notify.send_system_alert"),
+        ):
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unresolved"
+
+
+class TestBatchedRecoveryLookup:
+    """Batch-58 item 6 (backlog L24499), at the recovery-loop level: N unknown
+    rows previously meant N full paginated walks of the account's order
+    history per pass."""
+
+    def _unknown_row(self, cid):
+        import execution_log
+
+        return execution_log.log_order(
+            ticker=f"KXHIGH-25MAY15-T{70 + len(cid)}",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="unknown",
+            live=True,
+            response={"client_order_id": cid},
+        )
+
+    def test_five_unknown_rows_cost_one_lookup_not_five(self):
+        from unittest.mock import MagicMock
+
+        from order_executor import _recover_pending_orders
+
+        cids = [f"coid_{i}" for i in range(5)]
+        for cid in cids:
+            self._unknown_row(cid)
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        _recover_pending_orders(client)
+
+        assert client._find_orders_by_client_ids.call_count == 1
+        assert client._find_orders_by_client_ids.call_args.args[0] == set(cids)
+
+    def test_each_row_still_resolves_to_its_own_matched_order(self):
+        """The hoist must not cross-contaminate rows: each row is resolved
+        from ITS OWN client_order_id's match, not the first one found."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_a = self._unknown_row("coid_a")
+        row_b = self._unknown_row("coid_bb")
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.return_value = (
+            {
+                "coid_a": {
+                    "order_id": "ord_a",
+                    "status": "executed",
+                    "fill_count_fp": "10.00",
+                },
+                "coid_bb": {"order_id": "ord_b", "status": "resting"},
+            },
+            False,
+        )
+        _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_a)["status"] == "filled"
+        assert execution_log.get_order_by_id(row_b)["status"] == "pending"
+
+    def test_an_unmatched_row_is_confirmed_failed_only_when_certain(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._unknown_row("coid_gone")
+        client = MagicMock()
+        client._find_orders_by_client_ids.return_value = ({}, False)
+        _recover_pending_orders(client)
+        assert execution_log.get_order_by_id(row_id)["status"] == "failed"
+
+        # Positive control: the same no-match result with uncertain=True must
+        # NOT confirm the order failed -- a failed walk could be hiding it.
+        row2 = self._unknown_row("coid_maybe")
+        client2 = MagicMock()
+        client2._find_orders_by_client_ids.return_value = ({}, True)
+        _recover_pending_orders(client2)
+        assert execution_log.get_order_by_id(row2)["status"] == "unknown"
+
+    def test_a_lookup_that_raises_leaves_every_row_unknown(self):
+        """_find_orders_by_client_ids handles per-walk failures itself, so a
+        raise here is something more fundamental. It must degrade to
+        uncertain (no row confirmed failed), not abort the pass."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_a = self._unknown_row("coid_a")
+        row_b = self._unknown_row("coid_bb")
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = RuntimeError("boom")
+        _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_a)["status"] == "unknown"
+        assert execution_log.get_order_by_id(row_b)["status"] == "unknown"
+
+    def test_rows_without_a_client_order_id_are_excluded_from_the_lookup_set(self):
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        self._unknown_row("coid_ok")
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T99",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="unknown",
+            live=True,
+            response={},
+        )
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        _recover_pending_orders(client)
+
+        assert client._find_orders_by_client_ids.call_args.args[0] == {"coid_ok"}
+
+
+class TestUnresolvedRowExposure:
+    """Batch-58 item 5, adjacency found during self-review: adding
+    'unresolved' to _get_live_open_positions' include_unfilled union is only
+    half the job -- the per-row quantity branch below it also had to learn
+    the new status, or a parked row's exposure would silently SHRINK to its
+    recorded partial fill at the exact moment it was parked."""
+
+    def _row(self, status, quantity=10, fill_quantity=3):
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=quantity,
+            price=0.40,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order_result(
+            row_id, status=status, fill_quantity=fill_quantity
+        )
+        return row_id
+
+    def test_a_parked_row_keeps_its_full_original_quantity(self):
+        from order_executor import _get_live_open_positions
+
+        self._row("unresolved", quantity=10, fill_quantity=3)
+        positions = _get_live_open_positions(include_unfilled=True)
+
+        assert len(positions) == 1
+        # 10 (the full original exposure), NOT 3 (the recorded partial fill).
+        assert positions[0]["quantity"] == 10
+
+    def test_it_matches_what_pending_and_unknown_already_do(self):
+        """Positive control: the three ACTIVE statuses must agree, so this
+        cannot pass by 'unresolved' happening to be special-cased right
+        while the shared reasoning drifted."""
+        from order_executor import _get_live_open_positions
+
+        for status in ("pending", "unknown", "unresolved"):
+            self._row(status, quantity=10, fill_quantity=3)
+
+        positions = _get_live_open_positions(include_unfilled=True)
+        assert len(positions) == 3
+        assert {p["quantity"] for p in positions} == {10}
+
+    def test_a_filled_row_still_uses_its_reduced_fill_quantity(self):
+        """Negative control for the branch: a FILLED row's fill_quantity IS
+        its current tracked open size (already reduced by any partial exit),
+        so it must stay on the other side of the branch."""
+        from order_executor import _get_live_open_positions
+
+        self._row("filled", quantity=10, fill_quantity=3)
+        positions = _get_live_open_positions(include_unfilled=True)
+
+        assert len(positions) == 1
+        assert positions[0]["quantity"] == 3
+
+
+class TestUnresolvableExitOrdersAreNeverParked:
+    """Opus review (batch-58, H1). Parking an unresolvable EXIT row abandons
+    settlement of the POSITION it closed. That position stays
+    live=1/status='filled'/settled_at=NULL/closes_position_id=NULL -- exactly
+    the shape get_filled_unsettled_live_orders() treats as open -- so the
+    exit scanner would keep placing fresh REAL SELL orders for contracts the
+    account no longer holds, every cycle, forever. The retry loop those
+    branches exist for IS the protection, so it must survive the age cap."""
+
+    def _position_and_exit(self, age_minutes):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        exit_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_exit"},
+            closes_position_id=position_id,
+        )
+        placed = datetime.now(UTC) - timedelta(minutes=age_minutes)
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?",
+                (placed.isoformat(), exit_id),
+            )
+        return position_id, exit_id
+
+    def test_a_stale_unresolvable_exit_row_stays_in_the_retry_queue(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        _position_id, exit_id = self._position_and_exit(age_minutes=60 * 48)
+
+        # uncertain=True: the lookup itself failed, so the row genuinely
+        # stays 'unknown' rather than being confirmed not-found ('failed').
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(exit_id)["status"] == "unknown"
+        assert execution_log.get_unresolved_live_orders() == []
+        # It still escalates -- silence would be its own bug.
+        assert mock_alert.called
+        _title, message = mock_alert.call_args.args
+        assert "coid_exit" in message
+
+    def test_a_certain_unresolvable_exit_row_alerts_about_its_position(self):
+        """The exit-specific escalation: the lookup DID execute and found
+        the exit executed, but settlement of the position it closed keeps
+        failing. That is the state where the exit scanner would otherwise
+        keep firing real SELLs at an already-closed position, so the alert
+        must name the orphaned position, not just the exit row."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id, exit_id = self._position_and_exit(age_minutes=60 * 48)
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(
+            # Real Kalshi enum value; there is no "filled" API status.
+            {"order_id": "ord_exit", "status": "executed", "fill_count_fp": "10.00"},
+            False,
+        )
+        with (
+            patch("order_executor._settle_recovered_exit_order", return_value=False),
+            patch("notify.send_system_alert") as mock_alert,
+        ):
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(exit_id)["status"] == "unknown"
+        assert execution_log.get_unresolved_live_orders() == []
+        assert mock_alert.called
+        title, message = mock_alert.call_args.args
+        assert "exit" in title.lower()
+        assert str(position_id) in message
+
+    def test_a_stale_exit_row_is_still_re_polled_on_the_next_pass(self):
+        """The whole point of not parking it: the retry must survive."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _recover_pending_orders
+
+        self._position_and_exit(age_minutes=60 * 48)
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        with patch("notify.send_system_alert"):
+            _recover_pending_orders(client)
+            client._find_orders_by_client_ids.reset_mock()
+            _recover_pending_orders(client)
+
+        client._find_orders_by_client_ids.assert_called_once_with({"coid_exit"})
+
+    def test_an_entry_row_of_the_same_age_is_still_parked(self):
+        """Positive control for the branch: the exit carve-out must be about
+        closes_position_id, not about the age cap having stopped working."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        entry_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="unknown",
+            live=True,
+            response={},  # no handle -> certain-and-unresolvable -> parks
+        )
+        placed = datetime.now(UTC) - timedelta(minutes=60 * 48)
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?",
+                (placed.isoformat(), entry_id),
+            )
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert"):
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(entry_id)["status"] == "unresolved"
+
+
+class TestUnresolvedParkingRequiresACertainLookup:
+    """Opus review (batch-58, L2): parking is terminal, so it must never be
+    triggered by "we couldn't ask". One persistently-failing status bucket
+    (e.g. _get_orders_by_status("canceled") raising on a reshaped payload for
+    >24h) sets the PASS-level uncertain flag for every row -- without this
+    guard, every live 'unknown' row would be abandoned at the age mark even
+    though the resting/executed walks were healthy."""
+
+    def _stale_unknown(self, cid="coid_x"):  # cid=None -> no usable handle
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="unknown",
+            live=True,
+            response=({"client_order_id": cid} if cid else {}),
+        )
+        placed = datetime.now(UTC) - timedelta(minutes=60 * 48)
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?",
+                (placed.isoformat(), row_id),
+            )
+        return row_id
+
+    def test_an_uncertain_pass_does_not_park(self):
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._stale_unknown()
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, True)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unknown"
+        assert execution_log.get_unresolved_live_orders() == []
+        # It still ESCALATES -- a >24h broken lookup is its own incident.
+        # Only the terminal park is withheld.
+        assert mock_alert.called
+        assert "lookup failing" in mock_alert.call_args.args[0].lower()
+
+    def test_a_certain_pass_of_the_same_age_does_park(self):
+        """Positive control: identical age, lookup NOT failing, and the row
+        is genuinely unresolvable (no stored client_order_id, so there is no
+        handle to re-check by and waiting longer cannot change the answer).
+        This is the case parking exists for."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = self._stale_unknown(cid=None)
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert"):
+            _recover_pending_orders(client)
+
+        assert execution_log.get_order_by_id(row_id)["status"] == "unresolved"
+
+
+class TestUnresolvedAlertCooldownIsPerRow:
+    """Opus review (batch-58, M1): notify.send_system_alert applies a 6-hour
+    disk-persisted cooldown keyed on cooldown_key. A single shared key meant
+    that when an outage parked four rows in one pass, exactly ONE alert was
+    delivered and the other three parked silently -- each of which may be a
+    real resting order."""
+
+    def test_each_parked_row_gets_its_own_cooldown_key(self):
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_ids = []
+        for i in range(3):
+            row_id = execution_log.log_order(
+                ticker=f"KXHIGH-25MAY15-T{75 + i}",
+                side="yes",
+                quantity=10,
+                price=0.40,
+                status="unknown",
+                live=True,
+                response={},  # no handle -> certain-and-unresolvable -> parks
+            )
+            placed = datetime.now(UTC) - timedelta(minutes=60 * 48)
+            with execution_log._conn() as con:
+                con.execute(
+                    "UPDATE orders SET placed_at = ? WHERE id = ?",
+                    (placed.isoformat(), row_id),
+                )
+            row_ids.append(row_id)
+
+        client = MagicMock()
+        client._find_orders_by_client_ids.side_effect = _batched_lookup(None, False)
+        with patch("notify.send_system_alert") as mock_alert:
+            _recover_pending_orders(client)
+
+        keys = {c.kwargs["cooldown_key"] for c in mock_alert.call_args_list}
+        assert keys == {f"unresolved_live_order:{r}" for r in row_ids}
+        assert len(keys) == 3, "a shared key would collapse these to one"
+
+
+class TestExitBlockedAlertScope:
+    """Opus review (batch-58, L6): LIVE_TRADING_ENABLED unset is a legitimate
+    steady state -- an operator disarming while holding positions is how this
+    bot sits today. Alerting on it would re-nag every 6h forever for a state
+    the operator chose. The two ACTIONS (kill switch, TRADING_PAUSED) are the
+    ones worth interrupting someone over."""
+
+    def _position(self):
+        return {
+            "id": 1,
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "entry_price": 0.40,
+            "quantity": 10,
+            "cost": 4.0,
+            "close_time": "2026-05-16T12:00:00+00:00",
+        }
+
+    def test_an_operator_action_alerts(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _exit_live_position
+
+        for reason in (
+            "Kill switch active (data/.kill_switch)",
+            "TRADING_PAUSED is set",
+        ):
+            with (
+                patch(
+                    "trading_gates.pre_live_exit_check",
+                    side_effect=RuntimeError(reason),
+                ),
+                patch("notify.send_system_alert") as mock_alert,
+            ):
+                _exit_live_position(
+                    MagicMock(), self._position(), 0.20, "stop_loss", "2026-05-15_12z"
+                )
+            assert mock_alert.called, f"{reason} should alert"
+
+    def test_a_disarmed_configuration_does_not_alert(self):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _exit_live_position
+
+        for reason in (
+            "LIVE_TRADING_ENABLED not set to 'true'",
+            "client not pointed at prod (base_url=https://demo-api.kalshi.co/trade-api/v2)",
+        ):
+            with (
+                patch(
+                    "trading_gates.pre_live_exit_check",
+                    side_effect=RuntimeError(reason),
+                ),
+                patch("notify.send_system_alert") as mock_alert,
+            ):
+                result = _exit_live_position(
+                    MagicMock(), self._position(), 0.20, "stop_loss", "2026-05-15_12z"
+                )
+            # Still blocked, still returns False -- only the ALERT is scoped.
+            assert result is False
+            mock_alert.assert_not_called(), f"{reason} should not re-nag"

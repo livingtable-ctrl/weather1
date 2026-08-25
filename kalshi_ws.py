@@ -4,7 +4,9 @@ Kalshi WebSocket client — real-time order book and ticker data.
 Runs as a background thread. Writes snapshots to data/orderbook_cache.json
 for consumption by the main trading loop.
 
-API: wss://api.elections.kalshi.com/trade-api/ws/v2
+API: wss://api.elections.kalshi.com/trade-api/ws/v2 (prod)
+     wss://demo-api.kalshi.co/trade-api/ws/v2 (demo)
+     Selected per KALSHI_ENV, mirroring kalshi_client's REST base_url.
 Auth: RSA-PSS signed (same key as REST API)
 
 ⚠️ March 12, 2026 migration: prices are dollar strings ("0.6500")
@@ -16,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 from datetime import UTC, datetime
@@ -25,7 +28,62 @@ from paths import ORDERBOOK_CACHE_PATH as _CACHE_PATH
 
 _log = logging.getLogger(__name__)
 
-_WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+# Batch-58 item 2 (backlog L25371): this module previously hardcoded the
+# PROD host with no KALSHI_ENV read anywhere in the file, so a demo-mode run
+# fed REAL production prices to every consumer of the cache
+# (order_executor's reprice/chase logic via get_cached_book, and its
+# flash-crash circuit-breaker check via get_cached_mid_price) -- and, most
+# directly of all, to flash_crash_cb.check() itself, which
+# update_orderbook_cache below calls IN-PROCESS on every tick. Opus review
+# (batch-58, I1): that third consumer means a demo run's flash-crash breaker
+# was being tripped by live prod ticks, not merely reading prod prices back
+# out of a cache; the pre-fix blast radius was larger than first written.
+#
+# That made demo-mode dry runs quietly misleading rather than unsafe -- and
+# specifically undercut the DEMO_BASE smoke test (backlog L6585) that is a
+# hard prerequisite before ENABLE_MICRO_LIVE is ever flipped on: a demo
+# smoke test reading prod prices does not validate what it claims to.
+#
+# Note for whoever runs that smoke test: there is only one credential pair
+# in this repo (KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM, no demo variants),
+# so a demo run using prod credentials will most likely fail auth against
+# demo-api.kalshi.co and reconnect-loop rather than produce a feed at all.
+# That is the correct direction -- no data beats wrong data, and
+# _get_current_book has a REST fallback -- but it means the demo smoke test
+# needs demo credentials to exercise the WS path (opus review, batch-58,
+# I2). The demo REST client already had the same limitation.
+#
+# Two explicit constants selected by `PROD if env == "prod" else DEMO`,
+# deliberately mirroring kalshi_client.PROD_BASE/DEMO_BASE and
+# KalshiClient.__init__'s own selection polarity rather than inventing a
+# second convention. The polarity matters: AUD-0015 fixed the inverted
+# `DEMO if env == "demo" else PROD` form, which silently pointed any
+# non-exact-'demo' string at PROD. Hosts mirror their REST siblings exactly
+# (api.elections.kalshi.com / demo-api.kalshi.co) with the ws/v2 path.
+PROD_WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+DEMO_WS_URL = "wss://demo-api.kalshi.co/trade-api/ws/v2"
+
+
+def _ws_url() -> str:
+    """Return the WebSocket host for the current KALSHI_ENV.
+
+    Resolved at import time is wrong (a module constant can't see a .env
+    loaded later); resolved per-CONNECT is also wrong, and deliberately not
+    what _ws_listener does -- see its own `ws_url` comment. This reads the
+    env at call time; the caller decides when that is.
+
+    Opus review (batch-58, M3): the first version of this docstring claimed
+    per-connect freshness "for the same reason main._kalshi_env() does."
+    That was backwards -- main.py goes out of its way to make KALSHI_ENV
+    survive a mid-process .env reload unchanged (see its _preserved_
+    kalshi_env snapshot/restore, and cmd_settings' outright refusal to edit
+    KALSHI_ENV in-session), because a live client's base_url is frozen at
+    build_client() and an env that could drift out from under it is the
+    "M-25 desync" that machinery exists to prevent.
+    """
+    return PROD_WS_URL if os.getenv("KALSHI_ENV", "demo") == "prod" else DEMO_WS_URL
+
+
 # Fix 6: mkdir moved out of import time — now called inside update_orderbook_cache
 
 # In-memory order book state (ticker → snapshot)
@@ -164,6 +222,16 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
                 cache = json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
             cache[ticker] = merged
             cache["_updated_at"] = datetime.now(UTC).isoformat()
+            # Opus review (batch-58, L2): stamp which environment produced
+            # these snapshots. The cache file is a single env-agnostic path
+            # keyed only by ticker, so without this an operator who runs
+            # prod, stops, switches KALSHI_ENV=demo and starts the L6585
+            # demo smoke test inside WS_CACHE_TTL_SECS (900s) would have
+            # _get_fresh_ticker_entry's disk fallback serve the still-fresh
+            # PROD entries -- feeding prod prices to reprice/chase and the
+            # flash-crash breaker exactly as before item 2's fix, i.e.
+            # defeating the fix in the one scenario it was written for.
+            cache["_env"] = os.getenv("KALSHI_ENV", "demo")
             # Fix 6: mkdir called here, just before the write
             _CACHE_PATH.parent.mkdir(exist_ok=True)
             safe_io.atomic_write_json(cache, _CACHE_PATH)
@@ -233,8 +301,18 @@ def _get_fresh_ticker_entry(ticker: str) -> dict | None:
     if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
         return entry
 
-    # Fall back to disk cache
+    # Fall back to disk cache.
+    #
+    # Opus review (batch-58, L2): a cache written under a DIFFERENT
+    # KALSHI_ENV is treated as stale regardless of its age -- see
+    # update_orderbook_cache's own `_env` comment. Only the disk half needs
+    # this; the in-memory half above cannot outlive the process that filled
+    # it, and the WS host is now frozen for a listener's lifetime. A cache
+    # predating this stamp has no `_env` key and is also treated as stale,
+    # which self-heals on the first write.
     cache = read_orderbook_cache()
+    if cache.get("_env") != os.getenv("KALSHI_ENV", "demo"):
+        return None
     entry = cache.get(ticker)
     if entry and _is_fresh(entry) and entry.get("mid_price") is not None:
         return entry
@@ -323,6 +401,19 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
         _log.error("kalshi_ws: key loading failed: %s", exc)
         return
 
+    # Opus review (batch-58, M3): resolved ONCE, before the reconnect loop,
+    # not per connect attempt. The REST client's base_url is frozen at
+    # build_client() for the life of the process, and this feed's snapshots
+    # land in the same data/orderbook_cache.json that order_executor's
+    # reprice/chase logic and flash-crash breaker read -- so a WS thread that
+    # re-read KALSHI_ENV on every reconnect could silently start writing
+    # demo book data into the cache a still-prod REST client is trading
+    # against (or vice versa). Freezing it here makes the two agree for the
+    # whole run, which is exactly the invariant main.py's own
+    # KALSHI_ENV snapshot/restore protects on the REST side.
+    ws_url = _ws_url()
+    _log.info("kalshi_ws: using %s for this listener's lifetime", ws_url)
+
     try:
         while True:
             try:
@@ -350,10 +441,8 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                     "KALSHI-ACCESS-TIMESTAMP": timestamp,
                 }
 
-                async with websockets.connect(
-                    _WS_URL, additional_headers=headers
-                ) as ws:
-                    _log.info("kalshi_ws: connected to %s", _WS_URL)
+                async with websockets.connect(ws_url, additional_headers=headers) as ws:
+                    _log.info("kalshi_ws: connected to %s", ws_url)
                     _set_ws_alive(True)
 
                     sub_msg = build_subscribe_message(

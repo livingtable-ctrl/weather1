@@ -24468,7 +24468,7 @@ Problem:
   avoid this fixture entirely, patching paper.DATA_PATH directly with no
   reload.
 
-[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0009); filed separately as a different consumer (a dashboard stat) than that batch's own gate-fix scope] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
+[RESOLVED 2026-08-25 -- batch-58 item 3] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
 Priority: LOW -- informational dashboard stat, not a safety gate
 
 Problem:
@@ -24503,7 +24503,33 @@ ADDENDUM 2026-08-19 (batch-02, AUD-0007): _count_open_live_orders now ALSO
   fold BOTH gaps (filled-unsettled AND unknown) into open_count in one pass
   rather than fixing this dashboard stat twice.
 
-[OPEN 2026-08-19 -- found by independent opus review during batch-02 (AUD-0007's fix), genuinely out of scope for that batch (different subsystem: trading_gates.py's gate coverage, not the place_order/execution_log status plumbing batch-02 touched)] _exit_live_position's docstring claims a reduced gate; the code runs the FULL LiveTradingGate, silently disabling every protective exit once the daily-loss halt trips
+
+RESOLVED 2026-08-25 (batch-58 item 3):
+  Both gaps this entry named (filled-but-unsettled AND ambiguous 'unknown') are closed in one
+  pass, as the entry asked. Rather than copying _count_open_live_orders' union into a second
+  place, the union was EXTRACTED to `execution_log.count_open_live_positions()` -- one SQL
+  statement -- and both consumers now call it: get_live_pnl_summary's open_count and
+  order_executor._count_open_live_orders (the max_open_positions safety gate). The dashboard stat
+  and the gate can no longer disagree about what "open" means, which is the failure this entry is
+  an instance of.
+
+  Verified equivalent to the previous three-query Python union, including the closes_position_id
+  placement: get_filled_unsettled_live_orders already carried that exclusion itself, so hoisting
+  it to cover every non-settled arm changes nothing. The union also now includes batch-58 item 5's
+  new terminal 'unresolved' status -- required, not optional: such a row counted here while it was
+  'unknown', so omitting it would have silently LOOSENED max_open_positions at the moment a row
+  became operator-actionable.
+
+  Docstring updated (it documented the undercount as if intended, which is what this entry
+  flagged). Opus review L10 noted the consequence of the extraction: open_count is now read on its
+  own connection after the P&L sums' transaction closes, so a concurrent writer can make the
+  returned dict internally inconsistent. Accepted deliberately for a dashboard stat and documented
+  -- the alternatives were a nested connection or duplicating the union SQL, and duplication is
+  what this item existed to remove. L11 corrected _count_open_live_orders' surviving docstring
+  text ("each via its own unbounded query", "on the pending half"), both now false.
+  Files: execution_log.py, order_executor.py, tests/test_execution_log.py.
+
+[RESOLVED 2026-08-25 -- batch-58 item 4] _exit_live_position's docstring claims a reduced gate; the code runs the FULL LiveTradingGate, silently disabling every protective exit once the daily-loss halt trips
 Priority: MEDIUM -- narrow trigger (daily-loss halt must already be active) but the consequence is exactly backwards for a protective mechanism
 Files: order_executor.py, trading_gates.py
 
@@ -24537,7 +24563,55 @@ Problem:
   the docstring) mirroring _replace_live_order's existing reduced-gate
   precedent in the same file.
 
-[OPEN 2026-08-19 -- found by independent opus review during batch-02 (AUD-0007), a genuinely separate feature (alerting/retention policy) from that batch's own status-plumbing fix] 'unknown'-status live orders have no age cap or operator alert -- an unresolvable row is re-checked forever at 3 authenticated GETs per recovery pass with no visible escalation
+
+RESOLVED 2026-08-25 (batch-58 item 4):
+  DECISION (user, via AskUserQuestion -- this was surfaced explicitly, not defaulted): make the
+  CODE match the docstring. A kill switch exists to stop opening new risk, not to trap existing
+  risk, and this entry's own priority note says the consequence is "exactly backwards for a
+  protective mechanism." This is a real live-trading behaviour change.
+
+  New `trading_gates.pre_live_exit_check()` runs only the never-skippable half of the gate:
+  TRADING_PAUSED, kill switch, prod-ness (from the client's own base_url), and
+  LIVE_TRADING_ENABLED. It deliberately does NOT run is_paused_drawdown, is_streak_paused,
+  is_daily_loss_halted, is_accuracy_halted or graduation_check -- every one of those exists to
+  SIZE OR STOP NEW exposure, and an exit removes exposure. The four kept checks are the ones whose
+  reasoning does not depend on how much risk is already open: two operator "touch nothing"
+  instructions and two real-money interlocks (a reduced gate that skipped the latter would let a
+  misconfigured demo/shadow run fire real SELLs).
+
+  Implemented by extracting `LiveTradingGate._check_never_skippable()` so the full gate and the
+  reduced gate share ONE definition rather than two that can drift -- this repo's recurring
+  forgot-one-copy-of-a-shared-check bug class. Verified behaviour-identical for the full gate: the
+  only deleted lines in trading_gates.py are the `def check` line and its docstring, both re-added.
+
+  SCOPE, and a sibling bug this entry did not name: _replace_live_order and _amend_live_order
+  carried the IDENTICAL false "kill-switch/trading-paused only" docstring while also running the
+  full gate. Their docstrings were corrected to match their code, and their gate was deliberately
+  left UNCHANGED -- a reprice modifies a resting ENTRY order that can still fill and create new
+  exposure, so the "an exit reduces risk" argument does not carry over. Only
+  _exit_live_position uses the reduced gate; a test pins that 6/1 split so a future path cannot
+  quietly adopt it without the same explicit decision.
+
+  OPERATOR ALERT added for a gate-blocked exit (the entry notes the failure previously surfaced
+  only as a _log.warning). Scoped, per opus review L6, to the two operator ACTIONS -- kill switch
+  and TRADING_PAUSED. It deliberately does NOT alert for LIVE_TRADING_ENABLED-unset or a non-prod
+  client: both are legitimate steady states (a disarmed operator holding positions is how this bot
+  sits today) and send_system_alert's cooldown is 6h, so alerting on them would re-nag forever for
+  a state the operator chose.
+
+  COORDINATION with backlog L30045 (batch 63, the dashboard/CLI half): 63 had not landed at
+  implementation time, so this did not inherit its decision. This change deliberately leaves
+  L30045's question open -- the kill switch and TRADING_PAUSED still block an exit, and the answer
+  to "how does an operator close a position anyway" must be an explicit operator action, not this
+  gate deciding on their behalf. Opus review L5 also corrected the runbook: main.cmd_order's
+  manual sell runs the FULL gate and is blocked by the same condition, so "close it manually" is
+  not an alternative to clearing the block -- Kalshi's own web UI is the only path that bypasses
+  it. L4 corrected a stale call-site citation in _exit_live_position's docstring (cmd_order's gate
+  call is at main.py:5599, inside its own `if _is_live:` branch, not main.py:4522).
+  Files: trading_gates.py, order_executor.py, main.py, LIVE_TRADING_RUNBOOK.md,
+  tests/test_live_execution.py, tests/test_phase2_batch_l.py.
+
+[RESOLVED 2026-08-25 -- batch-58 item 5] 'unknown'-status live orders have no age cap or operator alert -- an unresolvable row is re-checked forever at 3 authenticated GETs per recovery pass with no visible escalation
 Priority: LOW -- narrow trigger (Kalshi order history aging out past what _get_orders_by_status can still find, or a malformed client_order_id), and the runbook now tells operators to check manually if a row persists
 Files: execution_log.py, order_executor.py, LIVE_TRADING_RUNBOOK.md
 
@@ -24579,7 +24653,61 @@ ADDENDUM 2026-08-19 (batch-02, AUD-0007, design note not a bug): the
   FIRST check gets a second (and third, ...) chance on every subsequent
   recovery pass, which the old 'failed'-on-first-try behavior never gave it.
 
-[OPEN 2026-08-19 -- found by round-2 opus review of batch-02 (AUD-0007), a performance optimization genuinely separable from that batch's own correctness fixes] _recover_pending_orders' unknown-row loop re-walks the account's full order history once PER unknown row instead of once per recovery pass
+
+RESOLVED 2026-08-25 (batch-58 item 5):
+  DECISION (user, via AskUserQuestion): alert past an age threshold, then park at a terminal
+  status so the row stops being re-polled -- rather than alerting but polling forever, or reusing
+  'failed'.
+
+  Added: `_UNRESOLVED_AGE_MINUTES` (order_executor, default 1440 = 24h, overridable via
+  UNRESOLVED_ORDER_AGE_MINUTES, floored at 1, non-numeric falls back rather than raising at import;
+  documented in .env.example), `_park_stale_unknown_order`, `execution_log.park_unresolved_order`
+  (atomic, `WHERE status='unknown'`, mirroring claim_unknown_order/claim_sent_order),
+  `get_unresolved_live_orders`, and the terminal status 'unresolved'.
+
+  WHY 'unresolved' AND NOT 'failed' -- the entry left the terminal state open, and this is the
+  reasoning: 'failed' means the bot POSITIVELY CONFIRMED the order never landed, and every dedup
+  and spend guard in execution_log excludes it. 'unresolved' means the bot never found out. It
+  appears on none of those NOT-IN lists, so a parked row keeps blocking a re-placement and keeps
+  counting toward daily live spend and open positions, exactly as it did while 'unknown'. Reusing
+  'failed' would have unblocked dedup and let the bot re-place an order that may be resting live.
+  All five status predicates plus the exposure/settlement/tax-export consumers were checked
+  individually; the dashboard renders any non-'filled' status at warn level, so it displays
+  sensibly with no frontend change.
+
+  Two things the escalation deliberately does NOT do, both found by opus review, both real:
+    H1 (HIGH, self-inflicted): an unresolvable EXIT row (closes_position_id set) is now ALERTED
+      BUT NEVER PARKED. Parking it abandons settlement of the POSITION it closed, and that
+      position stays live=1/status='filled'/settled_at=NULL/closes_position_id=NULL -- exactly the
+      shape get_filled_unsettled_live_orders() treats as open. The exit scanner would then keep
+      placing fresh REAL SELL orders for contracts the account no longer holds, every cycle,
+      forever. The retry loop those branches were written for (batch-02's own round-2 fix) IS the
+      protection, so it must survive the age cap. Re-polling costs nothing extra now that item 6
+      hoisted the lookup. The exit alert names the orphaned position row, not just the exit row.
+    L2: a row is only parked when this pass's reconciliation lookup ACTUALLY EXECUTED.
+      _find_orders_by_client_ids reports uncertainty at PASS level, so one persistently-failing
+      status bucket would otherwise abandon every live unknown row at the 24h mark because our own
+      API access was broken -- the worst possible reason to stop tracking a possibly-real order.
+      Such a row keeps retrying and gets its own distinct alert ("Kalshi lookup failing"), since a
+      >24h broken lookup is itself an incident.
+    M1: the alert uses a PER-ROW cooldown_key. send_system_alert's cooldown is 6h and
+      disk-persisted, keyed on that string, so the original shared key meant that when an outage
+      stranded four rows in one pass, exactly ONE alert was delivered and the other three were
+      handled silently -- each of which may be a real resting order.
+    M2: the alert text was factually wrong for exit rows (it claimed the row counts toward open
+      positions and daily spend; both queries filter closes_position_id IS NULL, so it counts
+      toward neither). Now branched.
+
+  Also fixed (opus review L1): the recovery loop re-derived the stored client_order_id inline
+  instead of using the shared helper, so a row with a non-string id was excluded from the lookup
+  set and then "confirmed" not-found without ever being looked up, and a row with malformed
+  response JSON raised past the age cap entirely -- the one permanently-stuck shape this item was
+  supposed to cover. LIVE_TRADING_RUNBOOK.md documents 'unresolved', the exit carve-out, the
+  lookup-failing case, and how an operator clears a parked row.
+  Files: execution_log.py, order_executor.py, .env.example, LIVE_TRADING_RUNBOOK.md,
+  tests/test_live_execution.py.
+
+[RESOLVED 2026-08-25 -- batch-58 item 6] _recover_pending_orders' unknown-row loop re-walks the account's full order history once PER unknown row instead of once per recovery pass
 Priority: LOW -- latency/round-trip-count issue, not a correctness bug; bounded (not unbounded) after round-2's own pagination page-cap fix
 Files: order_executor.py, kalshi_client.py
 
@@ -24605,6 +24733,39 @@ Problem:
   same recovery call, not re-derived per row -- worth its own careful
   design pass and test coverage rather than folding into an already-large
   review-response round.
+
+
+RESOLVED 2026-08-25 (batch-58 item 6):
+  Added `KalshiClient._find_orders_by_client_ids(set_of_ids)` -- ONE walk of each of the three
+  status buckets per recovery pass, matched against every unknown row in memory -- and hoisted the
+  call out of _recover_pending_orders' per-row loop. N unknown rows now cost 3 fetches per pass
+  instead of 3N. Done together with item 5 as the batch file directed; item 5's escalation also
+  bounds the worst case that made this expensive.
+
+  This entry's own deferral note said the per-row "uncertain" tracking would have to become a
+  pass-level concept and that this needed its own design pass. It does, and it did:
+  reconciliation_uncertain is now True for every id in the set if ANY of the three walks failed.
+  That is at least as conservative as the per-id form (a failed walk could be hiding any id's real
+  match) and being conservative is the safe direction -- uncertain=True is what stops a caller
+  confirming an order "never landed" and unblocking a retry. The consequence for item 5's age cap
+  is handled explicitly there (a pass-level uncertain no longer permits a terminal park).
+
+  `_find_order_by_client_id` is deliberately NOT reimplemented on top of the batched form: its own
+  hot caller is place_order's exception handler on a live-order error path, and routing it through
+  the batch version would turn one paginated fetch into three, every time. The shared judgement
+  the two DO need to agree on -- whether a CANCELED order with a given fill count nonetheless
+  landed -- was extracted to `_canceled_order_landed` so it cannot drift.
+
+  Opus review confirmed semantic equivalence (bucket precedence preserved; get_open_orders /
+  _get_orders_by_status return materialised lists, not generators, so the per-walk try genuinely
+  covers the whole paginated fetch; hoisting is safe because _matches is keyed by client_order_id
+  and one row's resolution cannot invalidate another's match, with claim_unknown_order still
+  guarding cross-process races). One real fix from it (L3): `cid in client_order_ids` raises
+  TypeError on an unhashable client_order_id from a reshaped payload, from OUTSIDE the per-walk
+  try -- which would abort the whole batched lookup and poison every row in the pass. The single-id
+  form used `==` and never raised. Guarded with isinstance.
+  Files: kalshi_client.py, order_executor.py, tests/test_kalshi_client.py,
+  tests/test_live_execution.py.
 
 [RESOLVED 2026-08-22 -- see resolution below.] order_executor._poll_pending_orders' natural-settlement P&L formula applies the taker fee only on WINNING outcomes, so a taker-entered position that LOSES at settlement is recorded fee-free, understating that loss
 Priority: LOW -- same-direction consequence as AUD-0003 (the daily-loss circuit breaker under-tripping), but on the losing side, and against a formula convention that predates and is broader than this fix
@@ -25831,7 +25992,7 @@ Resolution (2026-08-21):
   HIGH/MEDIUM issues detailed above -- all fixed prior to push, not
   deferred.
 
-[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix), genuinely separate: different call sites (cancel_order/amend_order/get_order, not get_market/get_orderbook/get_candlesticks), needing its own charset design since order_id is a lowercase-hex UUID, not an uppercase Kalshi ticker] order_id also flows unvalidated into REST path segments in cancel_order/amend_order/get_order, same path-interpolation pattern AUD-0076 fixed for ticker/series_ticker
+[RESOLVED 2026-08-25 -- batch-58 item 1] order_id also flows unvalidated into REST path segments in cancel_order/amend_order/get_order, same path-interpolation pattern AUD-0076 fixed for ticker/series_ticker
 Priority: INFO -- same risk class as AUD-0076 (path-segment manipulation, no SSRF since PROD_BASE/DEMO_BASE are fixed, no privilege escalation). order_id is exchange-sourced for automated paths (kalshi_client.py:660 reads it straight from Kalshi's own place_order response), narrowing exposure there -- but round-2 review (F8) found `py main.py cancel <order_id>` (main.py's cmd_cancel) passes CLI argv straight through with zero normalization, a genuine raw-client-input path this entry's first draft omitted.
 Files: kalshi_client.py:777 (get_order), kalshi_client.py:787 (cancel_order), kalshi_client.py:858 (amend_order), main.py's cmd_cancel (CLI entry point that reaches cancel_order with an unnormalized order_id)
 
@@ -25866,7 +26027,58 @@ SCOPE EXPANDED 2026-08-24 (batch-48's backlog re-verification sweep -- no
   get_order_queue_position :855, plus main.py's cmd_cancel (unchanged --
   still the only raw-CLI-input path).
 
-[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0015's base_url-inversion fix), pre-existing and out of scope for that fix (different file/subsystem: the WebSocket price feed, not the REST client's base_url selection); flagged because it contradicts the audit's own "KalshiClient.__init__ is the sole inverted-logic outlier" evidence claim] kalshi_ws.py's WebSocket URL is hardcoded to the PROD host with no KALSHI_ENV read at all -- in demo mode, order_executor's reprice/chase and flash-crash circuit breaker still consume real production market prices
+
+RESOLVED 2026-08-25 (batch-58 item 1):
+  Added `_validate_order_id_format` / `_ORDER_ID_RE` (kalshi_client.py) and applied it at all FOUR
+  order_id-interpolating methods -- get_order_queue_position, get_order, cancel_order, amend_order
+  -- plus `_validate_ticker_format` on amend_order's body ticker. main.py's cmd_cancel (the one
+  raw-CLI path) now strips and validates EXPLICITLY before the call.
+
+  CHARSET -- the entry's own premise could not be verified, and that changed the design.
+  This entry and the batch file both said to confirm the real format by grepping live
+  execution_log.db. There is nothing there to confirm against: data/execution_log.db holds 247
+  rows and ZERO with live=1, and every retained backup is the same -- no real Kalshi order
+  response has ever been stored in this repo, so the "lowercase-hex UUID" shape is an assumption,
+  not an observation. Per user decision, the regex is therefore a PERMISSIVE path-safe charset
+  rather than the strict UUID regex the entry proposed:
+      _ORDER_ID_RE = re.compile(r"(?!\.{1,2}\Z)[A-Za-z0-9._-]+\Z")   # 64-char cap
+  It rejects everything in the actual threat model (`/`, `%`, `?`, `#`, `\`, whitespace, control
+  chars, and `.`/`..` as whole segments) while accepting any UUID and any plausible opaque
+  exchange id. A tight UUID regex would have added nothing against path manipulation and created
+  a real availability risk in the other direction: if a real order_id is ever not a canonical
+  UUID, cancel_order/amend_order start raising and a live position cannot be closed. The
+  intra-segment dot is admitted deliberately (opus review L4) -- Kalshi's own identifiers use one
+  and _TICKER_RE had to be widened for exactly that reason (KXHIGHAUS-26JUN06-B88.5, 119 of 364
+  distinct real tickers), so excluding it was the likeliest way to reject a real id on a cancel
+  path. Logged at ERROR, not WARNING: a rejection here is by construction never transient.
+
+  ALSO FIXED as the entry required: get_live_weather_index's docstring claim that it was "the one
+  path-interpolating method in the file that had no equivalent guard" -- true when written, false
+  since. Replaced with the now-true statement plus a drift guard
+  (TestOrderIdPathValidation::test_every_path_interpolating_method_validates_its_segment) that
+  source-counts the 7 f-string path interpolations, so the replacement claim cannot silently rot
+  the same way. That guard exists because this entry was itself created by exactly that rot.
+
+  OPUS REVIEW (effort:high, API-surface half) -- 16 findings, all addressed. Two were proven by
+  execution rather than argued:
+    M1 (real bug, self-inflicted): the first implementation caught ValueError AROUND
+      client.cancel_order(). Three non-format failures also raise ValueError -- _check_error_body's
+      200-with-error-body convention, requests' JSONDecodeError (a ValueError subclass) on an HTML
+      gateway body, and _sign_headers' missing-credentials check. So a 502 during an operator's
+      emergency cancel printed "Invalid order_id: Expecting value: line 1 column 1" and returned
+      exit 0. Now validates explicitly; every other failure stays loud and propagates.
+    M4 -> the drift guard described above.
+    L1: the cmd_cancel bad-id test asserted nothing at all (an `except: pass` mutant survived it);
+      now asserts on stdout and on cancel_order not being called, plus a companion test proving a
+      non-format ValueError is NOT swallowed.
+    L5: amend_order's ticker check reframed as a body-field consistency check (it is not path
+      protection -- only order_id is interpolated into that path).
+    L6: the "documented as a UUID" claim softened and flagged as unverifiable, matching this
+      file's convention of dating/sourcing external claims.
+    L3, L7 and the informational findings addressed in the same pass.
+  Files: kalshi_client.py, main.py (cmd_cancel), tests/test_kalshi_client.py.
+
+[RESOLVED 2026-08-25 -- batch-58 item 2] kalshi_ws.py's WebSocket URL is hardcoded to the PROD host with no KALSHI_ENV read at all -- in demo mode, order_executor's reprice/chase and flash-crash circuit breaker still consume real production market prices
 Priority: LOW -- read-only price consumption, not an order-placement path; a demo-mode operator gets production-accurate (not demo-market) prices feeding reprice/chase logic, which could make demo-mode backtesting/dry-run behavior misleading rather than unsafe
 Files: kalshi_ws.py:28, order_executor.py:146,2586
 
@@ -25874,6 +26086,53 @@ Problem:
   `_WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"` (kalshi_ws.py:28) is a hardcoded module constant with no demo variant and no `KALSHI_ENV` read anywhere in the file -- confirmed via grep, zero hits for `KALSHI_ENV` in kalshi_ws.py. order_executor.py consumes this feed via `get_cached_book` (line 146, feeds reprice/chase) and `get_cached_mid_price` (line 2586) regardless of which KALSHI_ENV the REST client is running under.
   Root cause: kalshi_ws.py was written assuming a single (prod) WS endpoint, with no equivalent of kalshi_client.py's DEMO_BASE/PROD_BASE split ever added.
   Recommendation: Add a demo WS URL constant and select between them the same way kalshi_client.py now does (post-AUD-0015 fix: whitelist "prod" explicitly, default elsewhere to demo), reading KALSHI_ENV the same way. Verify Kalshi's actual demo WS endpoint URL before implementing (not assumed here).
+
+
+RESOLVED 2026-08-25 (batch-58 item 2):
+  kalshi_ws.py now has PROD_WS_URL/DEMO_WS_URL and a `_ws_url()` selector using the same polarity
+  as KalshiClient.__init__ (`PROD if env == "prod" else DEMO`), i.e. the post-AUD-0015 form the
+  entry asked for. Demo host is wss://demo-api.kalshi.co/trade-api/ws/v2, mirroring DEMO_BASE's
+  origin with the ws/v2 path; a test asserts each WS host matches its REST sibling's origin so the
+  two selections cannot drift.
+
+  RESOLVED HOST IS FROZEN PER LISTENER, not read per connect (opus review M3). The first
+  implementation re-read KALSHI_ENV on every reconnect, and justified it by citing
+  main._kalshi_env(). That was backwards: main.py deliberately SNAPSHOTS and RESTORES KALSHI_ENV
+  across a mid-process .env reload, and cmd_settings refuses to edit it in-session, precisely
+  because a live client's base_url is frozen at build_client() -- the "M-25 desync." A WS thread
+  re-reading the env per reconnect could start writing demo book data into the same
+  data/orderbook_cache.json a still-prod REST client trades against.
+
+  ALSO FIXED (opus review L2), because it defeated this item in the exact scenario it exists for:
+  the on-disk orderbook cache was a single env-agnostic file keyed only by ticker. An operator who
+  ran prod, stopped, switched to KALSHI_ENV=demo and started the DEMO_BASE smoke test within
+  WS_CACHE_TTL_SECS (900s) would have had the still-fresh PROD entries served from disk --
+  feeding prod prices to reprice/chase and the flash-crash breaker exactly as before. The cache
+  now carries an `_env` stamp and a mismatch is treated as stale regardless of age (a cache
+  predating the stamp is also stale, self-healing on first write).
+
+  NOTE FOR L6585 (the DEMO_BASE smoke test this entry says it undercuts): the smoke test is now
+  meaningful, but there is only ONE credential pair in this repo (KALSHI_API_KEY /
+  KALSHI_PRIVATE_KEY_PEM, no demo variants), so a demo run with prod credentials will most likely
+  fail auth against demo-api.kalshi.co and reconnect-loop rather than produce a feed at all. That
+  is the correct direction -- no data beats wrong data, and _get_current_book has a REST fallback
+  -- but the smoke test needs demo credentials to exercise the WS path at all. Recorded in
+  kalshi_ws.py's own header comment.
+
+  CORRECTION to this entry's own impact statement: it named get_cached_book and
+  get_cached_mid_price as the affected consumers. There is a third and more direct one --
+  update_orderbook_cache calls flash_crash_cb.check() IN-PROCESS on every tick, so a demo run's
+  flash-crash breaker was being tripped by live prod ticks, not merely reading prod prices back
+  out of a cache. Pre-fix blast radius was larger than filed.
+
+  OPUS REVIEW also caught that the only test guarding this item's actual bug was VACUOUS: it
+  asserted `"_ws_url()" in inspect.getsource(kalshi_ws)`, which the function's own `def` line
+  satisfies. The reviewer executed a full revert of the connect site and the test passed. Replaced
+  with behavioural tests that drive the real _ws_listener and capture the URL handed to
+  websockets.connect, plus one that flips KALSHI_ENV between reconnect 1 and 2 and asserts both
+  used the host resolved at listener start. Re-ran that same mutant against the new tests: they
+  fail on it.
+  Files: kalshi_ws.py, tests/test_kalshi_ws.py.
 
 [OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix) while cross-checking the new ticker regex against every real ticker value in data/*.db, unrelated to any code in this batch's diff] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
 Priority: INFO -- data hygiene, not a code bug; confirmed these values are never passed to kalshi_client.get_market/get_orderbook/get_candlesticks (they'd fail the new ticker-format validation if they were). Round-2 review (F7) found the "no functional impact" framing was too strong, though: tracker.get_price_improvement_stats() (tracker.py:6600) runs `SELECT improvement FROM price_improvement` with no ticker filter at all, so these 6 rows DO skew the mean/median/count/positive_pct it surfaces to the dashboard -- confirmed by reading that function directly.
@@ -27132,7 +27391,7 @@ Problem:
   tracked win-only-fee omission at L22502, since both live in the same
   formula.
 
-[OPEN 2026-08-22 -- found by an independent opus review (effort:high) of batch-22's own fee-formula fix, while re-deriving whether the fix fully closed the entry named at backlog.txt's "record_live_exit_fill shares L22502's win-only-fee bug" entry (now RESOLVED)] record_live_exit_fill never charges the ENTRY-side taker fee for a taker-entered position that closes via an early exit (stop-loss/breakeven/model-exit/manual sell) rather than natural settlement
+[RESOLVED 2026-08-25 -- batch-58 item 8] record_live_exit_fill never charges the ENTRY-side taker fee for a taker-entered position that closes via an early exit (stop-loss/breakeven/model-exit/manual sell) rather than natural settlement
 Priority: MEDIUM-LOW -- same understating-realized-loss direction as the already-fixed win-only-fee bug, but requires a specific entry path (a taker-filled entry, i.e. main.cmd_order's live buy or the auto-path's taker-cross reprice fallback) AND an early exit (the common case for a protective exit, not the exception)
 Files: execution_log.py (record_live_exit_fill, ~1245-1330), order_executor.py (_poll_pending_orders' settlement branch, ~1060-1140 -- the ONLY place an entry-side fee is ever computed, and it never runs for a row record_live_exit_fill has already marked settled_at)
 
@@ -27171,6 +27430,48 @@ Problem:
   position-dict/schema change to carry the original quantity and the entry
   row's own order_type through to record_live_exit_fill -- out of scope for
   a same-payload adjacency fix; needs its own implementation pass.
+
+
+RESOLVED 2026-08-25 (batch-58 item 8):
+  `record_live_exit_fill` now charges BOTH legs. The entry leg's maker/taker status IS recorded and
+  readable -- the entry's "verify before assuming" caveat resolves positively: the position row's
+  `order_type` column is exactly the discriminator AUD-0003 established for this purpose ("limit"
+  = a resting GTC maker fill, anything else = taker), it is set correctly at every placement site,
+  and an unreadable/missing value falls back to the TAKER rate, the same conservative direction
+  AUD-0003 chose. No signature change and no schema change were needed; the row is read back via
+  get_order_by_id inside the function rather than widening every caller's position dict.
+
+  RECOGNITION MODEL -- this is what unblocked the deferral. The original note said a fix needs the
+  ORIGINAL entry quantity to prorate a one-time fee across multiple partial exits. Charging per
+  CLOSED CONTRACT sidesteps that entirely: each exit is charged
+  fee(clamped_fill_count, entry_price) using the same curved per-contract formula the exchange
+  itself uses. For a position closing in one exit the total equals the real entry fee exactly; for
+  one closing across k exits it can exceed it by at most k-1 cents, because kalshi_taker_fee rounds
+  UP to the whole cent independently per call -- an OVERstatement of cost, i.e. the same safe
+  direction as the order_type fallback.
+
+  Hand-computed and asserted (ceil(0.07*C*P*(1-P)) to the cent): entry 10 @ 0.40 = $0.17, exit
+  10 @ 0.55 = $0.18, gross $1.50 -> pnl $1.15 (was $1.32 exit-leg-only). Maker entry -> $1.32
+  unchanged. Partial 4-of-10 -> $0.46. Losing exit 10 @ 0.25 -> -$1.81, both legs charged, since
+  the fee is charged on the FILL not the outcome.
+
+  BACKFILL SCOPE (user decision, via AskUserQuestion): FORWARD-ONLY, and no backfill is needed --
+  verified, not assumed. The production data/execution_log.db has ZERO live=1 rows and ZERO rows
+  with settled_at set, and so does every retained backup (b70_cleanup, the 08-23/08-24 backups, and
+  the pre-2026-08-01 stale copy). The bot has never settled a live position, so there is no
+  historical corpus carrying the overstated P&L and this introduces no date boundary in the
+  analytics. That fact is recorded in the function's own docstring so a future reader does not have
+  to re-derive it.
+
+  Opus review M5 found the same false claim this item killed in record_live_exit_fill's docstring
+  still live at the caller (order_executor, above the full-exit call): "fee only discounts a
+  genuine GAIN, never applied to a loss" and "the entry side already paid $0 (always a resting
+  maker order)". Both false since batch-22 and this item respectively, in live-money fee code.
+  Corrected. M3 found the multi-partial-exit test VACUOUS -- it computed both sides of its
+  comparison from KALSHI_FEE_RATE inside the test and never read record_live_exit_fill's return
+  value, so it passed unchanged with the entry fee deleted from production entirely. Rewritten to
+  back the charged fee out of the returned pnl; re-ran that mutant to confirm it now fails.
+  Files: execution_log.py, order_executor.py, tests/test_execution_log.py.
 
 [RESOLVED 2026-08-22 -- see resolution below. Filed retroactively: batch-23.md
   (audit/handoff_prompts/batches/batch-23.md) cited a backlog.txt line number
@@ -28051,7 +28352,7 @@ Independent review round 2 (2026-08-23, opus effort=high) additions to (a) -- se
   a None fallback anyway; new test (test_malformed_stored_response_does_not_crash_the_fallback) seeds a
   corrupted response column directly via SQL, mutation-tested.
 
-[OPEN -- filed 2026-08-23 by independent review round 2, batch-31 F8] _amend_live_order's log_order_result(row_id=replaces_order_id, status="amended") call is bare, same bug class as L-10(a)
+[RESOLVED 2026-08-25 -- batch-58 item 7] _amend_live_order's log_order_result(row_id=replaces_order_id, status="amended") call is bare, same bug class as L-10(a)
 Priority: LOW -- same reasoning as L-10(a) but a genuinely separate function/code path (implementation
   workflow step 27's same-payload test: different call chain, different row lifecycle -- amend, not
   cancel), so filed as its own entry rather than folded into batch-31 item 5
@@ -28091,6 +28392,44 @@ Batch-31 process notes: full ceremony per the 29-step workflow (money path, no L
   failure mode. Source: audit/handoff_prompts/batches/batch-31.md (audit/POST_MERGE_REVIEW.md, cited as
   the finding source in that handoff, does not exist in this repo as of this writing -- these entries are
   added fresh from the handoff's own text, same situation as batch-30's items above).
+
+
+RESOLVED 2026-08-25 (batch-58 item 7):
+  Fixed the CLASS, not the instance, as the batch file preferred: `log_order_result` now COALESCEs
+  `response` and `fill_quantity`, the same treatment filled_at/market_mid_at_fill already had.
+  Both were unconditional column writes, so ANY caller that omitted them wiped whatever the row
+  already held.
+
+  Grepping every call site first (39 across main.py and order_executor.py, enumerated by a
+  paren-balanced statement scan rather than a line-capped grep) found the bug was live in a SECOND
+  place this entry did not name: _recover_pending_orders' pending-resolve branch passes
+  fill_quantity but not response, wiping the order_id the row was recovered by. Two other sites had
+  already worked around it by hand -- the resting branch re-passes response purely to avoid the
+  wipe, and _finalize_cancel re-reads the row and passes its own prior values back. Those
+  pass-throughs are now redundant but harmless and were left in place.
+
+  No call site was found where preserving is wrong. Checked specifically: no reader consults
+  `response` on a 'failed' row (the pending/sent/unknown recovery filters each select one status,
+  and none of them selects 'failed'); no live path can put a nonzero fill_quantity on a row before
+  it goes failed/canceled/amended except _finalize_cancel, which re-passes it explicitly. COALESCE
+  only ever protects a None -- an explicitly passed value, fill_quantity=0 included, still
+  overwrites, because 0 is not NULL in SQLite. One documented edge: `response` is bound as
+  `json.dumps(response) if response else None`, so an explicitly passed EMPTY dict is falsy and
+  preserves rather than clears; no production caller passes {}.
+
+  One existing test changed behaviour and was updated with the reasoning rather than silently
+  re-baselined: _finalize_cancel's malformed-stored-response test asserted the corrupt value got
+  nulled. That was incidental (the fallback's json.loads failed, so it passed response=None), not
+  intended -- the test exists to prove the defensive json.loads does not raise out of an
+  already-handling except block, and it still does.
+
+  Opus review M4 caught the documentation half: six comments across order_executor.py and
+  execution_log.py asserted that log_order_result's UPDATE is "unconditional" / "does not
+  COALESCE" -- now the opposite of the truth, and one of them was the stated RATIONALE for
+  claim_sent_order's atomicity, so a future reader could have concluded that atomic claim was no
+  longer needed. All six reworded.
+  Files: execution_log.py, order_executor.py, tests/test_execution_log.py,
+  tests/test_live_execution.py.
 
 [RESOLVED 2026-08-23 -- batch-32 item 1 (H-1)] batch-29 re-opened the import-time-validation regression batch-09 closed -- a Settings-menu edit bricks every CLI command including the documented emergency halt
 Priority: HIGH -- empirically reproduced live (`KALSHI_FEE_RATE=0 python -c "import main"` raw-tracebacked,

@@ -381,6 +381,65 @@ def _validate_ticker_format(name: str, value: str) -> None:
         raise ValueError(f"{name} has an invalid format: {value!r}")
 
 
+# Batch-58 item 1 (backlog L25336): order_id is interpolated into four REST
+# path segments (get_order, cancel_order, amend_order,
+# get_order_queue_position), the same path-manipulation exposure AUD-0076
+# closed for ticker/series_ticker. Deliberately NOT the ticker charset:
+# Kalshi's order_id is believed to be a UUID (lowercase hex + dashes) -- the
+# shape backlog L25336 records and what docs.kalshi.com's schema shows, but
+# deliberately stated as "believed" and not dated/verified the way this
+# file's other external claims are (see get_fills' "verified 2026-08-24"),
+# because nothing in this repo can confirm it (see the next paragraph).
+# Either way the uppercase-only _TICKER_RE would reject every real id.
+#
+# Deliberately NOT a canonical-UUID regex either. Nothing in this repo can
+# empirically confirm the exchange's real id shape -- data/execution_log.db
+# holds zero live=1 rows, so no real Kalshi order response has ever been
+# stored here (verified 2026-08-24). A tight UUID regex would add nothing
+# against the actual threat (a path segment escaping its own position) while
+# creating a real availability risk in the other direction: if a real
+# order_id is ever not a canonical UUID, cancel_order/amend_order would start
+# raising and a live position could not be closed. This charset admits every
+# UUID and every plausible opaque exchange id, and still rejects every
+# character that could break out of a path segment -- `/`, `%`, `?`, `#`,
+# `\`, whitespace, and control characters.
+#
+# Opus review (batch-58, L4): `.` is ADMITTED inside a segment, with `.` and
+# `..` rejected as whole segments by the leading negative lookahead. A bare
+# dot mid-segment (`a.b`) is not traversal -- URL path normalization is
+# per-segment, so only a segment that IS `.` or `..` traverses. Of every
+# character considered, `.` had the highest real-world collision
+# probability: Kalshi's own identifiers already use it, and _TICKER_RE above
+# had to be widened for exactly that reason (`KXHIGHAUS-26JUN06-B88.5`, 119
+# of 364 distinct real tickers). Excluding it would have added the one thing
+# this charset was chosen to avoid -- a plausible way to reject a real
+# order_id on a cancel path.
+_ORDER_ID_RE = re.compile(r"(?!\.{1,2}\Z)[A-Za-z0-9._-]+\Z")
+_ORDER_ID_MAX_LEN = 64
+
+
+def _validate_order_id_format(name: str, value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) > _ORDER_ID_MAX_LEN
+        or not _ORDER_ID_RE.match(value)
+    ):
+        # Same reasoning as _validate_ticker_format's own log line: every
+        # live call site here is wrapped in an except-Exception by its
+        # caller, so without this the rejection is silent everywhere.
+        #
+        # Opus review (batch-58, L3): logged at ERROR, not WARNING like the
+        # ticker sibling. A rejection here is by construction never
+        # transient -- the same id will be rejected on every retry forever
+        # -- and the two methods that matter (cancel_order, amend_order) are
+        # how a live position gets closed or repriced. That is precisely the
+        # residual availability risk this charset was chosen to minimize, so
+        # if it ever does happen it must be visible rather than one WARNING
+        # among many.
+        _log.error("%s rejected as malformed order_id: %r", name, value)
+        raise ValueError(f"{name} has an invalid format: {value!r}")
+
+
 class OrderStatusUnknownError(Exception):
     """Raised by place_order() when the create-order POST failed AND at
     least one of the 3 reconciliation lookups (_find_order_by_client_id)
@@ -796,8 +855,14 @@ class KalshiClient:
         opus review L-1: validated the same way _validate_ticker_format
         guards every other path-interpolated method in this file (defense
         in depth against a path-segment manipulation, AUD-0076) -- the
-        only caller today passes the literal "miami", but this is the one
-        path-interpolating method in the file that had no equivalent guard.
+        only caller today passes the literal "miami". Batch-58 item 1: this
+        was originally documented here as "the one path-interpolating method
+        in the file that had no equivalent guard" -- true when written, and
+        false since, because the four order_id-interpolating methods
+        (get_order_queue_position, get_order, cancel_order, amend_order)
+        were still unguarded at that point. They now use
+        _validate_order_id_format, so every path-interpolating method in
+        this file validates its own segment.
         """
         if not isinstance(city, str) or not re.fullmatch(r"[a-zA-Z]{1,32}", city):
             raise ValueError(f"get_live_weather_index: invalid city {city!r}")
@@ -852,6 +917,7 @@ class KalshiClient:
         mutation path expecting it to influence placement/reprice -- that
         wiring is a separate, not-yet-built backlog item (see backlog.txt).
         """
+        _validate_order_id_format("order_id", order_id)
         data = self._get(f"/portfolio/orders/{order_id}/queue_position", auth=True)
         raw = data.get("queue_position_fp") if isinstance(data, dict) else None
         if raw is None:
@@ -1208,13 +1274,7 @@ class KalshiClient:
         try:
             for order in self._get_orders_by_status("canceled"):
                 if order.get("client_order_id") == client_order_id:
-                    fill_count_fp = order.get("fill_count_fp")
-                    try:
-                        _filled = fill_count_fp is not None and float(fill_count_fp) > 0
-                    except (TypeError, ValueError):
-                        # Unparseable fill count -- treat as landed rather than
-                        # risk the caller retrying and double-placing a real order.
-                        _filled = True
+                    _filled = self._canceled_order_landed(order)
                     return (order, False) if _filled else (None, _uncertain)
         except Exception as _e:
             _uncertain = True
@@ -1224,12 +1284,107 @@ class KalshiClient:
             )
         return None, _uncertain
 
+    @staticmethod
+    def _canceled_order_landed(order: dict) -> bool:
+        """Whether a CANCELED order nonetheless landed (partially filled).
+
+        Shared by _find_order_by_client_id and _find_orders_by_client_ids so
+        the two cannot drift on this specific judgement. A canceled order
+        with a nonzero fill still landed partially; with zero fill it
+        genuinely never landed, so the caller may safely retry. An
+        unparseable fill count is treated as LANDED rather than risking the
+        caller retrying and double-placing a real order.
+        """
+        fill_count_fp = order.get("fill_count_fp")
+        try:
+            return fill_count_fp is not None and float(fill_count_fp) > 0
+        except (TypeError, ValueError):
+            return True
+
+    def _find_orders_by_client_ids(
+        self, client_order_ids: set[str]
+    ) -> tuple[dict[str, dict], bool]:
+        """Batch form of _find_order_by_client_id: ONE walk of each of the
+        three status buckets for a whole set of ids, instead of three walks
+        per id.
+
+        Returns ({client_order_id: order}, reconciliation_uncertain) where
+        the map contains only ids that count as LANDED, with the same
+        judgement _find_order_by_client_id applies per-id (see
+        _canceled_order_landed for the canceled/zero-fill case).
+
+        Batch-58 item 6 (backlog L24499): order_executor.
+        _recover_pending_orders' unknown-row loop called the single-id form
+        once per row, so N unknown rows meant N full paginated history walks
+        per recovery pass. This collapses that to 3 walks per pass total,
+        regardless of N.
+
+        _find_order_by_client_id is deliberately NOT reimplemented in terms
+        of this. Its own hot caller is place_order's exception handler,
+        which needs exactly one id and short-circuits on the first bucket
+        that matches -- routing it through here would turn a single
+        paginated fetch on a live-order error path into three, every time.
+
+        `reconciliation_uncertain` is pass-level: True if ANY of the three
+        walks failed to execute, for every id in the set. That is at least
+        as conservative as the per-id form (a failed walk could be hiding
+        any id's real match), and being conservative here is the safe
+        direction -- uncertain=True is what stops a caller confirming an
+        order "never landed" and unblocking a retry.
+        """
+        matches: dict[str, dict] = {}
+        uncertain = False
+        if not client_order_ids:
+            return matches, uncertain
+
+        def _scan(label: str, fetch) -> None:
+            nonlocal uncertain
+            try:
+                orders = fetch()
+            except Exception as _e:
+                uncertain = True
+                _log.warning(
+                    "_find_orders_by_client_ids: %s lookup failed (%s) — "
+                    "outcome uncertain for all %d id(s)",
+                    label,
+                    _e,
+                    len(client_order_ids),
+                )
+                return
+            for order in orders:
+                cid = order.get("client_order_id")
+                # First bucket to match wins, mirroring the single-id form's
+                # resting -> executed -> canceled precedence.
+                #
+                # Opus review (batch-58, L3): the isinstance guard matters
+                # because cid comes straight from the API. A single order
+                # object carrying an unhashable client_order_id (a dict or
+                # list on a reshaped payload) would make `cid in
+                # client_order_ids` raise TypeError from OUTSIDE _scan's
+                # try (which covers only fetch()), aborting the whole
+                # batched lookup and poisoning every row in the pass. The
+                # single-id form used `==`, which never raises.
+                if (
+                    isinstance(cid, str)
+                    and cid in client_order_ids
+                    and cid not in matches
+                ):
+                    if label == "canceled" and not self._canceled_order_landed(order):
+                        continue
+                    matches[cid] = order
+
+        _scan("resting", self.get_open_orders)
+        _scan("executed", lambda: self._get_orders_by_status("executed"))
+        _scan("canceled", lambda: self._get_orders_by_status("canceled"))
+        return matches, uncertain
+
     def get_order(self, order_id: str) -> dict:
         """Fetch a single order by ID from the Kalshi portfolio API.
 
         Returns the inner order dict with 'status' key: resting/canceled/executed
         (Kalshi's real enum -- there is no "filled" or "expired" status).
         """
+        _validate_order_id_format("order_id", order_id)
         data = self._get(f"/portfolio/orders/{order_id}", auth=True)
         return data.get("order", data)
 
@@ -1240,6 +1395,7 @@ class KalshiClient:
         ts_ms -- no status field); callers that need post-cancel status/fill
         info already call get_order() separately (order_executor._finalize_cancel).
         """
+        _validate_order_id_format("order_id", order_id)
         return self._delete(f"/portfolio/events/orders/{order_id}")
 
     def amend_order(
@@ -1293,6 +1449,15 @@ class KalshiClient:
         """
         import hashlib
         import uuid
+
+        _validate_order_id_format("order_id", order_id)
+        # Opus review (batch-58, L5): this one is a BODY-field consistency
+        # check, not path protection -- amend_order's path interpolates only
+        # order_id (below); ticker goes into the JSON body. Kept because
+        # every other ticker-taking method in this file validates its
+        # ticker and a malformed one here would amend against the wrong
+        # market, but it is a different guarantee from item 1's.
+        _validate_ticker_format("ticker", ticker)
 
         v2_side, v2_price = _to_v2_side_price(side, action, price)
 

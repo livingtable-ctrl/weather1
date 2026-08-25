@@ -515,26 +515,70 @@ class TestLiveOrderPathsGuard:
         total = 0
         for relpath in ("main.py", "order_executor.py"):
             text = (repo_root / relpath).read_text(encoding="utf-8")
+            # Batch-58 item 4 split the gate in two: a risk-REDUCING order
+            # (today only order_executor._exit_live_position) runs the
+            # reduced trading_gates.pre_live_exit_check instead of the full
+            # pre_live_trade_check. Both are counted here -- what this guard
+            # protects is "_compute_live_orders_possible knows every CLI path
+            # that can reach a real live order", and an exit order is just as
+            # real as an entry. Counting only the full gate would have let a
+            # future live-order path quietly move to the reduced gate and
+            # drop off this guard's radar entirely.
             total += text.count("pre_live_trade_check(client)")
+            total += text.count("pre_live_exit_check(client)")
         # Known at the time _compute_live_orders_possible's docstring was
-        # last audited (2026-08-20 opus review): main.py has 2
-        # (_quick_paper_buy, cmd_order), order_executor.py has 5
-        # (_replace_live_order, _amend_live_order, _exit_live_position,
-        # _micro_live_gate_ok, _place_live_order -- the last two are reached
-        # only through the ENABLE_MICRO_LIVE-gated block in
+        # last audited (2026-08-20 opus review, recounted 2026-08-24 for
+        # batch-58): main.py has 2 (_quick_paper_buy, cmd_order),
+        # order_executor.py has 5 -- 4 on the full gate (_replace_live_order,
+        # _amend_live_order, _micro_live_gate_ok, _place_live_order) plus
+        # _exit_live_position on the reduced one. The last two full-gate
+        # sites are reached only through the ENABLE_MICRO_LIVE-gated block in
         # _auto_place_trades, which is permanently dead code today since
         # utils.ENABLE_MICRO_LIVE is a hardcoded False constant, not an env
         # read; if that ever changes, re-verify whether a non-`--live` watch/
-        # cron invocation can reach it too). If this count changes, a new
+        # cron invocation can reach it too. If this count changes, a new
         # live-order call site was added or removed -- re-verify
         # _compute_live_orders_possible still covers every CLI path that
         # reaches it before updating this number.
         assert total == 7, (
-            f"pre_live_trade_check(client) call-site count changed to {total} "
-            "(was 7) -- a live-order call site was added/removed. Re-verify "
+            f"live-gate call-site count changed to {total} (was 7) -- a "
+            "live-order call site was added/removed. Re-verify "
             "_compute_live_orders_possible()'s docstring/logic still covers "
             "every CLI path that reaches trading_gates.pre_live_trade_check() "
-            "before updating this expected count."
+            "or trading_gates.pre_live_exit_check() before updating this "
+            "expected count."
+        )
+
+    def test_the_two_gates_are_counted_separately(self):
+        """Positive control for the guard above: prove the count really is
+        made of both gates, so a future edit that drops the
+        pre_live_exit_check term cannot silently keep the total at 7 while
+        covering less.
+
+        Opus review (batch-58, L8): the first version of this docstring
+        claimed "deleting either `total +=` line above makes this fail."
+        That was wrong -- this test recomputes both counts from the file
+        text itself and never reads the sibling test's `total`, so deleting
+        a `total +=` line breaks THAT test (7 -> 6), not this one. What this
+        test actually pins is the 6/1 split between the two gates, which the
+        sibling's single total cannot see."""
+        import inspect
+        from pathlib import Path
+
+        import main
+
+        repo_root = Path(inspect.getfile(main)).parent
+        full = exit_only = 0
+        for relpath in ("main.py", "order_executor.py"):
+            text = (repo_root / relpath).read_text(encoding="utf-8")
+            full += text.count("pre_live_trade_check(client)")
+            exit_only += text.count("pre_live_exit_check(client)")
+        assert full == 6, f"full-gate call sites changed to {full} (was 6)"
+        assert exit_only == 1, (
+            f"reduced exit-gate call sites changed to {exit_only} (was 1) -- "
+            "batch-58 item 4 deliberately put only _exit_live_position on the "
+            "reduced gate. A new one needs the same explicit "
+            "does-this-order-reduce-risk decision."
         )
 
 

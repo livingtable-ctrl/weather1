@@ -1628,3 +1628,411 @@ class TestEnvFilePermissions:
             kalshi_client.KalshiClient(key_id="k", private_key_path=None, env="demo")
 
         mock_check_env.assert_called_once()
+
+
+class TestOrderIdPathValidation:
+    """Batch-58 item 1 (backlog L25336): order_id flowed unvalidated into four
+    REST path segments (get_order_queue_position, get_order, cancel_order,
+    amend_order), the same path-manipulation exposure AUD-0076 closed for
+    ticker/series_ticker. main.py's cmd_cancel is the raw-CLI path into
+    cancel_order."""
+
+    def _make_client(self):
+        from unittest.mock import patch
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            return kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+
+    def test_accepts_a_canonical_kalshi_uuid(self):
+        """The charset must admit a real order_id. Kalshi documents order_id
+        as a UUID, so a lowercase-hex UUID with dashes is the shape that
+        absolutely must not be rejected -- reusing the uppercase-only
+        _TICKER_RE would have rejected every real id."""
+        from kalshi_client import _validate_order_id_format
+
+        _validate_order_id_format("order_id", "5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d")
+
+    def test_accepts_other_plausible_opaque_exchange_ids(self):
+        """Deliberately not a canonical-UUID regex: nothing in this repo can
+        confirm the exchange's real id shape (zero live rows have ever been
+        stored), and a too-tight regex would make cancel_order raise on a
+        real id -- i.e. a live position that cannot be closed."""
+        from kalshi_client import _validate_order_id_format
+
+        for value in (
+            "ord_1",
+            "ORD-1",
+            "abc123",
+            "a",
+            "A1_b2-c3",
+            "0" * 64,
+            # Opus review (batch-58, L4): a dot INSIDE a segment is admitted.
+            # Kalshi's own identifiers already use one -- _TICKER_RE had to
+            # be widened for KXHIGHAUS-26JUN06-B88.5 (119 of 364 distinct
+            # real tickers) -- so excluding it would have been the likeliest
+            # way to reject a real order_id on a cancel path.
+            "a.b",
+            "KXHIGHAUS-26JUN06-B88.5",
+        ):
+            _validate_order_id_format("order_id", value)
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "../../portfolio/positions",  # path traversal
+            "a/b",  # bare separator
+            "..",  # traversal segment, no slash needed
+            ".",  # the other traversal segment
+            "a\\b",  # backslash (Windows-style separator)
+            "a?x=1",  # query injection
+            "a#frag",  # fragment
+            "a%2fb",  # percent-encoding
+            "a b",  # space
+            "abc\n",  # trailing newline -- \Z anchor, not $
+            "\nabc",
+            "",  # empty segment
+            "0" * 65,  # over the length cap
+        ],
+    )
+    def test_rejects_path_manipulating_and_oversized_ids(self, bad):
+        from kalshi_client import _validate_order_id_format
+
+        with pytest.raises(ValueError):
+            _validate_order_id_format("order_id", bad)
+
+    def test_rejects_non_string(self):
+        from kalshi_client import _validate_order_id_format
+
+        for bad in (None, 12345, ["a"], {"a": 1}):
+            with pytest.raises(ValueError):
+                _validate_order_id_format("order_id", bad)
+
+    def test_get_order_rejects_before_any_http_call(self):
+        """Absence assertion (`_get` never called) paired with its positive
+        control: the SAME mock IS called for a valid id, so this cannot pass
+        by the request path being broken for an unrelated reason."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._get = MagicMock(return_value={"order": {"status": "resting"}})
+
+        for bad in ("../../portfolio/positions", "..", "."):
+            with pytest.raises(ValueError):
+                client.get_order(bad)
+        client._get.assert_not_called()
+
+        client.get_order("5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d")
+        assert client._get.call_count == 1
+
+    def test_cancel_order_rejects_before_any_http_call(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._delete = MagicMock(return_value={"order_id": "x"})
+
+        with pytest.raises(ValueError):
+            client.cancel_order("a/b")
+        client._delete.assert_not_called()
+
+        client.cancel_order("5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d")
+        assert client._delete.call_count == 1
+
+    def test_amend_order_rejects_before_any_http_call(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._post = MagicMock(return_value={"order_id": "x"})
+
+        with pytest.raises(ValueError):
+            client.amend_order(
+                order_id="a?x=1",
+                ticker="KXHIGH-26APR25-T72",
+                side="yes",
+                action="buy",
+                count=5,
+                price=0.55,
+            )
+        client._post.assert_not_called()
+
+        client.amend_order(
+            order_id="5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d",
+            ticker="KXHIGH-26APR25-T72",
+            side="yes",
+            action="buy",
+            count=5,
+            price=0.55,
+        )
+        assert client._post.call_count == 1
+
+    def test_amend_order_also_validates_its_ticker(self):
+        """amend_order interpolates order_id into the path but ALSO passes
+        ticker straight into the request body -- the same
+        _validate_ticker_format guard every other ticker-taking method has."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._post = MagicMock(return_value={"order_id": "x"})
+
+        with pytest.raises(ValueError):
+            client.amend_order(
+                order_id="5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d",
+                ticker="../../markets",
+                side="yes",
+                action="buy",
+                count=5,
+                price=0.55,
+            )
+        client._post.assert_not_called()
+
+    def test_get_order_queue_position_rejects_before_any_http_call(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client._get = MagicMock(return_value={"queue_position_fp": "3.0"})
+
+        with pytest.raises(ValueError):
+            client.get_order_queue_position("a#frag")
+        client._get.assert_not_called()
+
+        assert client.get_order_queue_position("ORD-1") == pytest.approx(3.0)
+        assert client._get.call_count == 1
+
+    def test_every_path_interpolating_method_validates_its_segment(self):
+        """Opus review (batch-58, M4): item 1 exists partly BECAUSE a
+        docstring asserted "this is the one path-interpolating method with no
+        guard" and silently went false. The fix replaces it with a new
+        absolute -- "every path-interpolating method in this file validates
+        its own segment" -- so that claim needs a drift guard of its own, in
+        the same shape as TestLiveOrderPathsGuard's call-site counter.
+
+        Source-counts the f-string path interpolations. If this fails, a new
+        one was added: check it validates its segment, then update the count.
+        """
+        import inspect
+        import re
+
+        import kalshi_client
+
+        src = inspect.getsource(kalshi_client)
+        interpolations = re.findall(r"self\._(?:get|post|delete|put)\(\s*f\"", src)
+        assert len(interpolations) == 7, (
+            f"path-interpolating call count changed to {len(interpolations)} "
+            "(was 7: get_market, get_orderbook, get_live_weather_index, "
+            "get_order_queue_position, get_order, cancel_order, amend_order). "
+            "Verify the new one validates its own path segment before "
+            "updating this number."
+        )
+
+        # Positive control: the guards are actually present, so the count
+        # above cannot pass while the validation was deleted.
+        assert src.count('_validate_order_id_format("order_id"') == 4
+        assert src.count('_validate_ticker_format("ticker"') >= 3
+
+    def test_cmd_cancel_strips_and_reports_a_bad_id_without_raising(self):
+        """main.cmd_cancel is the one raw-CLI path in. A trailing newline on
+        a pasted id must still work; anything genuinely malformed must print
+        an error rather than surface a traceback to the operator."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        client = MagicMock()
+        client.cancel_order.return_value = {"order_id": "ord_x"}
+
+        main.cmd_cancel(client, "  5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d\n")
+        client.cancel_order.assert_called_once_with(
+            "5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d"
+        )
+
+    def test_cmd_cancel_reports_a_malformed_id_and_places_no_call(self, capsys):
+        """L1: the previous version of this test called cmd_cancel and
+        asserted nothing, so replacing the error print with a bare `pass`
+        survived it -- the operator would get zero feedback and the suite
+        would stay green."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        client = MagicMock()
+        main.cmd_cancel(client, "../../positions")
+
+        out = capsys.readouterr().out
+        assert "Invalid order_id" in out
+        assert "Cancelled:" not in out
+        client.cancel_order.assert_not_called()
+
+    def test_cmd_cancel_does_not_swallow_a_non_format_valueerror(self):
+        """Opus review (batch-58, M1): cancel_order raises ValueError for
+        three reasons that are NOT a malformed id -- _check_error_body's
+        200-with-error-body convention, a requests JSONDecodeError (a
+        ValueError subclass) on an HTML gateway body, and _sign_headers'
+        missing-credentials check. Catching ValueError around the network
+        call reported "Invalid order_id: Expecting value: line 1 column 1"
+        for a 502 on the operator's emergency-cancel path, and returned
+        cleanly so a wrapper script saw success. Those must stay loud."""
+        from unittest.mock import MagicMock
+
+        import main
+
+        client = MagicMock()
+        client.cancel_order.side_effect = ValueError(
+            "Kalshi API returned 200 with error body"
+        )
+        with pytest.raises(ValueError, match="200 with error body"):
+            main.cmd_cancel(client, "5f3a8b2c-1d4e-4f6a-9b8c-0e1f2a3b4c5d")
+
+
+class TestBatchedClientOrderIdLookup:
+    """Batch-58 item 6 (backlog L24499): one walk of each status bucket per
+    recovery pass instead of three walks per unknown row."""
+
+    def _make_client(self):
+        from unittest.mock import patch
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            return kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+
+    def test_one_walk_of_each_bucket_regardless_of_id_count(self):
+        """The whole point of the hoist: 10 ids must still cost exactly 3
+        fetches (resting + executed + canceled), not 30."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(return_value=[])
+        client._get_orders_by_status = MagicMock(return_value=[])
+
+        matches, uncertain = client._find_orders_by_client_ids(
+            {f"coid_{i}" for i in range(10)}
+        )
+
+        assert matches == {}
+        assert uncertain is False
+        assert client.get_open_orders.call_count == 1
+        assert client._get_orders_by_status.call_count == 2
+
+    def test_matches_each_id_to_its_own_order(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(
+            return_value=[{"client_order_id": "coid_a", "status": "resting"}]
+        )
+
+        def _by_status(status):
+            if status == "executed":
+                return [{"client_order_id": "coid_b", "status": "executed"}]
+            return []
+
+        client._get_orders_by_status = MagicMock(side_effect=_by_status)
+
+        matches, uncertain = client._find_orders_by_client_ids(
+            {"coid_a", "coid_b", "coid_missing"}
+        )
+
+        assert matches["coid_a"]["status"] == "resting"
+        assert matches["coid_b"]["status"] == "executed"
+        assert "coid_missing" not in matches
+        assert uncertain is False
+
+    def test_canceled_with_zero_fill_is_not_a_match(self):
+        """Same judgement the single-id form applies: a canceled order with
+        zero fill genuinely never landed, so the caller may safely retry. A
+        canceled order with a partial fill DID land."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(return_value=[])
+
+        def _by_status(status):
+            if status == "canceled":
+                return [
+                    {"client_order_id": "coid_zero", "fill_count_fp": "0.00"},
+                    {"client_order_id": "coid_part", "fill_count_fp": "3.00"},
+                    {"client_order_id": "coid_bad", "fill_count_fp": "not-a-number"},
+                ]
+            return []
+
+        client._get_orders_by_status = MagicMock(side_effect=_by_status)
+
+        matches, _ = client._find_orders_by_client_ids(
+            {"coid_zero", "coid_part", "coid_bad"}
+        )
+
+        assert "coid_zero" not in matches
+        assert "coid_part" in matches
+        # Unparseable fill count -> treated as LANDED, so the caller can't
+        # retry into a duplicate real order.
+        assert "coid_bad" in matches
+
+    def test_a_failed_walk_marks_the_whole_pass_uncertain(self):
+        """uncertain=True is what stops a caller confirming "never landed"
+        and unblocking a retry. A failed bucket could be hiding any id's
+        real match, so it is pass-level, not per-id."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(side_effect=ConnectionError("boom"))
+        client._get_orders_by_status = MagicMock(return_value=[])
+
+        matches, uncertain = client._find_orders_by_client_ids({"coid_a"})
+        assert matches == {}
+        assert uncertain is True
+
+        # Positive control: with the same buckets all healthy, the identical
+        # call reports uncertain=False.
+        client.get_open_orders = MagicMock(return_value=[])
+        _, uncertain_ok = client._find_orders_by_client_ids({"coid_a"})
+        assert uncertain_ok is False
+
+    def test_resting_takes_precedence_over_later_buckets(self):
+        """Mirrors the single-id form's resting -> executed -> canceled
+        precedence, so the two cannot disagree about the same id."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(
+            return_value=[{"client_order_id": "coid_a", "status": "resting"}]
+        )
+        client._get_orders_by_status = MagicMock(
+            return_value=[{"client_order_id": "coid_a", "status": "executed"}]
+        )
+
+        matches, _ = client._find_orders_by_client_ids({"coid_a"})
+        assert matches["coid_a"]["status"] == "resting"
+
+    def test_empty_id_set_makes_no_api_calls_at_all(self):
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(return_value=[])
+        client._get_orders_by_status = MagicMock(return_value=[])
+
+        matches, uncertain = client._find_orders_by_client_ids(set())
+
+        assert matches == {}
+        assert uncertain is False
+        client.get_open_orders.assert_not_called()
+        client._get_orders_by_status.assert_not_called()
+
+    def test_single_id_form_still_short_circuits_on_the_first_bucket(self):
+        """_find_order_by_client_id is deliberately NOT reimplemented on top
+        of the batched form: its hot caller is place_order's exception
+        handler on a live-order error path, and routing it through the batch
+        version would turn one paginated fetch into three."""
+        from unittest.mock import MagicMock
+
+        client = self._make_client()
+        client.get_open_orders = MagicMock(
+            return_value=[{"client_order_id": "coid_a", "status": "resting"}]
+        )
+        client._get_orders_by_status = MagicMock(return_value=[])
+
+        found, uncertain = client._find_order_by_client_id("coid_a")
+
+        assert found["status"] == "resting"
+        assert uncertain is False
+        client._get_orders_by_status.assert_not_called()

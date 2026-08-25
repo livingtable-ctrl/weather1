@@ -81,6 +81,39 @@ _MIN_EDGE_AB_TEST = _ABTest(
 # that function's own comment at the promotion loop for the full reasoning.
 _SENT_PROMOTION_MIN_AGE_MINUTES = 5
 
+
+# Batch-58 item 5 (backlog L24457): how long a live 'unknown' row may stay
+# unresolvable before _recover_pending_orders alerts an operator and parks it
+# at the terminal 'unresolved' status. 24h is deliberately well past every
+# transient cause (an API outage, a lagged reconciliation read, a locked DB)
+# and comfortably inside the window where Kalshi order history is still
+# queryable, so a row reaching it means something an operator genuinely has
+# to look at -- most likely history aged out past what _get_orders_by_status
+# can still find, or a malformed client_order_id. Overridable so an operator
+# debugging a live incident can tighten it without a code change.
+def _read_unresolved_age_minutes() -> int:
+    """Parse UNRESOLVED_ORDER_AGE_MINUTES, failing safe to the default.
+
+    Opus review (batch-58, L7): a bare int(os.getenv(...)) raised ValueError
+    at IMPORT of this module on a non-numeric .env value, taking the whole
+    bot down rather than falling back -- and a 0/negative value would have
+    parked every 'unknown' row on its first recovery pass, which is a
+    terminal, money-relevant action. Floored at 1.
+    """
+    _raw = os.getenv("UNRESOLVED_ORDER_AGE_MINUTES", "1440")
+    try:
+        return max(1, int(_raw))
+    except (TypeError, ValueError):
+        _log.warning(
+            "UNRESOLVED_ORDER_AGE_MINUTES=%r is not an integer — using the "
+            "1440-minute default",
+            _raw,
+        )
+        return 1440
+
+
+_UNRESOLVED_AGE_MINUTES = _read_unresolved_age_minutes()
+
 # ---------------------------------------------------------------------------
 # Forecast cycle
 # ---------------------------------------------------------------------------
@@ -186,8 +219,13 @@ def _count_open_live_orders() -> int:
     (a) a filled (no longer pending) live position stopped counting the
     moment it filled, and (b) a genuinely still-pending order could fall
     outside the fixed-size window entirely once enough other orders
-    accumulated afterward. Fixed as the union of both real "open" states,
-    each via its own unbounded query:
+    accumulated afterward. Fixed as the union of both real "open" states. Batch-58 item 3 moved
+    that union into execution_log.count_open_live_positions() as a single
+    unbounded SQL statement (it was three separate queries filtered in
+    Python), and applied the closes_position_id exclusion uniformly to
+    every non-settled arm rather than only the pending half -- behaviour is
+    unchanged, since get_filled_unsettled_live_orders already carried that
+    same exclusion itself. The arms:
       - still-resting entry orders (status='pending') -- a GTC entry order
         represents real capital that could fill at any moment, and
         test_prelog.py's F1 regression test deliberately established that a
@@ -195,7 +233,7 @@ def _count_open_live_orders() -> int:
       - filled-but-unsettled positions (get_filled_unsettled_live_orders) --
         the gap AUD-0009 found: these stopped counting once no longer
         'pending', with nothing else picking them back up.
-    closes_position_id IS NULL on the pending half excludes a pending
+    closes_position_id IS NULL excludes a pending
     protective EXIT order's own row (an IOC sell placed with
     closes_position_id=<the position it's closing>, per
     _exit_live_position's own docstring) -- without this exclusion, a
@@ -210,16 +248,17 @@ def _count_open_live_orders() -> int:
     # resolve. closes_position_id exclusion mirrors the pending-entries logic
     # above for the same reason (an ambiguous protective EXIT order must not
     # be double-counted against the position it was closing).
-    pending_entries = sum(
-        1
-        for o in execution_log.get_pending_live_orders()
-        if o.get("closes_position_id") is None
-    ) + sum(
-        1
-        for o in execution_log.get_unknown_live_orders()
-        if o.get("closes_position_id") is None
-    )
-    return pending_entries + len(execution_log.get_filled_unsettled_live_orders())
+    #
+    # Batch-58 item 3: the union itself now lives in
+    # execution_log.count_open_live_positions(), as one SQL statement rather
+    # than three queries filtered in Python. get_live_pnl_summary's
+    # open_count had independently reimplemented (and undercounted) this
+    # same idea; sharing one definition is what stops the gate and the
+    # dashboard drifting apart again. Behaviour is unchanged here except
+    # that batch-58 item 5's terminal 'unresolved' status now counts too --
+    # a parked row counted here while it was 'unknown', so leaving it out
+    # would have silently LOOSENED this gate the moment a row was parked.
+    return execution_log.count_open_live_positions()
 
 
 def _resolve_micro_live_config(live_config: dict | None) -> dict:
@@ -548,9 +587,11 @@ def _recover_pending_orders(client) -> None:
                 # live pre-log call site now stashes client_order_id in
                 # response BEFORE calling place_order (see
                 # kalshi_client.compute_client_order_id), that id survives
-                # this transition instead of being wiped by
-                # log_order_result's unconditional response overwrite (it
-                # does not COALESCE). The 'sent'-row loop below picks this
+                # this transition. Batch-58 item 7: log_order_result now
+                # COALESCEs response, so this pass-through is belt-and-
+                # braces rather than load-bearing -- it used to be the only
+                # thing stopping an unconditional overwrite with NULL. The
+                # 'sent'-row loop below picks this
                 # row up on this same pass (it runs after this loop
                 # completes) and re-checks it against Kalshi via that id,
                 # instead of this being a dead end.
@@ -572,12 +613,15 @@ def _recover_pending_orders(client) -> None:
                 # "pending" (not "placed") — every downstream lifecycle consumer
                 # (fill polling, GTC cancel, max_open_positions, PnL summary)
                 # filters on status="pending"; "placed" was invisible to all of them.
-                # log_order_result() does an unconditional column UPDATE, so
-                # omitting response= here would overwrite it with NULL --
+                # response= is passed explicitly because
                 # _poll_pending_orders' own pending-row filter requires
-                # o.get("response") (it's where order_id lives), so that
-                # would silently re-orphan the very order this recovery
-                # path exists to reattach to the lifecycle.
+                # o.get("response") (it's where order_id lives) -- omitting
+                # it used to overwrite the column with NULL and silently
+                # re-orphan the very order this recovery path exists to
+                # reattach to the lifecycle. Batch-58 item 7 made
+                # log_order_result COALESCE response, so that is no longer
+                # the mechanism; the explicit pass-through stays because it
+                # documents which field matters here.
                 execution_log.log_order_result(
                     row_id, status="pending", response=response
                 )
@@ -686,8 +730,10 @@ def _recover_pending_orders(client) -> None:
     # POST failed AND reconciliation itself couldn't confirm either way (see
     # kalshi_client.OrderStatusUnknownError). These have no order_id (the
     # create call never confirmed one), only the client_order_id stashed in
-    # response at write time, so they need client._find_order_by_client_id
-    # rather than the get_order(order_id) path the pending loop above uses.
+    # response at write time, so they need a client_order_id lookup rather
+    # than the get_order(order_id) path the pending loop above uses. Batch-58
+    # item 6: that lookup is now the BATCHED client._find_orders_by_client_ids,
+    # hoisted to one call per pass (it was _find_order_by_client_id per row).
     # Deliberately reuses this SAME function/call sites (cron.py startup,
     # trade_cycle.run_trade_cycle, and cmd_watch's own standalone call added
     # for AUD-0013) rather than a separate recovery path, so ambiguous rows
@@ -701,14 +747,53 @@ def _recover_pending_orders(client) -> None:
         "[Recovery] Re-checking %d order(s) with unknown outcome against Kalshi API",
         len(unknown),
     )
+
+    # Batch-58 item 6 (backlog L24499): ONE walk of Kalshi's order history per
+    # recovery pass, matched against every unknown row in memory. This loop
+    # previously called client._find_order_by_client_id() inside the per-row
+    # body, and each of those calls does its own 3-status paginated fetch --
+    # so N unknown rows meant N full history walks per pass. Hoisted here it
+    # is 3 fetches total regardless of N. Rows with no stored
+    # client_order_id are excluded from the lookup set but still walked
+    # below, so their own dead-end branch (and item 5's age cap) still runs.
+    _cids = {cid for o in unknown if (cid := _stored_client_order_id(o)) is not None}
+    try:
+        _matches, _pass_uncertain = client._find_orders_by_client_ids(_cids)
+    except Exception as _lookup_err:
+        # _find_orders_by_client_ids catches per-walk failures itself, so
+        # reaching here means something more fundamental. Treat the whole
+        # pass as uncertain rather than aborting: every row then keeps its
+        # 'unknown' status (no row is confirmed "never landed" off a failed
+        # lookup), and item 5's age cap still gets a chance to run.
+        _log.warning(
+            "[Recovery] batched unknown-order lookup failed (%s) — "
+            "treating this pass as uncertain",
+            _lookup_err,
+        )
+        _matches, _pass_uncertain = {}, True
+
     for order in unknown:
         row_id = order["id"]
         ticker = order.get("ticker", "?")
+        # Batch-58 item 5: set on every branch that leaves this row still
+        # 'unknown'. Checked once at the end of the iteration so a row that
+        # DID resolve this pass is never parked, and a row that has been
+        # stuck past _UNRESOLVED_AGE_MINUTES stops being re-polled forever.
+        _still_unknown = False
         try:
             response = order.get("response")
             if isinstance(response, str):
                 response = json.loads(response)
-            client_order_id = (response or {}).get("client_order_id")
+            # Opus review (batch-58, L1): use the same helper the lookup-set
+            # construction above used, rather than re-deriving the id inline.
+            # The two previously disagreed in two ways -- the helper requires
+            # a non-empty str (so a non-string id was excluded from _cids and
+            # would then be "confirmed" not-found and marked failed without
+            # ever being looked up), and the helper tolerates malformed JSON
+            # (which the inline parse raised on, sending the row to the outer
+            # except and past the age cap entirely, the one permanently-stuck
+            # shape item 5 was supposed to cover).
+            client_order_id = _stored_client_order_id(order)
             if not client_order_id:
                 # Should not happen (every 'unknown' write includes it), but
                 # fail safe rather than crash the recovery pass on one bad row.
@@ -718,9 +803,14 @@ def _recover_pending_orders(client) -> None:
                     ticker,
                     row_id,
                 )
+                # This row can never resolve on its own -- there is no handle
+                # to re-check it by -- so it is exactly the case item 5's age
+                # cap exists for. Fall through to it rather than `continue`.
+                _park_stale_unknown_order(order, row_id, ticker, certain=True)
                 continue
 
-            found, uncertain = client._find_order_by_client_id(client_order_id)
+            found = _matches.get(client_order_id)
+            uncertain = _pass_uncertain
             if found:
                 # Opus review follow-up (round 2, HIGH+MEDIUM): claim this
                 # row atomically before touching it. _recover_pending_orders
@@ -799,6 +889,13 @@ def _recover_pending_orders(client) -> None:
                             execution_log.log_order_result(
                                 row_id, status="unknown", response=response
                             )
+                            # certain=True: this branch is inside `if found:`,
+                            # so THIS row's own lookup demonstrably succeeded
+                            # -- the pass-level `uncertain` flag (about other
+                            # buckets) is not what failed here, settlement was.
+                            _park_stale_unknown_order(
+                                order, row_id, ticker, certain=True
+                            )
                             continue
                         if not _settle_recovered_exit_order(row_id, order, _fill_count):
                             _log.warning(
@@ -809,6 +906,13 @@ def _recover_pending_orders(client) -> None:
                             )
                             execution_log.log_order_result(
                                 row_id, status="unknown", response=response
+                            )
+                            # certain=True: this branch is inside `if found:`,
+                            # so THIS row's own lookup demonstrably succeeded
+                            # -- the pass-level `uncertain` flag (about other
+                            # buckets) is not what failed here, settlement was.
+                            _park_stale_unknown_order(
+                                order, row_id, ticker, certain=True
                             )
                             continue
                     execution_log.log_order_result(
@@ -835,16 +939,18 @@ def _recover_pending_orders(client) -> None:
                     execution_log.log_order_result(
                         row_id, status="unknown", response=response
                     )
+                    _still_unknown = True
             elif not uncertain:
                 # All 3 reconciliation lookups genuinely completed this time
                 # and none matched -- now safe to confirm this order never
                 # landed (dedup guards will unblock a retry, correctly).
                 # Opus review follow-up: preserve the original response
-                # (still carrying client_order_id) rather than passing none --
-                # log_order_result's UPDATE is unconditional, so omitting it
-                # would wipe the one piece of data that let this row be
-                # re-checked at all, permanently, even though 'failed' rows
-                # aren't normally re-examined by any recovery pass.
+                # (still carrying client_order_id) rather than passing none.
+                # Omitting it used to wipe the one piece of data that let
+                # this row be re-checked at all, permanently. Batch-58 item
+                # 7 made log_order_result COALESCE response, so preservation
+                # is now the default either way; the explicit pass-through
+                # stays as documentation.
                 execution_log.log_order_result(
                     row_id,
                     status="failed",
@@ -916,6 +1022,9 @@ def _recover_pending_orders(client) -> None:
                     ticker,
                     row_id,
                 )
+                _still_unknown = True
+            if _still_unknown:
+                _park_stale_unknown_order(order, row_id, ticker, certain=not uncertain)
         except Exception as exc:
             _log.warning(
                 "[Recovery] %s row %d: unknown-order re-check failed: %s",
@@ -923,6 +1032,195 @@ def _recover_pending_orders(client) -> None:
                 row_id,
                 exc,
             )
+
+
+def _stored_client_order_id(order: dict) -> str | None:
+    """Read the client_order_id stashed in an order row's JSON `response`.
+
+    Batch-58 item 6: shared by _recover_pending_orders' batched lookup-set
+    construction and the per-row body below, so the two cannot disagree
+    about which rows have a usable handle. Returns None (never raises) for a
+    row with no response, a non-dict response, or malformed JSON -- such a
+    row simply has no handle to re-check by, which the caller's own dead-end
+    branch already handles.
+    """
+    response = order.get("response")
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if not isinstance(response, dict):
+        return None
+    cid = response.get("client_order_id")
+    return cid if isinstance(cid, str) and cid else None
+
+
+def _park_stale_unknown_order(
+    order: dict, row_id: int, ticker: str, *, certain: bool = True
+) -> None:
+    """Escalate a live 'unknown' row that has stayed unresolvable past
+    _UNRESOLVED_AGE_MINUTES, and park it if abandoning retries is safe.
+
+    Batch-58 item 5 (backlog L24457). Before this, an order whose true state
+    genuinely could not be determined was re-checked forever -- 3
+    authenticated GETs per recovery pass, with no age cap, no terminal
+    state, and no escalation of any kind (alerts.py had no unknown-order
+    alert). The no-client_order_id branch in particular was a permanent
+    dead end: it logged a warning and moved on, every pass, indefinitely.
+
+    Called only from branches that leave the row still 'unknown', so a row
+    that resolved this pass is never escalated. Never raises: a failure here
+    must not abort the recovery pass for the remaining rows.
+
+    Past the age threshold this ALWAYS alerts (per-row cooldown key), but
+    parks only when both of the following hold. Parking is terminal and
+    stops all further re-checking, so the bar for it is "we can safely stop
+    asking," not merely "this has been stuck a while."
+
+      1. `certain` -- this pass's reconciliation lookup actually executed.
+         Opus review (batch-58, L2): _find_orders_by_client_ids reports
+         uncertainty at PASS level, so one persistently-failing status
+         bucket (e.g. _get_orders_by_status("canceled") raising on a
+         reshaped payload for >24h) marks every row uncertain. Parking on
+         wall-clock age alone would then abandon EVERY live unknown row at
+         the 24h mark because OUR OWN API access was broken -- the worst
+         possible reason to stop tracking a possibly-real order. Such a row
+         keeps retrying and keeps alerting instead; a >24h broken lookup is
+         its own incident and the alert says so.
+
+      2. The row is an ENTRY, not an EXIT. Opus review (batch-58, H1):
+         parking an exit row abandons settlement of the POSITION it closed,
+         and that position stays live=1/status='filled'/settled_at=NULL/
+         closes_position_id=NULL -- exactly the shape
+         get_filled_unsettled_live_orders() treats as open. The exit scanner
+         would then keep placing fresh REAL SELL orders for contracts the
+         account no longer holds, every cycle, forever. The retry loop those
+         branches were written for IS the protection, so it must survive the
+         age cap. Re-polling costs nothing extra now that item 6 hoisted the
+         lookup to one batched call per pass.
+    """
+    _placed_at = order.get("placed_at")
+    if not _placed_at:
+        # No timestamp to age against. Leave the row alone rather than act
+        # on an assumption -- parking is operator-visible and terminal.
+        return
+    try:
+        _placed_dt = datetime.fromisoformat(str(_placed_at).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        _log.warning(
+            "[Recovery] %s row %d: unparseable placed_at %r — cannot apply "
+            "the unresolved-order age cap",
+            ticker,
+            row_id,
+            _placed_at,
+        )
+        return
+    if _placed_dt.tzinfo is None:
+        # execution_log writes UTC ISO strings; a naive value is still UTC.
+        _placed_dt = _placed_dt.replace(tzinfo=UTC)
+    _age_minutes = (datetime.now(UTC) - _placed_dt).total_seconds() / 60.0
+    if _age_minutes < _UNRESOLVED_AGE_MINUTES:
+        return
+
+    _closes = order.get("closes_position_id")
+    _cid = _stored_client_order_id(order) or "MISSING"
+    _hours = _age_minutes / 60
+    # Per-ROW cooldown key (opus review, batch-58, M1). send_system_alert's
+    # cooldown is 6h and disk-persisted, keyed on this string -- a single
+    # shared key would mean that when an outage strands four rows in one
+    # pass, exactly one alert is delivered and the other three are handled
+    # silently. Each of those may be a real resting order.
+    _cooldown_key = f"unresolved_live_order:{row_id}"
+    _common = (
+        f"({ticker}) could not be resolved against Kalshi for {_hours:.1f} "
+        f"hours. Its stored client_order_id is {_cid}."
+    )
+
+    if not certain:
+        _log.error(
+            "[Recovery] %s row %d: unresolvable for %.0f minutes AND this "
+            "pass's Kalshi lookup itself failed — still retrying, NOT "
+            "parked. Operator action required.",
+            ticker,
+            row_id,
+            _age_minutes,
+        )
+        _title = "Live order unresolvable — Kalshi lookup failing"
+        _message = (
+            f"Live order row {row_id} {_common} The reconciliation lookup "
+            f"ITSELF is failing, so the bot cannot tell whether this order "
+            f"landed. It is deliberately still being re-checked rather than "
+            f"parked -- abandoning a possibly-real order because our own API "
+            f"access is broken is the wrong failure direction. Check Kalshi "
+            f"API health and the bot's logs for the failing status bucket. "
+            f"See LIVE_TRADING_RUNBOOK.md."
+        )
+    elif _closes is not None:
+        _log.error(
+            "[Recovery] %s row %d: EXIT order unresolvable for %.0f minutes "
+            "— position %s is still tracked as open and will keep being "
+            "targeted by the exit scanner. Operator action required.",
+            ticker,
+            row_id,
+            _age_minutes,
+            _closes,
+        )
+        _title = "Live exit order stuck unresolved"
+        _message = (
+            f"Live EXIT order row {row_id} {_common} It is deliberately "
+            f"still being re-checked (not parked), because the position it "
+            f"was closing (row {_closes}) is NOT yet settled: that position "
+            f"is still tracked as open and the automated exit scanner will "
+            f"keep placing fresh SELL orders against it. Reconcile this exit "
+            f"against Kalshi by hand. See LIVE_TRADING_RUNBOOK.md."
+        )
+    else:
+        try:
+            if not execution_log.park_unresolved_order(row_id):
+                # Another pass resolved or parked it between our snapshot
+                # and now -- nothing to alert about.
+                return
+        except Exception as exc:
+            _log.warning(
+                "[Recovery] %s row %d: could not park as unresolved: %s",
+                ticker,
+                row_id,
+                exc,
+            )
+            return
+
+        _log.error(
+            "[Recovery] %s row %d: unresolvable for %.0f minutes — parked as "
+            "'unresolved', no longer re-polled. Operator action required.",
+            ticker,
+            row_id,
+            _age_minutes,
+        )
+        _title = "Live order stuck unresolved"
+        _message = (
+            f"Live order row {row_id} {_common} It has been parked at "
+            f"status='unresolved' and is no longer re-checked automatically. "
+            f"It still counts toward open positions and daily spend, and "
+            f"still blocks a re-placement for this market. "
+            f"See LIVE_TRADING_RUNBOOK.md."
+        )
+
+    try:
+        from notify import send_system_alert
+
+        send_system_alert(_title, _message, cooldown_key=_cooldown_key)
+    except Exception as exc:
+        # send_system_alert is documented "Never raises", but an import
+        # failure must not abort the rest of the recovery pass. The row is
+        # already parked/logged at this point, so the _log.error above
+        # remains the record of it either way.
+        _log.warning(
+            "[Recovery] %s row %d: unresolved-order alert failed: %s",
+            ticker,
+            row_id,
+            exc,
+        )
 
 
 def _reconcile_live_positions(client) -> None:
@@ -1056,7 +1354,10 @@ def _finalize_cancel(
         # fill from an earlier poll, and the order_id-carrying response),
         # making a partially-filled position go fully untracked. Re-read the
         # row's own current values and pass them through unchanged instead
-        # of omitting them.
+        # of omitting them. Batch-58 item 7 made log_order_result COALESCE
+        # both columns, so this re-read is no longer what prevents the wipe
+        # -- kept because passing the values explicitly is clearer at a
+        # site whose whole purpose is not losing them.
         _prior = execution_log.get_order_by_id(row_id)
         _prior_response = _prior.get("response") if _prior else None
         if isinstance(_prior_response, str):
@@ -1490,13 +1791,22 @@ def _replace_live_order(
     _cancel_and_verify_safe_to_replace() that the original genuinely did not
     fill before calling this.
 
-    Re-runs the kill-switch/trading-paused safety gate (never skippable) but
-    deliberately NOT the daily-loss/spend/max-open-position gates
-    (_place_live_order's steps 1/1b/2) or edge/Kelly re-validation (step 3's
-    sizing) -- those already approved and sized this exact position once at
-    original placement; a reprice modifies an existing approved position's
-    resting order, it does not create a new one, and quantity is fixed at
-    the original (no resizing on reprice).
+    Re-runs the FULL live gate (trading_gates.pre_live_trade_check) but
+    deliberately NOT _place_live_order's own steps 1/1b/2 (the daily-loss/
+    spend/max-open-position checks it performs itself, outside the gate) or
+    edge/Kelly re-validation (step 3's sizing) -- those already approved and
+    sized this exact position once at original placement; a reprice modifies
+    an existing approved position's resting order, it does not create a new
+    one, and quantity is fixed at the original (no resizing on reprice).
+
+    Batch-58 item 4 (backlog L24423): this paragraph used to say "the
+    kill-switch/trading-paused gate", which described neither the code nor
+    the intent -- pre_live_trade_check has always run the whole
+    LiveTradingGate here, risk halts included. Corrected to match the code
+    rather than the other way round, unlike _exit_live_position: a reprice
+    still leaves a resting ENTRY order that can fill and create NEW
+    exposure, so the "an exit reduces risk" argument that justifies
+    pre_live_exit_check does not carry over to this path.
     """
     from trading_gates import pre_live_trade_check
 
@@ -1658,11 +1968,16 @@ def _amend_live_order(
     fails, the old row is left untouched (still "pending" at its prior
     price) -- next cycle's normal flow will re-evaluate and retry.
 
-    Re-runs the kill-switch/trading-paused safety gate (never skippable,
-    same as _replace_live_order) but deliberately NOT the daily-loss/spend/
-    max-open-position gates or edge/Kelly re-validation -- same reasoning as
-    _replace_live_order: this reprices an already-approved, already-sized
-    position's resting order, it does not create a new one.
+    Re-runs the FULL live gate (trading_gates.pre_live_trade_check, same as
+    _replace_live_order) but deliberately NOT _place_live_order's own
+    daily-loss/spend/max-open-position steps or edge/Kelly re-validation --
+    same reasoning as _replace_live_order: this reprices an
+    already-approved, already-sized position's resting order, it does not
+    create a new one.
+
+    Batch-58 item 4: corrected here for the same reason as
+    _replace_live_order -- the previous "kill-switch/trading-paused gate"
+    wording described a reduced gate this path has never run.
     """
     from trading_gates import pre_live_trade_check
 
@@ -1963,9 +2278,10 @@ def _get_live_open_positions(include_unfilled: bool = False) -> list[dict]:
     paper.get_open_trades().
 
     Batch-22 item 4: include_unfilled=True additionally unions in still-
-    resting entry orders (status='pending') and ambiguous-outcome orders
-    (status='unknown'), mirroring _count_open_live_orders()'s own union
-    exactly (same closes_position_id IS NULL exclusion, so a pending/unknown
+    resting entry orders (status='pending'), ambiguous-outcome orders
+    (status='unknown') and, since batch-58 item 5, orders parked at the
+    terminal 'unresolved' status, mirroring _count_open_live_orders()'s own
+    union exactly (same closes_position_id IS NULL exclusion, so a pending/unknown
     protective EXIT order's own row is never mistaken for a new entry).
     Default stays False (filled-unsettled only) for every exit-scanning
     caller (LivePositionStore.get_open(), _check_live_model_exits,
@@ -2018,6 +2334,19 @@ def _get_live_open_positions(include_unfilled: bool = False) -> list[dict]:
                 for r in execution_log.get_unknown_live_orders()
                 if r.get("closes_position_id") is None
             ]
+            # Batch-58 item 5: same reasoning as the 'unknown' arm above --
+            # a row parked at the terminal 'unresolved' status may still be
+            # a real resting order on the exchange, and it was already
+            # inside this union while it was 'unknown'. Omitting it would
+            # silently loosen every dollar-exposure cap that passes
+            # include_unfilled=True (paper.get_all_open_positions /
+            # paper._exposure_denom) at exactly the moment a row became
+            # operator-actionable.
+            + [
+                r
+                for r in execution_log.get_unresolved_live_orders()
+                if r.get("closes_position_id") is None
+            ]
         )
     positions = []
     for r in rows:
@@ -2031,9 +2360,19 @@ def _get_live_open_positions(include_unfilled: bool = False) -> list[dict]:
         # portion that's happened to fill SO FAR; the still-resting
         # remainder is exactly the kind of "could become a real position at
         # any moment" capital this include_unfilled union exists to catch.
+        #
+        # Batch-58 item 5: 'unresolved' belongs on the ACTIVE side of this
+        # branch alongside pending/unknown, not the filled side. A parked row
+        # is one whose placement outcome was never determined -- its
+        # fill_quantity is whatever partial information was recorded before
+        # it got stuck, not a settled open size -- so the same "the resting
+        # remainder is still real exposure" reasoning applies. Leaving it on
+        # the else-branch would have made a parked row's exposure SHRINK to
+        # its recorded partial fill at the moment it was parked, loosening
+        # every dollar-exposure cap this union feeds.
         qty = (
             r.get("quantity")
-            if r.get("status") in ("pending", "unknown")
+            if r.get("status") in ("pending", "unknown", "unresolved")
             else r.get("fill_quantity") or r.get("quantity")
         )
         entry_price = r.get("price")
@@ -2217,16 +2556,34 @@ def _exit_live_position(
 ) -> bool:
     """Place an immediate taker-cross sell to close an open live position.
 
-    Re-runs only the kill-switch/trading-paused gate -- closing an existing
-    position reduces exposure, so this is deliberately NOT subject to the
-    daily-loss/spend/max-open-position gates (same reasoning already applied
-    to _replace_live_order: those gates size NEW exposure, and blocking an
-    exit is exactly backwards when the account already holds a position that
-    needs to close). Corrected 2026-08-17: this comment previously also
+    Re-runs only the never-skippable half of the live gate
+    (trading_gates.pre_live_exit_check: TRADING_PAUSED, kill switch,
+    prod-ness, LIVE_TRADING_ENABLED) -- closing an existing position reduces
+    exposure, so this is deliberately NOT subject to the daily-loss/
+    drawdown/streak/accuracy/graduation gates, which all exist to size or
+    stop NEW exposure.
+
+    Batch-58 item 4 (backlog L24423): until this change that paragraph was
+    simply false. This function called the FULL pre_live_trade_check, so
+    once the daily-loss halt tripped, every protective exit was silently
+    disabled -- the bot stopped being able to close losing positions at the
+    moment it most needed to, visible only as the _log.warning below. The
+    code now matches the documented intent; see pre_live_exit_check's own
+    docstring for why each of the four remaining checks stays. This is a
+    real live-trading behaviour change, decided explicitly rather than
+    defaulted. Note the reprice paths did NOT get the same treatment: a
+    reprice modifies a resting ENTRY order that can still fill and create
+    new exposure, so their docstrings were corrected to match their
+    (unchanged) full gate instead.
+
+    Corrected 2026-08-17: this comment previously also
     claimed main.py's cmd_order applies the same reduced gate on its manual
     sell path -- re-verified false. cmd_order runs the FULL
-    trading_gates.pre_live_trade_check() (main.py:4522-4528) on every order,
-    buy or sell, with no exit-specific carve-out; that's a real difference,
+    trading_gates.pre_live_trade_check() on every LIVE order, buy or sell,
+    with no exit-specific carve-out (opus review, batch-58, L4: the call is
+    at main.py:5599, inside cmd_order's own `if _is_live:` branch -- the
+    previously cited main.py:4522-4528 is inside cmd_watch's auto-trade
+    block, a different path); that's a real difference,
     not just stale documentation, and is out of scope for the recording-path
     fix cmd_order picked up in the same backlog entry that caught this.
 
@@ -2262,16 +2619,64 @@ def _exit_live_position(
     both real SELLs could land. The loser skips the position entirely this
     pass (returns False, same as an unfilled IOC) rather than racing.
     """
-    from trading_gates import pre_live_trade_check
+    from trading_gates import pre_live_exit_check
 
     ticker = position["ticker"]
     side = position["side"]
     qty = position["quantity"]
 
     try:
-        pre_live_trade_check(client)
+        pre_live_exit_check(client)
     except RuntimeError as _gate_err:
+        # Batch-58 item 4: this is now a genuinely exceptional outcome -- an
+        # operator has engaged TRADING_PAUSED or the kill switch -- rather
+        # than the routine consequence of a risk halt tripping, so it gets
+        # an operator alert rather than only a log line. A position that
+        # needs closing and cannot be closed is exactly the state an
+        # operator must know about; backlog L30045 (batch 63) owns giving
+        # them a deliberate way to act on it. Its own cooldown_key so it
+        # can't be suppressed by, or suppress, an unrelated system alert.
+        #
+        # Opus review (batch-58, L6): the alert is deliberately NOT fired
+        # for the two CONFIGURATION reasons the reduced gate also checks --
+        # LIVE_TRADING_ENABLED unset and a non-prod client. Both are
+        # legitimate steady states (an operator disarming while holding
+        # positions is the normal way this bot sits today), and
+        # send_system_alert's cooldown is 6h, so alerting on them would
+        # re-nag every 6 hours forever for a state the operator chose. The
+        # two ACTIONS -- kill switch, TRADING_PAUSED -- are the ones worth
+        # interrupting someone over, because they were just taken while a
+        # position was open and they disable its protective exit.
         _log.warning("[LiveExit] Gate blocked exit for %s: %s", ticker, _gate_err)
+        _reason_text = str(_gate_err)
+        _is_operator_action = (
+            "Kill switch" in _reason_text or "TRADING_PAUSED" in _reason_text
+        )
+        try:
+            if _is_operator_action:
+                from notify import send_system_alert
+
+                send_system_alert(
+                    "Live exit blocked",
+                    f"Protective exit for {ticker} ({reason}) was blocked by "
+                    f"the live gate: {_gate_err}. This position is open and "
+                    f"cannot be closed automatically until the block clears. "
+                    f"Note main.py's own manual sell (cmd_order) runs the "
+                    f"FULL gate and is blocked by this same condition, so "
+                    f"clearing the block is what re-enables any in-bot "
+                    f"close; Kalshi's web UI is the only path that does not "
+                    f"go through it.",
+                    cooldown_key="live_exit_blocked",
+                )
+        except Exception as _alert_err:
+            # send_system_alert is documented "Never raises", but an import
+            # failure here must not turn a blocked exit into a crash in the
+            # exit scanner's own loop.
+            _log.warning(
+                "[LiveExit] Gate-blocked alert failed for %s: %s",
+                ticker,
+                _alert_err,
+            )
         return False
 
     _claim_token = execution_log.claim_position_for_exit(position["id"])
@@ -2498,18 +2903,24 @@ def _exit_live_position(
 
     # This is a direct generalization of _poll_pending_orders' natural-
     # settlement formula (settlement is just the exit_price=1 or 0 special
-    # case): fee only discounts a genuine GAIN (winnings), never applied to
-    # a loss -- matching the established convention verified across
-    # weather_markets.py/paper.py/order_executor.py (fee applies to
-    # (1-entry_price) winnings, not to gross proceeds unconditionally). A
-    # stop-loss/breakeven exit realizes a loss in the overwhelming common
-    # case, so this matters: a proceeds*(1-fee) formula would overcharge fee
-    # on every losing exit instead of correctly charging $0 fee on it. The
-    # entry side already paid $0 (always a resting maker order), so only
-    # this exit fill's fee applies. See execution_log.record_live_exit_fill's
-    # own docstring for the shared implementation, and the partial-fill
-    # branch above for why the RuntimeError it can raise must be caught here
-    # rather than left to crash the watch/cron process.
+    # case). Opus review (batch-58, M5): the two claims that used to sit
+    # here -- "fee only discounts a genuine GAIN, never applied to a loss"
+    # and "the entry side already paid $0 (always a resting maker order), so
+    # only this exit fill's fee applies" -- are BOTH false against the
+    # current implementation, and this is live-money fee code.
+    #
+    # What record_live_exit_fill actually does now:
+    #   - the EXIT leg's fee is charged unconditionally, win or loss
+    #     (batch-22 items 3+6: the fee is charged on the FILL, not on the
+    #     outcome, so the old win-only formula undercharged every losing
+    #     exit);
+    #   - the ENTRY leg's fee is charged too (batch-58 item 8), read from
+    #     the position row's own order_type -- "limit" means a resting maker
+    #     fill and is genuinely $0 on this bot's weather series, anything
+    #     else is charged the taker rate.
+    # See execution_log.record_live_exit_fill's own docstring for both, and
+    # the partial-fill branch above for why the RuntimeError it can raise
+    # must be caught here rather than left to crash the watch/cron process.
     try:
         pnl, _ = execution_log.record_live_exit_fill(
             position, fill_count, exit_price, reason=reason

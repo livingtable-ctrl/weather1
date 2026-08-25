@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -430,3 +431,264 @@ class TestWsHealth:
         monkeypatch.setattr(utils, "WS_CACHE_TTL_SECS", 1.0)
         h = kalshi_ws.get_ws_health()
         assert h["stale"] is True
+
+
+class TestWebSocketHostSelection:
+    """Batch-58 item 2 (backlog L25371): kalshi_ws.py hardcoded the PROD
+    WebSocket host with no KALSHI_ENV read anywhere in the file, so a
+    demo-mode run fed REAL production prices to order_executor's
+    reprice/chase logic and the flash-crash circuit breaker."""
+
+    def test_prod_env_selects_the_prod_host(self, monkeypatch):
+        from kalshi_ws import PROD_WS_URL, _ws_url
+
+        monkeypatch.setenv("KALSHI_ENV", "prod")
+        assert _ws_url() == PROD_WS_URL
+        assert "api.elections.kalshi.com" in PROD_WS_URL
+
+    def test_demo_env_selects_the_demo_host(self, monkeypatch):
+        from kalshi_ws import DEMO_WS_URL, _ws_url
+
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+        assert _ws_url() == DEMO_WS_URL
+        assert "demo-api.kalshi.co" in DEMO_WS_URL
+
+    def test_unset_env_defaults_to_demo(self, monkeypatch):
+        from kalshi_ws import DEMO_WS_URL, _ws_url
+
+        monkeypatch.delenv("KALSHI_ENV", raising=False)
+        assert _ws_url() == DEMO_WS_URL
+
+    @pytest.mark.parametrize("value", ["PROD", "Prod", "production", "prod ", ""])
+    def test_any_non_exact_prod_string_falls_back_to_demo(self, monkeypatch, value):
+        """Polarity matters, and it is the polarity AUD-0015 fixed for the
+        REST client: `PROD if env == "prod" else DEMO`. The inverted form
+        (`DEMO if env == "demo" else PROD`) silently points every
+        non-exact-'demo' string at PROD -- exactly the bug this mirrors away
+        from. Failing toward DEMO is the safe direction."""
+        from kalshi_ws import DEMO_WS_URL, _ws_url
+
+        monkeypatch.setenv("KALSHI_ENV", value)
+        assert _ws_url() == DEMO_WS_URL
+
+    def test_the_two_hosts_are_actually_different(self, monkeypatch):
+        """Positive control for the whole class: if a future edit collapsed
+        both constants onto the same host, every assertion above would still
+        pass while the bug was fully back."""
+        from kalshi_ws import DEMO_WS_URL, PROD_WS_URL
+
+        assert PROD_WS_URL != DEMO_WS_URL
+
+    def test_ws_hosts_mirror_the_rest_bases(self, monkeypatch):
+        """The two selections must not drift: each WS host is its REST
+        sibling's origin with the ws/v2 path."""
+        from kalshi_client import DEMO_BASE, PROD_BASE
+        from kalshi_ws import DEMO_WS_URL, PROD_WS_URL
+
+        for rest, ws in ((PROD_BASE, PROD_WS_URL), (DEMO_BASE, DEMO_WS_URL)):
+            rest_host = rest.split("://", 1)[1].split("/", 1)[0]
+            ws_host = ws.split("://", 1)[1].split("/", 1)[0]
+            assert rest_host == ws_host
+            assert ws.startswith("wss://")
+            assert ws.endswith("/trade-api/ws/v2")
+
+    def test_ws_url_reads_the_env_at_call_time_not_at_import(self, monkeypatch):
+        """_ws_url() itself must not freeze a value at import time -- a
+        module constant cannot see a .env loaded later. WHEN it is called is
+        the caller's decision; _ws_listener calls it exactly once, before
+        its reconnect loop (see
+        test_the_host_is_frozen_for_the_listeners_lifetime)."""
+        from kalshi_ws import DEMO_WS_URL, PROD_WS_URL, _ws_url
+
+        monkeypatch.setenv("KALSHI_ENV", "prod")
+        assert _ws_url() == PROD_WS_URL
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+        assert _ws_url() == DEMO_WS_URL
+
+    def _run_listener_capturing_urls(self, monkeypatch, env):
+        """Drive the real _ws_listener far enough to capture the URL it
+        actually connects to, then stop it deterministically.
+
+        Mirrors TestWsAliveClearedOnCleanClose's harness: CancelledError is
+        a BaseException, so it propagates out of the `except Exception`
+        reconnect branch instead of being swallowed.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
+        import kalshi_ws
+
+        fake_key = MagicMock(spec=RSAPrivateKey)
+        fake_key.sign.return_value = b"fake-signature"
+
+        urls = []
+
+        def _fake_connect(url, additional_headers=None):
+            urls.append(url)
+            raise asyncio.CancelledError()
+
+        monkeypatch.setenv("KALSHI_ENV", env)
+        with (
+            patch(
+                "cryptography.hazmat.primitives.serialization.load_pem_private_key",
+                return_value=fake_key,
+            ),
+            patch("websockets.connect", side_effect=_fake_connect),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(kalshi_ws._ws_listener("key", "pem", ["TICKER"]))
+        return urls
+
+    def test_the_listener_actually_connects_to_the_selected_host(self, monkeypatch):
+        """Opus review (batch-58, M2): this class's other tests all exercise
+        _ws_url() in ISOLATION. The test that previously claimed to guard
+        the real bug only asserted `"_ws_url()" in inspect.getsource(...)` --
+        satisfied by the function's own `def` line, so a full revert of the
+        connect site to `websockets.connect(PROD_WS_URL, ...)` passed it.
+        Proven vacuous by executing that exact mutant. This asserts the URL
+        _ws_listener hands to websockets.connect instead."""
+        from kalshi_ws import DEMO_WS_URL, PROD_WS_URL
+
+        assert self._run_listener_capturing_urls(monkeypatch, "demo") == [DEMO_WS_URL]
+        assert self._run_listener_capturing_urls(monkeypatch, "prod") == [PROD_WS_URL]
+
+    def test_the_host_is_frozen_for_the_listeners_lifetime(self, monkeypatch):
+        """Opus review (batch-58, M3): the host is resolved ONCE, before the
+        reconnect loop. A WS thread that re-read KALSHI_ENV per reconnect
+        could start writing demo book data into the same orderbook cache a
+        still-prod REST client trades against -- the "M-25 desync" class
+        main.py's own KALSHI_ENV snapshot/restore exists to prevent.
+
+        Flips the env between reconnect 1 and 2 and asserts BOTH connects
+        used the original host."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
+        import kalshi_ws
+
+        fake_key = MagicMock(spec=RSAPrivateKey)
+        fake_key.sign.return_value = b"fake-signature"
+
+        urls = []
+
+        def _fake_connect(url, additional_headers=None):
+            urls.append(url)
+            if len(urls) == 1:
+                # Flip the env mid-flight, then force a reconnect.
+                import os
+
+                os.environ["KALSHI_ENV"] = "prod"
+                raise ConnectionError("dropped")
+            raise asyncio.CancelledError()
+
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+        with (
+            patch(
+                "cryptography.hazmat.primitives.serialization.load_pem_private_key",
+                return_value=fake_key,
+            ),
+            patch("websockets.connect", side_effect=_fake_connect),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(kalshi_ws._ws_listener("key", "pem", ["TICKER"]))
+
+        assert len(urls) == 2, f"expected a reconnect, got {urls}"
+        assert urls == [kalshi_ws.DEMO_WS_URL, kalshi_ws.DEMO_WS_URL], (
+            "the second connect must reuse the host resolved at listener "
+            f"start, not re-read KALSHI_ENV: {urls}"
+        )
+        # Positive control: _ws_url() itself DOES see the flipped env, so
+        # the equality above is the freeze and not a broken monkeypatch.
+        assert kalshi_ws._ws_url() == kalshi_ws.PROD_WS_URL
+
+
+class TestOrderbookCacheEnvNamespacing:
+    """Opus review (batch-58, L2): the on-disk orderbook cache is a single
+    env-agnostic file keyed only by ticker. Without an env stamp, an
+    operator who runs prod, stops, switches to KALSHI_ENV=demo and starts
+    the L6585 demo smoke test within WS_CACHE_TTL_SECS (900s) gets the
+    still-fresh PROD entries served from disk -- feeding prod prices to
+    reprice/chase and the flash-crash breaker exactly as before item 2's
+    fix, i.e. defeating the fix in the one scenario it exists for."""
+
+    def _write_cache(self, tmp_path, monkeypatch, env):
+        import kalshi_ws
+
+        monkeypatch.setattr(kalshi_ws, "_CACHE_PATH", tmp_path / "orderbook.json")
+        monkeypatch.setenv("KALSHI_ENV", env)
+        with kalshi_ws._cache_lock:
+            kalshi_ws._orderbook.clear()
+        kalshi_ws.update_orderbook_cache(
+            "KXHIGHNY-26APR17-T72",
+            {
+                "type": "ticker",
+                "ticker": "KXHIGHNY-26APR17-T72",
+                "yes_bid": 0.63,
+                "yes_ask": 0.67,
+                "mid_price": 0.65,
+                "last_price": 0.64,
+                "ts": datetime.now(UTC).isoformat(),
+            },
+        )
+        # Drop the in-memory half so the disk fallback is what gets exercised
+        # -- the in-memory cache cannot outlive the process that filled it,
+        # so it is not the path this guard is about.
+        with kalshi_ws._cache_lock:
+            kalshi_ws._orderbook.clear()
+
+    def test_the_env_is_stamped_on_the_cache_file(self, tmp_path, monkeypatch):
+        import json
+
+        self._write_cache(tmp_path, monkeypatch, "prod")
+        cache = json.loads((tmp_path / "orderbook.json").read_text(encoding="utf-8"))
+        assert cache["_env"] == "prod"
+
+    def test_a_prod_cache_is_not_served_to_a_demo_run(self, tmp_path, monkeypatch):
+        import kalshi_ws
+
+        self._write_cache(tmp_path, monkeypatch, "prod")
+
+        # Positive control FIRST: still in prod, the fresh entry IS served --
+        # so the None below is the env mismatch, not an empty/stale cache.
+        assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") == pytest.approx(
+            0.65
+        )
+
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+        assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") is None
+        assert kalshi_ws.get_cached_book("KXHIGHNY-26APR17-T72") is None
+
+    def test_a_demo_cache_is_not_served_to_a_prod_run(self, tmp_path, monkeypatch):
+        """Both directions -- a stale demo book reaching a real prod
+        reprice/chase decision is the more dangerous of the two."""
+        import kalshi_ws
+
+        self._write_cache(tmp_path, monkeypatch, "demo")
+        assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") == pytest.approx(
+            0.65
+        )
+
+        monkeypatch.setenv("KALSHI_ENV", "prod")
+        assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") is None
+
+    def test_a_cache_predating_the_stamp_is_treated_as_stale(
+        self, tmp_path, monkeypatch
+    ):
+        """Self-heals on the first write rather than being served blindly."""
+        import json
+
+        import kalshi_ws
+
+        self._write_cache(tmp_path, monkeypatch, "prod")
+        path = tmp_path / "orderbook.json"
+        cache = json.loads(path.read_text(encoding="utf-8"))
+        del cache["_env"]
+        path.write_text(json.dumps(cache), encoding="utf-8")
+
+        assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") is None

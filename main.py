@@ -720,15 +720,20 @@ def _compute_live_orders_possible(cmd: str, args: list) -> bool:
     itself, which this function has no bearing on.
 
     Every code path below was traced to its own `client.base_url != DEMO_BASE`
-    + `trading_gates.pre_live_trade_check()` gate (directly, or via cron.py's
-    own `if client is not None:` live-position-protection block) -- opus
-    review of AUD-0014/AUD-0031's original fix caught that the first version
-    of this function only covered `buy`/`sell`/`analyze`, missing 4 more real
-    paths (HIGH-1/2/3, 2026-08-20 review). This list is a hand-maintained
-    mirror, not derived from the gate itself -- if a new pre_live_trade_check
-    call site is added anywhere in main.py/cron.py/order_executor.py, this
-    function needs a matching update. See TestLiveOrderPathsGuard in
+    + live-gate call (directly, or via cron.py's own `if client is not None:`
+    live-position-protection block) -- opus review of AUD-0014/AUD-0031's
+    original fix caught that the first version of this function only covered
+    `buy`/`sell`/`analyze`, missing 4 more real paths (HIGH-1/2/3, 2026-08-20
+    review). This list is a hand-maintained mirror, not derived from the gate
+    itself -- if a new pre_live_trade_check OR pre_live_exit_check call site
+    is added anywhere in main.py/cron.py/order_executor.py, this function
+    needs a matching update. See TestLiveOrderPathsGuard in
     tests/test_phase2_batch_l.py for a regression guard on that drift.
+
+    Batch-58 item 4 note: the path list below is unchanged by the gate split
+    -- the protective-exit path still exists under `cron`/`loop`/
+    `watch --live`, it just consults trading_gates.pre_live_exit_check (the
+    reduced gate) rather than pre_live_trade_check now.
 
     Known live-capable paths (opens new exposure unless noted):
       - `watch --live` (with or without `--auto`) -- live=True unlocks
@@ -6164,6 +6169,38 @@ def cmd_order(client: KalshiClient, action: str, args: list):
 
 
 def cmd_cancel(client: KalshiClient, order_id: str):
+    """Cancel a resting order by exchange order_id.
+
+    Batch-58 item 1 (backlog L25336): this is the one raw-CLI path into
+    kalshi_client.cancel_order -- argv reaches the REST path segment with no
+    normalization anywhere in between. The strip() handles the routine
+    shell/copy-paste case (a trailing space or newline on a pasted id);
+    anything else malformed is rejected by _validate_order_id_format. Every
+    OTHER caller of cancel_order is automated and passes an exchange-sourced
+    id, so this is the only site that needs a friendly error rather than a
+    traceback.
+
+    Opus review (batch-58, M1): the validation is called EXPLICITLY here
+    rather than by catching ValueError around client.cancel_order(). Three
+    non-format failures inside that call also raise ValueError --
+    _check_error_body's 200-with-error-body convention, a
+    requests JSONDecodeError (which subclasses ValueError) on any HTML
+    gateway/proxy body, and _sign_headers' missing-credentials check -- so a
+    try/except around the network call reported "Invalid order_id: Expecting
+    value: line 1 column 1" for a 502 and then returned exit code 0. On an
+    operator's emergency-cancel path that asserts the id is malformed when
+    the truth is "the cancel's outcome is unknown and the order may still be
+    resting." Those failures now stay loud and propagate to main()'s
+    top-level handler exactly as they did before this batch.
+    """
+    from kalshi_client import _validate_order_id_format
+
+    order_id = order_id.strip()
+    try:
+        _validate_order_id_format("order_id", order_id)
+    except ValueError as exc:
+        print(red(f"  Invalid order_id: {exc}"))
+        return
     result = client.cancel_order(order_id)
     print(green(f"Cancelled: {result}"))
 

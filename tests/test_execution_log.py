@@ -1830,3 +1830,432 @@ class TestQueuePositionLog:
 
     def test_get_queue_position_history_unknown_order_returns_empty(self):
         assert execution_log.get_queue_position_history("NO-SUCH-ORDER") == []
+
+
+class TestOpenCountUnion:
+    """Batch-58 item 3 (backlog L24388): get_live_pnl_summary's open_count was
+    its own `status = 'pending'` COUNT -- the identical undercount AUD-0009
+    already fixed for order_executor._count_open_live_orders, with both gaps
+    that entry named (filled-but-unsettled AND ambiguous 'unknown') still
+    present. It now delegates to the shared count_open_live_positions()."""
+
+    def _row(self, status, *, live=True, closes=None, settled=False):
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status=status,
+            live=live,
+            closes_position_id=closes,
+        )
+        if settled:
+            with execution_log._conn() as con:
+                con.execute(
+                    "UPDATE orders SET settled_at = ? WHERE id = ?",
+                    ("2026-05-15T12:00:00+00:00", row_id),
+                )
+        return row_id
+
+    def test_counts_pending_unknown_unresolved_and_filled_unsettled(self):
+        import execution_log
+
+        self._row("pending")
+        self._row("unknown")
+        self._row("unresolved")
+        self._row("filled")  # filled, settled_at NULL -> an open position
+
+        assert execution_log.count_open_live_positions() == 4
+        assert execution_log.get_live_pnl_summary()["open_count"] == 4
+
+    def test_pending_only_would_have_counted_just_one(self):
+        """Mutation control for the fix itself: with one row in each open
+        state, the OLD `status = 'pending'` query returns 1 and the new union
+        returns 4. If the union ever silently regressed to pending-only this
+        test is what fails."""
+        import execution_log
+
+        self._row("pending")
+        self._row("unknown")
+        self._row("unresolved")
+        self._row("filled")
+
+        with execution_log._conn() as con:
+            pending_only = con.execute(
+                "SELECT COUNT(*) AS c FROM orders WHERE live = 1 AND status = 'pending'"
+            ).fetchone()["c"]
+
+        assert pending_only == 1
+        assert execution_log.count_open_live_positions() == 4
+
+    def test_excludes_settled_filled_rows(self):
+        import execution_log
+
+        self._row("filled", settled=True)
+        assert execution_log.count_open_live_positions() == 0
+
+    def test_excludes_paper_rows(self):
+        import execution_log
+
+        self._row("pending", live=False)
+        self._row("filled", live=False)
+        assert execution_log.count_open_live_positions() == 0
+
+    def test_excludes_protective_exit_orders_own_rows(self):
+        """closes_position_id IS NULL: an exit order's own row must not be
+        double-counted alongside the position it is closing."""
+        import execution_log
+
+        position_id = self._row("filled")
+        self._row("pending", closes=position_id)
+        self._row("unknown", closes=position_id)
+        self._row("unresolved", closes=position_id)
+
+        assert execution_log.count_open_live_positions() == 1
+
+    def test_excludes_terminal_statuses(self):
+        import execution_log
+
+        for status in ("failed", "canceled", "amended", "sent"):
+            self._row(status)
+        assert execution_log.count_open_live_positions() == 0
+
+    def test_gate_and_dashboard_agree(self):
+        """The whole point of extracting the union: the max_open_positions
+        safety gate and the dashboard stat can no longer disagree about what
+        "open" means."""
+        import execution_log
+        import order_executor
+
+        self._row("pending")
+        self._row("unknown")
+        self._row("unresolved")
+        self._row("filled")
+
+        assert (
+            order_executor._count_open_live_orders()
+            == execution_log.get_live_pnl_summary()["open_count"]
+            == 4
+        )
+
+    def test_parking_a_row_does_not_loosen_the_gate(self):
+        """Batch-58 item 5 interaction, and the reason 'unresolved' is IN
+        this union: a row counted while it was 'unknown' must keep counting
+        once parked, or parking it would silently loosen max_open_positions
+        at the exact moment it became operator-actionable."""
+        import execution_log
+
+        row_id = self._row("unknown")
+        before = execution_log.count_open_live_positions()
+        assert execution_log.park_unresolved_order(row_id) is True
+        assert execution_log.count_open_live_positions() == before == 1
+
+    def test_pnl_sums_are_unaffected_by_the_open_count_change(self):
+        """Positive control that this change was scoped to open_count only."""
+        import execution_log
+
+        row_id = self._row("filled", settled=True)
+        with execution_log._conn() as con:
+            con.execute("UPDATE orders SET pnl = ? WHERE id = ?", (3.25, row_id))
+
+        summary = execution_log.get_live_pnl_summary()
+        assert summary["total_pnl"] == pytest.approx(3.25)
+        assert summary["settled_count"] == 1
+
+
+class TestLogOrderResultCoalesce:
+    """Batch-58 item 7 (backlog L27399): log_order_result wrote response and
+    fill_quantity unconditionally, so any caller that omitted them wiped what
+    the row already held -- the bug class the backlog records as L-10(a)."""
+
+    def _row_with_data(self):
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order_result(
+            row_id,
+            status="pending",
+            response={"order_id": "ord_real", "client_order_id": "coid_real"},
+            fill_quantity=4,
+        )
+        return row_id
+
+    def test_bare_status_update_preserves_response_and_fill_quantity(self):
+        """The reported instance: _amend_live_order's
+        log_order_result(row_id=replaces_order_id, status="amended") call."""
+        import json
+
+        import execution_log
+
+        row_id = self._row_with_data()
+        execution_log.log_order_result(row_id, status="amended")
+
+        row = execution_log.get_order_by_id(row_id)
+        assert row["status"] == "amended"
+        assert json.loads(row["response"])["order_id"] == "ord_real"
+        assert row["fill_quantity"] == 4
+
+    def test_partial_update_preserves_the_omitted_field(self):
+        """The second live instance: _recover_pending_orders' pending-resolve
+        branch passes fill_quantity but not response, which wiped the
+        order_id the row was recovered by."""
+        import json
+
+        import execution_log
+
+        row_id = self._row_with_data()
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=9)
+
+        row = execution_log.get_order_by_id(row_id)
+        assert row["fill_quantity"] == 9
+        assert json.loads(row["response"])["order_id"] == "ord_real"
+
+    def test_an_explicitly_passed_value_still_overwrites(self):
+        """COALESCE must only ever protect a None -- otherwise the field
+        would become write-once and every real resolution would be lost."""
+        import json
+
+        import execution_log
+
+        row_id = self._row_with_data()
+        execution_log.log_order_result(
+            row_id,
+            status="filled",
+            response={"order_id": "ord_new"},
+            fill_quantity=7,
+        )
+
+        row = execution_log.get_order_by_id(row_id)
+        assert json.loads(row["response"])["order_id"] == "ord_new"
+        assert row["fill_quantity"] == 7
+
+    def test_explicit_zero_fill_quantity_overwrites(self):
+        """0 is not NULL in SQLite, so a genuine zero-fill resolution must
+        still land -- the one case where "falsy" and "omitted" could have
+        been confused."""
+        import execution_log
+
+        row_id = self._row_with_data()
+        execution_log.log_order_result(row_id, status="canceled", fill_quantity=0)
+
+        assert execution_log.get_order_by_id(row_id)["fill_quantity"] == 0
+
+    def test_error_and_status_are_still_unconditional(self):
+        """Only response and fill_quantity were changed. error must still
+        clear when a later call omits it, or a stale error string would
+        outlive the failure it described."""
+        import execution_log
+
+        row_id = self._row_with_data()
+        execution_log.log_order_result(row_id, status="failed", error="boom")
+        assert execution_log.get_order_by_id(row_id)["error"] == "boom"
+
+        execution_log.log_order_result(row_id, status="pending")
+        row = execution_log.get_order_by_id(row_id)
+        assert row["error"] is None
+        assert row["status"] == "pending"
+
+    def test_amend_bookkeeping_call_keeps_the_old_rows_data(self):
+        """End-to-end version of the reported bug, through the real
+        _amend_live_order path rather than a direct log_order_result call."""
+        import json
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import order_executor
+
+        old_row = self._row_with_data()
+
+        mock_client = MagicMock()
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_real",
+            "remaining_count": "6.00",
+            "fill_count": "0.00",
+        }
+
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            order_executor._amend_live_order(
+                order_id="ord_real",
+                ticker="KXHIGH-25MAY15-T75",
+                side="yes",
+                quantity=10,
+                price=0.45,
+                client=mock_client,
+                cycle="2026-05-15_12z",
+                replaces_order_id=old_row,
+                close_time=None,
+                original_client_order_id="coid_real",
+            )
+
+        old = execution_log.get_order_by_id(old_row)
+        assert old["status"] == "amended"
+        assert json.loads(old["response"])["order_id"] == "ord_real"
+        assert old["fill_quantity"] == 4
+
+
+class TestEntrySideFeeOnEarlyExit:
+    """Batch-58 item 8 (backlog L26637): record_live_exit_fill charged only
+    the exit leg, so every taker-entered, early-exited live position
+    overstated realized P&L by the unrecorded entry fee."""
+
+    def _position(self, order_type, qty=10, entry_price=0.40):
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=qty,
+            price=entry_price,
+            order_type=order_type,
+            status="filled",
+            live=True,
+        )
+        return {
+            "id": row_id,
+            "ticker": "KXHIGH-25MAY15-T75",
+            "side": "yes",
+            "quantity": qty,
+            "entry_price": entry_price,
+        }
+
+    def test_taker_entry_is_charged_both_legs(self):
+        """Hand-computed against Kalshi's real curved formula,
+        ceil(0.07 * C * P * (1-P)) rounded up to the whole cent:
+          entry fee = ceil(0.07 * 10 * 0.40 * 0.60 * 100)c = 17c = $0.17
+          exit  fee = ceil(0.07 * 10 * 0.55 * 0.45 * 100)c = 18c = $0.18
+          gross     = 10 * (0.55 - 0.40) = $1.50
+          pnl       = 1.50 - 0.17 - 0.18 = $1.15
+        The pre-fix value was $1.32 (exit leg only)."""
+        import execution_log
+
+        position = self._position("market")
+        pnl, fully_closed = execution_log.record_live_exit_fill(position, 10, 0.55)
+
+        assert fully_closed is True
+        assert pnl == pytest.approx(1.15)
+        # Explicit mutation guard: the old exit-only number must NOT come back.
+        assert pnl != pytest.approx(1.32)
+
+    def test_maker_entry_is_charged_only_the_exit_leg(self):
+        """order_type == "limit" is AUD-0003's maker discriminator, and
+        KALSHI_MAKER_FEE_RATE is genuinely 0 for this bot's weather series --
+        so a maker-entered position keeps the pre-fix number. This is the
+        control that proves the entry fee is read from the row rather than
+        charged unconditionally."""
+        import execution_log
+
+        position = self._position("limit")
+        pnl, _ = execution_log.record_live_exit_fill(position, 10, 0.55)
+
+        assert pnl == pytest.approx(1.32)
+
+    def test_null_order_type_falls_back_to_the_taker_rate(self):
+        """AUD-0003's conservative default, which this reuses rather than
+        inventing a second convention: an unrecognized/missing order_type is
+        charged as a TAKER fill. Understating realized P&L is the safe
+        failure direction; assuming free maker fills is not."""
+        import execution_log
+
+        position = self._position("market")
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET order_type = NULL WHERE id = ?", (position["id"],)
+            )
+
+        pnl, _ = execution_log.record_live_exit_fill(position, 10, 0.55)
+        assert pnl == pytest.approx(1.15)
+
+    def test_unreadable_row_falls_back_to_the_taker_rate(self):
+        """Same conservative default when get_order_by_id returns nothing at
+        all (a row deleted out from under a stale caller)."""
+        from unittest.mock import patch
+
+        import execution_log
+
+        position = self._position("market")
+        with patch("execution_log.get_order_by_id", return_value=None):
+            pnl, _ = execution_log.record_live_exit_fill(position, 10, 0.55)
+
+        assert pnl == pytest.approx(1.15)
+
+    def test_partial_exit_charges_only_the_closed_contracts_entry_fee(self):
+        """The original deferral's stated blocker was needing the ORIGINAL
+        entry quantity to prorate a one-time fee. Charging per closed
+        contract sidesteps it:
+          entry fee on 4 @ 0.40 = ceil(0.07*4*0.40*0.60*100)c = 7c
+          exit  fee on 4 @ 0.55 = ceil(0.07*4*0.55*0.45*100)c = 7c
+          gross = 4 * 0.15 = $0.60 -> pnl = 0.60 - 0.07 - 0.07 = $0.46"""
+        import execution_log
+
+        position = self._position("market")
+        pnl, fully_closed = execution_log.record_live_exit_fill(position, 4, 0.55)
+
+        assert fully_closed is False
+        assert pnl == pytest.approx(0.46)
+
+    def test_two_partial_exits_never_undercharge_the_entry_fee(self):
+        """Across k exits the total entry fee CHARGED is >= the real one-time
+        fee (each call rounds UP independently), never less -- the same safe
+        direction as the order_type fallback.
+
+        Opus review (batch-58, M3): the first version of this test computed
+        both sides of the comparison from KALSHI_FEE_RATE inside the test and
+        never touched record_live_exit_fill's return value, so it passed
+        unchanged with the entry-leg fee deleted from production entirely.
+        It now derives the fee actually charged FROM the returned pnl:
+        entry_fee = gross - exit_fee - pnl.
+        """
+        import math
+
+        import execution_log
+        from utils import KALSHI_FEE_RATE, kalshi_taker_fee
+
+        position = self._position("market")
+        pnl_a, closed_a = execution_log.record_live_exit_fill(position, 4, 0.55)
+        assert closed_a is False
+
+        remaining = dict(position, quantity=6)
+        pnl_b, closed_b = execution_log.record_live_exit_fill(remaining, 6, 0.55)
+        assert closed_b is True
+
+        # Back out the entry fee each leg actually charged.
+        entry_charged_a = round(
+            4 * (0.55 - 0.40) - kalshi_taker_fee(4, 0.55) - pnl_a, 4
+        )
+        entry_charged_b = round(
+            6 * (0.55 - 0.40) - kalshi_taker_fee(6, 0.55) - pnl_b, 4
+        )
+        charged = round(entry_charged_a + entry_charged_b, 4)
+
+        # Each leg charged its own contracts' entry fee, per the formula.
+        assert entry_charged_a == pytest.approx(kalshi_taker_fee(4, 0.40))
+        assert entry_charged_b == pytest.approx(kalshi_taker_fee(6, 0.40))
+        # And it is strictly positive, so a deleted entry fee fails here.
+        assert charged > 0
+
+        one_shot_entry_fee = (
+            math.ceil(KALSHI_FEE_RATE * 10 * 0.40 * 0.60 * 100 - 1e-9) / 100
+        )
+        assert charged >= one_shot_entry_fee
+        assert charged - one_shot_entry_fee <= 0.01
+
+    def test_a_losing_exit_is_charged_both_legs_too(self):
+        """The fee is charged on the FILL, not on the outcome -- the exact
+        error batch-22 fixed for the exit leg, now also true of the entry
+        leg. entry 10 @ 0.40 -> 17c; exit 10 @ 0.25 -> ceil(0.07*10*0.25*
+        0.75*100)c = 14c; gross = 10*(0.25-0.40) = -$1.50; pnl = -$1.81."""
+        import execution_log
+
+        position = self._position("market")
+        pnl, _ = execution_log.record_live_exit_fill(position, 10, 0.25)
+
+        assert pnl == pytest.approx(-1.81)
