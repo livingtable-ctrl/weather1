@@ -828,9 +828,10 @@ What it would look like:
   (fill_quantity must never be written 0) and one proving the position does
   not resurface.
 
-[OPEN 2026-08-25 -- found by batch-60's scoped test run, which went red on
-  two tests in a file batch-60 does not touch; confirmed pre-existing, not
-  a batch-60 regression.] TWO HRRR analyze_trade TESTS ARE DATE-DEPENDENT
+[RESOLVED 2026-08-25 by commit 6b721383 -- and this entry's own
+  diagnosis was WRONG: the cause was not date-dependence at all. See the
+  resolution note at the end of this entry.] TWO HRRR analyze_trade TESTS
+  WERE RED (FILED AS DATE-DEPENDENT)
   AND NOW FAIL -- tests/test_weather_markets.py
 Priority: Medium -- these are red on master RIGHT NOW, so the file no
   longer gives a clean signal and any future change touching analyze_trade
@@ -873,6 +874,32 @@ What it would look like:
   Separately, the four runtime pytest.skip() sites deserve their own look:
   a test that silently downgrades to a skip when its subject returns None
   proves nothing on the day that happens, and hid part of this.
+
+
+Resolution 2026-08-25 (batch-65 session, verified against master 866549cb):
+  Fixed by commit 6b721383, which parameterized _hrrr_wiring_test_enriched's
+  quote (yes_bid/yes_ask) and gave the two SAME-DAY tests 0.24/0.27 instead
+  of the shared 0.62/0.72.
+
+  THIS ENTRY'S DIAGNOSIS WAS WRONG, and the wrong version was repeated
+  downstream before anyone re-derived it. The tests are not date-dependent
+  and never were: the today-relative _date vs the hardcoded
+  KXHIGHNY-26APR09-T72 ticker is real but harmless, because days_out is
+  computed from _date and the ticker's embedded date is never compared
+  against it on this path.
+
+  The real cause is analyze_trade's model-market gap gate (section 7d,
+  MAX_MODEL_MKT_GAP): the 0.62/0.72 quote put the market at mid 0.670
+  against a model of 0.402 -- a 0.268 gap, over the 0.25 bar -- so
+  analyze_trade correctly returned None and both tests died on
+  `result is not None` long before reaching the HRRR assertion they exist to
+  make. The gate postdates the tests. A constant, not a clock.
+
+  Independently re-confirmed this session before closing: a 24-hour sweep of
+  the wall clock (a frozen datetime SUBCLASS patched into weather_markets,
+  not a Mock) returns a non-None result at every hour, with an empty gate
+  counter -- so there is no hour or date dependence to fix. Full-file run at
+  866549cb: 431 passed, 3 skipped, zero failures.
 
 [OPEN 2026-08-25 -- found by the round-1 opus review (effort=high) of
   batch-60 item 4, finding F9; scoped out per step 27's same-payload test
@@ -35372,11 +35399,12 @@ Recommendation: teach the shared var derivation about the TMAX/TMIN naming
   disable KXHOLIDAYTMAX, for which the current default is correct.
   Full record: none -- surfaced by batch-59.
 
-[OPEN 2026-08-25 -- found during batch-59's scoped test runs; verified
-  pre-existing by stashing the batch's own diff and re-running against a
-  pristine origin/master checkout, where both failures reproduce identically]
-  TWO HRRR TESTS IN test_weather_markets.py FAIL IN A FULL-FILE RUN BUT PASS
-  IN ISOLATION -- ORDER-DEPENDENT STATE LEAK
+[RESOLVED 2026-08-25 by commit 6b721383 -- originally filed during
+  batch-59's scoped test runs; verified pre-existing at the time by stashing
+  that batch's own diff and re-running against a pristine origin/master
+  checkout, where both failures reproduced identically]
+  TWO HRRR TESTS IN test_weather_markets.py FAILED IN A FULL-FILE RUN BUT
+  PASSED IN ISOLATION -- ORDER-DEPENDENT STATE LEAK
 Priority: LOW-MEDIUM -- test-suite integrity, not production behaviour. But it
   costs every future session real time (this one lost a round trip confirming
   the failures were not its own), and it means two same-day HRRR capture paths
@@ -35403,6 +35431,14 @@ Recommendation: bisect with `pytest tests/test_weather_markets.py -p
   reordering or marking the two HRRR tests. While it is open, treat these two
   names as known-failing when reading a full-file run of this file.
   Full record: none -- surfaced by batch-59.
+
+
+Resolution 2026-08-25 (batch-65 session, verified against master 866549cb):
+  Also fixed by commit 6b721383, whose second half made isolate_tracker_db
+  copy a template DB rather than share state across tests. Re-verified this
+  session: a full-file run of tests/test_weather_markets.py is 431 passed,
+  3 skipped, zero failures, and the two tests also pass in isolation -- so
+  the isolation/full-file discrepancy this entry describes is gone.
 
 [OPEN 2026-08-25 -- the remaining half of "HURRICANE NEXT-EVENT MODEL'S
   OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED" (marked RESOLVED (partial) by
