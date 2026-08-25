@@ -1,5 +1,36 @@
 # Batch handoff prompts -- 105 backlog items in 21 conflict-free groups
 
+> ## ⚠️ Completion status — read before picking up ANY batch file
+>
+> **As of 2026-08-25, master `bf409e6b`.** This directory holds 60 batch
+> files and **~46 are already implemented and merged.** Nothing inside an
+> individual `batch-NN.md` says so — they are frozen handoffs, not living
+> documents.
+>
+> | Batches | Status |
+> |---|---|
+> | **01-21** | ✅ **DONE** — the 2026-08-18 max-depth audit set. Their commit subjects name `AUD-XXXX` ids, **not** `batch-NN`, so `git log --grep="batch-01"` finds nothing and they look unstarted. They are not. |
+> | **31-52** | ✅ **DONE** |
+> | **56-62** | ✅ **DONE** |
+> | **53, 54, 55** | ⏸ **Deferred** — [INDEX-ROADMAP.md](INDEX-ROADMAP.md). 53 waits for the calibration cluster's slot (its replay experiment may run any idle day); 54 is optional/no-deadline; 55 needs a user go/no-go. 54 and 55 both collide with 56's `weather_markets.py` registry region. |
+> | **63** | 🟢 **READY** — [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md). Both dependencies landed (58's exit-gate precedent, 61's staleness layer). |
+> | **64-74** | 🟢 **READY** — [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md). Start with 64 (decaying sample clock); 66 is the go/no-go gating 72-74. |
+>
+> **Two traps this table exists to prevent, both hit for real on 2026-08-25:**
+>
+> 1. **Old batch files embed a `backlog.txt` excerpt frozen at authoring
+>    time.** `batch-19.md` reproduces its entry as `[PARTIALLY RESOLVED ...
+>    part (c) still open]`. That entry was fully resolved 2026-08-22 and now
+>    reads `[RESOLVED ... nothing remains open in this entry]`. Reading the
+>    batch file alone would send you to redo shipped work — this actually
+>    happened. **Re-read the live entry in `backlog.txt` before starting.**
+> 2. **`L`-numbers in any batch file are `backlog.txt` line offsets and
+>    drift constantly** — they moved five times in one session on 2026-08-25
+>    as parallel sessions appended. **Grep the entry TITLE**, not the line.
+>
+> Keep this table current when a batch lands; it is the only place that
+> distinguishes done from pending.
+
 Source: `audit/AUDIT_REPORT.md`/`.json` (2026-08-18 max-depth audit, 79 items) plus 26 pre-existing `backlog.txt` items, grouped by shared file/subsystem so no two batches touch the same file -- safe to run as parallel worktree sessions. Full per-item detail lives in each `batch-NN.md`; this index is just the map.
 
 **3 items deliberately excluded from batching** -- not code work a session can pick up and execute:
