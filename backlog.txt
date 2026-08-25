@@ -32369,3 +32369,46 @@ Recommendation: source a real formation/classification date per storm. Options
   branch (it is intact and commented as this work's landing spot) rather than
   rewriting the pricing path.
   Full record: none -- split out of batch-59 item 3.
+
+[OPEN 2026-08-25 -- found and half-fixed while doing batch-59's graphify
+  refresh; graph.json is repaired, the DERIVED views generated from it are not]
+  GRAPHIFY'S OBSIDIAN VAULT AND graph.html WERE GENERATED FROM THE
+  EDGE-DIRECTION-CORRUPTED GRAPH AND ARE NOW STALE
+Priority: LOW -- documentation/navigation artifact only, no runtime or trading
+  impact. But 13,203 tracked Obsidian notes currently encode ~58% of the
+  codebase's relationships backwards, and anyone reading them (human or agent)
+  gets confidently wrong call/import/contains directions.
+Files: graphify-out/obsidian/ (13,203 tracked notes), graphify-out/graph.html,
+  graphify-out/GRAPH_REPORT.md -- all derived from graphify-out/graph.json
+
+Problem:
+  graph.json carried an edge-direction corruption: 12,994 of 22,411 links had
+  source/target stored backwards relative to the authoritative _src/_tgt pair
+  (unambiguous -- 'contains' edges read "class contains its own file"). This
+  is the bug graphify fixed in v0.9.48, but the fix only stopped NEW
+  corruption; nobody ever repaired the committed artifact, so it persisted
+  across every session that read or scoped-refreshed the graph.
+
+  graph.json itself is now REPAIRED (batch-59's own commit): all 12,994 links
+  flipped to match _src/_tgt, verified 100% consistent, 0 dangling endpoints,
+  0 duplicate node ids, and a semantic spot-check confirming 'contains' now
+  reads file -> symbol. The derived views were NOT regenerated, because
+  regenerating the Obsidian vault prunes unrelated notes and churns the entire
+  cache directory into a near-whole-file diff (a known hazard recorded from a
+  prior session), which is far larger and riskier than the graph repair and
+  deserves its own deliberate pass rather than being bundled into a batch.
+Recommendation: regenerate the Obsidian vault + graph.html + GRAPH_REPORT.md
+  from the now-correct graph.json in a dedicated session, with nothing else in
+  flight so the enormous diff is reviewable on its own. Before doing it,
+  re-read the prior session's note about Obsidian regen pruning unrelated
+  notes, and diff the note COUNT before/after as the first sanity check.
+  Also worth checking at the same time: v0.9.48's extractor no longer emits
+  module-level dict assignments as nodes (settlement_monitor._MONITOR_CITIES
+  is still in the source but vanished from a fresh extract; batch-59 retained
+  the stale node so two real edges from tests/test_phase2_batch_j.py would not
+  dangle), and it now emits import edges to unresolved external modules with
+  no corresponding node -- 10 such edges were dropped during batch-59's scoped
+  merge to match the committed graph's own resolved-edges-only convention.
+  Both are extractor behaviour changes worth confirming as intended before a
+  full rebuild bakes them in everywhere.
+  Full record: none -- surfaced by batch-59's graphify refresh.
