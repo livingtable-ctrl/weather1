@@ -44,7 +44,10 @@ _log = logging.getLogger(__name__)
 def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
     from main import _brier_sparkline  # lazy to avoid circular at import time
 
-    settled = sync_outcomes(client)
+    # settle_attempts=False: `py main.py history` is a read-only report and
+    # should not spend up to ATTEMPT_SETTLE_CAP_PER_SYNC Kalshi calls, nor
+    # add that latency, before printing anything.
+    settled = sync_outcomes(client, settle_attempts=False)
     if settled:
         print(green(f"  Synced {settled} new settled outcome(s).\n"))
 

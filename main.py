@@ -1289,7 +1289,11 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
         tickers = ", ".join(t["ticker"] for t in due)
         print(dim(f"[watch-settle] {len(due)} unsettled: {tickers}"))
 
-        sync_outcomes(client)
+        # settle_attempts=False: this is a polling loop (default ~5 min), so
+        # leaving the sweep on would spend ATTEMPT_SETTLE_CAP_PER_SYNC calls
+        # every iteration -- ~300/hour for as long as an operator leaves it
+        # running. The sweep is budgeted for the cron cycle, not for this.
+        sync_outcomes(client, settle_attempts=False)
         settled = auto_settle_paper_trades(client)
         if settled:
             print(green(f"[watch-settle] Settled {len(settled)} trade(s)."))
@@ -9417,6 +9421,76 @@ def cmd_backfill_price_history(client: KalshiClient) -> None:
         raise
 
 
+def cmd_backfill_attempt_outcomes(client: KalshiClient, dry_run: bool = True) -> None:
+    """Drain the one-time analysis_attempts settlement backlog (backlog.txt
+    "SETTLE analysis_attempts.outcome").
+
+    `predictions` only ever receives rows that cleared the full placement
+    gate chain, so its minimum |our_prob - market_prob| is 0.0984 -- not one
+    low-conviction row. analysis_attempts holds the unbiased sample
+    (minimum 0.0011) but was never scored, because sync_outcomes' pending
+    query is driven off predictions. This settles that backlog.
+
+    Dry-run by DEFAULT: prints how many tickers would be fetched and stops.
+    Pass --run to actually execute. That asymmetry is deliberate -- this
+    makes a Kalshi API call per ticker and writes outcomes rows, so it
+    should never fire by accident.
+
+    Safe to re-run: already-settled tickers drop out of the pending query,
+    404s are stamped with a 7-day retry, and voided markets are terminal.
+    Two categories are deliberately NOT stamped and will be re-fetched on a
+    later run -- non-404 failures and markets Kalshi has not yet flipped to
+    "finalized". For this uncapped CLI path that is merely wasteful; the
+    capped cron path relies on last_checked_at round-robin ordering so those
+    two cannot jam its queue.
+    """
+    from tracker import get_pending_attempt_tickers, settle_pending_attempt_tickers
+
+    pending = get_pending_attempt_tickers()
+    print(f"analysis_attempts tickers awaiting settlement: {len(pending)}")
+    if not pending:
+        print(green("Nothing to do."))
+        return
+    print(
+        dim(
+            f"  ~{len(pending)}-{len(pending) * 2} Kalshi API calls: one "
+            "get_market per ticker, plus a second inside audit_settlement "
+            "only for the between/monthly tickers whose condition it can "
+            "still re-derive. Skipped and failed tickers cost one."
+        )
+    )
+    if dry_run:
+        print(
+            yellow(
+                "\nDRY RUN — nothing fetched, nothing written.\n"
+                "Run 'py main.py backfill-attempt-outcomes --run' to execute."
+            )
+        )
+        return
+
+    print("\nSettling…")
+    try:
+        settled, skipped, failed = settle_pending_attempt_tickers(client, progress=True)
+        print(f"\nDone — settled {settled}, skipped {skipped}, failed {failed}.")
+        if skipped:
+            print(
+                dim(
+                    "  skipped = not finalized yet, finalized <1h ago, or voided "
+                    "(voided is terminal and won't be retried)."
+                )
+            )
+        if failed:
+            print(
+                yellow(
+                    f"  {failed} failed (see log). 404s are stamped and retried "
+                    "after 7 days."
+                )
+            )
+    except Exception as exc:
+        print(red(f"Backfill failed: {exc}"))
+        raise
+
+
 def cmd_backfill_daily_temp_settlement() -> None:
     """One-off recovery for outcomes.settled_temp_f rows written before
     audit_settlement()'s daily HIGH/LOW branch switched from an IEM ASOS
@@ -13078,6 +13152,10 @@ def main():
         "backfill_daily_temp_settlement",
     ):
         cmd_backfill_daily_temp_settlement()
+    elif cmd in ("backfill-attempt-outcomes", "backfill_attempt_outcomes"):
+        # Dry-run unless --run is passed: this hits the Kalshi API once per
+        # pending ticker and writes outcomes rows.
+        cmd_backfill_attempt_outcomes(client, dry_run="--run" not in args)
     elif cmd in ("backfill-ensemble-var", "backfill_ensemble_var"):
         cmd_backfill_ensemble_var()
     elif cmd in ("backfill-member-brier", "backfill_member_brier"):

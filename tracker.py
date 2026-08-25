@@ -31,7 +31,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 71  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 74  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -548,6 +548,38 @@ _MIGRATIONS = [
     ")",
     "CREATE INDEX IF NOT EXISTS idx_ods_ticker_ts "
     "ON orderbook_depth_snapshots(ticker, snapshot_at)",
+    # v72, v73, v74: retry bookkeeping and a round-robin cursor for
+    # analysis_attempts. APPENDED after batch-69's entries above, never
+    # inserted -- see their own comment for why _MIGRATIONS is append-only.
+    # Modelled on the predictions columns of the same names,
+    # modelled on the predictions columns of the same names (see
+    # sync_outcomes' 404 handler and its 'voided' branch, both of which
+    # UPDATE predictions.status / predictions.not_found_at).
+    # NOT identical, deliberately: predictions.status is declared
+    # DEFAULT 'active' (see its own ALTER above) and these are plain
+    # nullable TEXT with no default. That is why sync_outcomes' pending
+    # query needs "p.status IS NULL OR p.status = 'active'" while
+    # get_pending_attempt_tickers only handles "a.status IS NULL". Do not
+    # copy one query's status predicate onto the other's table.
+    # settle_pending_attempt_tickers() settles tickers that have NO
+    # predictions row, so those UPDATEs silently no-op for them (rowcount 0)
+    # -- without somewhere of their own to record a 404 or a void, an
+    # attempt-only ticker would be re-fetched every cycle forever. Same
+    # 7-day retry window and same terminal 'voided' state as predictions,
+    # deliberately, so the two cannot drift apart.
+    "ALTER TABLE analysis_attempts ADD COLUMN status TEXT",
+    "ALTER TABLE analysis_attempts ADD COLUMN not_found_at TEXT",
+    # Round-robin cursor for settle_pending_attempt_tickers(). Stamped on
+    # EVERY ticker the sweep touches -- settled, skipped or failed -- and
+    # ordered on before target_date, so the capped incremental path cannot
+    # jam on a head-of-queue ticker that never drains. Two classes do that
+    # without it, both reproduced: a non-404 exception (failed, no status
+    # stamp) and a market Kalshi never flips to "finalized" (skipped, no
+    # stamp). Both keep status NULL, outcome NULL and the oldest
+    # target_date, so ORDER BY target_date ASC re-selects them first
+    # forever, burning the whole cap every cycle and never reaching a new
+    # arrival.
+    "ALTER TABLE analysis_attempts ADD COLUMN last_checked_at TEXT",
 ]
 
 
@@ -7378,10 +7410,21 @@ def _get_settlement_kalshi_client():
     return _settlement_client
 
 
-def audit_settlement(ticker: str, settled_yes: bool) -> bool:
+def audit_settlement(
+    ticker: str, settled_yes: bool, market_hint: dict | None = None
+) -> bool:
     """Write outcomes.settled_temp_f / settled_value from Kalshi's own
     settlement data where possible, cross-checking our own condition/
     threshold parsing against it.
+
+    market_hint: OPTIONAL already-fetched market dict, used only as the
+    condition-parsing fallback when the ticker has no predictions row.
+    Added 2026-08-25 for settle_pending_attempt_tickers, whose whole
+    population is predictions-row-less: without a real title,
+    _parse_market_condition returns None for every T-type ticker and this
+    function returns False before writing anything. Callers that already
+    have the market should pass it; the parameter does not (yet) replace
+    this function's own internal get_market calls for the value itself.
 
     Daily HIGH/LOW temperature markets (backlog.txt "DATA-DRIVEN SIGMA FROM
     SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH", finding F1 in
@@ -7968,7 +8011,15 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
 
             return True
 
-        # Prefer condition stored in predictions DB — it was recorded with the real
+        # Prefer condition stored in predictions DB.
+        # NOTE (corrected 2026-08-25): the comment that used to sit here
+        # warned that parsing with an empty title "falls back to
+        # series-ticker heuristics that map KXLOW T-type markets to 'below'
+        # even when the market is actually 'above'". That heuristic was
+        # REMOVED -- _parse_market_condition now fails closed and returns
+        # None. The hazard is no longer a wrong direction, it is a SILENT
+        # TOTAL SKIP for any predictions-row-less ticker, which is why the
+        # `market` parameter exists. — it was recorded with the real
         # Kalshi market title, so direction (above vs below) is correct. Parsing
         # with an empty title falls back to series-ticker heuristics that map
         # KXLOW T-type markets to "below" even when the market is actually "above".
@@ -7994,11 +8045,18 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                     }
         except Exception:
             pass
-        cond = (
-            _db_cond
-            if _db_cond is not None
-            else _parse_cond({"ticker": ticker, "title": ""})
+        # Fall back to the CALLER'S market dict when it supplied one, so the
+        # real title is available to parse. With an empty title
+        # _parse_market_condition fails closed and returns None for every
+        # T-type ticker (its old series-prefix guess was removed) -- which
+        # for a caller with no predictions row means settled_temp_f is
+        # silently never written. Measured on the attempt-only backlog:
+        # 418 of 494 tickers (85%) are T-type and hit exactly that path.
+        _fallback_market = (
+            dict(market_hint) if market_hint else {"ticker": ticker, "title": ""}
         )
+        _fallback_market.setdefault("ticker", ticker)
+        cond = _db_cond if _db_cond is not None else _parse_cond(_fallback_market)
         if not cond:
             return False
 
@@ -8692,7 +8750,7 @@ def _derive_series_ticker(market: dict, ticker: str) -> str:
     return market.get("series_ticker") or ticker.split("-")[0]
 
 
-def sync_outcomes(client) -> int:
+def sync_outcomes(client, settle_attempts: bool = True) -> int:
     """
     Check settled markets in the DB against Kalshi and record outcomes.
     Returns number of new outcomes recorded.
@@ -8891,6 +8949,39 @@ def sync_outcomes(client) -> int:
                     "sync_outcomes: failed to fetch/record %s: %s", ticker, exc
                 )
             continue
+
+    # Incremental half of the analysis_attempts sweep (backlog.txt "SETTLE
+    # analysis_attempts.outcome"). The loop above is driven by
+    # `SELECT DISTINCT ticker FROM predictions`, so it structurally cannot
+    # see a market that was analysed but never cleared the placement gate --
+    # which is most of them, and the only unbiased sample this repo has.
+    # CAPPED, deliberately: the one-time backlog drain belongs to
+    # `py main.py backfill-attempt-outcomes`, where a human is watching.
+    # Never let this block the settlement count the caller is waiting on.
+    if settle_attempts:
+        try:
+            _a_settled, _a_skipped, _a_failed = settle_pending_attempt_tickers(
+                client, limit=ATTEMPT_SETTLE_CAP_PER_SYNC
+            )
+            if _a_settled or _a_failed:
+                _log.info(
+                    "sync_outcomes: analysis_attempts sweep settled=%d "
+                    "skipped=%d failed=%d",
+                    _a_settled,
+                    _a_skipped,
+                    _a_failed,
+                )
+        except Exception as exc:
+            # ERROR, not WARNING: the failure this most plausibly hides is
+            # migrations 62-64 not having landed, which makes
+            # get_pending_attempt_tickers raise "no such column: a.status"
+            # on every call and silently kills the whole feature.
+            _log.error(
+                "sync_outcomes: analysis_attempts sweep failed: %s",
+                exc,
+                exc_info=True,
+            )
+
     return count
 
 
@@ -11795,6 +11886,318 @@ def settle_analysis_attempt(ticker: str, target_date, outcome: int) -> None:
         _log.warning("settle_analysis_attempt failed for %s: %s", ticker, exc)
 
 
+# Per-CALL cap for the sync_outcomes-driven half of
+# settle_pending_attempt_tickers(). The one-time backlog drain runs from the
+# CLI with no cap; this bounds the INCREMENTAL path so a future accumulation
+# can never spike a scheduled cron cycle the way an uncapped widening would
+# have (measured 2026-08-25: sync_outcomes' own pending set was 42 tickers,
+# while the attempt-only backlog was 569 -- uncapped, the next cycle would
+# have gone from ~168 API calls to ~2,444).
+ATTEMPT_SETTLE_CAP_PER_SYNC = 25
+
+
+def get_pending_attempt_tickers(limit: int | None = None) -> list[str]:
+    """Tickers logged in analysis_attempts that have NO predictions row and
+    no recorded outcome, and are past their target_date -- i.e. the
+    population sync_outcomes structurally cannot see, because its own
+    pending query is `SELECT DISTINCT ticker FROM predictions`.
+
+    Applies the same retry semantics predictions gets: skip 'voided'
+    outright (terminal), and skip 'not_found' until 7 days have passed so a
+    transient Kalshi 404 doesn't exclude a valid market permanently.
+
+    ORDERING IS ROUND-ROBIN, NOT OLDEST-FIRST. An earlier version of this
+    ordered by target_date ASC and claimed that "drains the backlog
+    deterministically instead of re-sampling the same head" -- the opposite
+    of what it does. Two classes of ticker never drain and never get a
+    status stamp: a non-404 exception (counted failed) and a market Kalshi
+    never flips to "finalized" (counted skipped). Both keep status NULL,
+    outcome NULL and their old target_date, so target_date ASC re-selects
+    them ahead of everything else on every single call -- reproduced 5/5
+    cycles, with a settleable ticker never fetched once. Under the capped
+    incremental path that burns the entire cap forever and settles nothing.
+
+    Ordering on last_checked_at (NULLs first, then least-recently-checked)
+    guarantees forward progress regardless: a jammed ticker is stamped as
+    checked like any other and goes to the back of the queue.
+
+    target_date is the tie-break only. It is compared as TEXT, which is
+    chronological for ISO YYYY-MM-DD, and `date('now')` is UTC while
+    target_date is city-local -- up to ~a day conservative, which is the
+    safe direction.
+
+    `a.target_date IS NOT NULL` currently excludes nothing (measured: 0 of
+    697 rows) but is deliberate: settle_analysis_attempt has an explicit
+    NULL-target_date branch, so such rows CAN exist, and they would be
+    silently unsettleable here. See the test that pins this.
+    """
+    init_db()
+    sql = """
+        SELECT a.ticker
+        FROM   analysis_attempts a
+        LEFT   JOIN predictions p ON p.ticker = a.ticker
+        LEFT   JOIN outcomes    o ON o.ticker = a.ticker
+        WHERE  p.ticker IS NULL
+          AND  o.ticker IS NULL
+          AND  a.outcome IS NULL
+          AND  a.target_date IS NOT NULL
+          AND  a.target_date < date('now')
+          AND  (a.status IS NULL
+                OR (a.status = 'not_found'
+                    AND a.not_found_at < datetime('now', '-7 days')))
+        GROUP  BY a.ticker
+        ORDER  BY (MIN(a.last_checked_at) IS NOT NULL),
+                  MIN(a.last_checked_at) ASC,
+                  MIN(a.target_date) ASC
+    """
+    # GROUP BY + MIN() rather than SELECT DISTINCT + bare ORDER BY: ordering
+    # by a column absent from a DISTINCT list is implementation-defined, and
+    # for a ticker with several target_dates SQLite does not necessarily
+    # order it by its own minimum. No such ticker exists today, so this is
+    # correctness-by-construction rather than a live fix.
+    if limit is not None and limit <= 0:
+        # SQLite treats LIMIT -1 as UNLIMITED, so a non-positive limit must
+        # never reach the query -- falling through to "no LIMIT clause"
+        # would silently uncap the cron path, the exact opposite of what a
+        # caller passing 0 or a negative number means.
+        return []
+    params: tuple = (limit,) if limit is not None else ()
+    if limit is not None:
+        sql += " LIMIT ?"
+    with _conn() as con:
+        rows = con.execute(sql, params).fetchall()
+    return [r["ticker"] for r in rows]
+
+
+def _mark_attempt_status(ticker: str, status: str) -> None:
+    """Stamp status (and not_found_at for 'not_found') on every
+    analysis_attempts row for a ticker. Mirrors what sync_outcomes does to
+    predictions.status -- those UPDATEs no-op for attempt-only tickers,
+    which is exactly why these columns exist."""
+    try:
+        with _conn() as con:
+            if status == "not_found":
+                con.execute(
+                    "UPDATE analysis_attempts SET status = ?, "
+                    "not_found_at = datetime('now') WHERE ticker = ?",
+                    (status, ticker),
+                )
+            else:
+                con.execute(
+                    "UPDATE analysis_attempts SET status = ? WHERE ticker = ?",
+                    (status, ticker),
+                )
+    except Exception as exc:
+        _log.warning("_mark_attempt_status(%s, %s) failed: %s", ticker, status, exc)
+
+
+def _mark_attempt_checked(ticker: str) -> None:
+    """Stamp last_checked_at on every analysis_attempts row for a ticker.
+
+    Called for EVERY ticker the sweep touches -- settled, skipped or failed,
+    including the paths that deliberately leave `status` alone. This is what
+    makes get_pending_attempt_tickers' round-robin ordering work; without it
+    a ticker that never drains sits at the head of the queue forever. See
+    that function's docstring for the reproduced failure.
+    """
+    try:
+        with _conn() as con:
+            con.execute(
+                "UPDATE analysis_attempts SET last_checked_at = datetime('now') "
+                "WHERE ticker = ?",
+                (ticker,),
+            )
+    except Exception as exc:
+        # Losing this stamp under lock contention re-jams the queue head for
+        # one cycle, so it is worth more than a debug line.
+        _log.warning("_mark_attempt_checked(%s) failed: %s", ticker, exc)
+
+
+def settle_pending_attempt_tickers(
+    client, limit: int | None = None, progress: bool = False
+) -> tuple[int, int, int]:
+    """Settle analysis_attempts rows for markets that never got a predictions
+    row. Returns (settled, skipped, failed).
+
+    THE SHARED HELPER. Called from two places with different caps, on
+    purpose: `py main.py backfill-attempt-outcomes` drains the one-time
+    backlog uncapped and attended, while sync_outcomes calls it with
+    ATTEMPT_SETTLE_CAP_PER_SYNC for the steady state (~22 new tickers/day
+    measured 2026-08-25, a rounding error against its own 42). One
+    implementation so the two cannot drift.
+
+    Why this population matters (backlog.txt "SETTLE
+    analysis_attempts.outcome"): `predictions` only ever receives rows that
+    cleared the full trade-placement gate chain, so its minimum
+    |our_prob - market_prob| is 0.0984 -- there is not one low-conviction row
+    in it. analysis_attempts holds the unbiased sample (minimum 0.0011) and
+    was never scored.
+
+    Mirrors sync_outcomes' settlement semantics deliberately: finalized-only,
+    the >1h stabilisation wait, the 'voided' terminal state for a result that
+    is neither yes nor no, and the 7-day 404 retry.
+
+    FOUR deliberate divergences from sync_outcomes, all of them:
+      - no price-history backfill (candlesticks) and no trade-history
+        backfill: both exist for entry-timing analysis of markets we
+        actually traded, and doubling this sweep's API cost for untraded
+        markets isn't worth it;
+      - no feature_importance.update_outcome(): there is no feature row for
+        a market that was never traded;
+      - audit_settlement is called unconditionally here, where sync_outcomes
+        calls it only when log_outcome() reports a genuinely new insert.
+    If any of those change, change them here rather than in a third place.
+    """
+    # Free, and closes the orphan trap the pending query's `o.ticker IS
+    # NULL` would otherwise make permanent. See its own docstring.
+    try:
+        settle_orphaned_attempt_outcomes()
+    except Exception as exc:
+        _log.warning("settle_orphaned_attempt_outcomes failed: %s", exc)
+
+    tickers = get_pending_attempt_tickers(limit)
+    settled = skipped = failed = 0
+    now_utc = datetime.now(UTC)
+
+    for i, ticker in enumerate(tickers, 1):
+        if progress:
+            print(f"  [{i}/{len(tickers)}] {ticker}", flush=True)
+        # Unconditional, and BEFORE any early exit below: every path through
+        # this loop must advance the round-robin cursor or the queue jams.
+        _mark_attempt_checked(ticker)
+
+        # The try is deliberately narrow -- ONLY the network call. Everything
+        # after it is local DB work, and wrapping that in the same handler
+        # let a mid-write failure be classified by the "404" substring check,
+        # which could stamp status='not_found' on a ticker that had just
+        # settled successfully.
+        try:
+            market = client.get_market(ticker)
+        except Exception as exc:
+            if "404" in str(exc):
+                _log.warning(
+                    "settle_pending_attempt_tickers: %s not found on Kalshi "
+                    "(404) — will retry after 7 days",
+                    ticker,
+                )
+                _mark_attempt_status(ticker, "not_found")
+            else:
+                _log.warning(
+                    "settle_pending_attempt_tickers: fetch failed for %s: %s",
+                    ticker,
+                    exc,
+                )
+            failed += 1
+            continue
+
+        try:
+            if market.get("status", "") != "finalized":
+                skipped += 1
+                continue
+            close_time_str = market.get("close_time") or market.get(
+                "expiration_time", ""
+            )
+            if close_time_str:
+                try:
+                    close_dt = datetime.fromisoformat(
+                        close_time_str.replace("Z", "+00:00")
+                    )
+                    if (now_utc - close_dt).total_seconds() / 3600 < 1.0:
+                        skipped += 1
+                        continue  # too soon; wait for finalization to stabilise
+                except (ValueError, TypeError):
+                    pass
+            result = market.get("result", "")
+            if result not in ("yes", "no"):
+                _log.warning(
+                    "settle_pending_attempt_tickers: %s voided/cancelled — "
+                    "unexpected result %r, stamping status='voided'",
+                    ticker,
+                    result,
+                )
+                _mark_attempt_status(ticker, "voided")
+                skipped += 1
+                continue
+
+            settled_yes = result == "yes"
+            log_outcome(ticker, settled_yes)
+            # Best-effort: writes outcomes.settled_temp_f from Kalshi's own
+            # expiration_value. Never let it block the outcome record.
+            # `market=` matters: audit_settlement's daily branch reads the
+            # condition from a predictions row, which by definition does not
+            # exist here, and falls back to _parse_market_condition. With an
+            # empty title that returns None for every T-type ticker (85% of
+            # this backlog) and the function bails before writing anything.
+            # Passing the live market dict gives it the real title so the
+            # direction parses -- and reuses this fetch instead of
+            # audit_settlement making its own.
+            try:
+                audit_settlement(ticker, settled_yes, market_hint=market)
+            except Exception as exc:
+                _log.debug("audit_settlement(%s) failed: %s", ticker, exc)
+
+            with _conn() as con:
+                pending = con.execute(
+                    "SELECT target_date FROM analysis_attempts "
+                    "WHERE ticker = ? AND outcome IS NULL",
+                    (ticker,),
+                ).fetchall()
+            for row in pending:
+                settle_analysis_attempt(ticker, row["target_date"], int(settled_yes))
+            settled += 1
+        except Exception as exc:
+            # Local-DB failure after a successful fetch. Never classified as
+            # a 404 -- see the narrow try above.
+            _log.warning(
+                "settle_pending_attempt_tickers: post-fetch failure on %s: %s",
+                ticker,
+                exc,
+            )
+            failed += 1
+            continue
+    return settled, skipped, failed
+
+
+def settle_orphaned_attempt_outcomes() -> int:
+    """Settle analysis_attempts rows whose ticker ALREADY has an outcomes row.
+    Zero API calls. Returns the number of attempt rows updated.
+
+    get_pending_attempt_tickers excludes tickers that already have an
+    outcomes row, which is right for the fetch path but creates a permanent
+    trap: settle_pending_attempt_tickers writes the outcomes row BEFORE it
+    updates analysis_attempts.outcome, so a failure between the two (a
+    `database is locked` under the multi-writer setup is the realistic one)
+    leaves the attempt unscored and permanently excluded, with no log line.
+    sync_outcomes' own attempt-settle block has the same shape behind an
+    `except: pass`.
+
+    Measured 2026-08-25: 0 such orphans existed, so this is prophylactic --
+    but the sweep is the first thing to write outcomes rows at volume (494),
+    which is exactly when the race stops being theoretical. Cheap enough to
+    run unconditionally before every sweep.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT a.ticker, a.target_date, o.settled_yes
+            FROM   analysis_attempts a
+            JOIN   outcomes o ON o.ticker = a.ticker
+            WHERE  a.outcome IS NULL
+              AND  o.settled_yes IN (0, 1)
+            """
+        ).fetchall()
+    for r in rows:
+        settle_analysis_attempt(r["ticker"], r["target_date"], int(r["settled_yes"]))
+    if rows:
+        _log.info(
+            "settle_orphaned_attempt_outcomes: healed %d attempt row(s) from "
+            "existing outcomes, no API calls",
+            len(rows),
+        )
+    return len(rows)
+
+
 def get_unselected_bias(city: str, condition_type: str | None = None) -> float:
     """#55: Mean (forecast_prob - outcome) for untraded markets in this city.
 
@@ -12183,17 +12586,47 @@ def vacuum_database() -> None:
 
 
 def prune_old_analysis_attempts(days: int = 30) -> int:
-    # Remove stale analysis records to keep the table from growing indefinitely
+    """Remove stale UNSCORED analysis records to keep the table from growing
+    indefinitely.
+
+    `AND outcome IS NULL` is load-bearing, added 2026-08-25 alongside
+    settle_pending_attempt_tickers(). Before it this DELETE was
+    unconditional, and cron.py runs it every Monday with days=30 -- so a row
+    was dropped ~30 days after its last analysis whether or not it had been
+    scored.
+
+    That silently capped the evaluation corpus at a 30-day rolling window.
+    analysis_attempts is the only UNBIASED sample this repo has (predictions
+    never receives a row below |our_prob - market_prob| = 0.0984, because
+    log_prediction only fires past the placement gate), and once the attempt
+    row is gone the surviving outcomes row cannot be joined back to
+    forecast_prob/market_prob by anything -- an attempt-only ticker has no
+    predictions row either, and every outcomes_valid query in this module
+    joins predictions. Measured when this guard was added: 494 pending
+    tickers, 18 already past the cutoff, 136 (28%) crossing it within 7 days.
+
+    Unscored rows are still pruned on the original schedule -- those are
+    genuine noise and the growth control is the point of the function.
+    Scored rows are now permanent; if that ever needs bounding, add a much
+    longer second cutoff (730 days would match purge_old_predictions'
+    retention) rather than restoring the unconditional delete.
+    """
     from datetime import UTC, datetime, timedelta
 
     init_db()
     cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with _conn() as con:
         cur = con.execute(
-            "DELETE FROM analysis_attempts WHERE analyzed_at < ?", (cutoff,)
+            "DELETE FROM analysis_attempts WHERE analyzed_at < ? AND outcome IS NULL",
+            (cutoff,),
         )
         n = cur.rowcount
-    _log.info("pruned %d old analysis_attempts (older than %d days)", n, days)
+    _log.info(
+        "pruned %d old UNSCORED analysis_attempts (older than %d days; "
+        "scored rows retained)",
+        n,
+        days,
+    )
     return n
 
 

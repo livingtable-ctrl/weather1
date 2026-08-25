@@ -116,6 +116,7 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py ab-summary` | Show A/B experiment results |
 | `python main.py backfill-emos` | Backfill historical ensemble mean/variance for EMOS calibration |
 | `python main.py backfill-price-history` | Backfill OHLC candlestick history for settled tickers missing it |
+| `python main.py backfill-attempt-outcomes [--run]` | Settle `analysis_attempts` rows for markets that never got a `predictions` row — the unbiased low-conviction sample. **Dry-run unless `--run`**; one Kalshi call per pending ticker |
 | `python main.py override <pause\|unpause\|status> [mins]` | Temporarily pause auto-trading without activating the kill switch |
 | `python main.py kill` | Activate kill switch to halt all trading |
 | `python main.py resume` | Resume trading after kill switch or black swan halt |
