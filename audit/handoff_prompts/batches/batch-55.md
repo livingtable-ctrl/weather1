@@ -1,5 +1,14 @@
 # Batch 55: KXAVGT weekly average-temperature streak markets (DESIGN BATCH — optional, largest build in the roadmap)
 
+> 🚫 **DECLINED 2026-08-25 — do not implement this batch.** Its go/no-go was put
+> to the user and answered **no**; zero production code was changed. The full
+> reasoning, including six live-data findings that contradict the volume and
+> tractability framing below, is in `backlog.txt` under "BATCH-55: KXAVGT WEEKLY
+> AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED". Read that
+> entry before acting on anything in this file — several of its claims are stale
+> or were wrong (the ladder is 2+..6+ not 3..6+; the family launched 2026-08-17
+> so only one completed week exists; Atlanta already has no open event).
+
 ## Context
 
 Repo: weather1. Source: Expansion Dossier B8 (score 6.1, rank 10 — worst effort-to-capacity ratio on the list; that's why it's a design batch with a user go/no-go, not a build order). Like batch 40's shape: starts with AskUserQuestion decisions, not code. Live-verified 2026-08-24: **11 weekly city series** (KXAVGTK: LAS, IAH, SAT, AUS, SAN, MSY, DEN, DFW, PHX, OKC + KXAVGTATL), real volume (Austin 124K, Houston 50K, San Antonio 38K, Vegas 16K, San Diego 17K, NOLA 16K, Atlanta 13K per recent week).

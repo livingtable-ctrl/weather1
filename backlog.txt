@@ -34350,3 +34350,121 @@ Resolution (2026-08-25):
   guard is green again. Worth noting the guard's slowness is the likely
   reason this sat unnoticed -- which is the case for fixing it.
 
+[RESOLVED 2026-08-25 -- DESIGN BATCH, user go/no-go answered NO. KXAVGT NOT
+  onboarded, zero production code changed.] BATCH-55: KXAVGT WEEKLY
+  AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED
+Priority: Closed -- batch-55 (Expansion Dossier B8, score 6.1, rank 10 of 11,
+  the worst effort-to-capacity ratio on the roadmap). Shaped like batch 40:
+  an AskUserQuestion go/no-go before any code, not a build order. The user
+  was given four options (document the no / no + drift watcher / run the
+  <1-day validation first / build it) and chose to document the no. The
+  reasoning below IS the deliverable.
+
+What the family is:
+  11 weekly per-city series (KXAVGTK{AUS,IAH,SAT,LAS,SAN,MSY,DEN,DFW,PHX,OKC}
+  plus KXAVGTATL), each event a 5-rung ladder of "N+ consecutive days within
+  the week whose daily AVERAGE temperature is strictly greater than 90F",
+  N = 2..6 (the batch file said 3..6+; live it is 2..6+). Settlement is the
+  arithmetic mean of The Weather Company's hourly values for the station,
+  00:00-23:59 local, rounded to the nearest whole degree, published at
+  weather.com/kalshi; exactly 90 does not satisfy; a day with fewer than 18
+  reported hourly values does not satisfy AND breaks the streak.
+
+What re-verification confirmed (live Kalshi API, 2026-08-25):
+  All 11 series exist with the tickers the batch file listed. Prior-week
+  contract volume matches its figures closely: AUS 131,820 (it said 124K),
+  IAH 56,233 (50K), SAT 40,850 (38K), LAS 15,661 (16K), SAN 16,486 (17K),
+  MSY 16,266 (16K), ATL 21,552 (13K); it did not quote OKC 148,671, DFW
+  53,587, PHX 19,438, DEN 11,293. The settlement rule text is verbatim,
+  18-hourly-value streak-breaker included. Prerequisites hold: batches 51
+  and 52 are merged, and batch 56 never touched weather_markets.py (it
+  shipped as a standalone nearby_station_obs.py), so the "collides with
+  56's registry region" note in INDEX.md was wrong and is corrected there.
+
+Why the answer is no -- six findings, all from live data:
+  1. The family is eight days old. Every one of the 11 series was created
+     2026-08-17. Exactly ONE completed week of history exists. The batch
+     file's "live-verified" volume IS that single week.
+  2. Atlanta is already gone -- one event ever (KXAVGTATL-26AUG23), closed,
+     no open event this week. Family stability is unproven in both
+     directions.
+  3. The brackets are overwhelmingly near-degenerate. In the one completed
+     week, 53 of 55 brackets settled at ~1c or ~99c; only OKC's 3+ rung
+     (0.62) was genuinely uncertain. The reason is structural, not a fluke:
+     a daily MEAN above 90F needs roughly a 103F+ high with a 78F+ low, so
+     it is a standing NO in AUS/IAH/SAT/SAN/MSY/ATL/DEN and a standing YES
+     in LAS/DFW/PHX. This is decisive against the batch's own premise: the
+     joint day-dependence problem it identifies as the crux matters most at
+     middling probabilities, and this family has almost none.
+  4. Contract count badly overstates the opportunity. ~532K contracts in the
+     completed week, but the bulk trades at 1c. Valued at terminal price the
+     entire 11-city family is ~$127K/week, and ~$88K of that is
+     Vegas/Dallas/Phoenix paying 99c for a near-certainty -- not a
+     forecastable edge. The batch's "$100-300K/week family volume" is right
+     in dollars and misleading as a measure of addressable opportunity.
+  5. The book is one-sided and unexitable. Mid-week snapshot (week of
+     Aug 24, ~1.3 days in): bid sizes 0-10 contracts against ask sizes
+     350-970; Austin 2+ quoted 3c/44c, Houston 2+ 2c/67c, and
+     Vegas/Dallas/Phoenix 2c/98c. liquidity_dollars was 0.0000 on every
+     market checked. A taker can buy at a punitive ask and cannot sell.
+     Caveat, stated honestly: this is one snapshot early in the week, and
+     the book may tighten late-week when brackets become arithmetically
+     decidable -- but late-week is exactly when a forecast adds least.
+  6. The 20-settled-sample gate is statistically hollow for this family. The
+     5 rungs of a city-week are NESTED monotone events (2+ contains 3+
+     contains ... contains 6+) resolved by one week of weather, so 20
+     "settled samples" is about 4 independent city-weeks. The batch's "gate
+     fills in ~2-3 weeks" is true in count and false as evidence -- it would
+     graduate a signal on ~4 effective observations.
+
+Two cost items the batch file understated:
+  a. No Weather Company access exists anywhere in the repo.
+     kalshi_weather_index.py is Synoptic-backed -- a DIFFERENT source, which
+     batch-52's own experiment measured at mean |diff| 1.6-2.0F (max 4.68F)
+     against METAR. AVGT rounds the daily mean to a whole degree against a
+     strict >90 threshold, so a ~2F source divergence flips individual days,
+     and one flipped day breaks a streak and flips up to 5 nested rungs at
+     once. Any reconstruction we could build is not the settlement source.
+  b. Neither the forecast target nor the joint model is reusable. The bot
+     forecasts daily max/min; mean_temp at weather_markets.py:9459 is the
+     ensemble mean of the max/min distribution, NOT a daily mean
+     temperature, so the 24-hour arithmetic-mean target is new. And
+     monte_carlo.py's correlation machinery is cross-CITY (portfolio risk),
+     not cross-DAY -- the AR(1) day-to-day model the batch recommends as
+     "reuses existing machinery" is new work; only the Cholesky/PSD-repair
+     scaffolding carries over.
+
+Context that framed the decision:
+  A14 (7f0acc7a) measured the existing forecast as having no skill against
+  the market -- model Brier 0.2596 vs market 0.2201 on 214 settled rows --
+  and batch-57's condition filtering widened that to BSS -0.2725 (n=94). The
+  open follow-up entry "MEASURE BRIER SKILL CONDITIONED ON THE SIZE OF OUR
+  DISAGREEMENT WITH THE PRICE" (batch 66) is what decides whether that means
+  "no edge anywhere" or "no edge on average, edge in the traded tail", and
+  it has NOT been run. Committing the roadmap's largest new surface -- a new
+  condition type, a new settlement variable, a new forecast target and a new
+  joint model -- while that is unresolved was the trade-off put to the user,
+  and the answer was no.
+
+Re-check trigger: none scheduled. If revisited, the questions that would
+  have to flip first are, in order: (1) does the family still exist and has
+  Atlanta returned; (2) after several more weeks, does any city produce
+  brackets that settle away from 1c/99c with real frequency -- OKC is the
+  only current candidate; (3) is there two-sided depth we could actually
+  exit into; (4) can the settlement source itself be read, rather than
+  approximated by a source with ~2F divergence against a whole-degree
+  rounding boundary. Nothing below (1)-(3) makes the modelling work worth
+  doing, and (4) gates correctness regardless. The two monthly US-average
+  series (AVGTEMP, KXAVGTEMP) also exist and were not evaluated -- they are
+  a different product (single national average, not a per-city streak) and
+  out of this batch's scope.
+
+Declined deliberately, not deferred for capacity: the option to extend
+  check_series_drift() to KXAVGT* and add the 11 tickers to a
+  KNOWN_UNTRACKED_AVGT_SERIES set (the convention at
+  weather_markets.py:5183, which already has a precedent for recording a
+  failed go/no-go in the comment) was offered and not taken. If the family
+  is revisited, that is the cheapest first step and costs one small change
+  plus scoped tests.
+  Source: audit/handoff_prompts/batches/batch-55.md.
+

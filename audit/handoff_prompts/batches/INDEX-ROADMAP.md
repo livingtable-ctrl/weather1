@@ -26,7 +26,7 @@ These batches are the "new expansion work" bucket (priority 5 in the project's s
 |---|---|---|
 | [53](batch-53.md) | IDR/EasyUQ calibration challenger | Calibration cluster's turn (project priority 4) — the <1-day replay may run any idle day, productionizing waits |
 | [54](batch-54.md) | KXTORNADO monthly count model | Optional; natural start well before May 2027 peak season |
-| [55](batch-55.md) | KXAVGT weekly streak markets (design batch) | Optional; only if expansion capacity frees up |
+| [55](batch-55.md) | KXAVGT weekly streak markets (design batch) | 🚫 **DECLINED 2026-08-25** — go/no-go answered no, zero code changed. See `backlog.txt` entry "BATCH-55: KXAVGT WEEKLY AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED" |
 | [56](batch-56.md) | Synoptic nearby-station observations | ONLY if batch 52's index-vs-METAR divergence test shows ≥1°F divergence |
 
 Not batched (parked, dossier ranks 12 / watch list): KXRONI (one-day price-vs-CPC-plume comparison script only, no pipeline), KXHMONTHRANGE, KXAQICITY/KXDROUGHTLEVEL (episodic), RRFS/REFS (re-check Open-Meteo model list after 2026-10-06).

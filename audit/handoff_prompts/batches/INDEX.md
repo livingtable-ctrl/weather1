@@ -2,7 +2,7 @@
 
 > ## ⚠️ Completion status — read before picking up ANY batch file
 >
-> **As of 2026-08-25, master `bf409e6b`.** This directory holds 60 batch
+> **As of 2026-08-25, master `4f2d6340`.** This directory holds 60 batch
 > files and **~46 are already implemented and merged.** Nothing inside an
 > individual `batch-NN.md` says so — they are frozen handoffs, not living
 > documents.
@@ -12,7 +12,8 @@
 > | **01-21** | ✅ **DONE** — the 2026-08-18 max-depth audit set. Their commit subjects name `AUD-XXXX` ids, **not** `batch-NN`, so `git log --grep="batch-01"` finds nothing and they look unstarted. They are not. |
 > | **31-52** | ✅ **DONE** |
 > | **56-62** | ✅ **DONE** |
-> | **53, 54, 55** | ⏸ **Deferred** — [INDEX-ROADMAP.md](INDEX-ROADMAP.md). 53 waits for the calibration cluster's slot (its replay experiment may run any idle day); 54 is optional/no-deadline; 55 needs a user go/no-go. 54 and 55 both collide with 56's `weather_markets.py` registry region. |
+> | **53, 54** | ⏸ **Deferred** — [INDEX-ROADMAP.md](INDEX-ROADMAP.md). 53 waits for the calibration cluster's slot (its replay experiment may run any idle day); 54 is optional/no-deadline. **Correction:** an earlier version of this row said 54 and 55 collide with 56's `weather_markets.py` registry region — they do not. Batch 56 shipped as a standalone `nearby_station_obs.py` and never touched `weather_markets.py`. |
+> | **55** | 🚫 **DECLINED 2026-08-25** — design batch, user go/no-go answered **no**; zero production code changed. Full reasoning in `backlog.txt`, entry "BATCH-55: KXAVGT WEEKLY AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED". Short version: the family is eight days old, 53 of 55 brackets in its only completed week settled at ~1¢/~99¢, the book has no exit liquidity, and its settlement source (The Weather Company dailies) is not readable from this repo. Do not re-pick it up without re-running the four re-check questions in that entry. |
 > | **63** | 🟢 **READY** — [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md). Both dependencies landed (58's exit-gate precedent, 61's staleness layer). |
 > | **64-74** | 🟢 **READY** — [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md). Start with 64 (decaying sample clock); 66 is the go/no-go gating 72-74. |
 >
