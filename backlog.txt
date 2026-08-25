@@ -31319,10 +31319,121 @@ reason no longer applies:
   layer included) now that the manifest is portable -- that is the only pass that can mint the
   two missing concept nodes -- and expect the Obsidian regen churn documented previously.
 
-Open follow-up (not blocking):
-  If a Synoptic free-tier key is ever registered, add a SynopticSource implementing the same
-  StationSource protocol and re-run get_shadow_report() side by side -- the density gain from
-  CWOP/mesonet stations is the one thing this build cannot measure. Note also that KTMB is
-  discovered by NWS but never appears in the aviationweather payload (confirmed live twice); it
-  is silently skipped, which is correct, but a station that permanently never reports is
-  effectively reducing k from 8 to 7 for Miami.
+Open follow-up (not blocking) -- Synoptic access, CORRECTED 2026-08-25 against live pages:
+  The batch-56 spec's premise that a usable free Synoptic tier exists is WRONG, and this entry
+  originally repeated it ("if a Synoptic free-tier key is ever registered"). Re-verified directly:
+
+    - Open Access (the no-cost tier) is academic-only. Verbatim from synopticdata.com/
+      open-access-program: "The Open Access Program is available to members of accredited U.S.
+      educational institutions who register with a valid .edu email address", eligible uses are
+      "Student research projects", "Faculty-led or on-campus research", and "Non-commercial
+      educational coursework". A trading bot qualifies as none of those. It also states
+      "1 simultaneous API response", a CONCURRENCY limit, not a monthly quota.
+    - The spec's "free open-access tier = 5,000 API requests + 5M service units/month
+      (verified 2026-08)" numbers do not appear on the open-access page, the pricing page, or
+      the commercial-pricing page. Treat that line in batch-56.md as unsupported.
+    - Commercial pricing is quote-only ("three standard tiers or ... a custom commercial
+      pricing plan"), no figures published, no free commercial tier.
+    - A 14-day free trial exists with no stated academic requirement, but the Weather API trial
+      is "US Networks Only" and carries only 7 days of history.
+
+  This trips batch-56's own written constraint ("Free tier only; flag immediately if any needed
+  capability turns out paid"), so it is flagged here rather than left implied.
+
+WHY A SYNOPTIC KEY WOULD STILL BE WORTH BUYING (re-derived, and stronger than the spec's own
+argument, which was only about CWOP/mesonet station density):
+
+  1. It is the literal settlement source, not a proxy. Re-confirmed 2026-08-25 from the live
+     market rules of KXTEMPMIAH-26AUG2501-T85.99: "determined strictly by the temperature
+     reported by Synoptic Data, calculated in accordance with the Kalshi Weather Index
+     Methodology."
+  2. TEMPORAL RESOLUTION is very likely the dominant error term today, ahead of station
+     density. Measured on the live feed 2026-08-25: over 1434 status=normal points the index
+     value changes on a MEDIAN of every 4 minutes (mean 4.78, max run 34). The contributors are
+     therefore genuinely sub-hourly (~5 min). This module feeds it HOURLY METAR -- 33 KMIA
+     observations across the same 24h window. That mismatch is structural and no amount of
+     re-weighting free ASOS stations can close it.
+  3. Index reconstruction becomes possible. contributors is a constant 5 across every point
+     sampled. With access to the same network at the same cadence, the contributor set and
+     weights are a solvable fit against the index's own retained history -- turning this
+     module from an APPROXIMATION of the settlement variable into a RECONSTRUCTION of it. The
+     trial's 7-day history is more than enough to attempt that, since the Kalshi feed itself
+     only retains ~24h.
+
+  Suggested sequencing: do NOT burn the 14-day trial immediately. The shadow collector shipped
+  with zero samples, so let it accumulate a real multi-week baseline first, then spend the
+  one-shot trial on a head-to-head against that baseline rather than against the single-day
+  go/no-go. Decision rule: if reconstruction drives RMSE materially below the accumulated
+  free-ASOS number, a paid plan is justified; if it plateaus near it, it is not.
+
+  Baseline to beat, stated precisely so the comparison is honest: the SHIPPED config
+  (1/(d+10km), k=8) measured blend RMSE 1.022F against the index over the go/no-go window.
+  Note the best-measured config in that sweep was actually EQUAL-weight k=8 at 0.759F, which
+  also cleared every pre-registered slice (+0.405/+1.609/+1.296); 1/(d+10km) was shipped because
+  it is the form the batch spec pre-registered ("distance-weighted"), not because it scored
+  best. Worth revisiting on the accumulated multi-week data before treating 1.022F as the
+  number Synoptic has to beat.
+
+  Also still open: KTMB is discovered by NWS but never appears in the aviationweather payload
+  (confirmed live twice); it is silently skipped, which is correct, but a station that
+  permanently never reports effectively reduces k from 8 to 7 for Miami.
+
+[OPEN -- filed 2026-08-25 by batch-56's follow-up verification] The other 5 hourly cities settle on THE WEATHER COMPANY, not METAR -- same mis-reference class batch-52 found for Miami, never measured
+Priority: Medium -- not a live-trading risk today (hourly live orders are gated), but it is the
+  same defect batch-52 spent a whole batch fixing for ONE city, now suspected for five.
+Files: kalshi_weather_index.py (docstring corrected by batch-56, no logic change),
+  weather_markets.py (_analyze_hourly_trade / _get_combined_station_bias), metar.py
+  (MARKET_STATION_MAP) -- no code changed by this entry, measurement/design question only.
+
+Problem:
+  batch-52 established that KXTEMPMIAH settles on the Synoptic-sourced Kalshi Weather Index
+  rather than KMIA METAR, and measured 1.6-2.0F mean divergence to prove the model was
+  referencing the wrong variable. Its module docstring then asserted, as the contrast case,
+  that "the other 5 hourly cities (KXTEMPNYCH/AUSH/CHIH/LAXH/DCH)" settle on METAR.
+
+  Re-read live from the Kalshi markets API on 2026-08-25, that contrast is false. All five
+  settle on **The Weather Company**:
+
+    KXTEMPNYCH-26AUG2501-T71.99 rules_primary: "If the temperature recorded at Central Park,
+    New York City for Aug 25, 2026 1 AM EDT as reported by The Weather Company (for coordinates
+    KNYC), is above 71.99, then the market resolves to Yes."
+
+    rules_secondary: "the official and final value used to determine this market is the
+    maximum/minimum temperature as reported by the Weather Company. ... Preliminary Weather
+    Company data may be subject to rounding and conversion differences from the final reported
+    value."
+
+  Checked across all six hourly series (3 open markets each): Miami -> Synoptic, the other five
+  -> The Weather Company. No production module in this repo mentions The Weather Company at all
+  -- the only occurrences are in tests/test_batch51_holiday_rain.py, i.e. batch-51's
+  settlement-source watcher fixtures, which is the watcher built to catch exactly this and
+  which may well already be flagging it.
+
+  So the bot models all 6 hourly cities off METAR/CLI-derived station bias while ZERO of them
+  actually settle on METAR. TWC ingests ASOS as an input so the divergence is plausibly much
+  smaller than Miami's multi-station-index case -- the rules text explicitly warns about
+  "rounding and conversion differences", which is a small-magnitude hint, not a large one. But
+  it has never been measured, and "plausibly small" is precisely the assumption batch-52
+  disproved for Miami.
+
+Why not fixed now:
+  Out of batch-56's scope by the same-payload test -- batch-56 owns a Miami-only shadow
+  observation collector, while this is the hourly probability path for five different cities,
+  needing its own measurement pass and possibly its own data source. Fixing it blind (e.g.
+  swapping in a TWC feed) without first measuring the divergence would repeat the mistake this
+  project keeps re-learning.
+
+Next step (cheap, and it is a measurement not a change):
+  Run batch-52's own experiment shape against one non-Miami hourly city -- poll TWC's published
+  value for the market's coordinates (weather.com/kalshi is named in Kalshi's own help centre as
+  where "Historical readings and market data are available") alongside that city's METAR, and
+  measure divergence at settle-hour-adjacent timestamps. Gate on the same >=1F bar batch-52
+  used. If it clears, this becomes a real modelling item for five cities at once; if divergence
+  is consistently <0.5F, close this entry with the number recorded and the METAR proxy
+  documented as validated rather than assumed.
+
+  Note the asymmetry that makes this worth doing even though hourly live trading is gated:
+  KXTEMPMIAH already pools into the SHARED T_hourly calibration fit and the pooled hourly
+  settled-sample gate (see the batch-52 opus-review M-1 entry above). If five more cities are
+  also mis-referenced, that pooled fit is not "one bad city among five good ones" -- it is six
+  for six, which changes the reading of M-1 entirely.

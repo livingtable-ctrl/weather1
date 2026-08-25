@@ -3,8 +3,22 @@ Kalshi Weather Index live-data feed (batch-52).
 
 KXTEMPMIAH settles on "Synoptic Data ... in accordance with the Kalshi
 Weather Index Methodology" -- a 5-contributor QC'd multi-station index --
-NOT KMIA METAR like the other 5 hourly cities (KXTEMPNYCH/AUSH/CHIH/LAXH/
-DCH). Kalshi serves the settlement value in real time via
+and it is the ONLY one of the 6 hourly cities that does.
+
+CORRECTION (2026-08-25, batch-56): this docstring previously said the other
+5 hourly cities (KXTEMPNYCH/AUSH/CHIH/LAXH/DCH) settle on "KMIA METAR".
+That is wrong twice over. Re-read live from each series' own rules_primary:
+all 5 settle on **The Weather Company** -- e.g. KXTEMPNYCH-26AUG2501-T71.99
+reads "as reported by The Weather Company (for coordinates KNYC)", and its
+rules_secondary warns that "Preliminary Weather Company data may be subject
+to rounding and conversion differences from the final reported value". So
+they are not METAR-settled at all, and the bot's METAR-based hourly
+modelling is mis-referenced for those 5 the same way it was for Miami --
+see backlog.txt's own entry on this, filed by batch-56. Nothing in this
+module depends on the wrong claim (it only ever touches Miami); the
+correction is here so the next reader does not inherit it.
+
+Kalshi serves the Miami settlement value in real time via
 GET /trade-api/v2/live_data/weather/miami (public, minute-resolution
 {t, v, contributors, status} timeseries, plus a top-level config_version).
 
