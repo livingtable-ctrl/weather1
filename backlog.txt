@@ -25342,6 +25342,32 @@ Problem:
   Root cause: AUD-0076's fix (batch-09) deliberately scoped to the 3 ticker-taking read-only GET methods the audit cited; order_id-taking methods were out of scope for that fix and were not separately audited.
   Recommendation: Add an order_id format check (a UUID-shaped regex, e.g. `^[0-9a-f-]{1,64}$` case-insensitive, or a real UUID parse) mirroring `_validate_ticker_format`'s approach but with the correct charset for Kalshi's actual order_id format -- verify the real format (grep live execution_log.db / order responses) before picking the regex, rather than assuming uppercase like tickers.
 
+SCOPE EXPANDED 2026-08-24 (batch-48's backlog re-verification sweep -- no
+  fix yet, entry stays OPEN; recorded here rather than as its own separate
+  entry because it is the SAME one-helper fix, and splitting it would let a
+  future implementer close this entry having patched only 3 of the 4 sites):
+  A FOURTH unvalidated order_id path-interpolation site now exists --
+  `kalshi_client.get_order_queue_position` (kalshi_client.py:855,
+  `self._get(f"/portfolio/orders/{order_id}/queue_position", auth=True)`),
+  added by batch-49 item 2 AFTER this entry was filed. Same pattern, no
+  guard. It is read-only instrumentation (its own docstring says it is not
+  wired into any trading decision), so it does not raise this entry's
+  Priority -- but it must be covered by the same fix.
+  Also worth noting for whoever picks this up: the same review pass that
+  added a path-segment guard to `get_live_weather_index`
+  (kalshi_client.py:803, "opus review L-1" -- an explicit
+  `re.fullmatch(r"[a-zA-Z]{1,32}", city)` check whose own docstring calls
+  it "the one path-interpolating method in the file that had no equivalent
+  guard") did NOT apply the same treatment to any order_id method. So the
+  pattern has now been consciously applied elsewhere in this exact file
+  while these 4 sites stayed unguarded, and that docstring's "the one
+  ... method" claim is itself now inaccurate -- correct it as part of this
+  fix.
+  Updated Files list (the original cites above have drifted): get_order
+  kalshi_client.py:1233, cancel_order :1243, amend_order :1314,
+  get_order_queue_position :855, plus main.py's cmd_cancel (unchanged --
+  still the only raw-CLI-input path).
+
 [OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0015's base_url-inversion fix), pre-existing and out of scope for that fix (different file/subsystem: the WebSocket price feed, not the REST client's base_url selection); flagged because it contradicts the audit's own "KalshiClient.__init__ is the sole inverted-logic outlier" evidence claim] kalshi_ws.py's WebSocket URL is hardcoded to the PROD host with no KALSHI_ENV read at all -- in demo mode, order_executor's reprice/chase and flash-crash circuit breaker still consume real production market prices
 Priority: LOW -- read-only price consumption, not an order-placement path; a demo-mode operator gets production-accurate (not demo-market) prices feeding reprice/chase logic, which could make demo-mode backtesting/dry-run behavior misleading rather than unsafe
 Files: kalshi_ws.py:28, order_executor.py:146,2586
@@ -30889,3 +30915,46 @@ What it would look like:
   which actions to cover (Approve in SignalsTab, Close in PositionsTab -- check RiskTab and any
   other order-adjacent controls too) and whether hard-block or soft-warn is the right UX for a
   paper-trading dashboard versus what it should be if/when live trading is enabled.
+
+======================================================
+[OPEN 2026-08-24 -- found during batch-48's backlog re-verification sweep, while confirming AUD-0061 (the original 6-flag README gap) was genuinely fixed; these two flags postdate that entry and were never added, so closing AUD-0061 would have silently left the same class of gap open] README.md's *_TRADING_ENABLED table is missing 2 newer shadow flags (HOLIDAY_TEMP, BETWEEN), and .env.example documents none of the 8 at all
+Priority: LOW -- documentation-only, no behavior affected. Both flags fail
+  safe when unset (shadow-only is the default; an operator who never sets
+  them gets no live orders from those families), so the risk is an
+  operator not knowing a capability exists, not an unsafe default.
+Files: README.md (env-var table, ~line 287-292), .env.example,
+  weather_markets.py:1318 (HOLIDAY_TEMP_TRADING_ENABLED),
+  weather_markets.py:1374 (BETWEEN_TRADING_ENABLED)
+
+Problem:
+  `grep -rhoE "[A-Z_]+_TRADING_ENABLED" --include=*.py .` finds 8 shadow-
+  gate flags plus the separate LIVE_TRADING_ENABLED master gate. README.md
+  lines 287-292 document exactly 6 of the 8 (HOURLY, RAIN, SNOW, HURRICANE,
+  HURRICANE_NEXT_EVENT, STORM_ORDER) -- the set AUD-0061 asked for and
+  commit 330b567e delivered. HOLIDAY_TEMP_TRADING_ENABLED and
+  BETWEEN_TRADING_ENABLED were both added after AUD-0061 was filed and
+  appear in no user-facing doc.
+  Separately and more broadly: .env.example contains ZERO of the 8 (its
+  only trading-related line is `TRADING_PAUSED=false` at line 65), so an
+  operator setting up from the example file has no indication any of these
+  families exist, documented-in-README or not. AUD-0061's own scope was
+  README-only, so this half was never in scope for that fix either.
+  Evidence: grep of README.md for `_TRADING_ENABLED` returns exactly the 6
+  rows at 287-292; grep of .env.example returns nothing. Both flags
+  verified live in master's own tracked code (not just a worktree) at
+  weather_markets.py:1318 / :1374, each gated as
+  `os.getenv("<FLAG>", "").strip().lower() not in (...)` plus a >=20
+  settled-prediction floor, matching the other 6 flags' shape exactly.
+
+Recommendation:
+  Add the 2 missing rows to README.md's existing table, mirroring the
+  wording of the 6 already there (both use the same "=1 AND >=20 settled
+  predictions" gate shape, so the existing sentence template fits without
+  modification). Separately decide whether .env.example should list all 8
+  as commented-out lines -- that's a real choice, not an oversight to
+  mechanically fix: the file currently documents only flags an operator is
+  expected to SET, and these 8 are all deliberately-unset shadow gates, so
+  listing them could read as encouragement to enable them. If it's left
+  out, say so explicitly in the README table's intro line so the omission
+  is visibly deliberate rather than looking like the same drift this entry
+  describes.
