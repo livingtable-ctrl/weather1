@@ -522,8 +522,8 @@ class TestHourlyLiveOk:
 
 
 class TestComputeMarketImpliedExcludesHourly:
-    """compute_market_implied_distributions() groups by (city, target_date)
-    independently of and before analyze_trade() -- the analyze_trade guard
+    """compute_market_implied_distributions() groups by (city, target_date,
+    var) independently of and before analyze_trade() -- the analyze_trade guard
     above does not protect it. Hourly brackets must not be silently pooled
     into a daily market's event group and corrupt its distribution fit."""
 
@@ -577,7 +577,7 @@ class TestComputeMarketImpliedExcludesHourly:
         fit_daily_only = wm.compute_market_implied_distributions(daily_only)
         fit_mixed = wm.compute_market_implied_distributions(daily_only + hourly_extra)
 
-        assert fit_daily_only[("NYC", "2026-07-20")] is not None, (
+        assert fit_daily_only[("NYC", "2026-07-20", "max")] is not None, (
             "test fixture itself is degenerate (fit didn't converge) -- "
             "this assertion isn't testing anything real"
         )

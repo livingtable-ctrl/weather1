@@ -1625,8 +1625,8 @@ class TestCheckSeriesDriftSnow:
 
 
 class TestComputeMarketImpliedExcludesMonthlySnow:
-    """compute_market_implied_distributions() groups by (city, target_date)
-    independently of analyze_trade() -- this exclusion was already prefix-
+    """compute_market_implied_distributions() groups by (city, target_date,
+    var) independently of analyze_trade() -- this exclusion was already prefix-
     based (not model-existence-based) at Step 1, so it needs no changes for
     Step 2, but must keep working now that snow tickers carry real target
     values downstream."""
@@ -1658,7 +1658,7 @@ class TestComputeMarketImpliedExcludesMonthlySnow:
         fit_daily_only = wm.compute_market_implied_distributions(daily_only)
         fit_mixed = wm.compute_market_implied_distributions(daily_only + snow_extra)
 
-        assert fit_daily_only[("NYC", "2026-07-20")] is not None
+        assert fit_daily_only[("NYC", "2026-07-20", "max")] is not None
         assert fit_daily_only == fit_mixed, (
             "monthly-snow brackets changed the daily market-implied fit -- "
             "they were not excluded before event-grouping"
@@ -1695,10 +1695,17 @@ class TestComputeMarketImpliedExcludesMonthlySnow:
 
         result = wm.compute_market_implied_distributions(daily_only + [snow_market])
 
-        assert ("Denver", "2026-12-01") not in result, (
+        # Prefix-matched, not exact-key-matched: the temperature key is a
+        # 3-tuple now, so asserting the old 2-tuple's absence would pass
+        # vacuously no matter what the snow market did.
+        assert not [k for k in result if k[:2] == ("Denver", "2026-12-01")], (
             "snow market reached event-grouping despite a now-parseable date -- "
             "the explicit prefix exclusion isn't doing real work"
         )
+        # Positive control: the daily ladder DID reach grouping in this same
+        # call, so the assertion above is about the snow market's exclusion and
+        # not about compute_market_implied_distributions() returning nothing.
+        assert ("NYC", "2026-07-20", "max") in result
 
 
 class TestGroupMarketsExcludesMonthlySnow:

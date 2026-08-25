@@ -71,6 +71,51 @@ def _safe_market_price(market: dict, *keys: str) -> float:
         return 0
 
 
+# A16 depth lookup costs one authenticated request per rung, so it is capped
+# rather than left proportional to however many strikes an event lists. A real
+# temperature ladder runs 6-10 rungs; 20 is generous headroom, and a rung past
+# the cap reports depth=None -- never a zero, which would read as "no size"
+# rather than "not looked up".
+_STRIKE_LADDER_MAX_DEPTH_LOOKUPS = 20
+
+
+def _orderbook_touch_depth(client, ticker: str) -> dict | None:
+    """Contracts resting at the touch on both sides of one rung's book.
+
+    On a binary book the size available to a YES BUYER is the resting NO bids,
+    not a separate "yes ask" queue -- buying YES at 1-p is the same trade as
+    selling NO at p -- so yes_ask_qty reads off the `no` side. Both lists come
+    back ascending by price with the best bid LAST, the same shape main.py's own
+    orderbook display reads.
+
+    Returns None (not zeroes) when the book can't be fetched, so a consumer can
+    tell "no size at the touch" from "depth was never looked up".
+    """
+    try:
+        book = client.get_orderbook(ticker)
+    except Exception as exc:
+        _log.warning("strike-ladder: orderbook failed for %s: %s", ticker, exc)
+        return None
+
+    def _touch_qty(levels):
+        if not levels:
+            return 0.0
+        try:
+            return float(levels[-1][1])
+        except (IndexError, KeyError, TypeError, ValueError):
+            # KeyError included deliberately: a level arriving as a dict
+            # ({"price": ..., "count": ...}) rather than a [price, qty] pair
+            # raises KeyError, which is NOT caught by the enclosing function's
+            # own try -- it would escape and 500 the whole endpoint over one
+            # malformed rung.
+            return None
+
+    return {
+        "yes_bid_qty": _touch_qty(book.get("yes_dollars", book.get("yes", []))),
+        "yes_ask_qty": _touch_qty(book.get("no_dollars", book.get("no", []))),
+    }
+
+
 def _get_live_market_snapshot(max_markets: int = 5) -> list[dict]:
     """Return cached top market snapshot for SSE. Populated by analyze route."""
     try:
@@ -641,6 +686,11 @@ def _build_app(client):
                 # instead of trusting ensemble_member_scores' frozen copy, and
                 # is report-only.
                 "get_station_bias_by_lead",
+                # A11 (batch-67): hold-to-settlement measured against exiting
+                # earlier. Display-only, like every other entry here -- no exit
+                # path reads it (batch-58's pre_live_exit_check owns when a live
+                # exit may fire, and this analysis is not one of its inputs).
+                "get_exit_timing_advantage",
                 "get_model_brier_scores",
                 "get_optimal_threshold",
                 "get_analysis_bias",
@@ -990,6 +1040,156 @@ def _build_app(client):
             return jsonify({"error": str(exc)}), 500
         finally:
             _corr_recompute_lock.release()
+
+    @app.route("/api/strike-ladder")
+    def api_strike_ladder():
+        """A16: one city-day's full strike ladder, model against market.
+
+        Query params: `city` (required), `date` (required, ISO YYYY-MM-DD),
+        `var` ("max"/"min", optional -- omit for an event family with no
+        HIGH/LOW distinction), `depth` ("0" to skip the per-rung order-book
+        lookups).
+
+        The ladder is fetched LIVE rather than read from a stored snapshot,
+        because no stored artifact holds one (verified 2026-08-25): the signals
+        cache keeps 23 of 678 scanned markets -- everything filtered as
+        extreme-priced, wide or illiquid, i.e. exactly the ladder's wings, never
+        reaches it -- and 297 of 328 (city, market_date, var) groups in
+        `predictions` hold a single strike. The MODEL side does come from
+        storage: see tracker.get_model_distribution_for_event.
+
+        Read-only. Nothing here places, sizes or amends an order, and the
+        multi-leg spread the ladder-inconsistency read describes is a VIEW of a
+        disagreement, not an instruction to execute it -- see
+        weather_markets._ladder_inconsistency's own caveat on why a two-leg edge
+        overstates the opportunity.
+
+        COST: up to 21 sequential authenticated round-trips per request (one
+        paginated /markets plus one /markets/{t}/orderbook per rung, capped at
+        _STRIKE_LADDER_MAX_DEPTH_LOOKUPS), and kalshi_client has no client-side
+        rate limiter. Fine for an operator opening a panel; do NOT put this
+        behind a poll without adding caching first. `depth=0` drops it to one.
+        """
+        import re as _re
+        from datetime import date as _date
+
+        from flask import request
+
+        city = (request.args.get("city") or "").strip()
+        target_date = (request.args.get("date") or "").strip()
+        var = (request.args.get("var") or "").strip() or None
+        if not city or not target_date:
+            return jsonify({"error": "city and date are required"}), 400
+        # The regex is load-bearing, not belt-and-braces: on Python 3.11+
+        # date.fromisoformat() also accepts "20260825", "2026-W35-1" and
+        # "2026-08-25T00:00:00". Any of those would validate here and then match
+        # nothing downstream (both `p.market_date = ?` and the
+        # `m_date.isoformat() != target_date` filter compare the RAW string),
+        # returning available:false with a reason that blames missing data for
+        # what is really a malformed request.
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", target_date):
+            return jsonify({"error": "date must be ISO YYYY-MM-DD"}), 400
+        try:
+            _date.fromisoformat(target_date)
+        except ValueError:
+            return jsonify({"error": "date must be ISO YYYY-MM-DD"}), 400
+        if var is not None and var not in ("max", "min"):
+            return jsonify({"error": "var must be 'max' or 'min'"}), 400
+
+        try:
+            from tracker import get_model_distribution_for_event
+            from weather_markets import (
+                _var_from_ticker_prefix,
+                evaluate_strike_ladder,
+                parse_city_date,
+            )
+
+            distribution = get_model_distribution_for_event(city, target_date, var)
+            if distribution is None:
+                # 200, not 404: the event is a perfectly valid thing to ask
+                # about, there is simply no recent logged forecast to draw a
+                # model ladder from. A 404 would read as "no such city-day".
+                return jsonify(
+                    {
+                        "city": city,
+                        "target_date": target_date,
+                        "var": var,
+                        "available": False,
+                        "reason": (
+                            "no logged forecast for this event inside the anchor "
+                            "window -- nothing to evaluate the ladder against"
+                        ),
+                    }
+                )
+
+            # status="open" is load-bearing: without it Kalshi returns the
+            # series' settled history too, and a finalized rung quoting 100/100
+            # would enter the ladder as a live strike with a 100% market
+            # probability.
+            markets = client.get_markets(
+                series_ticker=distribution["series_ticker"], status="open"
+            )
+            siblings = []
+            for market in markets:
+                m_city, m_date = parse_city_date(market)
+                if m_city != city or m_date is None:
+                    continue
+                if m_date.isoformat() != target_date:
+                    continue
+                # Same var check the grouping key uses, so this endpoint can
+                # never assemble a ladder out of the HIGH and LOW families at
+                # once -- the exact pooling batch 67 fixed in
+                # compute_market_implied_distributions.
+                if _var_from_ticker_prefix(market.get("ticker", "").upper()) != var:
+                    continue
+                siblings.append(market)
+
+            if request.args.get("depth") != "0":
+                # Order by the rung's own boundary before slicing, rather than
+                # spending the budget on whatever order Kalshi happened to
+                # return. Rungs evaluate_strike_ladder will drop anyway (no
+                # parseable condition) are excluded first, so a lookup is never
+                # spent on a rung that cannot appear in the payload.
+                from weather_markets import _parse_market_condition, _prob_threshold
+
+                def _sort_key(market):
+                    try:
+                        condition = _parse_market_condition(market)
+                    except Exception:
+                        return None
+                    if condition is None:
+                        return None
+                    if condition.get("type") == "between":
+                        return condition.get("lower")
+                    return _prob_threshold(condition)
+
+                ordered = sorted(
+                    ((_sort_key(m), m) for m in siblings),
+                    key=lambda pair: (pair[0] is None, pair[0] or 0.0),
+                )
+                for key, market in ordered[:_STRIKE_LADDER_MAX_DEPTH_LOOKUPS]:
+                    if key is None:
+                        continue
+                    market["_depth"] = _orderbook_touch_depth(
+                        client, market.get("ticker", "")
+                    )
+
+            payload = evaluate_strike_ladder(
+                siblings, distribution["mean"], distribution["sigma"]
+            )
+            payload["available"] = payload["n_strikes"] > 0
+            payload["city"] = city
+            payload["target_date"] = target_date
+            payload["var"] = var
+            payload["model_distribution"] = distribution
+            payload["n_markets_fetched"] = len(markets)
+            payload["depth_lookup_cap"] = _STRIKE_LADDER_MAX_DEPTH_LOOKUPS
+            return jsonify(payload)
+        except Exception as exc:
+            _log.warning(
+                "api/strike-ladder failed for %s %s: %s", city, target_date, exc
+            )
+            return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/sameday-calibration")
     def api_sameday_calibration():

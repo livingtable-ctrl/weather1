@@ -8136,14 +8136,33 @@ def market_implied_rain_event_key(ticker: str) -> tuple[str, str, int, int] | No
 
 def compute_market_implied_distributions(
     markets: list[dict],
-) -> dict[tuple[str, str] | tuple[str, str, int, int], dict | None]:
+) -> dict[tuple[str, str, str | None] | tuple[str, str, int, int], dict | None]:
     """
     Group `markets` (a full flat scan result, already fetched — no new
     network calls) into events and fit a market-implied Normal distribution
     per event via fit_market_implied_distribution. Temperature events are
-    keyed by (city, date_iso); KXRAIN*M monthly-rain events are keyed by
+    keyed by (city, date_iso, var) -- var being "max"/"min"/None from
+    _var_from_ticker_prefix(); KXRAIN*M monthly-rain events are keyed by
     (city, "RAIN", year, month) via market_implied_rain_event_key() (see
     that function for why the key shapes are kept structurally distinct).
+
+    The temperature key carries `var` because a city-day lists BOTH a daily
+    HIGH ladder and a daily LOW ladder, and parse_city_date() resolves the
+    identical (city, target_date) for both -- so the previous 2-tuple key fitted
+    one Normal across two different random variables whenever both families
+    were in the scan. Fixed 2026-08-25 (batch 67); see the grouping loop's own
+    comment for the production evidence.
+
+    Two consequences of that fix worth knowing:
+      - fit_market_implied_distribution()'s 3-liquid-point thin-book floor now
+        applies PER FAMILY rather than to the pooled set, so a city-day with 2
+        liquid HIGH rungs and 2 liquid LOW rungs goes from one (wrong) fit to
+        two Nones. Correct, but the market_implied signal's own graduation
+        counter (_count_signal_column("implied_mean")) will accrue more slowly.
+      - every `predictions.implied_mean` row written BEFORE 2026-08-25 came
+        from the pooled fit on any city-day carrying both families. The settled
+        correlation check this signal's ENABLEMENT TRIGGER requires must
+        exclude those rows, or it will be measuring the bug.
 
     Computed once per scan; callers attach the per-event result onto each
     market's own analysis dict during the per-market analysis loop rather
@@ -8188,7 +8207,7 @@ def compute_market_implied_distributions(
     skip) -- daily rain never reaches a fit either way since it's
     track-only, but excluded explicitly rather than relying on that.
     """
-    temp_by_event: dict[tuple[str, str], list[dict]] = {}
+    temp_by_event: dict[tuple[str, str, str | None], list[dict]] = {}
     rain_by_event: dict[tuple[str, str, int, int], list[dict]] = {}
     for m in markets:
         ticker = m.get("ticker", "")
@@ -8210,9 +8229,24 @@ def compute_market_implied_distributions(
         city, target_date = parse_city_date(m)
         if city is None or target_date is None:
             continue
-        temp_by_event.setdefault((city, target_date.isoformat()), []).append(m)
+        # Keyed on var as well as (city, date): a city-day lists a HIGH ladder
+        # AND a LOW ladder, both resolving to the same (city, target_date) via
+        # parse_city_date() and both carrying ordinary above/below rungs in
+        # degrees F -- so a 2-tuple key pooled two different random variables
+        # (e.g. "high > 82" and "low > 71" for Minneapolis 2026-08-13) into one
+        # Normal fit. Confirmed against production data 2026-08-25: 16 distinct
+        # city-days in `predictions` alone carry both families, and predictions
+        # is a heavily filtered subset of what a scan actually sees. Same class
+        # of corruption as the hourly-bracket exclusion above, which this
+        # module's own docstring already calls out -- it just came from the KEY
+        # rather than from an unfiltered family.
+        temp_by_event.setdefault(
+            (city, target_date.isoformat(), _var_from_ticker_prefix(_m_tkr_up)), []
+        ).append(m)
 
-    results: dict[tuple[str, str] | tuple[str, str, int, int], dict | None] = {
+    results: dict[
+        tuple[str, str, str | None] | tuple[str, str, int, int], dict | None
+    ] = {
         key: fit_market_implied_distribution(siblings)
         for key, siblings in temp_by_event.items()
     }
@@ -8258,6 +8292,8 @@ def resolve_market_implied_for_analysis(
     applies or the event key has no computed result -- exactly matching
     dict.get()'s existing behavior, so callers can keep assigning the
     return value straight onto `analysis["market_implied"]` unconditionally.
+    That includes a var mismatch: a HIGH ticker whose city-day only ever
+    produced a LOW group now reads None rather than the LOW group's fit.
 
     Opus-review-caught (batch-51): is_holiday_temp_ticker() is excluded
     here too, symmetric with compute_market_implied_distributions()'s own
@@ -8277,12 +8313,383 @@ def resolve_market_implied_for_analysis(
         return None
     if ev_city and ev_date:
         ev_date_iso = ev_date.isoformat() if hasattr(ev_date, "isoformat") else ev_date
-        return market_implied_by_event.get((ev_city, ev_date_iso))
+        # 3-tuple, matching compute_market_implied_distributions()'s produce
+        # side: the daily HIGH and LOW ladders for one city-day are different
+        # random variables and must never read each other's fit. Derived from
+        # the ticker via the same _var_from_ticker_prefix() the produce side
+        # uses, so the two can only ever agree.
+        return market_implied_by_event.get(
+            (ev_city, ev_date_iso, _var_from_ticker_prefix(ticker.upper()))
+        )
     if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
         rain_key = market_implied_rain_event_key(ticker)
         if rain_key is not None:
             return market_implied_by_event.get(rain_key)
     return None
+
+
+# ── A16: the model's own ladder, priced against the market's ────────────────
+
+# Below this many single-sided rungs the ladder-inconsistency read is withheld
+# entirely. Two rungs give exactly one bucket, which is a single number with no
+# shape to disagree about; three is the minimum at which "where does the
+# market's ladder shape depart from the model's" is a real question. Matches
+# fit_market_implied_distribution()'s own 3-point thin-book floor.
+LADDER_MIN_RUNGS_FOR_SHAPE = 3
+
+
+def _ladder_model_prob(condition: dict, mean: float, sigma: float) -> float | None:
+    """P(condition) under Normal(mean, sigma), for one rung of a ladder.
+
+    The same mass definition fit_market_implied_distribution() applies on the
+    market side -- above/precip is 1 - CDF(threshold), below is CDF(threshold),
+    between is CDF(upper) - CDF(lower) -- so the model ladder and the market
+    ladder this is compared against are built from identical arithmetic and any
+    difference between them is a real disagreement rather than a convention
+    mismatch. Returns None for a condition type with no continuous-boundary
+    interpretation (storm_order, hurricane_count and friends), which the caller
+    drops from the ladder rather than pricing with a distribution that does not
+    describe them.
+    """
+    if sigma <= 0:
+        return None
+    from scipy.stats import norm as _norm
+
+    ctype = condition.get("type")
+    if ctype in ("above", "precip_month_total"):
+        return float(1.0 - _norm.cdf((_prob_threshold(condition) - mean) / sigma))
+    if ctype == "below":
+        return float(_norm.cdf((_prob_threshold(condition) - mean) / sigma))
+    if ctype == "between":
+        lower, upper = condition.get("lower"), condition.get("upper")
+        if lower is None or upper is None:
+            return None
+        return float(
+            _norm.cdf((upper - mean) / sigma) - _norm.cdf((lower - mean) / sigma)
+        )
+    return None
+
+
+def evaluate_strike_ladder(
+    markets: list[dict],
+    model_mean: float,
+    model_sigma: float,
+) -> dict:
+    """A16: evaluate the model's distribution at EVERY strike in one event's
+    ladder, priced against the market's own quote at each.
+
+    The scanner analyses one strike at a time and lists its signals flat, so a
+    better strike sitting immediately next to the flagged one is invisible, and a
+    market ladder that disagrees with the model's own SHAPE cannot be seen at all.
+    This takes an event's full sibling ladder (already fetched -- no network calls
+    here) plus the model's Normal(mean, sigma) for that event, and returns the
+    per-strike comparison, the best crossable opportunity in the group, every rung
+    where no crossable edge exists, and a ladder-inconsistency read.
+
+    Edges are quoted ACROSS the spread and NET OF THE TAKER FEE, because that is
+    the trade being described. `edge_yes` is model_prob - yes_ask - fee (what
+    lifting the offer is worth) and `edge_no` is yes_bid - model_prob - fee
+    (buying NO at its own offer, which is 1 - the yes bid). The fee matters more
+    than it looks: Kalshi's taker fee is about 2c per contract at the money
+    (utils.kalshi_taker_fee, KALSHI_FEE_RATE = 0.07), which is larger than most
+    edges a ladder like this surfaces. This bot's own live fills pay $0 because
+    they rest at the mid as maker orders -- but a ladder deliberately quoted
+    across the spread is describing the taker side, where the fee applies.
+
+    A rung whose better side is still non-positive net of fees is one where the
+    market's two-sided quote already contains the model's own probability -- there
+    is nothing to take at any size -- and those rungs are listed under
+    `no_crossable_edge`.
+
+    A rung with an EMPTY book on the side being bought is dropped from that
+    side's edge rather than priced at zero. parse_market_price() returns 0.0 for
+    a missing quote (see its own `mid = ... if yes_ask_f > 0 else yes_bid_f`),
+    so a deep-ITM wing with no resting offer would otherwise be reported as a
+    ~100-point edge and win `best` -- and one-sided wing books are exactly what
+    this view exists to surface, since it bypasses the liquidity gates that
+    would otherwise filter them.
+
+    This is a VIEW, not an order path. Multi-leg execution is a separate and much
+    larger step and is deliberately not built here: the ladder is worth having
+    even if only the single best leg is ever taken.
+
+    Returns {"model_mean", "model_sigma", "n_strikes", "strikes", "best",
+    "no_crossable_edge", "ladder_inconsistency", "definitions"}.
+    """
+    from utils import kalshi_taker_fee
+
+    strikes: list[dict] = []
+    for market in markets:
+        ticker = market.get("ticker", "")
+        condition = _parse_market_condition(market)
+        if condition is None:
+            continue
+        model_prob = _ladder_model_prob(condition, model_mean, model_sigma)
+        if model_prob is None:
+            continue
+        # coalesce_market_price raises ValueError on a non-numeric price string
+        # and its docstring asks every call site to stay inside a per-market
+        # guard -- consistency.py:309 added exactly this for exactly this
+        # reason. Without it one malformed rung 500s the whole ladder.
+        try:
+            prices = parse_market_price(market)
+        except (ValueError, TypeError) as exc:
+            _log.warning(
+                "evaluate_strike_ladder: unparseable price for %s -- skipping: %s",
+                ticker,
+                exc,
+            )
+            continue
+        if not prices["has_quote"]:
+            continue
+        yes_bid = prices["yes_bid"]
+        yes_ask = prices["yes_ask"]
+        # Buying YES pays the ask; buying NO pays 1 - the bid. A zero on either
+        # is "no resting order", not "free" -- see the docstring.
+        edge_yes: float | None = None
+        if yes_ask > 0:
+            edge_yes = model_prob - yes_ask - kalshi_taker_fee(1, yes_ask)
+        edge_no: float | None = None
+        if yes_bid > 0:
+            no_ask = 1.0 - yes_bid
+            edge_no = (1.0 - model_prob) - no_ask - kalshi_taker_fee(1, no_ask)
+        if edge_yes is None and edge_no is None:
+            continue
+        # Narrowed for mypy AND for the reader: the `both None` case already
+        # `continue`d above, so exactly one of these branches has a real float.
+        if edge_no is None or (edge_yes is not None and edge_yes >= edge_no):
+            assert edge_yes is not None
+            best_side, best_edge = "YES", edge_yes
+        else:
+            best_side, best_edge = "NO", edge_no
+        strikes.append(
+            {
+                "ticker": ticker,
+                "condition_type": condition.get("type"),
+                # Named `boundary`, not `threshold`: this is the continuous
+                # decision boundary (79.5 for a T79 above rung), matching the
+                # `boundary` key tracker.get_model_distribution_for_event() puts
+                # on its anchors. The raw ticker value lives beside it as
+                # `threshold` there, and a consumer joining the two payloads on
+                # the wrong one would be off by half a degree.
+                "boundary": (
+                    None
+                    if condition.get("type") == "between"
+                    else _prob_threshold(condition)
+                ),
+                "lower": condition.get("lower"),
+                "upper": condition.get("upper"),
+                "model_prob": round(model_prob, 6),
+                "market_prob": round(prices["implied_prob"], 6),
+                "yes_bid": yes_bid,
+                "yes_ask": yes_ask,
+                "edge_yes": None if edge_yes is None else round(edge_yes, 6),
+                "edge_no": None if edge_no is None else round(edge_no, 6),
+                "best_side": best_side,
+                "best_edge": round(best_edge, 6),
+                # float(): volume_fp/open_interest_fp arrive as FixedPointCount
+                # STRINGS ("10.00") on the live API, not numbers -- see
+                # is_stale()'s docstring, where comparing one with `> 0` once
+                # crashed the production scan loop.
+                "volume": float(market.get("volume_fp") or market.get("volume") or 0),
+                "open_interest": float(
+                    market.get("open_interest_fp") or market.get("open_interest") or 0
+                ),
+                # Populated by the caller when it fetched an order book for this
+                # rung; left None rather than faked so a consumer can tell "no
+                # size at the touch" from "depth was never looked up".
+                "depth": market.get("_depth"),
+            }
+        )
+
+    strikes.sort(key=lambda s: (s["boundary"] is None, s["boundary"] or 0.0))
+
+    best = max(strikes, key=lambda s: s["best_edge"]) if strikes else None
+    no_crossable_edge = [s["ticker"] for s in strikes if s["best_edge"] <= 0]
+
+    return {
+        "model_mean": round(model_mean, 4),
+        "model_sigma": round(model_sigma, 4),
+        "n_strikes": len(strikes),
+        "strikes": strikes,
+        # `best` is still reported when its own best_edge is non-positive: the
+        # honest answer to "which strike is the best opportunity" can be "the
+        # least bad one, and it is not an opportunity". A caller must read
+        # best_edge, not the presence of `best`, to decide there is anything here.
+        "best": best,
+        # Named for what the predicate actually tests -- the quote brackets the
+        # model's probability once fees are paid -- rather than the stronger
+        # claim that the market is better calibrated, which nothing here
+        # establishes.
+        "no_crossable_edge": no_crossable_edge,
+        "ladder_inconsistency": _ladder_inconsistency(strikes),
+        "definitions": {
+            "edge_yes": (
+                "model_prob - yes_ask - taker fee (lifting the YES offer); "
+                "null when no YES offer rests"
+            ),
+            "edge_no": (
+                "(1 - model_prob) - (1 - yes_bid) - taker fee (lifting the NO "
+                "offer); null when no YES bid rests"
+            ),
+            "no_crossable_edge": (
+                "rungs whose better side still has a non-positive edge net of "
+                "fees -- the quote already contains the model's probability"
+            ),
+            "boundary": (
+                "continuous decision boundary (T79 above -> 79.5), not the raw "
+                "ticker value"
+            ),
+        },
+    }
+
+
+def _survival_quotes(strike: dict) -> tuple[float, float, float, float, str] | None:
+    """One rung re-expressed as the claim "X > boundary": (model, market, cost
+    to buy it, proceeds from selling it, which side of the book that is).
+
+    Real Kalshi temperature events mix above and below rungs, and the two are
+    the same statement inverted -- "below 77 at 0.21" IS "above 76.5" at 0.79.
+    Normalising here is what lets a bucket span the whole ladder instead of only
+    whichever direction happens to dominate it.
+
+    The price legs invert with the claim, which is the part that is easy to get
+    wrong: owning "X > k" on a BELOW rung means buying that rung's NO, so it
+    costs 1 - its yes BID (not its yes ask), and selling it earns 1 - its yes
+    ASK. Reading the raw yes_ask/yes_bid for a below rung would misprice the
+    spread by the full width of the book plus its distance from 0.5.
+
+    Returns None for a rung with no single-sided reading (`between`), which is
+    an interval rather than a point on a survival curve, and for a rung with a
+    zero on either leg -- an empty book, which parse_market_price reports as
+    0.0. Letting one into a bucket produces a negative net debit, i.e. a
+    "spread that pays you to hold it".
+    """
+    ctype = strike.get("condition_type")
+    if strike.get("boundary") is None:
+        return None
+    yes_bid, yes_ask = strike["yes_bid"], strike["yes_ask"]
+    if yes_bid <= 0 or yes_ask <= 0:
+        return None
+    if ctype in ("above", "precip_month_total"):
+        return (
+            strike["model_prob"],
+            strike["market_prob"],
+            yes_ask,
+            yes_bid,
+            "YES",
+        )
+    if ctype == "below":
+        return (
+            1.0 - strike["model_prob"],
+            1.0 - strike["market_prob"],
+            1.0 - yes_bid,
+            1.0 - yes_ask,
+            "NO",
+        )
+    return None
+
+
+def _ladder_inconsistency(strikes: list[dict]) -> dict | None:
+    """Where the market's ladder SHAPE departs most from the model's.
+
+    Adjacent single-sided rungs define a bucket: for boundaries k_lo < k_hi,
+    P(k_lo < X <= k_hi) is P(X > k_lo) - P(X > k_hi) on either curve. The pair
+    whose model bucket differs most from the market's is the sharpest statement
+    of "these two ladders disagree about shape, not just about level".
+
+    The pair is selected on the ABSOLUTE disagreement, so it is priced in
+    whichever direction the disagreement actually points -- `direction` says
+    which. When the model thinks the bucket is worth MORE than the market
+    (positive disagreement) the trade is long the bucket: buy the lower rung's
+    survival claim, sell the upper rung's, for a net debit. When the market
+    thinks it is worth more, the trade is short the bucket: sell the lower, buy
+    the upper, for a net credit. Reporting only the long leg -- as an earlier
+    version did -- puts a large negative number on exactly the cases where the
+    real opportunity is largest.
+
+    `net_cost` is signed: positive is a debit paid, negative is a credit
+    received. `edge_vs_cost` is the model's value of the position minus what it
+    costs, so positive is favourable in both directions.
+
+    Returns None below LADDER_MIN_RUNGS_FOR_SHAPE single-sided rungs, or when no
+    adjacent pair has positive width.
+
+    **The two-leg edge overstates the opportunity, and this is not a caveat the
+    consumer should have to infer.** A level error in the forecast -- the model's
+    mean being a degree or two off -- moves BOTH legs the same way and largely
+    cancels in the bucket, so a bucket edge is a much weaker claim than a
+    single-leg edge of the same size. The `caveat` field says so in the payload
+    itself. Note also that both legs are taker fills, so two taker fees apply
+    and neither is subtracted here.
+    """
+    points: list[tuple[float, dict, tuple]] = []
+    for strike in strikes:
+        quotes = _survival_quotes(strike)
+        if quotes is None:
+            continue
+        points.append((strike["boundary"], strike, quotes))
+    if len(points) < LADDER_MIN_RUNGS_FOR_SHAPE:
+        return None
+    points.sort(key=lambda p: p[0])
+
+    worst: dict | None = None
+    for (k_lo, lo, q_lo), (k_hi, hi, q_hi) in zip(points, points[1:], strict=False):
+        if k_hi <= k_lo:
+            continue
+        model_bucket = q_lo[0] - q_hi[0]
+        market_bucket = q_lo[1] - q_hi[1]
+        disagreement = model_bucket - market_bucket
+        if worst is not None and abs(disagreement) <= abs(worst["disagreement"]):
+            continue
+        if disagreement >= 0:
+            # Long the bucket: pay to buy the lower rung's survival claim,
+            # receive for selling the upper rung's.
+            direction = "long_bucket"
+            net_cost = q_lo[2] - q_hi[3]
+            edge_vs_cost = model_bucket - net_cost
+            lower_action, upper_action = "buy", "sell"
+        else:
+            # Short the bucket: receive for selling the lower rung's claim, pay
+            # to buy the upper rung's. A negative net_cost is a net credit.
+            direction = "short_bucket"
+            net_cost = q_hi[2] - q_lo[3]
+            # The credit received (-net_cost) minus the model's own expected
+            # liability on the bucket it is now short.
+            edge_vs_cost = -net_cost - model_bucket
+            lower_action, upper_action = "sell", "buy"
+        worst = {
+            "lower_leg": lo["ticker"],
+            "upper_leg": hi["ticker"],
+            "lower_boundary": k_lo,
+            "upper_boundary": k_hi,
+            "direction": direction,
+            # Which side of each rung's book the spread actually trades, and
+            # which way. A below rung is a NO-side leg; naming it here keeps a
+            # reader from pricing the spread off the yes quotes shown in
+            # `strikes`.
+            "lower_leg_side": q_lo[4],
+            "upper_leg_side": q_hi[4],
+            "lower_leg_action": lower_action,
+            "upper_leg_action": upper_action,
+            "model_bucket_prob": round(model_bucket, 6),
+            "market_bucket_prob": round(market_bucket, 6),
+            "disagreement": round(disagreement, 6),
+            "net_cost": round(net_cost, 6),
+            "edge_vs_cost": round(edge_vs_cost, 6),
+        }
+    if worst is None:
+        return None
+    worst["n_rungs"] = len(points)
+    worst["caveat"] = (
+        "A two-leg bucket edge is a WEAKER claim than a single-leg edge of the "
+        "same size: an error in the forecast's level moves both legs the same "
+        "way and largely cancels here, so this figure overstates the real "
+        "opportunity. It measures disagreement about SHAPE, not tradeable size. "
+        "net_cost is signed (positive = debit paid, negative = credit received) "
+        "and excludes the two taker fees both legs would pay."
+    )
+    return worst
 
 
 def compute_hourly_temperature_proxy(

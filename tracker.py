@@ -21,7 +21,7 @@ from datetime import UTC, date, datetime, timedelta
 from forecast_cache import ForecastCache
 from paths import DB_PATH
 from safe_io import project_root as _project_root
-from utils import sql_normalize_iso_column
+from utils import KALSHI_MAKER_FEE_RATE, sql_normalize_iso_column
 from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
@@ -4484,6 +4484,1174 @@ def get_model_vs_market_brier(
         # sum(bucket n) + n_days_out_null == pooled n.
         "n_days_out_null": sum(1 for r in rows if r["days_out"] is None),
     }
+
+
+# ── A11: is holding to settlement actually the best exit? ────────────────────
+
+# Hours before each market's close_time at which a counterfactual exit is
+# priced. The design handoff's illustrative set opened at -48h; that bucket is
+# absent because no market lives that long -- measured 2026-08-25, the earliest
+# candle sits 38-41h before close (median 39h).
+#
+# -36h survives, but read the offset table's n_before_entry column before
+# trusting it. These offsets are measured from the market's CLOSE, while the
+# thing being exited is a POSITION, and the position is younger than the
+# market: across the 201 settled trades that reach the population, close minus
+# entry runs 5.9h to 40.9h with a median of 28.9h. So -36h precedes entry for
+# 179 of 201 trades (89%) and -24h for 31 (15%). Those trades are excluded from
+# their bucket and counted, rather than being priced as a sale of a position
+# that did not exist yet -- which is what an earlier version of this function
+# did, reporting the -36h row as n=201 with no missing prices at all.
+EXIT_TIMING_OFFSETS_HOURS: tuple[int, ...] = (36, 24, 12, 6, 2)
+
+# Sample floor, same contract as BRIER_POLICY_MIN_SAMPLES: below it every
+# statistic is returned as None rather than rendered thin, so a consumer cannot
+# display a number it was never given. A "best exit time" picked from six
+# buckets on a few dozen settled trades is a selection artifact, which is why
+# each bucket ALSO carries a paired significance test against holding rather
+# than being ranked on its raw mean.
+EXIT_TIMING_MIN_SAMPLES = 10
+
+# price_history is HOURLY, not per-minute (_CANDLE_PERIOD_MINUTES = 60), so the
+# candle backing an offset is the last one closing at or before it. Two periods
+# of slack, which tolerates up to two consecutive missing candles when the
+# target lands exactly on a candle boundary. Past that the quote is too stale to
+# call a reconstruction and the trade drops out of that bucket (counted in the
+# bucket's own n_no_price).
+EXIT_TIMING_MAX_STALENESS_SECS = 2 * 3600
+
+# Candidate price-triggered exit rules, as a fraction of the entry price. A
+# take-profit at 0.5 exits the first time the position could be sold for 1.5x
+# what it cost; a stop-loss at 0.5 exits the first time it could only be sold
+# for 0.5x. Both fall through to holding when never triggered, so every rule is
+# scored over the identical population and the comparison stays paired.
+EXIT_TIMING_TAKE_PROFIT_FRACTIONS: tuple[float, ...] = (0.25, 0.50, 1.00)
+EXIT_TIMING_STOP_LOSS_FRACTIONS: tuple[float, ...] = (0.25, 0.50)
+
+# SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999. _bulk_price_paths chunks
+# its IN (...) list to stay under it rather than assuming the population is
+# small -- it is ~200 tickers today and grows with every settled trade.
+_SQLITE_MAX_VARS = 900
+
+
+def _marketable_exit_price(candle: sqlite3.Row, side: str) -> float | None:
+    """Price actually RECEIVED for selling out of `side` into the resting book.
+
+    Exiting a YES position means SELLING yes, which hits the yes BID; exiting a
+    NO position means selling no, which pays 1 - the yes ASK. Pricing either
+    exit at the mid would credit it with half a spread it never earns -- and
+    that half-spread is precisely the quantity deciding whether an early exit
+    beats holding, so using the mid here would bias the whole comparison toward
+    the answer this function exists to test.
+
+    Returns None for a missing or out-of-range quote rather than guessing.
+    """
+    if side == "yes":
+        raw = candle["yes_bid_close"]
+    elif side == "no":
+        raw = candle["yes_ask_close"]
+        raw = None if raw is None else 1.0 - float(raw)
+    else:
+        return None
+    if raw is None:
+        return None
+    price = float(raw)
+    # NaN fails this comparison too (every NaN comparison is False), so it is
+    # rejected here without a separate isnan branch. SQLite coerces NaN to NULL
+    # on insert anyway; the range guard is for +-Infinity, which it does store.
+    if not 0.0 <= price <= 1.0:
+        return None
+    return price
+
+
+def _path_from_candles(
+    candles: list[sqlite3.Row], side: str
+) -> list[tuple[int, float]]:
+    """(end_period_ts, marketable exit price) for one ticker's candles.
+
+    Keeps only the earliest candle's own period_interval, the same interleave
+    guard get_entry_timing_curve() and get_settlement_price_convergence() apply:
+    one ticker's series must never be a silent mix of two OHLC granularities.
+    """
+    if not candles:
+        return []
+    first_interval = candles[0]["period_interval"]
+    path: list[tuple[int, float]] = []
+    for candle in candles:
+        if candle["period_interval"] != first_interval:
+            continue
+        price = _marketable_exit_price(candle, side)
+        if price is None:
+            continue
+        path.append((int(candle["end_period_ts"]), price))
+    return path
+
+
+def get_exit_price_path(ticker: str, side: str) -> list[tuple[int, float]]:
+    """(end_period_ts, marketable exit price) for one ticker/side, oldest first.
+
+    The single reconstruction primitive this module exposes over price_history.
+    A11's exit-timing counterfactual below and batch-73's A8 replay harness both
+    need "what could this position have been closed at, at time T" -- keeping it
+    in one function is what stops the two from ever disagreeing about which side
+    of the book an exit actually pays (see _marketable_exit_price).
+
+    Single-ticker convenience wrapper. A11 itself uses _bulk_price_paths, which
+    produces byte-identical paths for many tickers in one query; calling this in
+    a loop over a few hundred settled trades is a few hundred round trips.
+    """
+    return _path_from_candles(list(get_price_history(ticker)), side)
+
+
+def _bulk_price_paths(
+    sides_by_ticker: dict[str, str],
+) -> dict[str, list[tuple[int, float]]]:
+    """get_exit_price_path() for many tickers at once, in chunked queries.
+
+    Same output per ticker, including the period_interval interleave guard --
+    _path_from_candles is the shared implementation, so the bulk and
+    single-ticker readers cannot drift apart. Tickers with no candles are
+    absent from the result, exactly as an empty path would be.
+    """
+    tickers = sorted(sides_by_ticker)
+    by_ticker: dict[str, list[sqlite3.Row]] = {}
+    with _conn() as con:
+        for start in range(0, len(tickers), _SQLITE_MAX_VARS):
+            chunk = tickers[start : start + _SQLITE_MAX_VARS]
+            placeholders = ", ".join("?" * len(chunk))
+            for row in con.execute(
+                f"SELECT * FROM price_history WHERE ticker IN ({placeholders}) "
+                "ORDER BY ticker, end_period_ts",
+                chunk,
+            ):
+                by_ticker.setdefault(row["ticker"], []).append(row)
+    return {
+        ticker: path
+        for ticker, candles in by_ticker.items()
+        if (path := _path_from_candles(candles, sides_by_ticker[ticker]))
+    }
+
+
+def exit_price_at(
+    path: list[tuple[int, float]],
+    target_ts: float,
+    max_staleness_secs: float = EXIT_TIMING_MAX_STALENESS_SECS,
+) -> float | None:
+    """Last price in `path` closing at or before `target_ts`, or None.
+
+    `path` MUST be sorted ascending by timestamp, as get_exit_price_path() and
+    _bulk_price_paths() both return it. The scan stops at the first candle past
+    the target, so an unsorted path silently returns a wrong answer rather than
+    raising -- stated here because this is a public function and the
+    precondition is not otherwise visible at a call site.
+
+    Returns None when there is no such candle at all, or when the newest one is
+    more than `max_staleness_secs` older than the target -- an offset the market
+    predates, or a gap in the candle series, must read as "no price" rather than
+    silently borrowing a quote from hours earlier.
+
+    A candle closing exactly AT target_ts counts: end_period_ts is the end of
+    the period, so that candle's close is the last print at or before the
+    instant asked about.
+    """
+    best: float | None = None
+    for ts, price in path:
+        if ts > target_ts:
+            break
+        # No else-branch resetting `best`: on an ascending path the staleness
+        # gap only ever shrinks, so once a candle is inside tolerance every
+        # later one is too. A reset branch here would be unreachable.
+        if target_ts - ts <= max_staleness_secs:
+            best = price
+    return best
+
+
+def _hold_pnl_per_contract(entry_price: float, side: str, settled_yes: int) -> float:
+    """Per-contract P&L of holding to settlement, mirroring
+    paper.settle_paper_trade()'s accounting exactly.
+
+    Fee is charged on winnings only (1 - entry_price), at the MAKER rate: this
+    bot's entries are always resting midpoint GTC limit orders, which pay $0 on
+    these markets today. Reproducing paper's formula rather than a simplified
+    (1 - entry) keeps the baseline this whole comparison is measured against
+    identical to the P&L the ledger actually booked.
+    """
+    won = (side == "yes" and settled_yes == 1) or (side == "no" and settled_yes == 0)
+    if not won:
+        return -entry_price
+    return (1.0 - (1.0 - entry_price) * KALSHI_MAKER_FEE_RATE) - entry_price
+
+
+def _exit_pnl_per_contract(entry_price: float, exit_price: float) -> float:
+    """Per-contract P&L of selling out at `exit_price`, mirroring
+    paper.close_paper_early()'s `proceeds - cost`. No fee term, matching that
+    function: an exit is a resting maker sell on these markets, same as entry.
+    """
+    return exit_price - entry_price
+
+
+def _pnl_stats(values: list[float]) -> dict:
+    """Mean, sample standard deviation and n for one bucket of per-contract P&L.
+
+    The standard deviation is reported for every bucket and every rule, never
+    collapsed into a single ranked mean: a rule can be worth taking for variance
+    reduction alone even when its mean is no better, and a table that shows only
+    means cannot express that.
+    """
+    n = len(values)
+    if n == 0:
+        return {"n": 0, "mean_per_contract": None, "stdev_per_contract": None}
+    mean = sum(values) / n
+    if n < 2:
+        return {
+            "n": n,
+            "mean_per_contract": round(mean, 6),
+            "stdev_per_contract": None,
+        }
+    var = sum((v - mean) ** 2 for v in values) / (n - 1)
+    return {
+        "n": n,
+        "mean_per_contract": round(mean, 6),
+        "stdev_per_contract": round(var**0.5, 6),
+    }
+
+
+def _exit_critical_z(n_comparisons: int) -> float:
+    """One-sided critical value, Sidak-adjusted for `n_comparisons` rules.
+
+    BRIER_POLICY_Z is the unadjusted one-sided 95% value A14 uses, and A14 makes
+    two comparisons. This table makes ten (five offsets, three take-profits, two
+    stop-losses) and then crowns the best of them, so at the unadjusted value
+    the family-wise false-positive rate under the null is 1 - 0.95^10 ~= 40% --
+    a coin flip that SOME rule gets declared a winner. That would defeat the
+    entire stated purpose of testing rather than ranking raw means.
+
+    Sidak (not Bonferroni): the comparisons are positively correlated rather
+    than independent, so Sidak's 1 - (1 - alpha)^(1/m) is the less conservative
+    of the two exact corrections and is still comfortably sufficient here.
+    """
+    from statistics import NormalDist
+
+    alpha = 1.0 - _norm_cdf_at_z(BRIER_POLICY_Z)
+    if n_comparisons <= 1:
+        return BRIER_POLICY_Z
+    adjusted_alpha = 1.0 - (1.0 - alpha) ** (1.0 / n_comparisons)
+    return NormalDist().inv_cdf(1.0 - adjusted_alpha)
+
+
+def _norm_cdf_at_z(z: float) -> float:
+    """Standard-normal CDF, used only to recover the alpha BRIER_POLICY_Z
+    encodes so the Sidak adjustment is derived from that constant rather than
+    from a second hardcoded 0.05 that could drift away from it."""
+    from statistics import NormalDist
+
+    return NormalDist().cdf(z)
+
+
+def _exit_verdict(
+    advantage: tuple[float, float] | None,
+    n_fired: int | None = None,
+    critical_z: float = BRIER_POLICY_Z,
+) -> str:
+    """Display-only verb for one candidate exit against holding.
+
+    Nothing in the sizing, gating or order path reads it -- same convention as
+    _brier_series_stats()'s `policy`. Vocabulary:
+
+      not measured         -- fewer than 2 paired rows, so no standard error
+      identical to holding -- the rule fired on no trade at all, so it IS
+                              holding. Only emitted when n_fired is passed and
+                              is 0: a zero mean with a zero standard error does
+                              NOT by itself prove the rule never fired (a rule
+                              that fired everywhere at exactly each trade's hold
+                              P&L produces the same zeros), so the verb is gated
+                              on the count rather than inferred from it
+      inconclusive         -- measured, but the paired interval spans zero
+      worse than holding   -- significantly worse than holding to settlement
+      beats holding        -- significantly better than holding to settlement
+
+    `critical_z` is the one-sided margin, UNADJUSTED by default. A row's verdict
+    answers one stated comparison a reader asked for, so it uses the same bar
+    A14 does; the multiplicity correction belongs where a winner is SELECTED
+    from the family, and lives in get_exit_timing_advantage's `conclusion`
+    instead (see `clears_adjusted_bar` on each rule). Applying the adjusted bar
+    here as well would also raise it for "worse than holding", a direction under
+    no selection pressure at all -- on production data that silently downgraded
+    three genuinely-worse rules to "inconclusive".
+
+    The paired footing is the same one A14 uses: both policies are scored on
+    identical settled rows, so the shared difficulty of each row cancels.
+    """
+    if advantage is None:
+        return "not measured"
+    mean, se = advantage
+    if n_fired == 0:
+        return "identical to holding"
+    if mean - critical_z * se > 0:
+        return "beats holding"
+    if mean + critical_z * se < 0:
+        return "worse than holding"
+    return "inconclusive"
+
+
+def _pnl_paired_advantage(
+    candidate_pnls: list[float], hold_pnls: list[float]
+) -> tuple[float, float] | None:
+    """Mean of (candidate P&L - hold P&L) and its standard error.
+
+    Delegates to _paired_advantage, which is written in LOSS space (a positive
+    return means argument `a` scores lower/better). Negating both series turns
+    P&L into loss, so a positive result here still means "the candidate beat the
+    benchmark" -- the sign convention is identical to A14's, and is pinned by
+    its own test.
+    """
+    return _paired_advantage(
+        [-p for p in candidate_pnls],
+        [-p for p in hold_pnls],
+    )
+
+
+def _iso_to_epoch(value: object) -> float | None:
+    """Parse an ISO-8601 string (with or without a trailing Z) to a UTC epoch.
+
+    Returns None for anything unparseable, including None and non-strings --
+    every caller treats "no timestamp" and "bad timestamp" identically. A naive
+    string is read as UTC, matching how paper.py writes every timestamp it
+    stores (datetime.now(UTC).isoformat(), which is tz-aware, plus a handful of
+    older naive rows from before that convention).
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
+
+
+def _finite_number(value: object) -> float | None:
+    """`value` as a float when it is a real, finite number, else None.
+
+    bool is rejected explicitly (it is an int subclass, and True would sail
+    through as 1.0), and so are NaN and +-Infinity. Python's json.load accepts
+    bare `NaN`/`Infinity` literals by default, so a corrupted paper_trades.json
+    really can carry one -- and a non-finite quantity would propagate into
+    total_pnl and reach jsonify(), which RFC-8259 forbids and JSON.parse
+    rejects, killing the whole analytics payload rather than one row.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _exit_timing_population() -> tuple[list[dict], dict[str, int]]:
+    """Settled paper trades that can carry a counterfactual exit, plus a
+    per-reason count of everything dropped.
+
+    Source is paper_trades.json (paper.get_all_trades), the same ledger
+    brier_score()'s own fallback reads -- live trading is dormant, and these are
+    the trades that actually happened. The filters, each counted so the payload
+    can state its own population rather than presenting a filtered n as if it
+    were the whole record:
+
+      - `_paper_trade_excluded_condition_type` against
+        `_excluded_brier_condition_types()`, the same exclusion every other
+        quality query in this module applies. Paper trades carry no
+        condition_type column, so the classification is derived from the ticker.
+      - outcomes_valid, never raw outcomes: a disputed settlement label must not
+        decide whether holding beat exiting. `no_valid_outcome` pools three
+        distinguishable cases -- absent from outcomes, disputed, or a NULL
+        settled_yes -- since none of them can be scored either way.
+      - close_time, which every offset is measured backwards from. 42 of the 243
+        settled trades as of 2026-08-25 predate the field entirely.
+      - entered_at, which bounds when a position could actually be sold. A trade
+        whose entry time cannot be parsed is DROPPED (`no_entered_at`) rather
+        than defaulted: an earlier version fell back to the first candle in the
+        path, which is by construction older than every quote and therefore
+        guarded nothing at all.
+      - a usable price path (see get_exit_price_path).
+
+    The outcome comes from outcomes_valid rather than the trade's own `outcome`
+    field on purpose: 40 of those 243 trades exited early and carry
+    outcome="early_exit", which records what the bot DID, not how the market
+    resolved. Holding is the counterfactual being measured, so it needs the
+    settled label for every trade including the ones that were closed out.
+    """
+    init_db()
+    excluded = _excluded_brier_condition_types()
+
+    try:
+        from paper import get_all_trades as _get_all_trades
+
+        trades = _get_all_trades()
+    except Exception as exc:
+        _log.warning("_exit_timing_population: could not read paper trades: %s", exc)
+        return [], {"ledger_unreadable": 1}
+
+    with _conn() as con:
+        settled_by_ticker = {
+            row["ticker"]: row["settled_yes"]
+            for row in con.execute(
+                "SELECT ticker, settled_yes FROM outcomes_valid "
+                "WHERE settled_yes IN (0, 1)"
+            )
+        }
+
+    dropped: dict[str, int] = defaultdict(int)
+    candidates: list[dict] = []
+    for trade in trades:
+        if not trade.get("settled"):
+            dropped["not_settled"] += 1
+            continue
+        ticker = trade.get("ticker")
+        if not ticker:
+            dropped["no_ticker"] += 1
+            continue
+        if _paper_trade_excluded_condition_type(ticker) in excluded:
+            dropped["excluded_condition_type"] += 1
+            continue
+        if ticker not in settled_by_ticker:
+            dropped["no_valid_outcome"] += 1
+            continue
+        side = trade.get("side")
+        if side not in ("yes", "no"):
+            dropped["no_side"] += 1
+            continue
+        entry_price = _finite_number(trade.get("entry_price"))
+        quantity = _finite_number(trade.get("quantity"))
+        if (
+            entry_price is None
+            or not 0.0 < entry_price < 1.0
+            or quantity is None
+            or quantity <= 0
+        ):
+            dropped["bad_entry"] += 1
+            continue
+        close_ts = _iso_to_epoch(trade.get("close_time"))
+        if close_ts is None:
+            dropped["no_close_time"] += 1
+            continue
+        entered_ts = _iso_to_epoch(trade.get("entered_at"))
+        if entered_ts is None:
+            dropped["no_entered_at"] += 1
+            continue
+        candidates.append(
+            {
+                "ticker": ticker,
+                "side": side,
+                "entry_price": entry_price,
+                "quantity": quantity,
+                "settled_yes": int(settled_by_ticker[ticker]),
+                "close_ts": close_ts,
+                "entered_ts": entered_ts,
+            }
+        )
+
+    # One query for every candidate's candles instead of one per trade: this
+    # runs inside /api/analytics, which is polled.
+    paths = _bulk_price_paths({c["ticker"]: c["side"] for c in candidates})
+    population: list[dict] = []
+    for candidate in candidates:
+        path = paths.get(candidate["ticker"])
+        if not path:
+            dropped["no_price_history"] += 1
+            continue
+        population.append({**candidate, "path": path})
+    return population, dict(dropped)
+
+
+def _apply_exit_rule(trade: dict, rule: dict) -> tuple[float, bool]:
+    """(per-contract P&L, whether the rule fired) for one trade.
+
+    A rule that never fires falls through to holding to settlement. That is what
+    keeps every rule scored over the identical population: a take-profit that
+    triggers on 3 of 150 trades is otherwise measured on 3 rows and looks
+    spectacular, when what it actually does to the book is change 3 outcomes.
+
+    No rule of any kind can fire before `entered_ts`. That is obvious for a
+    price trigger and equally true for a time offset -- "exit 36h before close"
+    cannot sell a position bought 29h before close -- but the two are enforced
+    separately here, and the time branch is the one an earlier version missed.
+    """
+    kind = rule["kind"]
+    exit_price: float | None = None
+    if kind == "time":
+        target_ts = trade["close_ts"] - rule["hours"] * 3600
+        if target_ts >= trade["entered_ts"]:
+            exit_price = exit_price_at(trade["path"], target_ts)
+    elif kind in ("take_profit", "stop_loss"):
+        entry = trade["entry_price"]
+        trigger = (
+            entry * (1.0 + rule["fraction"])
+            if kind == "take_profit"
+            else entry * (1.0 - rule["fraction"])
+        )
+        for ts, price in trade["path"]:
+            if ts < trade["entered_ts"]:
+                continue
+            if ts > trade["close_ts"]:
+                break
+            if (kind == "take_profit" and price >= trigger) or (
+                kind == "stop_loss" and price <= trigger
+            ):
+                exit_price = price
+                break
+    if exit_price is None:
+        return (
+            _hold_pnl_per_contract(
+                trade["entry_price"], trade["side"], trade["settled_yes"]
+            ),
+            False,
+        )
+    return _exit_pnl_per_contract(trade["entry_price"], exit_price), True
+
+
+def _exit_timing_rules() -> list[dict]:
+    """The candidate rules scored against holding, in table order.
+
+    The time rules are named "... else hold" to keep them distinguishable from
+    the identically-timed rows in the `offsets` table, which answer a different
+    question on a different population: an offset row DROPS a trade with no
+    reconstructable price there, while the rule falls through to holding it.
+    The two therefore report different means for the same hour, and a reader
+    seeing both tables must be able to tell which is which.
+    """
+    rules: list[dict] = [
+        {
+            "kind": "time",
+            "hours": hours,
+            "rule": f"exit {hours}h before close, else hold",
+        }
+        for hours in EXIT_TIMING_OFFSETS_HOURS
+    ]
+    rules += [
+        {
+            "kind": "take_profit",
+            "fraction": fraction,
+            "rule": f"take profit at +{fraction:.0%} of entry",
+        }
+        for fraction in EXIT_TIMING_TAKE_PROFIT_FRACTIONS
+    ]
+    rules += [
+        {
+            "kind": "stop_loss",
+            "fraction": fraction,
+            "rule": f"stop loss at -{fraction:.0%} of entry",
+        }
+        for fraction in EXIT_TIMING_STOP_LOSS_FRACTIONS
+    ]
+    return rules
+
+
+def get_exit_timing_advantage(min_samples: int = EXIT_TIMING_MIN_SAMPLES) -> dict:
+    """A11: measure holding to settlement against exiting earlier.
+
+    Every position this bot opens is held to settlement unless a stop-loss or a
+    manual close intervenes (40 of 243 settled paper trades as of 2026-08-25),
+    and that default has never been measured against any alternative. This
+    reconstructs, for every settled trade, what the position could actually have
+    been closed for at a set of offsets before its close, and asks whether any
+    of it beats simply holding.
+
+    The reconstruction reads `price_history`, NOT a stored mid-price series that
+    does not exist yet: those are hourly OHLC candles backfilled across each
+    market's entire life at settlement (see backfill_price_history), and the
+    marketable side of each candle -- yes_bid to exit a YES, 1 - yes_ask to exit
+    a NO -- is what an exit would really have received.
+
+    **This payload is allowed to conclude that nothing beats holding.** Nothing
+    here presumes a change is warranted: "no rule beats holding" is in
+    `conclusion`'s own vocabulary, every bucket reports its own `n`, and every
+    comparison is a paired significance test against holding rather than a
+    ranking of raw means. The `conclusion` test is additionally Sidak-adjusted
+    for the ten rules it chooses between (see _exit_critical_z) -- unadjusted,
+    ten one-sided tests crown a winner on pure noise about 40% of the time,
+    which is exactly the artifact this function exists not to manufacture.
+
+    Three limits the numbers do not carry on their own:
+
+    - **Fees are asymmetric between the two policies.** The hold baseline is
+      charged KALSHI_MAKER_FEE_RATE on winnings (mirroring settle_paper_trade)
+      while an exit is charged nothing (mirroring close_paper_early). Both are
+      faithful to paper.py, but with a non-zero fee rate the comparison tilts
+      toward exiting. The production rate is 0.0, so this is currently inert.
+    - **Every counterfactual assumes the whole position fills at the touch.**
+      No depth is consulted; `total_pnl_dollars` scales linearly with quantity.
+      A large position would move the price it is being sold into.
+    - **An offset is measured from the market's close, but a position is
+      younger than its market.** Trades that had not been entered yet at a given
+      offset are excluded from that bucket and reported as `n_before_entry`;
+      at -36h that is most of them.
+
+    Read-only and display-only. Nothing in the exit path reads any of this --
+    note in particular that batch-58 gave risk-reducing exits their own REDUCED
+    gate (trading_gates.pre_live_exit_check: TRADING_PAUSED, kill switch,
+    prod-ness and LIVE_TRADING_ENABLED, but none of the risk halts), so when
+    live exits DO fire is a question about that gate, not about this analysis.
+
+    Returns {"min_samples", "confidence", "confidence_tail", "n_comparisons",
+    "critical_z", "price_side", "offsets_hours", "max_staleness_hours",
+    "population", "hold", "offsets", "rules", "conclusion"}. Below min_samples
+    every statistic is None and `conclusion` is "not measured", so a consumer
+    cannot render a number it was never given.
+    """
+    population, dropped = _exit_timing_population()
+    n = len(population)
+    effective_floor = max(1, min_samples)
+    rule_specs = _exit_timing_rules()
+    critical_z = _exit_critical_z(len(rule_specs))
+
+    payload: dict = {
+        # The effective floor, not the raw argument: max(1, ...) is what is
+        # actually applied, so echoing the argument would misdescribe a
+        # min_samples=0 call. Same convention as get_model_vs_market_brier().
+        "min_samples": effective_floor,
+        "confidence": 0.95,
+        # Named explicitly because BRIER_POLICY_Z is a ONE-sided value: a
+        # consumer drawing mean +- z*se as a "95% interval" would actually be
+        # drawing a 90% two-sided one.
+        "confidence_tail": "one-sided",
+        "n_comparisons": len(rule_specs),
+        "critical_z": round(critical_z, 6),
+        # Named in the payload because the answer depends on it: pricing an exit
+        # at the mid instead would hand every early exit half a spread it never
+        # earns.
+        "price_side": "marketable (sell YES at the bid, sell NO at 1 - the ask)",
+        "fill_assumption": "whole position fills at the touch; no depth consulted",
+        "offsets_hours": list(EXIT_TIMING_OFFSETS_HOURS),
+        "max_staleness_hours": EXIT_TIMING_MAX_STALENESS_SECS / 3600,
+        "population": {
+            "n": n,
+            "n_markets": len({t["ticker"] for t in population}),
+            "dropped": dropped,
+        },
+    }
+
+    if n < effective_floor:
+        payload["hold"] = {
+            "n": n,
+            "mean_per_contract": None,
+            "stdev_per_contract": None,
+            "total_pnl_dollars": None,
+        }
+        payload["offsets"] = []
+        payload["rules"] = []
+        payload["conclusion"] = "not measured"
+        return payload
+
+    hold_pnls = [
+        _hold_pnl_per_contract(t["entry_price"], t["side"], t["settled_yes"])
+        for t in population
+    ]
+    payload["hold"] = {
+        **_pnl_stats(hold_pnls),
+        "total_pnl_dollars": round(
+            sum(p * t["quantity"] for p, t in zip(hold_pnls, population, strict=True)),
+            4,
+        ),
+    }
+
+    # ── Per-offset table ────────────────────────────────────────────────────
+    # Each offset is scored ONLY on the trades that were already held at that
+    # offset AND whose price is reconstructable there, and is compared against
+    # holding computed over that SAME subset -- hold_mean_per_contract_same_
+    # subset and hold_total_pnl_dollars_same_subset. Comparing against the
+    # whole-population baseline would be a different comparison wearing this
+    # one's label.
+    offsets: list[dict] = []
+    for hours in EXIT_TIMING_OFFSETS_HOURS:
+        paired_exit: list[float] = []
+        paired_hold: list[float] = []
+        tickers: set[str] = set()
+        total_pnl = 0.0
+        hold_total_pnl = 0.0
+        n_no_price = 0
+        n_before_entry = 0
+        for trade, hold_pnl in zip(population, hold_pnls, strict=True):
+            target_ts = trade["close_ts"] - hours * 3600
+            # Counted separately from n_no_price: "the position did not exist
+            # yet" and "the market was quiet" are different facts, and pooling
+            # them would hide that the -36h bucket is mostly the former.
+            if target_ts < trade["entered_ts"]:
+                n_before_entry += 1
+                continue
+            price = exit_price_at(trade["path"], target_ts)
+            if price is None:
+                n_no_price += 1
+                continue
+            exit_pnl = _exit_pnl_per_contract(trade["entry_price"], price)
+            paired_exit.append(exit_pnl)
+            paired_hold.append(hold_pnl)
+            tickers.add(trade["ticker"])
+            total_pnl += exit_pnl * trade["quantity"]
+            hold_total_pnl += hold_pnl * trade["quantity"]
+        stats = _pnl_stats(paired_exit)
+        hold_same = _pnl_stats(paired_hold)
+        measured = stats["n"] >= effective_floor
+        advantage = (
+            _pnl_paired_advantage(paired_exit, paired_hold) if measured else None
+        )
+        offsets.append(
+            {
+                "hours_before_close": hours,
+                "n": stats["n"],
+                "n_markets": len(tickers),
+                "n_no_price": n_no_price,
+                "n_before_entry": n_before_entry,
+                "mean_per_contract": stats["mean_per_contract"] if measured else None,
+                "stdev_per_contract": (
+                    stats["stdev_per_contract"] if measured else None
+                ),
+                "hold_mean_per_contract_same_subset": (
+                    hold_same["mean_per_contract"] if measured else None
+                ),
+                "total_pnl_dollars": round(total_pnl, 4) if measured else None,
+                "hold_total_pnl_dollars_same_subset": (
+                    round(hold_total_pnl, 4) if measured else None
+                ),
+                "advantage_vs_hold": (
+                    None if advantage is None else round(advantage[0], 6)
+                ),
+                "advantage_se": None if advantage is None else round(advantage[1], 6),
+                # Unadjusted: an offset row is one stated comparison a reader
+                # asked for, not a candidate competing for `conclusion`. The
+                # multiplicity correction belongs where the selection happens.
+                "verdict": _exit_verdict(advantage),
+            }
+        )
+    payload["offsets"] = offsets
+
+    # ── Candidate exit rules ────────────────────────────────────────────────
+    # Unlike the offset table above, every rule here is scored over the WHOLE
+    # population: a rule that never fires on a trade falls through to holding
+    # it, which is what the rule would really have done.
+    rules: list[dict] = []
+    for rule in rule_specs:
+        rule_pnls: list[float] = []
+        n_fired = 0
+        total_pnl = 0.0
+        for trade in population:
+            pnl, fired = _apply_exit_rule(trade, rule)
+            rule_pnls.append(pnl)
+            n_fired += 1 if fired else 0
+            total_pnl += pnl * trade["quantity"]
+        advantage = _pnl_paired_advantage(rule_pnls, hold_pnls)
+        stats = _pnl_stats(rule_pnls)
+        rules.append(
+            {
+                "rule": rule["rule"],
+                "n": stats["n"],
+                "n_fired": n_fired,
+                "mean_per_contract": stats["mean_per_contract"],
+                "stdev_per_contract": stats["stdev_per_contract"],
+                "total_pnl_dollars": round(total_pnl, 4),
+                "advantage_vs_hold": (
+                    None if advantage is None else round(advantage[0], 6)
+                ),
+                "advantage_se": None if advantage is None else round(advantage[1], 6),
+                # Unadjusted, like the offsets table: this answers "is this one
+                # rule different from holding".
+                "verdict": _exit_verdict(advantage, n_fired),
+                # ... and this answers "would it survive being CHOSEN as the
+                # best of `n_comparisons`", which is the question `conclusion`
+                # asks and the only place multiplicity actually bites.
+                "clears_adjusted_bar": (
+                    advantage is not None
+                    and n_fired > 0
+                    and advantage[0] - critical_z * advantage[1] > 0
+                ),
+            }
+        )
+    payload["rules"] = rules
+
+    # ── Conclusion ──────────────────────────────────────────────────────────
+    # Chosen from the rules table, whose members all share one population, and
+    # only from rules that cleared the multiplicity-adjusted paired test --
+    # never from the highest raw mean. When nothing clears it, the honest answer
+    # is that holding is not beaten, and it is stated in exactly those words.
+    # "beats holding" only, AND clearing the multiplicity-adjusted bar: an
+    # "identical to holding" rule (one that never fired) is not a winner,
+    # neither is an "inconclusive" one, and neither is one that only looks
+    # significant because it was the best of ten.
+    winners = [
+        r for r in rules if r["verdict"] == "beats holding" and r["clears_adjusted_bar"]
+    ]
+    if not winners:
+        payload["conclusion"] = "no rule beats holding"
+    else:
+        best = max(winners, key=lambda r: r["advantage_vs_hold"])
+        payload["conclusion"] = f"{best['rule']} beats holding"
+    return payload
+
+
+# ── A16: the model distribution behind one city-day's strike ladder ─────────
+
+# Sanity range for a daily-temperature sigma, in degrees F. Set from the
+# production distribution of sqrt(ens_var) measured 2026-08-25 over all 137
+# rows that carry one: min 0.885, median 2.225, max 4.911. (0.5, 8.0) leaves
+# generous headroom on both sides while still rejecting a value no daily
+# temperature forecast produces.
+#
+# Deliberately MUCH tighter than
+# weather_markets.fit_market_implied_distribution()'s own (0.1, 50.0), and the
+# difference is not an oversight: those bounds exist to catch a Nelder-Mead fit
+# that diverged, where anything inside a wide band is plausibly real. The
+# failure mode here is different -- a closed-form solve that is ill-conditioned
+# near the money -- and an empirically-grounded band is what separates a real
+# spread from an artifact of that conditioning.
+MODEL_LADDER_SIGMA_BOUNDS = (0.5, 8.0)
+
+# How far a logged probability must sit from 0.5 before it constrains sigma
+# enough to be solved back. At p = 0.5 the strike is AT the mean under every
+# sigma, so the equation carries no information at all, and just above that it
+# carries very little: a strike 3F from the mean logged at p = 0.47 solves to
+# sigma ~ 40. This matters in practice rather than in theory -- 55% of the
+# above/below rows in `predictions` sit within 0.10 of 0.5, because the strike
+# the scanner analyses is the one nearest the money.
+MODEL_LADDER_MIN_ANCHOR_PROB_OFFSET = 0.10
+
+# Rows older than this are ignored when building an event's model
+# distribution. A ladder view is a read on a LIVE event; a forecast from four
+# days ago describes a different distribution than the one currently quoted,
+# and blending the two would produce a model ladder matching neither.
+MODEL_LADDER_MAX_ANCHOR_AGE_HOURS = 36
+
+
+def _continuous_boundary(condition_type: str, threshold: float) -> float:
+    """The continuous decision boundary for a raw above/below threshold.
+
+    `predictions.threshold_lo` stores the LITERAL ticker value (T99 -> 99.0),
+    not the boundary probability math runs on. A "T{v} above" market's real rule
+    is "greater than v", so integer settlement must be v+1 or higher and the
+    continuous boundary that tiles with the adjacent between-bucket is v+0.5;
+    below is symmetric at v-0.5. This is the same +-0.5 convention
+    utils.prob_threshold() serves from a parsed condition's own
+    "prob_threshold" key -- reapplied here because the stored column is raw, and
+    reading it as if it were already a boundary would shift every anchor by half
+    a degree.
+    """
+    if condition_type == "above":
+        return threshold + 0.5
+    if condition_type == "below":
+        return threshold - 0.5
+    # Not reachable from get_model_distribution_for_event (its SQL restricts to
+    # above/below), but a helper named for a general conversion must not
+    # silently hand back a below-shaped boundary for a type it does not model.
+    raise ValueError(f"no continuous boundary for condition_type {condition_type!r}")
+
+
+def _sigma_from_anchor(
+    condition_type: str, boundary: float, mean: float, our_prob: float
+) -> float | None:
+    """Solve the sigma making Normal(mean, sigma) reproduce `our_prob` at
+    `boundary`, or None when the solve is ill-conditioned or lands outside
+    MODEL_LADDER_SIGMA_BOUNDS.
+
+    An "above" rung logged at probability p satisfies p = 1 - CDF((k - mu)/s),
+    so s = (k - mu) / PPF(1 - p); "below" satisfies p = CDF(...), so
+    s = (k - mu) / PPF(p). The sign works out on its own -- a strike above the
+    mean has p < 0.5 on the above reading, making PPF(1 - p) positive -- so no
+    absolute value is needed, and a negative result genuinely means the logged
+    probability and the logged point forecast contradict each other, which the
+    bounds check then rejects.
+
+    Last-resort source only: see get_model_distribution_for_event for why the
+    calibrated historical sigma and then the ensemble spread are both preferred.
+    """
+    from statistics import NormalDist
+
+    if our_prob is None or not 0.0 < our_prob < 1.0:
+        return None
+    if abs(our_prob - 0.5) < MODEL_LADDER_MIN_ANCHOR_PROB_OFFSET:
+        return None
+    unit = NormalDist()
+    if condition_type == "above":
+        z = unit.inv_cdf(1.0 - our_prob)
+    elif condition_type == "below":
+        z = unit.inv_cdf(our_prob)
+    else:
+        return None
+    if z == 0:
+        return None
+    sigma = (boundary - mean) / z
+    if not MODEL_LADDER_SIGMA_BOUNDS[0] <= sigma <= MODEL_LADDER_SIGMA_BOUNDS[1]:
+        return None
+    return sigma
+
+
+def get_model_distribution_for_event(
+    city: str,
+    target_date: str,
+    var: str | None,
+    max_age_hours: float = MODEL_LADDER_MAX_ANCHOR_AGE_HOURS,
+) -> dict | None:
+    """The model's Normal(mean, sigma) for one (city, target_date, var) event.
+
+    Supplies the model side of A16's strike-ladder view. The ladder itself is
+    fetched live -- no stored artifact holds one, verified 2026-08-25: the
+    signals cache carries 23 of 678 scanned markets (the rest are dropped as
+    extreme-priced, wide or illiquid, which is exactly the ladder's wings), and
+    297 of 328 (city, market_date, var) groups in `predictions` hold a single
+    strike. What IS stored, and is all the model side needs, is the forecast
+    behind those strikes.
+
+    mean is the blended point forecast (`forecast_temp_f`), falling back to the
+    raw ensemble mean.
+
+    sigma is `get_historical_sigma(city, month, var)` -- the calibrated
+    forecast-RMSE value analyze_trade() itself feeds into `_forecast_probability`
+    (as `sigma_gauss`, modulo a time-of-day `sigma_mult` this function has no
+    horizon to reproduce). Preferring it over the raw ensemble spread is
+    measured, not assumed: across the 84 logged above/below rows that carry
+    both, the historical sigma reproduces the scanner's own `our_prob`
+    materially better (median |gap| 0.169 vs 0.242 for sqrt(ens_var), and 45%
+    vs 54% of rows off by more than 0.20). sqrt(ens_var) is reported alongside
+    as `sigma_ensemble` so the two are comparable rather than one being hidden.
+
+    A solve back out of a logged (threshold, our_prob) pair is the last resort,
+    used only when neither is available. It is last for a measured reason too:
+    the strike the scanner analyses is the one nearest the money, where a logged
+    probability barely constrains sigma at all (55% of above/below rows sit
+    within 0.10 of p = 0.5, and single-anchor solves on real rows produced
+    sigmas of 17-36F against an ensemble spread that never exceeds 4.9F).
+
+    `anchors` reports, for every logged strike in the window, what THIS ladder
+    says at that strike beside what the scanner actually logged there, and
+    `max_abs_prob_gap` is the largest of those differences. That gap is real and
+    expected rather than a defect: our_prob is the product of bias correction,
+    EMOS and blending with NWS/climatology, so it is not a Normal read-off. It
+    is surfaced so a consumer can see how far the ladder's shape sits from the
+    signal card it is shown next to, instead of inferring the two agree.
+
+    Excludes hourly-directional (KXTEMP*H) and holiday-temperature rungs, the
+    same two families weather_markets.compute_market_implied_distributions()
+    excludes from event grouping and for the same reason: they are a different
+    question's strike ladder that happens to share a city and a calendar date.
+
+    Returns None when no row in the window can supply both a mean and a sigma.
+    """
+    init_db()
+    # "%Y-%m-%d %H:%M:%S", matching exactly what sql_normalize_iso_column()
+    # reduces the column to -- an isoformat() cutoff would carry a "+00:00"
+    # suffix the normalized column never has, and the comparison is
+    # lexicographic.
+    cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    # `var IS NULL` cannot be expressed as `var = ?` -- SQL equality against
+    # NULL is never true -- so the clause is switched, not the parameter.
+    var_clause = "p.var = ?" if var is not None else "p.var IS NULL"
+    params: list[object] = [city, target_date]
+    if var is not None:
+        params.append(var)
+    params.append(cutoff)
+    order_col = sql_normalize_iso_column("p.predicted_at")
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT p.ticker, p.condition_type, p.threshold_lo, p.our_prob,
+                   p.forecast_temp_f, p.ens_mean, p.ens_var, p.predicted_at
+            FROM predictions p
+            WHERE p.city = ? AND p.market_date = ?
+              AND {var_clause}
+              AND p.condition_type IN ('above', 'below')
+              AND p.our_prob IS NOT NULL
+              AND p.our_prob > 0 AND p.our_prob < 1
+              AND p.threshold_lo IS NOT NULL
+              AND {order_col} >= ?
+            ORDER BY {order_col}
+            """,
+            params,
+        ).fetchall()
+
+    rows = [r for r in rows if not _is_excluded_ladder_ticker(r["ticker"])]
+    if not rows:
+        return None
+
+    # One row per ticker -- the last in timestamp order. log_prediction's UPSERT
+    # already collapses a single UTC day's scans into one row per ticker, so
+    # this dedupe only bites ACROSS days: a strike quoted on three consecutive
+    # days would otherwise contribute three anchors while a strike seen once
+    # contributes one, weighting the result by how long a rung happened to be
+    # listed rather than by anything about the ladder.
+    latest_by_ticker: dict[str, sqlite3.Row] = {}
+    for row in rows:
+        latest_by_ticker[row["ticker"]] = row
+
+    # `predicted_at` is NOT refreshed by log_prediction's UPSERT (its
+    # ON CONFLICT(ticker, predicted_date) DO UPDATE SET list omits it), so a
+    # ticker keeps ONE row per UTC day whose forecast columns are overwritten
+    # every cycle while this timestamp stays pinned to the day's first scan.
+    # That makes `rows[-1]` "the rung first seen latest today", an arbitrary
+    # tie-break within a cron cycle -- fine as a row to read scalars off, but it
+    # is why the value is surfaced as `first_seen_at` rather than as freshness.
+    newest = rows[-1]
+
+    # Scalars are taken from the NEWEST row that actually carries each one, not
+    # blindly from `newest`. One in-window row with a NULL forecast_temp_f or
+    # ens_var would otherwise make a perfectly current event unavailable, purely
+    # because of which rung happened to sort last.
+    def _newest_with(column: str) -> float | None:
+        for row in reversed(rows):
+            value = row[column]
+            if value is not None:
+                return float(value)
+        return None
+
+    mean = _newest_with("forecast_temp_f")
+    mean_source = "forecast_temp_f"
+    if mean is None:
+        mean = _newest_with("ens_mean")
+        mean_source = "ens_mean"
+    if mean is None:
+        return None
+
+    # sqrt(ens_var) is computed either way so it can be reported beside the
+    # chosen sigma, whichever one is chosen.
+    ens_var = _newest_with("ens_var")
+    sigma_ensemble = ens_var**0.5 if ens_var is not None and ens_var > 0 else None
+
+    def _in_bounds(value: float | None) -> float | None:
+        if value is None:
+            return None
+        lo, hi = MODEL_LADDER_SIGMA_BOUNDS
+        return value if lo <= value <= hi else None
+
+    sigma_value: float | None = None
+    sigma_source = ""
+    try:
+        from weather_markets import get_historical_sigma
+
+        month = date.fromisoformat(target_date).month
+        sigma_value = _in_bounds(
+            float(get_historical_sigma(city, month, var=var or "max"))
+        )
+        if sigma_value is not None:
+            sigma_source = "get_historical_sigma (the model's own Gaussian sigma)"
+    except Exception as exc:
+        _log.warning(
+            "get_model_distribution_for_event: historical sigma unavailable for "
+            "%s %s: %s",
+            city,
+            target_date,
+            exc,
+        )
+    if sigma_value is None:
+        sigma_value = _in_bounds(sigma_ensemble)
+        if sigma_value is not None:
+            sigma_source = "sqrt(ens_var)"
+    if sigma_value is None:
+        from statistics import median
+
+        solved = [
+            s
+            for s in (
+                _sigma_from_anchor(
+                    r["condition_type"],
+                    _continuous_boundary(r["condition_type"], float(r["threshold_lo"])),
+                    mean,
+                    r["our_prob"],
+                )
+                for r in latest_by_ticker.values()
+            )
+            if s is not None
+        ]
+        if not solved:
+            return None
+        sigma_value = float(median(solved))
+        sigma_source = "solved from logged our_prob (last resort)"
+
+    from statistics import NormalDist
+
+    ladder = NormalDist(mean, sigma_value)
+    anchors: list[dict] = []
+    for row in latest_by_ticker.values():
+        boundary = _continuous_boundary(
+            row["condition_type"], float(row["threshold_lo"])
+        )
+        below = ladder.cdf(boundary)
+        ladder_prob = below if row["condition_type"] == "below" else 1.0 - below
+        logged = float(row["our_prob"])
+        anchors.append(
+            {
+                "ticker": row["ticker"],
+                "condition_type": row["condition_type"],
+                "threshold": float(row["threshold_lo"]),
+                "boundary": round(boundary, 4),
+                "logged_prob": round(logged, 6),
+                "ladder_prob": round(ladder_prob, 6),
+                "prob_gap": round(ladder_prob - logged, 6),
+            }
+        )
+    anchors.sort(key=lambda a: a["boundary"])
+
+    return {
+        "city": city,
+        "target_date": target_date,
+        "var": var,
+        # The Kalshi series every rung of this event lives under, taken from the
+        # newest row's own ticker prefix. A caller fetching the live ladder needs
+        # it and cannot derive it from (city, var) without duplicating this
+        # codebase's per-city series registry.
+        "series_ticker": str(newest["ticker"]).split("-")[0],
+        "mean": round(mean, 4),
+        "sigma": round(sigma_value, 4),
+        "mean_source": mean_source,
+        "sigma_source": sigma_source,
+        # The alternative, always reported so the choice is visible rather than
+        # buried in sigma_source.
+        "sigma_ensemble": (
+            None if sigma_ensemble is None else round(sigma_ensemble, 4)
+        ),
+        "n_anchors": len(anchors),
+        # How far this ladder sits from the probabilities the scanner actually
+        # logged. Expected to be non-zero -- our_prob is bias-corrected, EMOS-ed
+        # and blended, so no single Normal reproduces it exactly -- and reported
+        # rather than hidden so the panel is never read as agreeing with the
+        # signal card when it does not.
+        "max_abs_prob_gap": (
+            round(max(abs(a["prob_gap"]) for a in anchors), 6) if anchors else None
+        ),
+        # NOT a freshness stamp: log_prediction's UPSERT never refreshes
+        # predicted_at, so this is when the rung was first seen on its UTC day,
+        # while the forecast columns beside it were overwritten on the latest
+        # cycle. Named for what it is so a consumer cannot mistake it for how
+        # current the distribution is.
+        "first_seen_at": newest["predicted_at"],
+        "anchors": anchors,
+    }
+
+
+def _is_excluded_ladder_ticker(ticker: str) -> bool:
+    """True for a ticker whose family must never join a daily-temperature
+    ladder: hourly-directional (KXTEMP*H) and holiday-temperature markets.
+
+    Mirrors weather_markets.compute_market_implied_distributions()'s own two
+    exclusions exactly -- both families resolve a real (city, target_date) via
+    parse_city_date() and would otherwise pool into an ordinary KXHIGH*/KXLOW*
+    event, which is a different question's strike ladder sharing a calendar
+    date. Fails CLOSED (excluded) when the classification itself cannot run:
+    this feeds a view of what the model thinks, and silently admitting an
+    unclassifiable family is worse than showing one fewer event.
+    """
+    try:
+        from weather_markets import _KXTEMP_HOURLY_CITY, is_holiday_temp_ticker
+
+        upper = str(ticker).upper()
+        return upper.startswith(tuple(_KXTEMP_HOURLY_CITY)) or is_holiday_temp_ticker(
+            upper
+        )
+    except Exception as exc:
+        _log.warning(
+            "_is_excluded_ladder_ticker: classification failed for %r (%s) -- "
+            "treating as excluded",
+            ticker,
+            exc,
+        )
+        return True
 
 
 def get_history(limit: int = 50) -> list[dict]:

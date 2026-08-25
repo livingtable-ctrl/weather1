@@ -2120,12 +2120,13 @@ class TestComputeMarketImpliedGroupsMonthlyRain:
         fit_daily_only = wm.compute_market_implied_distributions(daily_only)
         fit_mixed = wm.compute_market_implied_distributions(daily_only + rain_extra)
 
-        assert fit_daily_only[("NYC", "2026-07-20")] is not None, (
+        assert fit_daily_only[("NYC", "2026-07-20", "max")] is not None, (
             "test fixture itself is degenerate (fit didn't converge) -- "
             "this assertion isn't testing anything real"
         )
         assert (
-            fit_mixed[("NYC", "2026-07-20")] == fit_daily_only[("NYC", "2026-07-20")]
+            fit_mixed[("NYC", "2026-07-20", "max")]
+            == fit_daily_only[("NYC", "2026-07-20", "max")]
         ), (
             "monthly-rain siblings changed the daily market-implied fit -- "
             "they leaked into the temperature event's group"
@@ -2187,11 +2188,18 @@ class TestComputeMarketImpliedGroupsMonthlyRain:
 
         result = wm.compute_market_implied_distributions(daily_only + [rain_market])
 
-        assert ("Seattle", "2026-07-20") not in result, (
+        # Prefix-matched, not exact-key-matched: the temperature key is a
+        # 3-tuple now, so asserting the old 2-tuple's absence would pass
+        # vacuously no matter what the rain market did.
+        assert not [k for k in result if k[:2] == ("Seattle", "2026-07-20")], (
             "rain market was grouped under a (city, date_iso) key despite "
             "the routing order -- parse_city_date() was consulted for a "
             "rain ticker instead of the rain-specific key builder"
         )
+        # Positive control: the daily ladder DID reach grouping in this same
+        # call, so the assertion above is about the rain market's routing and
+        # not about compute_market_implied_distributions() returning nothing.
+        assert ("NYC", "2026-07-20", "max") in result
         assert ("Seattle", "RAIN", 2026, 7) in result, (
             "rain market did not reach its own (city, RAIN, year, month) group at all"
         )

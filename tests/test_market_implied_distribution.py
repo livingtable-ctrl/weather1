@@ -295,10 +295,11 @@ class TestComputeMarketImpliedDistributions:
         )
         result = wm.compute_market_implied_distributions(nyc + den)
 
-        assert ("NYC", "2026-07-20") in result
-        assert ("Denver", "2026-07-20") in result
-        nyc_fit = result[("NYC", "2026-07-20")]
-        den_fit = result[("Denver", "2026-07-20")]
+        # 3-tuple key: (city, date_iso, var). KXHIGH* ladders are var="max".
+        assert ("NYC", "2026-07-20", "max") in result
+        assert ("Denver", "2026-07-20", "max") in result
+        nyc_fit = result[("NYC", "2026-07-20", "max")]
+        den_fit = result[("Denver", "2026-07-20", "max")]
         assert nyc_fit is not None and den_fit is not None
         assert nyc_fit["implied_mean"] == pytest.approx(70.0, abs=0.1)
         assert den_fit["implied_mean"] == pytest.approx(55.0, abs=0.1)
@@ -314,7 +315,7 @@ class TestComputeMarketImpliedDistributions:
         # KXHIGHNY on purpose has no bearing on city resolution (ticker
         # prefix drives it), just documenting this isn't a copy-paste bug.
         result = wm.compute_market_implied_distributions(one_market)
-        assert result.get(("Denver", "2026-07-21")) is None
+        assert result.get(("Denver", "2026-07-21", "max")) is None
 
     def test_unparseable_markets_skipped_from_grouping(self):
         garbage = [{"ticker": "not-a-real-ticker", "title": "???"}]
@@ -334,7 +335,7 @@ class TestComputeMarketImpliedDistributions:
         monkeypatch.setattr(requests, "post", _boom)
         siblings = _normal_ladder(70.0, 5.0, _MIXED_LADDER)
         result = wm.compute_market_implied_distributions(siblings)
-        assert result[("NYC", "2026-07-20")] is not None
+        assert result[("NYC", "2026-07-20", "max")] is not None
 
 
 class TestResolveMarketImpliedForAnalysis:
@@ -348,7 +349,7 @@ class TestResolveMarketImpliedForAnalysis:
     directly, without either scan loop's heavy machinery."""
 
     def test_temperature_city_and_date_match(self):
-        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        by_event = {("NYC", "2026-07-20", "max"): {"implied_mean": 70.0}}
         result = wm.resolve_market_implied_for_analysis(
             by_event, "NYC", date(2026, 7, 20), "KXHIGHNY-26JUL20-T70"
         )
@@ -358,7 +359,7 @@ class TestResolveMarketImpliedForAnalysis:
         # enrich_with_forecast() always sets a real date object, but a few
         # callers/tests hand-build an "enriched"-shaped dict with a plain
         # ISO string instead -- both must resolve to the same lookup key.
-        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        by_event = {("NYC", "2026-07-20", "max"): {"implied_mean": 70.0}}
         result = wm.resolve_market_implied_for_analysis(
             by_event, "NYC", "2026-07-20", "KXHIGHNY-26JUL20-T70"
         )
@@ -368,7 +369,7 @@ class TestResolveMarketImpliedForAnalysis:
         # The event was grouped but fit_market_implied_distribution()
         # returned None for it (thin book, degenerate fit, etc.) -- must
         # return None cleanly, not KeyError.
-        by_event = {("NYC", "2026-07-20"): None}
+        by_event = {("NYC", "2026-07-20", "max"): None}
         result = wm.resolve_market_implied_for_analysis(
             by_event, "NYC", date(2026, 7, 20), "KXHIGHNY-26JUL20-T70"
         )
@@ -395,7 +396,7 @@ class TestResolveMarketImpliedForAnalysis:
         assert result is None
 
     def test_no_city_no_date_non_rain_ticker_returns_none(self):
-        by_event = {("NYC", "2026-07-20"): {"implied_mean": 70.0}}
+        by_event = {("NYC", "2026-07-20", "max"): {"implied_mean": 70.0}}
         result = wm.resolve_market_implied_for_analysis(
             by_event, None, None, "KXHIGHNY-26JUL20-T70"
         )
@@ -408,7 +409,13 @@ class TestResolveMarketImpliedForAnalysis:
         # ever reached when ev_date is falsy, never as a second, competing
         # lookup for a market that already resolved a real date.
         by_event = {
-            ("Seattle", "2026-07-20"): {"implied_mean": 70.0},
+            # A deliberate decoy. compute_market_implied_distributions can
+            # never actually build a temperature key for KXRAINSEAM (the
+            # _KXRAIN_MONTHLY_CITY prefix check routes it before
+            # parse_city_date is consulted), so this entry exists only to give
+            # the CONSUME side something wrong to reach for. var=None because
+            # the ticker matches neither HIGH nor LOW.
+            ("Seattle", "2026-07-20", None): {"implied_mean": 70.0},
             ("Seattle", "RAIN", 2026, 7): {"implied_mean": 4.0},
         }
         result = wm.resolve_market_implied_for_analysis(
