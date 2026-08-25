@@ -6,7 +6,7 @@ Repo: weather1. Written 2026-08-24 against master `a67a21a6` — **re-verify cur
 
 Source: Weather V3 additions handoff (A1, A10) plus the open backlog entry *"MEASURE BRIER SKILL CONDITIONED ON THE SIZE OF OUR DISAGREEMENT WITH THE PRICE"*. Re-planned in **Backend Build Order** — https://claude.ai/code/artifact/dc35c571-4d3d-4771-b7f1-95518032a010. See [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md).
 
-Files owned: `tracker.py` (new query functions; **item 1 modifies the existing `get_model_vs_market_brier`**), `web_app.py` (new endpoints), `config.py` + wherever the edge floor is enforced (item 2), `shared.jsx` is **out of scope** — no frontend in this batch.
+Files owned: `tracker.py` (new query functions; **item 1 modifies the existing `get_model_vs_market_brier`**), `web_app.py` (new endpoints), `config.py` + `param_sweep.py` + `backtest.py` + wherever the edge floor is enforced (item 2 — `param_sweep.py`/`backtest.py` added 2026-08-25 with the L28655 reassignment, see item 2), `shared.jsx` is **out of scope** — no frontend in this batch.
 
 **Run this batch before committing to batches 72-74.** A14 (`7f0acc7a`) already measured no forecast skill: model Brier 0.2596 vs the market's 0.2201 vs climatology's 0.2482 on 214 filtered settled rows, paired t = 2.59, bootstrap P(model worse) = 0.9965, and t = 0.69 against a flat 0.50 forecast. Track D is largely machinery for *collecting* edge more efficiently. This batch decides whether that machinery has anything to collect. Treat item 1's answer as a genuine go/no-go, not a formality.
 
@@ -35,6 +35,20 @@ Only a **flat rate constant** exists today. There is no per-price fee function a
 **This is the one item in batches 64-71 that alters live behaviour.** Everything else is additive observation. Applying a price-dependent floor in the gate will reject trades the current flat floor accepts.
 
 **Fix direction:** express the required gross edge as a function of contract price, put it beside the existing sizing helpers, and apply it in the gate **behind a setting defaulted off** until item 3 can measure its effect — the same discipline the handoff prescribes for A5's Kelly correlation adjustment. Ship the function and the display first; flipping the gate on is a separate, deliberate decision with the user.
+
+#### Reassigned in 2026-08-25: this item now also owns backlog entry L28655
+
+Batch 63 originally carried L28655 (*"`PAPER_MIN_EDGE`'s entire soft-override scale may be set below `net_edge`'s real operating floor, making the edge gate a near no-op"*). It was moved here because it is the same question from a different angle — 63 asked whether the floor's *numeric range* is calibrated, this item asks whether the floor should be *price-dependent* — and answering them in separate batches risked a direct conflict in `config.py` and the gate.
+
+**Two concrete findings from that entry, verified 2026-08-24, to fold into this item:**
+
+1. **The three declared ranges disagree with each other today.** `config.py:224` validates `0.03 <= opt <= 0.15`; `param_sweep.py:123` validates the same `0.03..0.15` — but `run_sweep`'s own candidate list at `param_sweep.py:167` is `[0.15…0.40]`, and `backtest.py:931` uses `THRESHOLDS = [0.04…0.10]`. So the sweep validates a range it then never explores, and the backtest explores a third. That is a bug independent of whatever fee-shaped floor you land on, and it means any historical sweep/backtest conclusion about the floor was drawn over a range disconnected from the live gate.
+
+2. **The premise needs testing before the fix.** The live gate reads `opp.get("net_edge")` at `order_executor.py:3317`. Query the real distribution of `net_edge` on settled predictions — median, quartiles, and what fraction of real candidates clear 0.03 / 0.10 / 0.15 — before assuming the floor binds at all. "Disproven, the range is fine" is a perfectly good result; record it and close L28655.
+
+That distribution is worth having regardless: it is the same population this batch's item 1 conditions on, so pull it once and use it for both.
+
+**Also update `backlog.txt` L28655's resolution when this item lands** — it is currently tagged OPEN with no note that batch 66 owns it.
 
 ### 3. A1 [MEDIUM]: nothing measures whether the claimed edge is the edge collected
 

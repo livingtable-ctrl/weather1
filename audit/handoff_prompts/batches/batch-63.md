@@ -2,19 +2,21 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-24 against master `223dedadcfd2` — re-verify current before starting. Source: backlog.txt L30045, L28655, L30612, L30876 (re-verified against live code during batch-48's backlog sweep, 2026-08-24).
+Repo: weather1. Written 2026-08-24 against master `223dedadcfd2` — re-verify current before starting. Source: backlog.txt L30065, L30632, L30896 (re-verified against live code during batch-48's backlog sweep, 2026-08-24).
 
-**This batch is shaped like batch 40 and batch 55: it starts with decisions, not implementation.** All four items are genuinely blocked on a judgment call the user has to make — each has at least two defensible answers with different risk profiles, and each entry's own text says so. Picking a default silently is the failure mode this batch exists to prevent.
+**Scope changed 2026-08-25:** this batch originally had a fourth item (L28655, `PAPER_MIN_EDGE`'s override scale). It has been **reassigned to batch 66**, which owns the edge floor — see the struck-through section below for the reasoning. Do not re-adopt it.
 
-**Run all four `AskUserQuestion` prompts up front, in one sitting**, then implement. Do not interleave question → implement → question; the user asked for these to be batched specifically so the decisions happen together.
+**This batch is shaped like batch 40 and batch 55: it starts with decisions, not implementation.** All three items are genuinely blocked on a judgment call the user has to make — each has at least two defensible answers with different risk profiles, and each entry's own text says so. Picking a default silently is the failure mode this batch exists to prevent.
 
-Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `config.py`, `param_sweep.py`, `backtest.py`, `trade_cycle.py`, `frontend/src/tabs/SignalsTab.jsx`, `frontend/src/tabs/PositionsTab.jsx`, `frontend/src/shared.jsx`.
+**Run all three `AskUserQuestion` prompts up front, in one sitting**, then implement. Do not interleave question → implement → question; the user asked for these to be batched specifically so the decisions happen together.
 
-**Sequencing:** run **after** batches 58, 60, 61 where possible — item 1 shares design ground with batch 58's item 4, and item 4 wants a `fetchedAt` primitive that batch 61's item 3 is likely to introduce. If those have not landed, this batch has to build the primitive itself; say which happened.
+Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `trade_cycle.py`, `weather_markets.py`, `frontend/src/tabs/SignalsTab.jsx`, `frontend/src/tabs/PositionsTab.jsx`, `frontend/src/shared.jsx`. **Not** `config.py` / `param_sweep.py` / `backtest.py` any more — those went with the reassigned item.
+
+**Sequencing:** run **after** batches 58, 60, 61 where possible — item 1 shares design ground with batch 58's item 4, and item 3 wants a `fetchedAt` primitive that batch 61's item 3 is likely to introduce. If those have not landed, this batch has to build the primitive itself; say which happened.
 
 ## Items
 
-### 1. No operator path to close a position while the kill switch or TRADING_PAUSED is engaged [L30045]
+### 1. No operator path to close a position while the kill switch or TRADING_PAUSED is engaged [L30065]
 
 **Current state (verified):** `web_app.py:3251-3256` returns 503 on `_KS_PATH.exists()` or `is_trading_paused()` for `/api/close-position`. `git grep close_paper_early` shows no operator CLI command — only automated paths (`cron.py:2503`, `main.py:9434` via `check_model_exits`, `main.py:2461` arb leg). `cron.py` already aborts its whole run under either gate. `undo` only reverses a just-placed trade within a short window, not a general close.
 
@@ -29,17 +31,18 @@ Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `config.py
 
 **Coordinate with batch 58 item 4**, which is the same question one layer down (`_exit_live_position`'s gate contradicts its own docstring). Whichever batch runs first sets the precedent; the second should inherit it, not re-decide.
 
-### 2. `PAPER_MIN_EDGE`'s soft-override scale may sit below `net_edge`'s real operating floor [L28655]
+### ~~REMOVED — `PAPER_MIN_EDGE`'s soft-override scale~~ — reassigned to batch 66 [L28655]
 
-**Current state (verified):** `config.py:224` validates `0.03 <= float(opt) <= 0.15`; `param_sweep.py:123` validates the same `0.03..0.15` — but `run_sweep`'s own candidate list at `param_sweep.py:167` is `[0.15…0.40]`; `backtest.py:931` uses `THRESHOLDS = [0.04…0.10]`. The live gate reads `opp.get("net_edge")` at `order_executor.py:3317`.
+**Moved 2026-08-25.** This item was originally batch 63's, but it is the same question as **batch 66 item 2 (A10, fee-aware edge floor)** approached from a different angle, and both touch `config.py` and the gate that enforces the floor:
 
-**The concern:** if the whole 0.03-0.15 scale sits below where `net_edge` actually operates, the edge gate is a near no-op — it would pass essentially everything, and the sweep/backtest tooling would be exploring a range disconnected from the live threshold.
+- 63 (this item) asked whether the floor's *numeric range* is calibrated to where `net_edge` actually operates.
+- 66 item 2 asks whether the floor should be a *function of contract price* rather than flat.
 
-**This needs an investigation before it needs a decision.** Query the real distribution of `net_edge` on settled predictions and report: median, quartiles, and what fraction of real candidates clear 0.03 / 0.10 / 0.15. **Bring that data to the AskUserQuestion, not a guess** — the entry is phrased as "may be," and the honest first output of this item is either "confirmed, the gate is inert" or "disproven, the range is fine." A disproof is a perfectly good result; record it and close the entry.
+Answering them separately risks a direct conflict — 66 making the floor price-dependent while 63 independently rescales the flat range. **Batch 66 now owns the edge floor entirely**, including L28655's own finding, which is recorded in that batch file. Leave `config.py`, `param_sweep.py`, and `backtest.py`'s threshold ranges alone in this batch.
 
-**If confirmed**, the decision is where the floor should actually sit, and whether `param_sweep`'s validation range (0.03-0.15) or its candidate list (0.15-0.40) is the one that is wrong — they currently disagree with each other, which is its own bug regardless of the answer.
+If you are running 63 and batch 66 has not landed, that is fine — this is a clean removal, not a blocker. Just do not re-adopt the item.
 
-### 3. Hurricane next-event model logs zero predictions [L30612]
+### 2. Hurricane next-event model logs zero predictions [L30632]
 
 **Current state (verified):** live `predictions.db` shows `hurricane_next_event` = **0 rows**, while siblings `hurricane_count` = 120 and `storm_order` = 11. Gates unchanged: `trade_cycle.py:630` (`mkt_dir < MIN_MARKET_PROB_TO_BET_WITH`) and `:633` (divergence-ratio `continue`); `_CONDITION_CONFIDENCE["hurricane_next_event"] = 0.50` at `weather_markets.py:9040`.
 
@@ -54,7 +57,7 @@ Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `config.py
 
 **Related, already fixed:** the wrong-`_date` bug for these tickers (backlog L185) was resolved in batch-51 — so the input data is now correct, which makes this a better moment to revisit than when the entry was filed.
 
-### 4. No data-freshness gate on order actions (Approve / Close) [L30876]
+### 3. No data-freshness gate on order actions (Approve / Close) [L30896]
 
 **Current state (verified):** `SignalsTab.jsx`'s `handleConfirm` (~`:200-207`) POSTs `buildPaperOrderBody(opp, qty)` with no timestamp check. The only staleness code is a display-only "Last scan" badge (`isStale`, ~`:577`) off `signalsMeta.generatedAt` — not a gate. `PositionsTab.jsx:153-156` and `:233` submit `exit_price: p.mark` with no freshness check either.
 
@@ -73,11 +76,11 @@ Files touched depend on the answers. Likely: `main.py`, `web_app.py`, `config.py
 
 ## Process
 
-**Start with all four `AskUserQuestion` prompts before writing any code.** Keep each question terse — state the decision in one sentence and push the caveats into the option descriptions. Item 2's question must carry the real `net_edge` distribution data with it (see that item).
+**Start with all three `AskUserQuestion` prompts before writing any code.** Keep each question terse — state the decision in one sentence and push the caveats into the option descriptions. Item 3 is really three sub-decisions (threshold, block-vs-warn, scope) — ask them together rather than as three separate prompts.
 
-Ceremony after the decisions land: **items 1 and 4 get full 29-step ceremony with opus review at `effort: high`** (kill-switch semantics on a position-closing path; a gate on order submission). Item 3 gets full ceremony if the answer is (a) or (b) — it changes trade-entry gating — and is a documentation-only close if (c). Item 2 is investigation-first; ceremony depends entirely on whether the investigation confirms a real problem.
+Ceremony after the decisions land: **items 1 and 3 get full 29-step ceremony with opus review at `effort: high`** (kill-switch semantics on a position-closing path; a gate on order submission). Item 2 gets full ceremony if the answer is (a) or (b) — it changes trade-entry gating — and is a documentation-only close if (c).
 
-A "no change needed" outcome is a legitimate result for items 2 and 3, but it must be an explicit, reasoned, recorded decision per item — never a silent drop because the investigation was inconclusive.
+A "no change needed" outcome is a legitimate result for item 2, but it must be an explicit, reasoned, recorded decision — never a silent drop because the investigation was inconclusive.
 
 Tests: whatever the answers require. Frontend work: `cd frontend && npm test`, extract decision logic into `frontend/src/shared.jsx` as pure functions so it is unit-testable (no jsdom/RTL in this repo), and rebuild `static/dist` in the same commit. Python: scope narrowly, grep `tests/` for changed function names. **Never run the bare full suite.**
 

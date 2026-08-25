@@ -28652,7 +28652,7 @@ Resolution:
   same-file one-line patch here. Confirmed with the user (AskUserQuestion)
   to defer rather than ship either narrow direction.
 
-[OPEN -- filed 2026-08-24 by batch-37 item 2 investigation (L-17 turned out deeper than scoped)] PAPER_MIN_EDGE's entire soft-override scale (config.py + param_sweep.py + backtest.py's walk-forward thresholds) may be set below net_edge's real operating floor, making the edge gate a near no-op
+[OPEN -- filed 2026-08-24 by batch-37 item 2 investigation (L-17 turned out deeper than scoped); OWNER ASSIGNED 2026-08-25 to batch-66 item 2 -- see the note at the end of this entry, do NOT pick this up standalone] PAPER_MIN_EDGE's entire soft-override scale (config.py + param_sweep.py + backtest.py's walk-forward thresholds) may be set below net_edge's real operating floor, making the edge gate a near no-op
 Priority: Medium -- live paper-trading gate, but currently a no-op in the
   SAFE direction (nothing is being wrongly filtered) rather than the unsafe
   one, so not urgent.
@@ -28707,6 +28707,26 @@ Why not now:
   no-op cleanup, and deserves its own scoped investigation/AskUserQuestion
   rather than being folded into an L-17 "one-line fix" that turned out not
   to be one.
+
+OWNER ASSIGNED 2026-08-25 -- batch-66 item 2 (do not pick this up standalone):
+  This entry was briefly assigned to batch-63 (the design-decision batch) when
+  batches 57-63 were planned, then moved. It is the same question as batch-66's
+  item 2 (A10, fee-aware edge floor) approached from a different angle: this
+  entry asks whether the floor's NUMERIC RANGE is calibrated to where net_edge
+  actually operates; A10 asks whether the floor should be a FUNCTION OF CONTRACT
+  PRICE rather than flat. Both touch config.py and the gate that enforces the
+  floor, so answering them in separate batches risked a direct conflict --
+  e.g. A10 making the floor price-dependent while this entry independently
+  rescaled the flat range.
+  batch-66's item 2 now carries this entry's two concrete findings verbatim:
+  (1) the three declared ranges disagree with each other today (config.py's
+  [0.03, 0.15] clamp vs param_sweep run_sweep's [0.15..0.40] candidates vs
+  backtest.py's [0.04..0.10] THRESHOLDS -- so the sweep validates a range it
+  never explores), which is a bug independent of whatever floor shape wins;
+  and (2) the premise needs testing before the fix -- measure the real
+  net_edge distribution on settled predictions before assuming the floor binds
+  at all, since "disproven, the range is fine" is a legitimate outcome.
+  Whoever lands batch-66 item 2 should write this entry's resolution.
 
 [RESOLVED 2026-08-24 -- batch-37 item 4 (L-15)] deactivate_emos discarded the restore result; get_emos_status returned no t_pinned when the params file was absent -- exactly the post-deactivate state
 Priority: Low-Medium

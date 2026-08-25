@@ -18,7 +18,9 @@ These batches cover **priority 1 in the project's standing order**: *all open/pa
 | New market families | L7204 | Its remaining scope is only KXHURCAT per-storm category + per-city landfall — i.e. new families, which is batch 54/55 territory (`INDEX-ROADMAP.md`), not backlog cleanup. Title reads far broader than what is actually left. |
 | Feature work, not a defect | L29870 | Queue-position data is captured but nothing reads it back into a reprice/chase decision. That is an unbuilt feature with a design question attached, not a bug to hand an implementer. |
 
-**Accounting:** 34 batched + 24 excluded = the 58 open entries as of `223dedadcfd2`. Verified programmatically — every batched ID is genuinely open, no batch cites an already-closed ID, and nothing is unaccounted for.
+**Accounting:** 33 batched here + 1 reassigned to batch 66 + 24 excluded = the 58 open entries as of `223dedadcfd2`. Verified programmatically — every batched ID is genuinely open, no batch cites an already-closed ID, and nothing is unaccounted for.
+
+**Reassigned 2026-08-25:** **L28655** (`PAPER_MIN_EDGE`'s override scale) moved out of batch 63 and into **[batch 66](batch-66.md) item 2**, which owns the edge floor. Both were asking "is the edge floor right?" — 63 about its numeric range, 66 about whether it should be price-dependent — and both touch `config.py` and the enforcing gate, so answering them in separate batches risked a direct conflict. Batch 66's item 2 now carries L28655's two concrete findings (the config/param_sweep/backtest range disagreement, and the need to measure the real `net_edge` distribution before assuming the floor binds). Batch 63 is now 3 items.
 
 ⚠️ **`L`-numbers are `backlog.txt` line numbers and drift whenever anything is appended.** They shifted +26 mid-authoring of these very files. Treat the entry **title** as the durable identifier and the L-number as a hint — grep the title before trusting the line number, and if it does not match, re-derive from `BACKLOG_OPEN.md` rather than guessing.
 
@@ -32,7 +34,7 @@ These batches cover **priority 1 in the project's standing order**: *all open/pa
 | [60](batch-60.md) | Trade-entry guards & manual pricing | L138, L163, L26159, L23228 | `paper.py`, `main.py` (cmd_order, cmd_today) | Full, opus high |
 | [61](batch-61.md) | Web app & dashboard residuals | L23722, L24148, L30717 | `web_app.py`, `frontend/`, `paper.py` (`_load` only) | Mixed — see file |
 | [62](batch-62.md) | Test isolation & data hygiene | L24334, L25380, L24136, L24249, L23905, L23998, L26224 | `tests/conftest.py`, `safe_io.py`, `forecast_cache.py`, `acis_precip.py`, CB monitor lists, `data/predictions.db` | Mixed — see file |
-| [63](batch-63.md) | **Design decisions** (AskUserQuestion first) | L30045, L28655, L30612, L30876 | Depends on answers | Full after decisions |
+| [63](batch-63.md) | **Design decisions** (AskUserQuestion first) | L30065, L30632, L30896 | Depends on answers | Full after decisions |
 
 ## Sequencing
 
