@@ -34573,3 +34573,207 @@ Recommendation:
   subprocess spawned by test_paper_cross_process_lock.
   Worth fixing on its own merits even though xdist was declined: a hidden
   cross-file coupling is a latent flake in serial runs too.
+[CLOSED 2026-08-25 -- batch-53's go/no-go replay ran; the gate failed. The
+  batch file's own instruction for this outcome: "Fail -> write the numbers
+  to backlog.txt, close the idea, done -- that is a successful batch outcome
+  too."] IDR/EasyUQ AS A CALIBRATION CHALLENGER TO EMOS/TEMPERATURE-SCALING
+  -- GATE FAILED, IDEA CLOSED
+Priority: n/a -- closed. Recorded for the numbers, so the idea is not
+  re-proposed from the dossier without them.
+Files: none changed. The replay ran entirely as scratchpad scripts;
+  ml_bias.py and calibration.py were not touched, per batch-53's own
+  "productionizing waits for the cluster's slot" carve-out.
+
+Problem:
+  Expansion Dossier B3 proposed Isotonic Distributional Regression
+  (nonparametric, hyperparameter-free, CRPS-optimal within monotone models)
+  as a challenger to the current EMOS/temperature-scaling calibration, to be
+  gated on: IDR mean CRPS >= 5% better than the incumbent on held-out data.
+
+What the replay found:
+  Population: predictions JOIN outcomes_valid where forecast_temp_f and
+  settled_temp_f are both present -- 313 market rows, 2026-05-18..2026-08-23,
+  20 cities, D+0 and D+1 only. 103 of those rows were then EXCLUDED as
+  contaminated (see the separate metar_lockout entry filed alongside this
+  one), leaving 210 deduped clean pairs / 208 events.
+
+  Expanding walk-forward (train strictly on earlier market_dates, >= 60
+  training events), 148 held-out rows, reference = the deployed above/below/
+  between sigma-Gaussian including _BETWEEN_SIGMA_*_CAP and the below-market
+  x1.5. _time_risk's sigma_mult is not reconstructable per row, so it is
+  swept rather than pinned:
+
+    sigma_mult   reference    EMOS     IDR    EMOS gain   IDR gain
+      1.00        1.6200     1.5597  1.7814     +3.72%     -9.96%   FAIL
+      0.85        1.6299     1.5597  1.7814     +4.30%     -9.30%   FAIL
+      0.70        1.6599     1.5597  1.7814     +6.04%     -7.32%   FAIL
+      0.50        1.7381     1.5597  1.7814    +10.26%     -2.49%   FAIL
+
+  IDR vs EMOS: -14.21% (95% CI ~ -22%..-7%, paired t = -3.55). IDR loses to
+  the fit_emos() estimator this repo already has, at every sigma_mult.
+
+  NOTE that EMOS also fails the same 5% bar on clean data (+3.72% / +4.30%
+  at the plausible multipliers). Neither calibrator earns activation here.
+
+  Learning curve (fixed most-recent-60-event held-out block, growing training
+  window): IDR minus EMOS = -32.0%, -21.6%, -14.3%, -3.9%, -3.7%, -0.1%,
+  -4.7% at 40/60/90/120/160/200/246 training events. IDR converges toward
+  EMOS but never overtakes it -- more settled data will not rescue it. That
+  is the reason this is CLOSED rather than deferred-pending-more-data.
+
+  Monotonicity (batch-53 asked explicitly for this): on CLEAN rows the
+  pooled Spearman rho(forecast, error) is -0.012 with no sign flip across
+  the forecast range -- decile bias +0.33 +2.76 +0.92 +1.09 +1.04 +0.92
+  +1.80 +2.27 -0.26 +0.95. The forecast carries a single near-constant
+  ~+1.2F cold bias. That is exactly what EMOS's `a` absorbs in one
+  parameter and what a pooled isotonic map on 60-200 points can only
+  reproduce with far more variance. IDR's failure is a sample-size/variance
+  story, not a monotonicity-violation story.
+
+  (An earlier draft of this analysis reported a sign-flipping bias and a
+  monotonicity problem. That was the metar_lockout contamination, not real.)
+
+Does better calibration close the model-vs-market Brier gap? No -- it widens
+  it. Same walk-forward clock, each predictive CDF converted to P(market
+  condition) and scored against settled_yes on the same population
+  get_model_vs_market_brier uses (above/below only), clean rows, n=144:
+
+    our_prob (recorded)  0.2480     market_prob  0.2113
+    EMOS                 0.2775  (+0.0295 vs our_prob, t=+1.38)
+    IDR                  0.2972  (+0.0492 vs our_prob, t=+1.81)
+    reference Gaussian   0.3049  (+0.0569 vs our_prob, t=+2.23)
+
+  Every recalibrated challenger is WORSE than the probability the bot already
+  emits, and none approaches the market. A "fraction of the gap closed"
+  statistic is not quotable here -- bootstrapped it is -80.5% with a 95% CI
+  of -534%..+30%. The durable statement is the table.
+
+  Cross-check that this is not a lockout artifact: our_prob vs market on
+  above/below rows -- all 202 rows gap +0.0397 +/- 0.0149 (t=+2.68);
+  non-lockout 169 rows gap +0.0378 +/- 0.0140 (t=+2.69). A14 / batch-57's
+  "no skill vs the market" verdict survives the contamination correction
+  intact, and it is NOT explained by temperature miscalibration.
+
+Method / reproducibility:
+  Scratchpad scripts, read-only against a COPY of data/predictions.db behind
+  a safe_io.project_root() redirect with sockets blocked. IDR built as
+  per-threshold sklearn IsotonicRegression on exceedance indicators (the
+  PyPI `isodistrreg` package requires Python >= 3.13; this repo is on 3.12),
+  CRPS via properscoring.crps_ensemble with the per-threshold masses as
+  weights -- validated against a 1.2M-point numerical integration of
+  INT (F(x) - 1{x>=obs})^2 dx to 2.5e-05. Shuffling the forecast collapses
+  IDR from 3.98 to 6.44 against a climatology 7.13, confirming the harness
+  is not manufacturing skill.
+
+  Caveats carried, none of which change the verdict: walk-forward trains on
+  market_date < cutoff, which is not identical to "settled before the test
+  row's decision time" (286 of 44,704 training rows, 0.64%, are not yet
+  settled); sklearn's isotonic interpolates linearly off-grid where
+  reference IDR steps (mild smoothing, if anything favours IDR); EMOS here
+  is fit_emos(forecast_temp_f, ens_var:=1) rather than production's
+  fit_emos(ens_mean, real ens_var), so its c/d are not separately
+  identifiable and nothing here transfers to production EMOS's variance
+  structure.
+
+Why this is closed rather than deferred:
+  The calibration/ML cluster's standing deferral is about SEQUENCING, not
+  about whether the idea works. This measured it: it does not work here, it
+  loses to an estimator already in the repo, and the learning curve says
+  more data will not change that. Re-opening should require a NEW argument
+  (e.g. a covariate-conditioned IDR, which is a different proposal), not
+  simply a larger settled sample.
+
+[OPEN 2026-08-25 -- found by batch-53's replay experiment, then isolated and
+  confirmed by that replay's opus review; filed separately because it is a
+  data-integrity bug in its own right and has nothing to do with
+  calibration.] predictions.forecast_temp_f IS WRITTEN WITH AN INSTANTANEOUS
+  METAR TEMPERATURE ON method='metar_lockout' ROWS, NOT A DAILY-EXTREME
+  FORECAST -- SILENTLY CORRUPTS ANY ANALYSIS KEYED ON THAT COLUMN
+Priority: Medium -- NOT a live-money bug today (no production path consumes
+  the corrupted values; see "Live impact" below), but it has already
+  produced one wrong retrospective validation number and it silently
+  destroyed the first pass of batch-53's replay. It is invisible unless you
+  split by `method`, which no existing consumer does.
+Files: trade_cycle.py (~920, "forecast_temp_f": analysis.get("forecast_temp")
+  -- the writer), weather_markets.py (analyze_trade's `if not metar_locked:`
+  block, ~13870), tracker.py (get_regional_recent_bias ~8797, the one query
+  that joins forecast_temp_f to settled_temp_f with no method filter),
+  sigma_audit.py (diagnostic reader)
+
+Problem:
+  On rows where analyze_trade took the METAR lock-in path
+  (predictions.method = 'metar_lockout'), the stored forecast_temp_f is the
+  instantaneous METAR ambient temperature at decision time, not a forecast
+  of the day's high or low. analyze_trade puts the entire ensemble/Gaussian
+  block behind `if not metar_locked:` -- when METAR locks, blended_prob comes
+  from _metar_blended_prob and no temperature distribution is produced at
+  all -- but a temperature is still persisted into the same column that
+  ensemble rows use for a genuine daily-extreme forecast.
+
+  Measured on the settled join (313 rows: ensemble 208, metar_lockout 103,
+  normal_dist 2), D+0:
+
+    method          var   n   mean forecast_temp_f   mean settled    bias
+    metar_lockout   max   65        78.40               87.03       + 8.632
+    metar_lockout   min   38        82.21               71.79       -10.421
+    ensemble        max   47        85.49               85.68       + 0.193
+    ensemble        min   28        70.15               71.71       + 1.567
+
+  The tell is unambiguous: on lockout rows the HIGH-market forecast (78.40)
+  is COLDER than the LOW-market forecast (82.21). That is impossible for
+  daily extremes and is exactly what you get from a single mid-day ambient
+  reading standing in for both. Lockout RMSE is 10.9-11.7F against 2.5-3.4F
+  for ensemble rows on the same days.
+
+  It is NOT fixed and NOT self-correcting. The lockout bias by half-month
+  (max markets) is +8.60, +7.65, +14.52, +15.55 -- flat to growing. What
+  changed is the MIX: lockout share of settled D+0 rows ran 95%, 69%, 46%,
+  8%, 6%, 0% from 2026-06a to 2026-08b. The artifact simply stopped
+  appearing in the settled sample; the writer is unchanged.
+
+Live impact (traced, not assumed):
+  - get_dynamic_station_bias() is NOT affected -- it reads
+    ensemble_member_scores.predicted_temp/actual_temp, a different table.
+    This is the bias path that actually feeds live forecasts, and it is
+    clean.
+  - get_regional_recent_bias() IS affected: it selects
+    predictions.forecast_temp_f joined to outcomes_valid.settled_temp_f with
+    no method filter. It has NO production call site (tests only; see
+    tests/test_dead_code_scan.py's own allowlist entry for it) -- it is the
+    unwired "cross-city recent-error pooling" candidate signal.
+  - CONSEQUENCE worth noting: that signal's recorded validation --
+    weather_markets._SignalRegistryEntry(key="cross_city_pooling"),
+    "Last check (2026-07-23): Pearson r~=0.35" -- was computed over a window
+    where most settled D+0 rows were lockout rows. That r is not
+    trustworthy and must be recomputed on method-filtered data before it is
+    ever used to justify wiring the signal live. Same pattern as the
+    contamination lesson in feedback_reverify_correlation_after_contamination_fix.
+  - sigma_audit.py reads the column but is diagnostic-only by its own
+    docstring.
+
+What the fix looks like:
+  Decide what the column means and make it mean that consistently. Two
+  defensible options, and this is a genuine design call rather than an
+  obvious bug-swat:
+  (a) Stop writing forecast_temp_f on lockout rows (write NULL), so every
+      non-NULL value is a daily-extreme forecast and every existing consumer
+      becomes correct without changing its query. Loses the ability to
+      reconstruct what the lock-in saw.
+  (b) Keep writing it but add a sibling column (e.g. observed_temp_f) and
+      move the METAR value there, leaving forecast_temp_f NULL on those
+      rows. Preserves the audit trail; needs a migration.
+  Either way, add the method filter to get_regional_recent_bias and
+  recompute the cross_city_pooling correlation note.
+
+Why not now:
+  Needs the (a)-vs-(b) call from the user, plus a migration decision for the
+  103 existing contaminated rows (leave them, NULL them, or move them). No
+  live path is currently reading the bad values, so there is no urgency
+  forcing a rushed choice.
+
+When to revisit:
+  Before ANY of these: wiring cross-city pooling live; building the
+  data-driven sigma in [DATA-DRIVEN SIGMA FROM SETTLED HISTORY]; or any
+  future analysis that joins forecast_temp_f to settled_temp_f. All three
+  would silently inherit the corruption.
+
