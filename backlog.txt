@@ -36710,3 +36710,100 @@ Why not now:
   deserves its own scoped verification rather than riding along with an
   analytics batch. Batch-66 corrected the false docstring that claimed late
   binding solved this, and left the underlying gap documented here.
+[OPEN 2026-08-25 -- found during a new-PC migration audit, while working out
+  which files a fresh clone would and would not carry.] `git restore .` OR
+  `git checkout -- data/` SILENTLY RESETS FIVE LEARNED-CALIBRATION FILES TO
+  THEIR UNCALIBRATED SEED VALUES, WITH NO WARNING AND NO ERROR
+Priority: Medium -- destroys learned model state, but only when someone runs
+  a broad git-restore command in the main clone. No automated path does it.
+  Filed because the hazard is completely invisible: the command succeeds,
+  exits 0, prints nothing, and the bot keeps running on defaults.
+Files: .gitignore (`data/` at :9), calibration.py (writes city_weights,
+  condition_weights, seasonal_weights), ml_bias.py + web_app.py (write
+  temperature_scale), ml_bias.py + main.py (~:8590, write
+  metar_lockout_calibration), paths.py (the five *_PATH constants)
+
+Problem:
+  `data/` is gitignored (.gitignore:9), but five files inside it were
+  force-added and are TRACKED:
+
+    data/city_weights.json
+    data/condition_weights.json
+    data/metar_lockout_calibration.json
+    data/seasonal_weights.json
+    data/temperature_scale.json
+
+  All five are also WRITTEN BY THE BOT AT RUNTIME -- calibration.py writes
+  three, ml_bias.py/web_app.py write temperature_scale, ml_bias.py/main.py
+  write metar_lockout_calibration. So they are simultaneously version-
+  controlled source AND live mutable state.
+
+  Three consequences, in increasing order of severity:
+
+  1. Every calibration run dirties the working tree. `git status` in the main
+     clone shows a modified data/*.json more or less permanently, which
+     trains everyone to ignore it -- including in the moment when it matters.
+
+  2. A fresh clone starts UNCALIBRATED. The committed copies are neutral
+     seeds. Measured 2026-08-25, data/seasonal_weights.json summer weights:
+
+       committed : ensemble 0.3333  climatology 0.3333  nws 0.3333
+       live      : ensemble 0.8793  climatology 0.0016  nws 0.1191
+
+     The seed pattern itself looks deliberate and is defensible --
+     calibration.py sets "_uncalibrated": true and _blend_weights checks that
+     flag, so the code can tell a seed from a learned file. That is not the
+     bug.
+
+  3. THE BUG: `git restore .`, `git checkout -- .`, `git checkout -- data/`
+     or `git reset --hard` in the main clone rewrites all five back to seeds.
+     Git reports success. Nothing logs it. The bot's next run silently blends
+     with uniform 1/3 weights instead of the learned ones, and the only
+     evidence is a "_uncalibrated": true flag nobody is looking at.
+
+     This is a realistic command to run: the working tree is chronically
+     dirty (see 1), so "clean up the repo before pulling" is exactly the
+     reflex that triggers it. It nearly happened during this session's own
+     fast-forward of the main clone -- three files needed restoring and
+     `git restore .` would have been the natural command; the files were
+     named individually only because seasonal_weights.json was known to be
+     dirty at that moment.
+
+  Note the asymmetry that makes it worse: only seasonal_weights.json is
+  currently diverged from HEAD. The other four match, so a restore looks and
+  feels harmless right up until the run that has just recalibrated them.
+
+What the fix looks like (pick one; this is a judgment call, not an obvious
+  bug-swat):
+  (a) Untrack all five (`git rm --cached`), and ship the seeds under
+      different names (e.g. `defaults/seasonal_weights.seed.json`) that the
+      loader copies in on first run when the live file is absent. Removes the
+      hazard entirely and stops the working tree being permanently dirty.
+      Costs a loader change and a first-run path per file.
+  (b) Keep them tracked but add a pre-restore guard -- e.g. a git hook, or a
+      `make safe-restore` that stashes data/ first. Cheap, but a hook cannot
+      catch `git checkout -- data/` reliably and does nothing for a fresh
+      clone's uncalibrated start.
+  (c) Document only: a comment at each writer and a line in the README's
+      graduation section. Zero risk, does not remove the hazard.
+
+  (a) is the real fix. It also removes consequence 1 and 2, which (b) and (c)
+  leave in place.
+
+Also fix regardless of which option is taken:
+  The migration procedure now depends on restore ORDER -- clone first (brings
+  seeds), THEN copy the bundle's data/ over it (brings learned values). Doing
+  it the other way silently discards the learned state. That ordering is
+  currently only implicit in migrate_backup.py's closing instructions and
+  should be stated explicitly, since getting it backwards produces no error.
+
+Why not now:
+  (a) needs a first-run-seed path designed per file and a decision about
+  where the seeds live. Not hard, but it touches five loaders and wants doing
+  once, properly.
+
+When to revisit:
+  Before the machine move if convenient -- the restore-order trap is live
+  during exactly that operation. Otherwise, next time anyone touches
+  calibration.py's write path.
+
