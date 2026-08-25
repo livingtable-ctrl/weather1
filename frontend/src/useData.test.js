@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray,
   mapForecasts, normalizeForecastEntry, mapScanStats, mapAnomalyStatus, mapAlerts,
+  mergeFetchedAt,
   startVisibilityGatedPoll,
 } from './useData.js';
 
@@ -949,5 +950,68 @@ describe('startVisibilityGatedPoll', () => {
     doc.dispatchEvent(new Event('visibilitychange'));
     vi.advanceTimersByTime(1000);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-61 item 3 (backlog L30717): mergeFetchedAt builds the per-endpoint
+// "last SUCCESSFUL fetch" map that shared.jsx's feedFreshness() reads.
+// Extracted from fetchAll's setData updater precisely so it is testable --
+// frontend/ has no jsdom/RTL, so the merge body itself cannot be exercised.
+// (The first version of this change shipped two mapAnomalyStatus tests that
+// read as covering this and asserted nothing about it; opus review F7.)
+// ---------------------------------------------------------------------------
+describe('mergeFetchedAt', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('stamps a feed that succeeded', () => {
+    expect(mergeFetchedAt({}, { anomalyStatus: true }, NOW)).toEqual({ anomalyStatus: NOW });
+  });
+
+  it('does NOT stamp a feed that failed, and does not erase its previous value', () => {
+    // The whole mechanism: a failed endpoint's timestamp must stop advancing
+    // (that IS the staleness signal) without being cleared, since the card
+    // still wants to say how old the last good reading was.
+    const prev = { anomalyStatus: NOW - 500_000 };
+    expect(mergeFetchedAt(prev, { anomalyStatus: false }, NOW)).toEqual(prev);
+  });
+
+  it('carries unrelated feeds forward untouched, so one outage cannot age another', () => {
+    const prev = { trades: 111, positions: 222 };
+    expect(mergeFetchedAt(prev, { anomalyStatus: true }, NOW)).toEqual({
+      trades: 111, positions: 222, anomalyStatus: NOW,
+    });
+  });
+
+  it('never mutates `prev` — fetchAll passes MOCK itself on the first merge', () => {
+    // Mutating there would poison the module-level mock object for every
+    // later consumer, permanently.
+    const prev = { anomalyStatus: 1 };
+    const out = mergeFetchedAt(prev, { anomalyStatus: true }, NOW);
+    expect(prev).toEqual({ anomalyStatus: 1 });
+    expect(out).not.toBe(prev);
+  });
+
+  it('handles a missing prev map (very first merge) without throwing', () => {
+    expect(mergeFetchedAt(undefined, { anomalyStatus: true }, NOW)).toEqual({ anomalyStatus: NOW });
+    expect(mergeFetchedAt(null, {}, NOW)).toEqual({});
+  });
+
+  it('positive control: the same call stamps a DIFFERENT value as the clock advances', () => {
+    // Without this, an implementation that wrote a constant would satisfy
+    // every assertion above while making every feed permanently "fresh".
+    expect(mergeFetchedAt({}, { anomalyStatus: true }, NOW).anomalyStatus).toBe(NOW);
+    expect(mergeFetchedAt({}, { anomalyStatus: true }, NOW + 60_000).anomalyStatus).toBe(NOW + 60_000);
+  });
+
+  it('mapAnomalyStatus null-return is the gate: a failed/errored fetch yields no stamp', () => {
+    // fetchAll passes `Boolean(mapAnomalyStatus(raw))` as the success flag,
+    // so this pins the two halves together end to end.
+    for (const bad of [null, undefined, { error: 'db locked' }]) {
+      const ok = Boolean(mapAnomalyStatus(bad));
+      expect(mergeFetchedAt({}, { anomalyStatus: ok }, NOW)).toEqual({});
+    }
+    const good = Boolean(mapAnomalyStatus({ active: false, anomaly_detected: false }));
+    expect(mergeFetchedAt({}, { anomalyStatus: good }, NOW)).toEqual({ anomalyStatus: NOW });
   });
 });

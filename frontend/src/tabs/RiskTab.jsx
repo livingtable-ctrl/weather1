@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { DataContext } from '../DataContext.js';
-import { StatCard, brierAlertTier, haltOrResume, heatStatus } from '../shared.jsx';
+import { StatCard, alarmSafeFlag, brierAlertTier, feedFreshness, formatFeedAge, haltOrResume, heatStatus, useFeedClock } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // BrierAlertCard — P10.3 Brier degradation alert. Fires when weekly Brier
@@ -100,11 +100,38 @@ function BrierAlertCard() {
 // KillSwitchCriteriaCard — checklist of conditions the operator should verify
 // before removing the kill switch manually. Invisible when kill switch is off.
 // ---------------------------------------------------------------------------
-function KillSwitchCriteriaCard() {
+function KillSwitchCriteriaCard({ clock }) {
   const M = useContext(DataContext);
   if (!M.stats.kill_switch) return null;
 
-  const anomalyDetected = M.anomalyStatus?.anomaly_detected;
+  // batch-61 item 3 adjacency: this checklist tells the operator whether it
+  // is safe to turn the kill switch OFF, and its "Anomaly clear" row derived
+  // a green ✓ Pass straight from `anomaly_detected === false`. That field is
+  // keep-last-known-good (useData.js), so a dead /api/anomaly-status would
+  // have kept asserting "Pass" from an arbitrarily old reading -- the same
+  // blind spot as the anomaly card below, on a strictly more dangerous
+  // surface. A stale reading collapses to `undefined`, which routes through
+  // the row's already-existing third state ('?' / grey / "Unknown") and
+  // drops it out of allPass, rather than inventing a fourth.
+  //
+  // A last-known `true` (an anomaly WAS detected) survives staleness, matching
+  // the anomaly card's own badge precedence below. opus review F2 caught the
+  // first version downgrading a red "✗ Fail" to a grey "? Unknown" purely
+  // because the feed died -- i.e. the row got LESS alarming as a result of an
+  // outage, on the surface this comment calls strictly more dangerous. Only
+  // the reassuring `false` is withheld when we can no longer stand behind it.
+  const _anomalyRaw = M.anomalyStatus?.anomaly_detected;
+  // The clock arrives as a prop rather than from a second useFeedClock()
+  // call: this component renders null whenever the kill switch is off, and
+  // there is no reason for an invisible card to hold its own subscription and
+  // re-render every minute. It also makes it structurally impossible for the
+  // two cards on this tab to evaluate freshness against different clocks
+  // (opus review F7).
+  const _anomalyFeedStale = feedFreshness(M.fetchedAt?.anomalyStatus, {
+    now: clock.now,
+    since: clock.visibleSince,
+  }).stale;
+  const anomalyDetected = alarmSafeFlag(_anomalyRaw, _anomalyFeedStale);
   const drawdownTier = M.stats.drawdown_tier;
   const brier = M.stats.brier;
 
@@ -187,6 +214,34 @@ export default function RiskTab() {
   // Guard against division by zero when there are no open positions
   const biasTotal = (M.directionalBias.yes || 0) + (M.directionalBias.no || 0);
   const bullishPct = biasTotal > 0 ? ((M.directionalBias.yes / biasTotal) * 100).toFixed(0) : null;
+
+  // batch-61 item 3 (L30717): the anomaly card is the win-rate-collapse
+  // safety monitor's only surface, and it used to render the identical grey
+  // INACTIVE badge whether the monitor was quiet-and-healthy or completely
+  // unreachable -- useData.js keeps the last known payload forever on a
+  // failed /api/anomaly-status. feedFreshness() over the fetchedAt marker
+  // separates the two. The last-known values stay on screen (losing a
+  // HALT TRIGGERED reading because the feed died would be worse than showing
+  // it stale), but the badge, border and banner all say plainly that they
+  // are no longer live.
+  // useFeedClock supplies both halves the pure predicate needs: a `now` that
+  // ticks on its own (so staleness becomes visible even when NO fetch ever
+  // resolves -- opus review F1) and a `visibleSince` that restarts the
+  // tolerance window when the tab comes back from being hidden, since the
+  // main poll is visibility-gated and makes no attempts while hidden (F3).
+  const anomalyClock = useFeedClock();
+  const anomalyFeed = feedFreshness(M.fetchedAt?.anomalyStatus, {
+    now: anomalyClock.now,
+    since: anomalyClock.visibleSince,
+  });
+  const anomalyAgeLabel = formatFeedAge(anomalyFeed.ageMs);
+  // 'pending' renders neutral-grey, not amber: it fires on every reload that
+  // lands on this tab (App restores the tab from the URL hash) and would
+  // otherwise flash a safety-coloured "not responding" banner for the few
+  // hundred ms before the first poll lands -- alarm fatigue on the one banner
+  // this whole change exists to make credible (opus review F5). It is still
+  // visually distinct from INACTIVE, which is the entry's actual requirement.
+  const anomalyUnavailableAmber = anomalyFeed.state === 'stale';
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
@@ -292,7 +347,7 @@ export default function RiskTab() {
       {M.anomalyStatus && (
         <section style={{
           background: 'var(--bg-card)',
-          border: `1px solid ${M.anomalyStatus.should_halt ? '#ef4444' : M.anomalyStatus.anomaly_detected ? '#f59e0b' : 'var(--border)'}`,
+          border: `1px solid ${M.anomalyStatus.should_halt ? '#ef4444' : (M.anomalyStatus.anomaly_detected || anomalyUnavailableAmber) ? '#f59e0b' : 'var(--border)'}`,
           borderRadius: 14, padding: '20px', marginBottom: 18,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -302,15 +357,48 @@ export default function RiskTab() {
                 Last {M.anomalyStatus.n} multi-day settlements. Halts at &lt;{M.anomalyStatus.halt_threshold != null ? (M.anomalyStatus.halt_threshold * 100).toFixed(0) + '%' : '—'} win rate (min {M.anomalyStatus.min_samples ?? '—'} settled).
               </p>
             </div>
+            {/* batch-61 item 3: STATUS UNAVAILABLE outranks NORMAL/INACTIVE
+                (neither can be honestly asserted from a feed that stopped
+                answering) but NOT HALT TRIGGERED/ANOMALY -- a last-known
+                alarm is still the loudest true thing we know, and demoting
+                it to a neutral "unavailable" would suppress it. Amber, not
+                the grey INACTIVE uses: the entire point of the entry is that
+                these two states must not look alike. */}
             {M.anomalyStatus.should_halt
               ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>HALT TRIGGERED</span>
               : M.anomalyStatus.anomaly_detected
                 ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>ANOMALY</span>
-                : M.anomalyStatus.active
-                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>NORMAL</span>
-                  : <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--bg-muted)', color: 'var(--text-faint)' }}>INACTIVE</span>
+                : anomalyFeed.state === 'stale'
+                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 12, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>STATUS UNAVAILABLE</span>
+                  : anomalyFeed.state === 'pending'
+                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 12, background: 'var(--bg-muted)', color: 'var(--text-muted)' }}>LOADING…</span>
+                  : M.anomalyStatus.active
+                    ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>NORMAL</span>
+                    : <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--bg-muted)', color: 'var(--text-faint)' }}>INACTIVE</span>
             }
           </div>
+
+          {/* batch-61 item 3: explicit "the monitor itself is unreachable"
+              banner. Worded differently for 'pending' (nothing has ever
+              loaded this session, so everything below is mockData) vs
+              'stale' (it was live and has gone quiet), because the
+              operator's next action differs: one is "wait a moment", the
+              other is "go look at the backend". */}
+          {anomalyFeed.stale && (
+            <div style={{
+              marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+              background: anomalyUnavailableAmber ? 'rgba(245,158,11,0.08)' : 'var(--bg-subtle)',
+              border: `1px solid ${anomalyUnavailableAmber ? 'rgba(245,158,11,0.25)' : 'var(--border)'}`,
+            }}>
+              <div style={{ fontSize: 12, color: anomalyUnavailableAmber ? 'var(--warn)' : 'var(--text-muted)', fontWeight: 600 }}>
+                {anomalyFeed.state === 'pending'
+                  ? 'Anomaly monitor status has not loaded yet — the figures below are placeholders, not live readings.'
+                  : anomalyAgeLabel
+                    ? `/api/anomaly-status is not responding — last successful update ${anomalyAgeLabel}. The figures below are stale, not current.`
+                    : '/api/anomaly-status has not responded since this page loaded — the figures below are placeholders, not live readings.'}
+              </div>
+            </div>
+          )}
 
           {/* Win rate progress bar */}
           {M.anomalyStatus.active && M.anomalyStatus.win_rate != null && (
@@ -334,7 +422,12 @@ export default function RiskTab() {
               </div>
             </div>
           )}
-          {!M.anomalyStatus.active && (
+          {/* batch-61 item 3: gated on `!anomalyFeed.stale` as well. This
+              sentence is a positive claim about the monitor's live state
+              ("it is quiet because it hasn't got enough samples yet") -- the
+              exact reassurance L30717 is about. When the feed is stale we do
+              not know that, and the banner above has already said so. */}
+          {!anomalyFeed.stale && !M.anomalyStatus.active && (
             <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', marginBottom: 14 }}>
               Needs {M.anomalyStatus.min_samples ?? '—'} settled multi-day trades in the window to activate.
             </p>
@@ -416,7 +509,7 @@ export default function RiskTab() {
       <BrierAlertCard />
 
       {/* Kill switch removal criteria — only visible when kill switch is active */}
-      <KillSwitchCriteriaCard />
+      <KillSwitchCriteriaCard clock={anomalyClock} />
 
       {/* Kill switch */}
       <section style={{ background: 'var(--bg-card)', border: '1px solid #ef4444', borderRadius: 14, padding: '20px' }}>

@@ -2315,6 +2315,32 @@ def get_all_trades() -> list[dict]:
     return _load()["trades"]
 
 
+def load_ledger_snapshot() -> dict:
+    """Return ONE consistent read of the whole ledger dict.
+
+    batch-61 item 1 (AUD-0053): get_balance(), get_open_trades() and
+    get_all_trades() each independently call _load(), which is unmemoized --
+    a full open()+json.load()+SHA-256 verify of paper_trades.json every time.
+    A route that wants a balance AND an open-position count therefore pays
+    for the file twice, and gets its two answers from two different reads
+    (so a settle landing between them can make the response internally
+    inconsistent).
+
+    This exposes the single-read shape _drawdown_snapshot() already uses
+    internally, so a caller that needs several fields can take the lock and
+    read the file once. It deliberately does NOT cache: this module is
+    imported by cron/CLI/watch processes that must always see the current
+    file. web_app.py layers a per-HTTP-request cache on top of this
+    (_req_ledger), where the lifetime is explicitly bounded.
+
+    The returned dict is the caller's own parsed copy (json.load builds fresh
+    objects per read), but callers that SHARE it -- e.g. through a cache --
+    must treat it as read-only.
+    """
+    with _DATA_LOCK:
+        return _load()
+
+
 def load_paper_trades() -> list[dict]:
     """Alias for get_all_trades — returns all paper trades (open and settled)."""
     return get_all_trades()

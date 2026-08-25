@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -907,5 +907,290 @@ describe('heatStatus', () => {
     // numeric so a future `pct > 80` can never silently become a string
     // comparison again.
     expect(typeof heatStatus(85, 100).pct).toBe('number');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-61 item 3 (backlog L30717): RiskTab's anomaly card rendered the same
+// grey INACTIVE state for "the win-rate-collapse monitor is healthy and
+// quiet" and for "/api/anomaly-status has been dead for an hour" -- the card
+// read most reassuring in exactly the case it should alarm. feedFreshness()
+// is the extracted decision behind the new distinct STATUS UNAVAILABLE
+// state. Tested here rather than through the component because frontend/ has
+// no jsdom/RTL (same reason gradGateStatus/heatStatus/resolveByKey live in
+// shared.jsx).
+// ---------------------------------------------------------------------------
+describe('feedFreshness', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('a timestamp inside the window is fresh, and not stale', () => {
+    const r = feedFreshness(NOW - 30_000, { now: NOW });
+    expect(r.state).toBe('fresh');
+    expect(r.stale).toBe(false);
+    expect(r.ageMs).toBe(30_000);
+  });
+
+  it('a timestamp past the window is stale, with the real age reported', () => {
+    const r = feedFreshness(NOW - 600_000, { now: NOW });
+    expect(r.state).toBe('stale');
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBe(600_000);
+  });
+
+  it('boundary is strictly greater-than maxAgeMs: exactly at the threshold is still fresh', () => {
+    // Hand-computed against FEED_STALE_MS (180000): a feed that answered
+    // exactly 180000ms ago has not yet missed its third poll.
+    expect(feedFreshness(NOW - FEED_STALE_MS, { now: NOW }).state).toBe('fresh');
+    expect(feedFreshness(NOW - FEED_STALE_MS - 1, { now: NOW }).state).toBe('stale');
+  });
+
+  it('default maxAgeMs is FEED_STALE_MS (3x the 60s main poll), not something else', () => {
+    // Pins the tolerance the component relies on: two consecutive missed
+    // polls must NOT alarm, the third must.
+    expect(FEED_STALE_MS).toBe(180_000);
+    expect(feedFreshness(NOW - 179_999, { now: NOW }).stale).toBe(false);
+    expect(feedFreshness(NOW - 180_001, { now: NOW }).stale).toBe(true);
+  });
+
+  it("never-fetched is its own 'pending' state, distinct from 'stale', but still untrusted", () => {
+    // The distinction exists so RiskTab can word and colour first-paint
+    // ("hasn't loaded yet, these are placeholders", neutral grey) differently
+    // from a feed that was live and died ("go look at the backend", amber) --
+    // but neither may render as a healthy NORMAL/INACTIVE badge, so both
+    // carry stale:true.
+    for (const bad of [undefined, null, NaN, '1700000000000', {}, Infinity]) {
+      const r = feedFreshness(bad, { now: NOW });
+      expect(r.state).toBe('pending');
+      expect(r.stale).toBe(true);
+      expect(r.ageMs).toBeNull();
+    }
+  });
+
+  it('a backwards client clock reads fresh, not stale — a clock step must not fabricate an outage', () => {
+    const r = feedFreshness(NOW + 500_000, { now: NOW });
+    expect(r.state).toBe('fresh');
+    expect(r.stale).toBe(false);
+  });
+
+  it('maxAgeMs is overridable for a caller on a different poll cadence', () => {
+    expect(feedFreshness(NOW - 90_000, { now: NOW, maxAgeMs: 60_000 }).stale).toBe(true);
+    expect(feedFreshness(NOW - 90_000, { now: NOW, maxAgeMs: 600_000 }).stale).toBe(false);
+  });
+
+  it('positive control: the same fetchedAt flips fresh->stale purely by the clock advancing', () => {
+    // Guards the whole point of the primitive -- that staleness is derived
+    // from elapsed time, not from any property of the payload. Without this,
+    // a mutation pinning `stale` to a constant would still satisfy the
+    // absence-style assertions above.
+    const fetchedAt = NOW - 10_000;
+    expect(feedFreshness(fetchedAt, { now: NOW }).stale).toBe(false);
+    expect(feedFreshness(fetchedAt, { now: NOW + 300_000 }).stale).toBe(true);
+  });
+
+  it('defaults `now` to the real clock when not injected', () => {
+    expect(feedFreshness(Date.now()).state).toBe('fresh');
+    expect(feedFreshness(Date.now() - 10 * 60_000).state).toBe('stale');
+  });
+
+  // opus review F9: the options bag must fail CLOSED like `fetchedAt` does.
+  it('a garbage `now` or `maxAgeMs` falls back to the defaults instead of NaN-ing to "fresh"', () => {
+    // NaN comparisons are always false, so an unguarded version reports a
+    // healthy feed -- a caller bug silently failing open on a safety monitor.
+    const old = Date.now() - 10 * 60_000;
+    for (const bad of [null, NaN, undefined, 'now', {}]) {
+      expect(feedFreshness(old, { now: bad }).state).toBe('stale');
+      expect(feedFreshness(old, { now: Date.now(), maxAgeMs: bad }).state).toBe('stale');
+    }
+    // Positive control: a legitimate 0 maxAgeMs is honoured, not treated as
+    // garbage and replaced by the 180s default.
+    expect(feedFreshness(NOW - 1, { now: NOW, maxAgeMs: 0 }).state).toBe('stale');
+  });
+
+  // opus review F3: the main poll is visibility-gated, so a hidden tab makes
+  // no attempts. Wall-clock alone painted "the safety monitor is not
+  // responding" on every alt-tab return longer than 3 minutes.
+  describe('`since` — only time we could actually poll counts against a feed', () => {
+    it('a `since` newer than the last success restarts the tolerance window', () => {
+      // 8 minutes hidden (inside the 12-minute hard ceiling), tab just became
+      // visible: no alarm yet, because we had no chance to poll.
+      const r = feedFreshness(NOW - 480_000, { now: NOW, since: NOW - 1_000 });
+      expect(r.state).toBe('fresh');
+      expect(r.stale).toBe(false);
+      // ...but the age it reports is still the TRUE age, for the banner.
+      expect(r.ageMs).toBe(480_000);
+      // ...and it is flagged as only-fresh-by-grace, so a consumer pairing a
+      // green badge with formatFeedAge() can tell (opus review F4).
+      expect(r.suppressedBySince).toBe(true);
+    });
+
+    it('a genuinely fresh feed is NOT flagged as suppressed', () => {
+      // Positive control for the flag above -- without it, a mutation setting
+      // suppressedBySince to a constant `true` would pass the test above.
+      const r = feedFreshness(NOW - 5_000, { now: NOW, since: NOW - 1_000 });
+      expect(r.state).toBe('fresh');
+      expect(r.suppressedBySince).toBe(false);
+    });
+
+    it('an OLD `since` does not rescue a genuinely stale feed', () => {
+      // Positive control for the case above: visible the whole time, feed
+      // dead 10 minutes -> must still alarm. This is what makes the hidden-
+      // tab tolerance a narrowing rather than a blanket suppression.
+      const r = feedFreshness(NOW - 600_000, { now: NOW, since: NOW - 900_000 });
+      expect(r.state).toBe('stale');
+      expect(r.stale).toBe(true);
+    });
+
+    it('the window reopens: a tab visible past maxAgeMs with no new success goes stale', () => {
+      const fetchedAt = NOW - 480_000;
+      expect(feedFreshness(fetchedAt, { now: NOW, since: NOW - 1_000 }).state).toBe('fresh');
+      expect(feedFreshness(fetchedAt, { now: NOW + 181_000, since: NOW - 1_000 }).state).toBe('stale');
+    });
+
+    // opus review F1 (round 2): without a ceiling, an operator alt-tabbing
+    // every couple of minutes resets `since` forever and a dead feed never
+    // alarms. Measured before the fix: a feed dead 751s still read 'fresh'.
+    it('the `since` credit is CAPPED — past the hard ceiling a feed is stale however little we could poll', () => {
+      // `since` is one second old (we just became visible), which by itself
+      // would grant a full fresh window. The true age is what decides.
+      const justResumed = { now: NOW, since: NOW - 1_000 };
+      expect(feedFreshness(NOW - (FEED_HARD_STALE_MS - 1_000), justResumed).state).toBe('fresh');
+      expect(feedFreshness(NOW - (FEED_HARD_STALE_MS + 1_000), justResumed).state).toBe('stale');
+    });
+
+    it('the hard ceiling is 4x FEED_STALE_MS and is overridable', () => {
+      expect(FEED_HARD_STALE_MS).toBe(720_000);
+      const justResumed = { now: NOW, since: NOW - 1_000 };
+      // A caller can tighten it...
+      expect(
+        feedFreshness(NOW - 300_000, { ...justResumed, hardMaxAgeMs: 240_000 }).state,
+      ).toBe('stale');
+      // ...and the ceiling can never be looser than maxAgeMs itself.
+      expect(
+        feedFreshness(NOW - 300_000, { ...justResumed, hardMaxAgeMs: 0 }).state,
+      ).toBe('stale');
+    });
+
+    it('repeated resets cannot defer the alarm indefinitely (the measured F1 scenario)', () => {
+      // Operator revisits the Risk tab every 150s with the feed dead the whole
+      // time. Pre-fix this reported fresh at 751s and climbing; now the
+      // ceiling trips it. Hand-computed: ceiling 720_000 falls between the
+      // 5th visit (750_000) and the 4th (600_000).
+      const fetchedAt = NOW;
+      const states = [1, 2, 3, 4, 5].map(v => {
+        const t = NOW + v * 150_000;
+        return feedFreshness(fetchedAt, { now: t, since: t - 1_000 }).state;
+      });
+      expect(states).toEqual(['fresh', 'fresh', 'fresh', 'fresh', 'stale']);
+    });
+
+    // opus review F4: 'pending' used to be a trap state -- an endpoint that
+    // NEVER answers showed "hasn't loaded yet, wait a moment" forever.
+    it("a never-answering feed escalates out of 'pending' once we've been watching past the window", () => {
+      expect(feedFreshness(undefined, { now: NOW, since: NOW - 1_000 }).state).toBe('pending');
+      const escalated = feedFreshness(undefined, { now: NOW, since: NOW - 600_000 });
+      expect(escalated.state).toBe('stale');
+      expect(escalated.stale).toBe(true);
+      // ageMs stays null: there has never been a good reading to date from,
+      // which is what tells RiskTab to say "has not responded since this page
+      // loaded" instead of "last successful update N ago".
+      expect(escalated.ageMs).toBeNull();
+    });
+
+    it('a garbage `since` is ignored rather than poisoning the comparison', () => {
+      for (const bad of [null, NaN, 'soon', {}]) {
+        expect(feedFreshness(NOW - 600_000, { now: NOW, since: bad }).state).toBe('stale');
+      }
+    });
+  });
+});
+
+describe('formatFeedAge', () => {
+  it('formats the coarse buckets the unavailable banner uses', () => {
+    expect(formatFeedAge(0)).toBe('less than a minute ago');
+    expect(formatFeedAge(59_999)).toBe('less than a minute ago');
+    expect(formatFeedAge(60_000)).toBe('1 min ago');
+    expect(formatFeedAge(119_999)).toBe('1 min ago');
+    expect(formatFeedAge(4 * 60_000)).toBe('4 min ago');
+    expect(formatFeedAge(59 * 60_000)).toBe('59 min ago');
+    expect(formatFeedAge(60 * 60_000)).toBe('1 hr ago');
+    expect(formatFeedAge(150 * 60_000)).toBe('2 hrs ago');
+  });
+
+  it('returns null (not "NaN min ago") for the ageMs feedFreshness reports as pending', () => {
+    // feedFreshness returns ageMs:null for a never-fetched feed, and RiskTab
+    // branches on that to pick its "has not responded since this page loaded"
+    // wording -- rendering "NaN min ago" into a safety banner would be worse
+    // than the bug being fixed.
+    expect(formatFeedAge(feedFreshness(undefined).ageMs)).toBeNull();
+    expect(formatFeedAge(null)).toBeNull();
+    expect(formatFeedAge(NaN)).toBeNull();
+    expect(formatFeedAge(-1)).toBeNull();
+    expect(formatFeedAge(Infinity)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-61 item 3, opus review F2: RiskTab's KillSwitchCriteriaCard advises
+// the operator on turning the kill switch OFF. Its "Anomaly clear" row read
+// straight off `anomaly_detected`, a keep-last-known-good field -- so a dead
+// endpoint kept asserting a green "Pass". alarmSafeFlag is the extracted
+// asymmetric degradation rule.
+// ---------------------------------------------------------------------------
+describe('alarmSafeFlag', () => {
+  it('withholds a REASSURING reading once its feed is stale', () => {
+    // The L30717 bug itself: "no anomaly detected" must stop being asserted
+    // when we can no longer stand behind it.
+    expect(alarmSafeFlag(false, true)).toBeUndefined();
+  });
+
+  it('PRESERVES an alarming reading through staleness', () => {
+    // An outage must never make the display less alarming than it already
+    // was -- that would be worse than the bug being fixed.
+    expect(alarmSafeFlag(true, true)).toBe(true);
+  });
+
+  it('passes both readings through untouched while the feed is fresh', () => {
+    expect(alarmSafeFlag(false, false)).toBe(false);
+    expect(alarmSafeFlag(true, false)).toBe(true);
+  });
+
+  it('an already-unknown reading stays unknown either way', () => {
+    expect(alarmSafeFlag(undefined, false)).toBeUndefined();
+    expect(alarmSafeFlag(undefined, true)).toBeUndefined();
+    expect(alarmSafeFlag(null, true)).toBeUndefined();
+    // null while FRESH must also normalize to undefined, not pass through as
+    // null -- that was a fourth return value the three-state claim excluded
+    // (opus review F5).
+    expect(alarmSafeFlag(null, false)).toBeUndefined();
+  });
+
+  it('a truthy NON-boolean alarm is preserved and normalized, not withheld', () => {
+    // `=== true` alone would have withheld these on staleness -- the exact
+    // opposite of the intended asymmetry. The backend bool()-coerces
+    // anomaly_detected but NOT should_halt, and mapAnomalyStatus passes both
+    // through raw, so nothing enforces the boolean invariant (opus review F5).
+    expect(alarmSafeFlag(1, true)).toBe(true);
+    expect(alarmSafeFlag('yes', true)).toBe(true);
+    expect(alarmSafeFlag(1, false)).toBe(true);
+  });
+
+  it('the result keeps a three-state rendering intact for the caller (pass/fail/unknown)', () => {
+    // KillSwitchCriteriaCard renders `x === false ? Pass : x === true ? Fail
+    // : Unknown` and gates allPass on `=== false`. Assert the exact triple so
+    // a future change can't silently introduce a truthy fourth value that
+    // would render as "Unknown" but still be `!== false`.
+    // Every input shape the field can actually take, not three hand-picked
+    // ones -- the earlier version of this test asserted the three-value
+    // property over a sample that could not have violated it.
+    const inputs = [true, false, null, undefined, 1, 0, 'yes', '', NaN, {}];
+    const outs = [];
+    for (const v of inputs) {
+      outs.push(alarmSafeFlag(v, true), alarmSafeFlag(v, false));
+    }
+    expect(outs.every(o => o === true || o === false || o === undefined)).toBe(true);
+    // And the specific triple the caller's rendering branches on.
+    expect([
+      alarmSafeFlag(false, true), alarmSafeFlag(true, true), alarmSafeFlag(false, false),
+    ]).toEqual([undefined, true, false]);
   });
 });

@@ -467,6 +467,34 @@ export function mapScanStats(raw) {
  * showing that gate. RiskTab renders `null` as "—" at each of the three
  * sites that read these fields.
  */
+// ---------------------------------------------------------------------------
+// mergeFetchedAt — batch-61 item 3 (backlog L30717).
+//
+// Builds the per-endpoint "last SUCCESSFUL fetch" map that shared.jsx's
+// feedFreshness() reads. `succeeded` is {feedKey: bool}; a key is stamped
+// with `now` only when its value is true, and every OTHER key is carried
+// forward untouched -- so one endpoint failing never disturbs another's
+// freshness, and a key that simply stops advancing is exactly the signal a
+// consumer looks for.
+//
+// Extracted rather than written inline in fetchAll's setData updater purely
+// so it is unit-testable: frontend/ has no jsdom/RTL, so the merge body
+// itself can't be exercised from a test (opus review F7 caught that the
+// first version of this change shipped two mapAnomalyStatus tests that read
+// as covering this behavior while asserting nothing about it).
+//
+// Never mutates `prev` -- fetchAll's `prev` is MOCK itself on the very first
+// merge, and mutating that would poison the module-level mock object for
+// every later consumer.
+// ---------------------------------------------------------------------------
+export function mergeFetchedAt(prev, succeeded, now = Date.now()) {
+  const next = { ...(prev || {}) };
+  for (const [key, ok] of Object.entries(succeeded || {})) {
+    if (ok) next[key] = now;
+  }
+  return next;
+}
+
 export function mapAnomalyStatus(raw) {
   if (!raw || raw.error) return null;
   return {
@@ -819,6 +847,15 @@ export default function useData(setConnected) {
         // Anomaly window — win-rate collapse detection state
         const anomalyStatus = mapAnomalyStatus(anomalyStatusR);
         if (anomalyStatus) next.anomalyStatus = anomalyStatus;
+        // batch-61 item 3 (L30717): per-endpoint "last SUCCESSFUL fetch"
+        // timestamps, derived from the SAME truthiness test the assignment
+        // above uses -- so a timestamp can never claim freshness for data
+        // the merge did not actually take. mapAnomalyStatus returns null
+        // both for a failed fetch and for an `{error: ...}` body, so a
+        // backend answering 200-with-an-error counts as unreachable too.
+        next.fetchedAt = mergeFetchedAt(prev.fetchedAt, {
+          anomalyStatus: Boolean(anomalyStatus),
+        });
 
         // Multi-day temperature-scaling calibration gate
         if (calibStatusR && !calibStatusR.error) next.calibrationStatus = calibStatusR;

@@ -865,3 +865,277 @@ export function summarizeTradeOutcomes(rows) {
   const other = rows.length - wins - losses;
   return { wins, losses, other };
 }
+
+// ---------------------------------------------------------------------------
+// Feed freshness — batch-61 item 3 (backlog L30717).
+//
+// useData.js's per-endpoint merges are deliberately keep-last-known-good
+// (`if (anomalyStatus) next.anomalyStatus = anomalyStatus`), so a *failing*
+// endpoint leaves its previous value sitting in state indefinitely with
+// nothing marking it as no longer live. For a display-only feed that is a
+// reasonable anti-flicker default; for a SAFETY MONITOR it inverts the
+// meaning of the card -- RiskTab's anomaly card rendered the same grey
+// INACTIVE state for "healthy and quiet" and for "/api/anomaly-status has
+// been unreachable for an hour," i.e. it read most reassuring in exactly
+// the case it should alarm.
+//
+// The fix is a per-endpoint `fetchedAt` timestamp (useData.js's
+// `next.fetchedAt` map, written only on a SUCCESSFUL fetch) plus this pure
+// predicate over it. Kept here rather than inline in the component because
+// frontend/ has no jsdom/RTL -- components aren't render-testable, so the
+// decision itself has to live somewhere unit-testable (same reason as
+// gradGateStatus/heatStatus/resolveByKey above).
+//
+// WHAT THE MARKER DOES AND DOES NOT MEAN (opus review F12): `fetchedAt` is
+// stamped at MERGE time and means only "this endpoint answered". It is not
+// a claim that the reading is current -- a slow-but-successful response, or
+// a backend serving a stale computation with HTTP 200, both read fresh.
+// That is the right guarantee for "is the monitor reachable?", and it is
+// what the banner's "last successful update" wording says. batch-63's
+// order-action gate reuses this primitive and should not read more into it.
+//
+// Three states, deliberately NOT two: 'pending' (never fetched successfully
+// -- what is on screen is mockData) is distinct from 'stale' (was live, has
+// since gone quiet) even though both are `stale: true`, so a consumer can
+// word them differently and style them differently. Callers that only need
+// "may I trust this?" read `.stale` and ignore `.state`.
+//
+// `since` is the "we started watching at" reference (see useFeedClock).
+// Two jobs, both from opus review:
+//   - F3: the main poll is visibility-gated, so a backgrounded tab makes no
+//     attempts at all. Without `since`, returning from a 5-minute alt-tab
+//     painted a full-width "the safety monitor is not responding" banner
+//     that vanished ~300ms later when the catch-up fetch landed -- many
+//     times a day, on the one banner this entry exists to make credible.
+//     Resetting `since` on becoming visible restarts the tolerance window,
+//     so only time we were actually able to poll counts against the feed.
+//   - F4: with no `since`, 'pending' was a trap state -- an endpoint that
+//     NEVER answers (route 404s on an older backend, a proxy blocking the
+//     path) showed "hasn't loaded yet, wait a moment" forever while mock
+//     numbers sat under it. Aging from `since` lets a never-answering feed
+//     escalate to 'stale' with `ageMs: null`, which the card words as "has
+//     not responded since this page loaded".
+// Wall-clock elapsed is still what trips the threshold, so a backend that
+// HANGS (accepting the connection but never answering, e.g. handler threads
+// blocked on a sqlite lock) still alarms -- that path never resolves a
+// fetch, so an attempt-counting design would never fire (opus review F1).
+//
+// Default maxAgeMs is 3x the 60s main poll: two consecutive misses are
+// tolerated (a slow response or one dropped request should not alarm), the
+// third trips it.
+//
+// Clock handling (opus review F6): a BACKWARD step reads fresh rather than
+// letting an NTP correction fabricate an outage. A FORWARD step can briefly
+// fabricate one, self-correcting within one poll (<=60s). Both are accepted
+// rather than switching to performance.now(): `fetchedAt` is deliberately a
+// wall-clock epoch so the banner can say when the last good reading was, and
+// so batch-63 can compare it against timestamps from elsewhere.
+// ---------------------------------------------------------------------------
+export const FEED_STALE_MS = 180_000;
+// Ceiling on how much tolerance the `since` credit can ever buy. Without it,
+// an operator alt-tabbing every couple of minutes resets the window forever
+// and a genuinely dead feed never alarms (opus review F1, round 2). Past this
+// TRUE age a feed is stale no matter how little of that time we were able to
+// poll through -- at 12 minutes the reading is not worth standing behind
+// either way.
+export const FEED_HARD_STALE_MS = FEED_STALE_MS * 4;
+
+export function feedFreshness(fetchedAt, { now, maxAgeMs, since, hardMaxAgeMs } = {}) {
+  // The options bag is validated the same way `fetchedAt` is (opus review
+  // F9): a caller passing a null/NaN `now` or `maxAgeMs` used to make every
+  // comparison NaN, which reports a healthy feed -- a caller bug silently
+  // failing OPEN on a safety monitor. Fall back to the defaults instead.
+  const nowMs = Number.isFinite(now) ? now : Date.now();
+  const maxAge = Number.isFinite(maxAgeMs) && maxAgeMs >= 0 ? maxAgeMs : FEED_STALE_MS;
+  const sinceMs = Number.isFinite(since) ? since : null;
+  const hardMax =
+    Number.isFinite(hardMaxAgeMs) && hardMaxAgeMs >= 0
+      ? hardMaxAgeMs
+      : Math.max(maxAge, FEED_HARD_STALE_MS);
+
+  const hasStamp = Number.isFinite(fetchedAt);
+  const ageMs = hasStamp ? nowMs - fetchedAt : null;
+
+  // Age is measured from the last success, or -- when there has never been
+  // one -- from when we started watching. `Math.max` so a `since` newer than
+  // the last success (tab just became visible) restarts the tolerance window
+  // rather than instantly alarming on time we could not poll through.
+  const ref = hasStamp ? (sinceMs != null ? Math.max(fetchedAt, sinceMs) : fetchedAt) : sinceMs;
+
+  if (ref == null) return { state: 'pending', stale: true, ageMs: null, suppressedBySince: false };
+  if (nowMs - ref > maxAge) {
+    return { state: 'stale', stale: true, ageMs, suppressedBySince: false };
+  }
+  // The hard ceiling ignores `since` entirely: repeated hidden->visible
+  // transitions must not be able to defer an alarm indefinitely.
+  if (hasStamp && ageMs > hardMax) {
+    return { state: 'stale', stale: true, ageMs, suppressedBySince: false };
+  }
+  return hasStamp
+    ? {
+        state: 'fresh',
+        stale: false,
+        ageMs,
+        // TRUE: this feed is only reading fresh because `since` restarted the
+        // window -- its real age already exceeds maxAgeMs. Exposed so a
+        // consumer (batch-63's order-action gate) can tell "genuinely fresh"
+        // from "not yet alarming"; a UI pairing a green badge with
+        // formatFeedAge(ageMs) would otherwise read self-contradictory
+        // (opus review F4).
+        suppressedBySince: ageMs > maxAge,
+      }
+    : { state: 'pending', stale: true, ageMs: null, suppressedBySince: false };
+}
+
+// Coarse human label for feedFreshness().ageMs. Deliberately coarse: this
+// annotates an "unavailable" badge, where "4 min ago" is the whole message
+// and second-level precision would just churn the DOM every render. Returns
+// null for the null ageMs a never-answered feed reports, so a safety banner
+// can never render "NaN min ago".
+export function formatFeedAge(ageMs) {
+  if (!Number.isFinite(ageMs) || ageMs < 0) return null;
+  const mins = Math.floor(ageMs / 60_000);
+  if (mins < 1) return 'less than a minute ago';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  return hours === 1 ? '1 hr ago' : `${hours} hrs ago`;
+}
+
+// alarmSafeFlag — how a boolean safety reading should degrade when its feed
+// goes stale (batch-61 item 3, opus review F2).
+//
+// The asymmetry is the point. A reassuring reading (`false` = "no anomaly
+// detected") must NOT survive its feed dying -- that is the entire L30717
+// bug, and it collapses to `undefined` so the consumer's existing "unknown"
+// branch handles it. An ALARMING reading (`true`) DOES survive: a last-known
+// alarm is still the loudest true thing we know, and letting an outage
+// downgrade a red "Fail" to a grey "Unknown" would make the display get less
+// alarming as a direct result of losing visibility -- strictly worse than
+// the bug being fixed. This mirrors the anomaly card's badge precedence
+// (HALT/ANOMALY outrank STATUS UNAVAILABLE; NORMAL/INACTIVE do not).
+//
+// Returns true | false | undefined, so callers can keep a three-state
+// (pass / fail / unknown) rendering rather than inventing a fourth.
+export function alarmSafeFlag(value, stale) {
+  // ANY truthy reading is an alarm, normalized to `true`. `=== true` alone
+  // would withhold a truthy non-boolean (1, "yes") on staleness -- the exact
+  // opposite of the documented asymmetry. Reachable in principle: the backend
+  // bool()-coerces anomaly_detected but NOT the sibling should_halt, and
+  // mapAnomalyStatus passes both through raw, so nothing enforces the
+  // invariant this relied on (opus review F5).
+  if (value) return true;
+  if (value === false && !stale) return false;
+  // Everything else -- a withheld reassurance, or an already-unknown null /
+  // undefined -- collapses to undefined, so the return really is the three
+  // values a caller's pass/fail/unknown rendering expects.
+  return undefined;
+}
+
+// useFeedClock — the ticking half of the above. feedFreshness() is pure and
+// evaluated during render, so on its own a feed only becomes visibly stale
+// if something else happens to re-render the card.
+//
+// opus review F1 (round 1, the severe one): every re-render source dies in
+// exactly the failure mode this feature exists to surface. Renders come from
+// fetchAll's setData, handleSSEEvent, and fetchWeatherAlerts. apiFetch has
+// no timeout, so a backend that HANGS rather than dies never settles
+// Promise.allSettled, never calls setData, and never re-renders -- while
+// /api/stream's generator blocks inside _build_stream_data() so no SSE
+// message and no SSE error fires either. The card would sit on its last
+// computed value ('fresh', green NORMAL) indefinitely. The interval below is
+// the independent heartbeat that makes staleness observable without
+// depending on any request completing.
+//
+// THE CLOCK IS A MODULE-LEVEL SINGLETON, NOT PER-COMPONENT STATE (opus
+// review F1, round 2). App renders tabs as `<ErrorBoundary key={activeTab}>`,
+// so RiskTab and KillSwitchCriteriaCard fully unmount and remount on every
+// tab switch. A `useState(() => Date.now())` therefore reset `visibleSince`
+// to "now" on each visit -- and since the polling that produces `fetchedAt`
+// lives in App/useData and keeps running across tab switches, that threw
+// away evidence actually collected, with no polling gap to justify it. The
+// measured effect: a dead feed read `fresh` at a real age of 751s and
+// climbing when the operator revisited Risk every 150s, i.e. the card showed
+// green NORMAL and the kill-switch checklist showed a green "Anomaly clear"
+// for the first 3 minutes of EVERY visit -- reinstating the exact L30717
+// blind spot on the more dangerous surface, precisely while the operator is
+// reading the checklist to decide whether to lift the kill switch.
+//
+// Hoisting the state out of React fixes that (page load is genuinely when we
+// started watching, and a remount is not a new page load) and, as a side
+// effect, collapses the two mounted consumers onto ONE interval and ONE
+// listener instead of one each.
+const _feedClock = { now: Date.now(), visibleSince: Date.now() };
+const _feedClockSubscribers = new Set();
+let _feedClockTimer = null;
+let _feedClockTickMs = null;
+
+function _publishFeedClock() {
+  // A NEW object each publish: subscribers store it in useState, which bails
+  // out of a re-render on Object.is equality.
+  const snapshot = { ..._feedClock };
+  for (const notify of _feedClockSubscribers) notify(snapshot);
+}
+
+function _onFeedClockVisible() {
+  if (typeof document !== 'undefined' && document.hidden) return;
+  // Only a real hidden -> visible transition moves visibleSince. See
+  // feedFreshness's `since` note for why, and for the hard ceiling that
+  // stops repeated alt-tabbing from suppressing an alarm forever.
+  _feedClock.now = Date.now();
+  _feedClock.visibleSince = Date.now();
+  _publishFeedClock();
+}
+
+function _startFeedClock(tickMs) {
+  if (_feedClockTimer !== null) return;
+  _feedClockTickMs = tickMs;
+  _feedClockTimer = setInterval(() => {
+    _feedClock.now = Date.now();
+    _publishFeedClock();
+  }, tickMs);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', _onFeedClockVisible);
+  }
+}
+
+function _stopFeedClock() {
+  if (_feedClockSubscribers.size > 0 || _feedClockTimer === null) return;
+  clearInterval(_feedClockTimer);
+  _feedClockTimer = null;
+  _feedClockTickMs = null;
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', _onFeedClockVisible);
+  }
+}
+
+export function useFeedClock(tickMs = FEED_STALE_MS / 3) {
+  // Guarded like feedFreshness's options bag (opus review F6): an unvalidated
+  // tickMs of 0/NaN becomes setInterval(fn, 0), i.e. a re-render of the whole
+  // Risk tab every tick. Same class of caller bug, same fail-closed answer.
+  const safeTick = Number.isFinite(tickMs) && tickMs >= 1000 ? tickMs : FEED_STALE_MS / 3;
+  const [clock, setClock] = useState(_feedClock);
+  useEffect(() => {
+    _feedClockSubscribers.add(setClock);
+    _startFeedClock(safeTick);
+    // Adopt the singleton's current value on mount, so a component mounting
+    // mid-interval doesn't render a stale `now` until the next tick.
+    setClock({ ..._feedClock });
+    return () => {
+      _feedClockSubscribers.delete(setClock);
+      _stopFeedClock();
+    };
+  }, [safeTick]);
+  return clock;
+}
+
+// Test seam: reset the singleton between unit tests. Not used by app code.
+export function __resetFeedClockForTests(now = Date.now()) {
+  _feedClock.now = now;
+  _feedClock.visibleSince = now;
+  _feedClockSubscribers.clear();
+  if (_feedClockTimer !== null) {
+    clearInterval(_feedClockTimer);
+    _feedClockTimer = null;
+    _feedClockTickMs = null;
+  }
+}

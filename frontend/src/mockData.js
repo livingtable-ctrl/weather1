@@ -287,6 +287,12 @@ const MOCK = {
     { week: '2026-W07', brier: 0.183 }, { week: '2026-W08', brier: 0.176 },
   ],
   backupStatus: null,
+  // batch-61 item 3 (L30717): per-endpoint "last successful fetch" epoch ms,
+  // written by useData.js's fetchAll merge and read through shared.jsx's
+  // feedFreshness(). Seeded EMPTY on purpose -- everything below it is mock
+  // data, so before the first real poll lands every feed is legitimately
+  // 'pending' (untrusted), not fresh. Never seed a timestamp here.
+  fetchedAt: {},
   anomalyStatus: {
     window_trades: [],
     n: 0,

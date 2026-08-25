@@ -3033,3 +3033,119 @@ class TestGetUnrealizedPnlPaper:
         )
         result = paper.get_unrealized_pnl_paper(None)
         assert result == {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+
+
+# ---------------------------------------------------------------------------
+# batch-61 item 1 (backlog L23722 / AUD-0053): load_ledger_snapshot is the
+# single-read primitive web_app.py's request-scoped cache is built on. Every
+# test in tests/test_web_app.py PATCHES it out, so without this class its
+# body -- `with _DATA_LOCK: return _load()` -- is never actually executed by
+# any test in the repo (opus review F3). A future edit dropping the lock, or
+# returning _load()["trades"] instead of the whole dict, would leave all 261
+# of those tests green.
+#
+# paper.DATA_PATH is redirected to a tmp file by conftest's autouse
+# isolate_paper_data fixture, so nothing here touches the real ledger.
+# ---------------------------------------------------------------------------
+class TestLoadLedgerSnapshot:
+    def test_returns_the_whole_ledger_dict_from_the_real_file(self):
+        import paper
+
+        paper.DATA_PATH.write_text(
+            json.dumps(
+                {
+                    "_version": 2,
+                    "balance": 777.25,
+                    "peak_balance": 1500.0,
+                    "trades": [
+                        {"id": 1, "ticker": "KXHIGHNY-1", "settled": False},
+                        {"id": 2, "ticker": "KXHIGHNY-2", "settled": True},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        snap = paper.load_ledger_snapshot()
+
+        # The WHOLE dict, not a projection: web_app's _req_balance and
+        # _req_open_trades both read out of this one value, which is the only
+        # reason they cost a single file read between them.
+        assert snap["balance"] == 777.25
+        assert snap["peak_balance"] == 1500.0
+        assert [t["id"] for t in snap["trades"]] == [1, 2]
+
+    def test_agrees_with_the_individual_accessors_on_the_same_file(self):
+        """Positive control: the snapshot is not just well-shaped, it is the
+        same data get_balance()/get_open_trades() would have returned."""
+        import paper
+
+        paper.DATA_PATH.write_text(
+            json.dumps(
+                {
+                    "_version": 2,
+                    "balance": 42.0,
+                    "peak_balance": 100.0,
+                    "trades": [
+                        {"id": 1, "ticker": "A", "settled": False},
+                        {"id": 2, "ticker": "B", "settled": True},
+                        {"id": 3, "ticker": "C", "settled": False},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        snap = paper.load_ledger_snapshot()
+        assert snap["balance"] == paper.get_balance()
+        assert [
+            t for t in snap["trades"] if not t["settled"]
+        ] == paper.get_open_trades()
+        assert snap["trades"] == paper.get_all_trades()
+
+    def test_holds_the_data_lock_while_reading(self):
+        """The lock is the point: paper_trades.json is written by other
+        processes (cron, watch), so an unlocked read can straddle another
+        process's write and see a torn/half-written file. _DATA_LOCK is
+        reentrant, so this only asserts it was entered."""
+        import paper
+
+        paper.DATA_PATH.write_text(
+            json.dumps({"_version": 2, "balance": 1.0, "trades": []}), encoding="utf-8"
+        )
+
+        depth_seen = []
+        real_load = paper._load
+
+        def _spy():
+            depth_seen.append(paper._DATA_LOCK._local.depth)
+            return real_load()
+
+        with patch.object(paper, "_load", side_effect=_spy):
+            paper.load_ledger_snapshot()
+
+        assert depth_seen == [1], (
+            "_load() must run INSIDE the _DATA_LOCK acquisition, not beside "
+            f"it (observed re-entrancy depth {depth_seen})"
+        )
+
+    def test_propagates_corruption_instead_of_swallowing_it(self):
+        """A checksum mismatch must still raise. The whole reason the design
+        refuses a process-lifetime cache is that a stale copy could mask a
+        real corruption -- so the uncached primitive has to fail loudly."""
+        import paper
+
+        paper.DATA_PATH.write_text(
+            json.dumps(
+                {
+                    "_version": 2,
+                    "balance": 10.0,
+                    "trades": [],
+                    "_checksum": "0" * 64,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(paper.CorruptionError):
+            paper.load_ledger_snapshot()

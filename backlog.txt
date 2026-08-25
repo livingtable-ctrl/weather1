@@ -23802,7 +23802,7 @@ Resolution (2026-08-22):
   Testing: rejects-unlisted-column/rejects-unlisted-json_key tests (mutation-tested: removing the allowlist checks makes both fail, one with a raw sqlite3.OperationalError instead of the friendly ValueError, confirming the check is genuinely load-bearing). Round-2 opus review found the existing "accepts every allowlisted name" positive-control test only proved the allowlist's own contents work, not that SIGNAL_REGISTRY stays in sync with it -- added test_every_signal_registry_entry_passes_tracker_allowlist, which drives every registry entry's real count_fn() (the exact call get_signal_graduation_report() makes in production) and confirms none raises; mutation-tested by removing one real allowlist entry and confirming this new test (and only this one) catches it.
   Independent opus review (effort=high) across two rounds: confirmed the allowlist exactly matches every real production call site, no legitimate caller broken, get_signal_graduation_report()'s existing per-entry exception handling means even a future miss degrades to a logged warning rather than a crash.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's /api/trades route loads the entire paper ledger twice in one request, with no caching across the ~7 routes (plus the /api/stream SSE loop) that each independently call get_open_trades()/get_all_trades()
+[PARTIALLY RESOLVED 2026-08-24 -- batch-61 item 1; headline /api/trades double-read fixed earlier by 0d601705 (batch-12), multi-read-per-request waste fixed now; single-read-per-request routes deliberately left uncached, see Resolution] web_app.py's /api/trades route loads the entire paper ledger twice in one request, with no caching across the ~7 routes (plus the /api/stream SSE loop) that each independently call get_open_trades()/get_all_trades()
 Priority: LOW (audit id AUD-0053, status CONFIRMED, confidence VERY HIGH, evidence E3)
 Files: web_app.py, paper.py
 
@@ -23813,6 +23813,153 @@ Problem:
   Financial risk: None -- read-only dashboard display path, does not affect trade sizing or placement.
   Recommendation: In api_trades(), replace the get_open_trades()+get_all_trades() pair with one get_all_trades() call, deriving open_trades via a local filter (mirroring get_open_trades()'s own `[t for t in trades if not t['settled']]` logic) instead of a second _load(). Separately (broader, lower urgency given...
   Full record: audit/AUDIT_REPORT.json (id AUD-0053), audit/AUDIT_REPORT.md.
+
+Resolution, part 1 (2026-08-22, batch-12, commit 0d601705):
+  The headline symptom -- api_trades() calling get_open_trades() AND
+  get_all_trades() for the same request -- was fixed there: the route now
+  makes one get_all_trades() call and derives open trades with a local
+  `not t.get("settled")` filter (see the `# AUD-0053:` comment in
+  web_app.py's api_trades). That half needs no further work.
+
+Resolution, part 2 (2026-08-24, batch-61 item 1) -- REMAINING SCOPE NARROWED:
+  Added paper.load_ledger_snapshot() (one _DATA_LOCK-held _load() returning
+  the whole ledger dict) and, in web_app.py, a REQUEST-SCOPED cache of that
+  snapshot keyed on the live request object: _req_ledger() / _req_balance() /
+  _req_open_trades() / _invalidate_req_ledger(). Converted the three call
+  sites that read the ledger more than once per request. Their ledger-
+  accessor reads go 3 -> 1, 2 -> 1 and 2 -> 1 respectively.
+  Side benefit: balance and open_count in a given response now come from the
+  SAME file read, so a settle landing mid-request can no longer pair a
+  post-settle balance with a pre-settle position count.
+
+  MEASURED, NOT ASSUMED (opus review): the win is real but much narrower
+  than "/api/status now does one read". Instrumenting paper._load() over one
+  real /api/status request gives 16 calls before and 14 after -- 12.5%, not
+  3->1. The other 12 come from paper-internal helpers the same route calls
+  (fear_greed_index, get_daily_pnl, get_peak_balance,
+  drawdown_scaling_factor, get_max_drawdown_pct, get_portfolio_expected_value,
+  and simulate_portfolio's own get_balance), each of which calls _load()
+  inside paper.py where a web_app-level cache cannot reach. The SSE loop,
+  whose ONLY ledger reads are the two this change converts, really is halved:
+  6 _load() calls per 3 ticks before, 3 after. The first draft of this
+  resolution and the code comments claimed the 3->1 figure for the whole
+  route; both have been corrected.
+
+  Why NOT a module-level memo on _load() (the obvious reading of this
+  entry's "no shared/memoized read path"): paper_trades.json is written by
+  other processes (cron, watch) and stores its own SHA-256 content checksum.
+  A process-lifetime cache would serve trades that no longer match the file
+  and could mask a real corruption -- strictly worse than the redundant I/O
+  it saves. An mtime-keyed cache was also rejected as carrying real
+  invalidation risk for a LOW-priority perf entry.
+
+  DESIGN CORRECTION vs. the batch-61 handoff: the handoff asserted a flask.g
+  cache is "safe by construction because a request is short-lived". That is
+  FALSE for this app. /api/stream wraps an INFINITE generator in
+  stream_with_context, which keeps the request context -- and therefore
+  flask.g -- alive for the entire life of the SSE connection. Verified with
+  an isolated Flask probe: a naive g-cache re-served the very first snapshot
+  on every tick. The SSE loop therefore calls _invalidate_req_ledger()
+  explicitly at the top of each tick; this is mandatory, not an
+  optimization, and any future long-lived streaming route needs the same.
+  _invalidate_req_ledger() is also called right after the two ledger-WRITING
+  routes (/api/paper-order, /api/close-position) so nothing added below them
+  later can read back a pre-write snapshot.
+
+  Aliasing contract: cached trade rows are SHARED within a request and must
+  be treated as read-only. /api/trades deliberately keeps its own uncached
+  paper.get_all_trades() call because it writes current_yes_bid/
+  current_yes_ask into the rows it returns -- and, per part 1 above, it
+  already reads the ledger only once, so it had nothing to gain. The three
+  converted sites' consumers (monte_carlo.simulate_portfolio,
+  weather_markets.detect_hedge_opportunity, paper.corr_kelly_scale) were
+  AST-scanned and confirmed non-mutating.
+
+  _req_balance()/_req_open_trades() use `["balance"]`/`["trades"]`
+  subscripts, not .get() with a default, so a malformed ledger fails exactly
+  as loudly as the uncached paper path did (a 0.0 default would have
+  rendered "$0.00" on the dashboard where the operator previously got a
+  500). The per-row test is `not t["settled"]`, byte-for-byte
+  paper.get_open_trades()'s own filter: an intermediate draft used
+  .get("settled") and opus review caught that it silently turned a 500 into
+  a 200 counting the row as an open position, AND would have made /health
+  (still calling paper.get_open_trades() directly) report a different open
+  count than /api/status for the same file.
+
+REVIEW FINDINGS ADDRESSED (independent opus review of this diff):
+  - flask.g is APP-context scoped, not request-scoped. RequestContext.push()
+    reuses an existing app context, so two requests handled inside an outer
+    `with app.app_context():` would have SHARED one snapshot -- silently
+    becoming the process-lifetime cache this design rejects. Reproduced by
+    the reviewer. Nothing pushes an app context in this repo today, but the
+    cache now keys on the live request object (held by reference, compared
+    with `is` -- deliberately not id(), whose uniqueness only holds among
+    live objects) so it is per-request however contexts nest. Regression
+    test added.
+  - _invalidate_req_ledger() was called on the success path only in both
+    ledger-writing routes, so a write that raised PART WAY through would
+    have left a pre-write snapshot behind -- not the guarantee the comment
+    claimed. Both are now try/finally, each with its own test that drives
+    the real route with the write raising (both assert the route reached the
+    write via a 500 positive control, so `spy.called` cannot pass vacuously).
+  - The comment on /api/close-position claimed the route reads open trades
+    through the cache; it reads them via the uncached paper.get_open_trades().
+    Corrected.
+  - paper.load_ledger_snapshot() had ZERO executed coverage -- every
+    web_app test patches it out, so its `with _DATA_LOCK: return _load()`
+    body was never run. 4 real tests added to tests/test_paper.py (whole-dict
+    shape, agreement with the individual accessors on the same file, lock
+    actually held during the read, and corruption propagating rather than
+    being swallowed). Mutation-tested: dropping `with _DATA_LOCK:` fails the
+    lock test.
+  - The unreachable `except ImportError` flask fallbacks were removed
+    (web_app.py's module-level `from flask import request` already makes
+    flask a hard requirement, so the branch and its comment were both false).
+  - Test hygiene: the class fixture is now a factory rather than a
+    shallow-copied class attribute (it was handing every test the same
+    trades list and row dicts -- the weakest possible place to detect the
+    aliasing violation these tests exist to catch); the SSE test uses
+    itertools.islice rather than zip(), which pulled an unasserted 4th tick
+    that exhausted side_effect and logged a spurious warning every run; and
+    the filter test now actually compares against paper.get_open_trades()
+    instead of only asserting settled rows are excluded, paired with a
+    positive control on a row missing `settled`.
+  - Added a test pinning that /api/trades deliberately does NOT use the
+    shared snapshot (it mutates the rows it returns).
+  - Item 2 (auth removal) drew NO findings at any severity: the reviewer
+    independently re-derived it and probed a live app with a password set,
+    confirming every path -- including both de-decorated routes, static
+    files, 404s and /api/stream -- still 401s without valid credentials, and
+    that the CSRF gate still rejects a correctly-authenticated POST missing
+    X-Requested-With.
+
+WHY THIS STAYS PARTIALLY RESOLVED (what is deliberately still open):
+  Routes that read the ledger exactly ONCE per request -- /health,
+  /api/live_signals, /history, /api/trades, and the three load_paper_trades()
+  sites (~L1811/2024/2359) -- still each do their own full read. A
+  request-scoped cache cannot help them BY CONSTRUCTION: there is no second
+  read in the same request to share with. Eliminating that residual would
+  require a cross-request cache (mtime-keyed or otherwise), which is exactly
+  the invalidation risk rejected above. If this entry is revisited, the open
+  question is specifically "is an mtime-keyed cross-request cache worth the
+  corruption-masking risk for a LOW-priority perf item?", not "add
+  memoization" generally.
+
+  Tests: 7 new in tests/test_web_app.py (TestRequestScopedLedgerCache) --
+  one-read-per-request, per-request isolation, invalidation, the real
+  /api/stream route driven for 3 ticks, no-request-context fallback, the
+  settled filter, and an /api/status route-level positive control asserting
+  the actual returned numbers (not just the read count). tests/test_web_app.py
+  87 passed (was 80). Mutation-tested via Edit: removing the SSE invalidate
+  froze all three ticks at the first balance (1 test failed); removing the
+  cache entirely (3 failed); swapping flask.g for a process-lifetime module
+  cache (4 failed, including the per-request-isolation test).
+  Scoped suites all green: test_web_app / test_web_auth / test_web_analytics
+  / test_paper / test_paper_metrics / test_paper_cross_process_lock (301
+  passed) and test_batch24_alerting / test_live_execution / test_prelog /
+  test_suggested_bets / test_trading_gates / test_p0_16_cron_endpoint /
+  test_idempotency (336 passed).
+  Lint: ruff + ruff-format + mypy via the real pre-commit hook, all pass.
 
 [RESOLVED 2026-08-22 -- batch-10] frontend authHeader() has no unit test asserting the CSRF header is present in its output
 Priority: LOW (audit id AUD-0054, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24228,7 +24375,7 @@ Problem:
   Recommendation: No action needed given the low-impact caches involved; if this pattern is reused for higher-value state in the future, a read-merge-write should be considered.
   Full record: audit/AUDIT_REPORT.json (id AUD-0074), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
+[RESOLVED 2026-08-24 -- batch-61 item 2; comment path taken first by b755498e (batch-14), decorators and the helper itself now actually removed] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
 Priority: INFO (audit id AUD-0075, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: web_app.py:1911, web_app.py:1952, web_app.py:170-172
 
@@ -24240,6 +24387,46 @@ Problem:
   Security risk: None — purely redundant, not a weakening of the auth boundary.
   Recommendation: Remove the two leftover decorators or update the before_request comment.
   Full record: audit/AUDIT_REPORT.json (id AUD-0075), audit/AUDIT_REPORT.md.
+
+Resolution, part 1 (2026-08-22, batch-14, commit b755498e):
+  Took the "or update the comment" branch of the recommendation -- the
+  before_request comment was rewritten to name both surviving decorators and
+  describe them as "a confusing but harmless dual-layer". That already
+  satisfied the entry as written.
+
+Resolution, part 2 (2026-08-24, batch-61 item 2) -- the other branch, taken
+for real this time:
+  Removed both @_require_auth decorators (api_emos_status,
+  api_weather_alerts), the _require_auth helper itself, and the
+  `import functools` it was the sole user of. Ruff additionally dropped the
+  module-level `from flask import Response`, which _require_auth was the
+  only module-scope consumer of (_build_app imports Response locally).
+  The before_request comment was rewritten again to describe the now-actual
+  single-mechanism design, and gained an explicit "do not reintroduce a
+  per-route decorator" note.
+
+  Safety derivation (this deletes authentication code, so stated explicitly):
+  _check_auth is registered via @app.before_request inside _build_app and
+  runs unconditionally and FIRST on every request. It is strictly STRICTER
+  than the decorator was -- identical Basic-Auth comparison, PLUS a CSRF
+  requirement (safe method, or an X-Requested-With header) that the
+  decorator had no equivalent of. So the decorator could only ever admit a
+  request that had already cleared the stricter gate; it was dead, not a
+  second layer. Both affected routes are GET-only, so the CSRF clause was
+  N/A for them either way. No test referenced _require_auth or those routes'
+  auth behavior.
+
+  Note for future readers: the batch-61 handoff pre-warned that this repo's
+  automated permission classifier has previously blocked deleting
+  auth-adjacent code, and told the session to fall back to
+  resolved-by-documentation if so. It did not block this time, so the real
+  cleanup landed.
+
+  Tests: no new tests (pure dead-code removal, behavior unchanged by
+  construction). tests/test_web_auth.py and tests/test_web_app.py re-run
+  after the deletion and after ruff's import removal -- 101 passed across
+  test_web_app / test_web_auth / test_web_analytics.
+  Lint: ruff + ruff-format + mypy via the real pre-commit hook, all pass.
 
 [RESOLVED 2026-08-21 -- fixed as batch-09 item 4 (audit/handoff_prompts/
   batches/batch-09.md); see AUD-0015's Resolution above] Kalshi API ticker values flow unvalidated into URL path segments
@@ -31728,8 +31915,9 @@ When to revisit:
     its own go/no-go-style validation, not a quick tweak to the existing
     climatology formula.
 
-[OPEN 2026-08-24 -- filed by batch-44's opus review (F8), out of scope for
-  that batch's normalization fix] RISKTAB ANOMALY-DETECTION CARD CANNOT
+[RESOLVED 2026-08-24 -- batch-61 item 3; fetchedAt freshness primitive added
+  and the card now has a distinct STATUS UNAVAILABLE state] RISKTAB
+  ANOMALY-DETECTION CARD CANNOT
   DISTINGUISH "HEALTHY AND QUIET" FROM "/api/anomaly-status IS DOWN"
 Priority: Low -- not a crash, not a data-integrity issue; a monitoring
   blind spot on a safety-relevant card.
@@ -31769,6 +31957,220 @@ When to revisit:
   - Lower priority than most open entries: this is a monitoring
     nice-to-have, not a correctness or safety-gate defect -- the underlying
     kill-switch/halt logic itself is unaffected either way.
+
+Resolution (2026-08-24, batch-61 item 3):
+  Built the general per-endpoint staleness mechanism this entry's own "When
+  to revisit" asked for, rather than a one-off marker for this card.
+
+  THE PRIMITIVE (batch-63 is designed to reuse this -- names are stable):
+    - `M.fetchedAt` -- a plain object on the useData state, keyed by feed
+      name, holding the epoch-ms of that endpoint's last SUCCESSFUL fetch.
+      Seeded as `{}` in mockData.js (never with a timestamp: before the
+      first real poll everything on screen is mock data, so every feed is
+      legitimately untrusted). fetchAll copies it per merge
+      (`next.fetchedAt = { ...prev.fetchedAt }`) and writes a key ONLY
+      inside the same `if (mapped)` guard that assigns the value, so a
+      timestamp can never certify data the merge did not take. This batch
+      populates exactly one key, `fetchedAt.anomalyStatus`; other feeds add
+      their own keys the same way.
+    - `feedFreshness(fetchedAt, { now, maxAgeMs, since })` in
+      frontend/src/shared.jsx
+      -> `{ state: 'fresh'|'stale'|'pending', stale: boolean, ageMs }`.
+      Three states on purpose: 'pending' (never fetched successfully this
+      session) is worded differently from 'stale' (was live, has gone quiet)
+      because the operator's next action differs, but BOTH carry
+      `stale: true` so a consumer that only asks "may I trust this?" reads
+      `.stale` and cannot accidentally trust either.
+    - `FEED_STALE_MS = 180_000` -- 3x the 60s main poll, so two consecutive
+      missed polls are tolerated and the third trips it. Overridable per
+      caller via maxAgeMs for a different cadence.
+    - `formatFeedAge(ageMs)` -- coarse "4 min ago" / "2 hrs ago" label,
+      returns null for the null ageMs 'pending' reports (so a safety banner
+      can never render "NaN min ago").
+    - `useFeedClock(tickMs)` -- supplies `{ now, visibleSince }`. See the
+      F1/F3 findings below for why both halves are load-bearing. Backed by a
+      MODULE-LEVEL singleton (one interval and one visibilitychange listener
+      for the whole app, surviving component unmounts) -- see round-2 F1.
+    - `FEED_HARD_STALE_MS` (4x FEED_STALE_MS = 12 min) -- a ceiling the
+      visibility credit can never exceed.
+    - `alarmSafeFlag(value, stale)` -- how a boolean safety reading degrades
+      when its feed dies: a reassuring `false` collapses to `undefined`, an
+      alarming `true` survives. See F2 below.
+    A backwards client clock reads FRESH, not stale: a clock step must not
+    fabricate an endpoint outage. A forward step can briefly fabricate one,
+    self-correcting within a poll; both are accepted rather than switching to
+    performance.now(), because fetchedAt is deliberately a wall-clock epoch so
+    the banner can say WHEN the last good reading was.
+
+  THE CARD: RiskTab's anomaly card now renders an amber STATUS UNAVAILABLE
+  badge plus an explicit banner naming the endpoint and the age of the last
+  good reading. Badge precedence is HALT TRIGGERED > ANOMALY > STATUS
+  UNAVAILABLE > NORMAL > INACTIVE -- unavailable outranks the two "all is
+  well" states (neither can be honestly asserted from a feed that stopped
+  answering) but NOT a last-known alarm, because demoting a real HALT to a
+  neutral "unavailable" would suppress it. Last-known values stay on screen
+  under the banner rather than being blanked; losing a HALT reading because
+  the feed died would be worse than showing it labelled stale. The
+  "Needs N settled multi-day trades to activate" sentence -- the exact
+  reassurance this entry is about -- is now suppressed while stale, since it
+  is a positive claim about a live state we no longer know.
+
+  ADJACENCY FIXED IN THE SAME CHANGE: RiskTab's KillSwitchCriteriaCard (the
+  checklist that tells the operator whether it is safe to turn the kill
+  switch OFF) derived a green "Anomaly clear -- Pass" row straight from
+  `anomaly_detected === false`, the same keep-last-known-good field. A dead
+  endpoint would have kept asserting Pass from an arbitrarily old reading --
+  the same blind spot on a strictly more dangerous surface. A stale feed now
+  collapses that value to `undefined`, which routes through the row's
+  already-existing third state ('?' / grey / "Unknown") and drops it out of
+  `allPass`, rather than inventing a fourth state.
+
+REVIEW FINDINGS ADDRESSED (independent opus review of this diff):
+  - F1 (severe): feedFreshness() is pure and evaluated during render, and
+    EVERY re-render source dies in exactly the failure mode this feature
+    exists to surface. Renders come only from fetchAll's setData,
+    handleSSEEvent and fetchWeatherAlerts; apiFetch has no timeout, so a
+    backend that HANGS rather than dies never settles Promise.allSettled and
+    never re-renders, while /api/stream's generator blocks inside
+    _build_stream_data() so neither an SSE message nor an SSE error fires.
+    The card would have sat on a green NORMAL badge indefinitely. Fixed with
+    useFeedClock, an independent interval that makes staleness observable
+    without any request completing. The underlying apiFetch timeout gap is
+    real but is a change to all 23 endpoints' fetch path with its own
+    decisions, so it was filed as its own OPEN entry at the end of this file
+    rather than stretched into a display fix.
+  - F2: KillSwitchCriteriaCard's first version downgraded a last-known
+    `anomaly_detected: true` to grey "Unknown" when the feed died -- the row
+    got LESS alarming as a direct result of losing visibility, and in the
+    opposite direction to the badge precedence three cards below. Now routed
+    through alarmSafeFlag(): only the reassuring `false` is withheld.
+  - F3: the main poll is visibility-gated, but SSE is not and keeps
+    re-rendering a hidden tab, so returning from any alt-tab longer than 3
+    minutes painted a full-width "the safety monitor is not responding"
+    banner that vanished ~300ms later -- alarm fatigue on the one banner
+    this entry exists to make credible. feedFreshness now takes `since`
+    (useFeedClock's visibleSince, reset on becoming visible), so only time we
+    could actually poll counts against a feed. Wall-clock elapsed still trips
+    the threshold, which is what keeps F1's hung-backend case alarming.
+  - F4: 'pending' was a trap state -- an endpoint that NEVER answers (route
+    404s on an older backend, a proxy blocking the path) showed "hasn't
+    loaded yet, wait a moment" forever over mock numbers. It now ages from
+    `since` and escalates to 'stale' with ageMs null, which the card words as
+    "has not responded since this page loaded".
+  - F5: 'pending' fires on every reload that lands on the Risk tab (the tab
+    is restored from the URL hash), so it now renders a neutral grey
+    LOADING... badge rather than the amber safety banner. Still visually
+    distinct from INACTIVE, which is the entry's actual requirement.
+  - F7: the two useData.test.js tests added in the first draft were
+    near-duplicates of existing mapAnomalyStatus tests and asserted nothing
+    about the fetchedAt merge they claimed to cover. Replaced by extracting
+    mergeFetchedAt() and testing it directly (7 tests: stamps on success,
+    does not stamp OR erase on failure, carries unrelated feeds forward,
+    never mutates prev -- fetchAll passes MOCK itself on the first merge --
+    handles a missing prev, a clock-advance positive control, and the
+    mapAnomalyStatus-null-return gate end to end).
+  - F8/F9/F10: removed a dead unreachable branch in formatFeedAge, added
+    Number.isFinite guards on the `now`/`maxAgeMs` options (an unguarded
+    NaN made every comparison false, i.e. a caller bug silently reporting a
+    HEALTHY feed), added whiteSpace/flexShrink to the badge so the new longer
+    label cannot wrap inside its pill, and gave the previously-unreachable
+    "unknown time" fallback real wording now that F4 makes it reachable.
+  - F12 is documented rather than changed: fetchedAt means "the endpoint
+    answered", not "the reading is current". That is the right guarantee for
+    reachability and matches the banner's wording, but batch-63 should not
+    read more into it.
+
+ROUND-2 REVIEW (the fixes above reviewed independently, since a fix can
+introduce new bugs at the same or higher severity than what it fixed):
+  - R2-F1 (MEDIUM/HIGH, a bug the round-1 fix INTRODUCED): `useFeedClock`
+    seeded `visibleSince` from component state, and App renders tabs as
+    `<ErrorBoundary key={activeTab}>`, so RiskTab and KillSwitchCriteriaCard
+    fully unmount and remount on EVERY tab switch. Each visit therefore reset
+    the tolerance window -- while the polling that produces `fetchedAt` lives
+    in App/useData and keeps running, so the reset discarded evidence that had
+    actually been collected. Measured: a dead feed still read `fresh` at a
+    real age of 751s and climbing when revisiting Risk every 150s, i.e. green
+    NORMAL on the card AND a green "Anomaly clear -- Pass" on the kill-switch
+    checklist for the first 3 minutes of every visit. That reinstates the
+    exact L30717 blind spot on the more dangerous surface, precisely while the
+    operator is reading the checklist to decide whether to lift the kill
+    switch. Before the round-1 `since` change, landing on the tab with a dead
+    feed alarmed immediately.
+    Fixed two ways: (a) the clock is now a module-level singleton, so a
+    remount cannot reset it (page load is genuinely when we started watching)
+    -- this also collapses the two consumers onto one interval and one
+    listener; (b) FEED_HARD_STALE_MS caps the credit at 12 minutes of TRUE
+    feed age, so repeated hidden->visible transitions (an operator alt-tabbing
+    every couple of minutes) can no longer defer the alarm indefinitely.
+    Regression test reproduces the measured revisit-every-150s sequence and
+    asserts it now trips.
+  - R2-F2: three PRE-EXISTING tests still patched paper.get_balance/
+    get_open_trades around /api/status and _build_stream_data, which this
+    change made silent no-ops -- they were passing only because they assert on
+    unrelated fields, and were really running against conftest's tmp ledger.
+    Repointed at paper.load_ledger_snapshot.
+  - R2-F3: the two new write-route tests asserted only `spy.called`, so moving
+    _invalidate_req_ledger() to the FIRST statement of the route would have
+    kept them green while destroying the guarantee (it must run AFTER a
+    partial write). Both now record call ORDER via a shared Mock parent and
+    assert [write, invalidate]. Mutation-tested: moving the call before the
+    write fails the test.
+  - R2-F4: feedFreshness could return state:'fresh' alongside an arbitrarily
+    large ageMs when `since` suppressed the alarm -- harmless today (no
+    consumer renders both) but self-contradictory for batch-63. Now exposed
+    explicitly as `suppressedBySince`.
+  - R2-F5: alarmSafeFlag preserved only strict `true`, so a truthy
+    non-boolean alarm was WITHHELD on staleness -- the opposite of the
+    intended asymmetry. Unreachable via anomaly_detected (bool()-coerced
+    server-side) but the sibling should_halt is NOT coerced and
+    mapAnomalyStatus passes both through raw, so nothing enforced the
+    invariant. Now any truthy reading normalizes to `true`, and the return is
+    genuinely three-valued (a fresh `null` used to leak through as a fourth
+    value the test's own claim excluded).
+  - R2-F6: useFeedClock's tickMs is now validated like feedFreshness's
+    options bag -- an unguarded 0/NaN became setInterval(fn, 0), re-rendering
+    the whole Risk tab every tick.
+  - R2-F7: KillSwitchCriteriaCard took the clock as a prop instead of its own
+    subscription; it renders null whenever the kill switch is off and had no
+    reason to hold a subscription and re-render every minute, and this makes
+    it structurally impossible for the two cards to read different clocks.
+  - R2-F8 (informational, accepted as no-ops with reasons): (a) if
+    _invalidate_req_ledger() itself raised inside a `finally` it could mask
+    the original exception -- it is has_request_context() + g.pop(), neither
+    of which realistically raises, and wrapping it would add a bare except on
+    a path that should fail loudly if it ever did; (b) /api/status's
+    `balance` now comes from the snapshot taken at the Monte-Carlo block, so
+    it is marginally more skewed against the live-read peak_balance/
+    drawdown_tier/today_pnl row than before while being newly CONSISTENT with
+    open_count. That is the intended trade of this change, and the reviewer
+    confirmed nothing between the snapshot and the response build writes the
+    ledger.
+  - Round 2 found NO production defect in the Python half (items 1 and 2),
+    and re-confirmed the auth removal independently a second time.
+
+  Tests: frontend/ has no jsdom/RTL, so every decision was extracted into
+  pure functions in shared.jsx/useData.js and unit-tested there (the
+  established pattern -- see gradGateStatus, heatStatus, resolveByKey).
+  34 new tests. `npm test`: 220 passed (was 186). Mutation-tested
+  individually via Edit, each restored after: `>` -> `>=` broke the boundary
+  test; `Math.abs(ageMs)` broke the clock-skew test; `pending` returning
+  `stale: false` broke the never-fetched test; dropping the `Math.max` on
+  `since` broke both visibility-grace tests; an unguarded `now` broke the
+  options-validation test; dropping alarmSafeFlag's `value === true` branch
+  broke two alarm-preservation tests; and stamping mergeFetchedAt
+  unconditionally broke two success-gate tests.
+
+  Also verified in a real browser (vite dev server, Risk tab) that all three
+  states render distinctly and that the fix is not sticky: pending -> STATUS
+  UNAVAILABLE + "has not loaded yet, placeholders"; a successful fetch ->
+  INACTIVE + "Needs 5 settled multi-day trades..."; then a 500 plus 5
+  simulated minutes -> STATUS UNAVAILABLE + "/api/anomaly-status is not
+  responding -- last successful update 5 min ago."
+
+  static/dist rebuilt in the same commit (Flask serves the built bundle, so
+  a frontend source change without a rebuild ships nothing).
+  Lint: no eslint/lint tooling exists in this repo for frontend/ (verified:
+  no config, no lint script), so that step is a genuine no-op here.
 
 [RESOLVED 2026-08-24 -- batch-52 item 1] Miami hourly (KXTEMPMIAH) index-vs-METAR decision experiment result
 Priority: Info (gates batch-52 items 2-4 scope AND batch-56)
@@ -32751,3 +33153,120 @@ Recommendation: regenerate the Obsidian vault + graph.html + GRAPH_REPORT.md
   Both are extractor behaviour changes worth confirming as intended before a
   full rebuild bakes them in everywhere.
   Full record: none -- surfaced by batch-59's graphify refresh.
+[OPEN -- filed 2026-08-24 by batch-61's opus review (F1), out of scope for
+  that batch's display fix] useData.js's apiFetch has no request timeout, so
+  a HUNG backend freezes the whole dashboard silently instead of degrading
+Priority: Medium -- not a crash and not a data-integrity issue, but it
+  defeats every "is this data still live?" signal the UI has, including the
+  anomaly-monitor staleness banner batch-61 item 3 just added.
+Files: frontend/src/useData.js (apiFetch, safe, fetchAllSafe, fetchAll),
+  frontend/src/tabs/OverviewTab.jsx and RiskTab.jsx (consumers of the
+  resulting frozen state)
+
+Problem:
+  `apiFetch` does a bare `await fetch(path, ...)` with no AbortController
+  and no timeout. A backend that ACCEPTS the connection but never answers
+  -- Flask handler threads blocked on a tracker.db sqlite lock, a wedged
+  gunicorn worker, a proxy holding the socket open -- produces a promise
+  that never settles. Consequences, all silent:
+    - fetchAllSafe's Promise.allSettled never resolves, so fetchAll's
+      setData is never called and NOTHING in the app re-renders from a poll.
+    - /api/stream's generator blocks inside _build_stream_data() the same
+      way, so the SSE connection emits neither a `message` nor an `error`
+      event -- the socket just stays open. `connected` therefore stays
+      green.
+    - App's RefreshCountdown keeps cycling 60 -> 1 -> 60 because it runs on
+      its own local interval, not on data arrival, so the UI actively looks
+      alive.
+  Every fail-FAST variant (connection refused, 4xx/5xx, JSON parse error,
+  auth cancel) is handled correctly today -- those all reach setData. It is
+  specifically the hang that is invisible.
+
+  Batch-61 item 3's staleness banner is partially protected from this
+  already: shared.jsx's useFeedClock ticks on its own interval, so RiskTab's
+  anomaly card DOES go STATUS UNAVAILABLE after FEED_STALE_MS even when no
+  fetch ever resolves. That was a deliberate design response to this
+  finding. But every OTHER consumer of poll-derived state (balance,
+  positions, open count, the cron-staleness banner, `connected`) still
+  freezes at its last value with no indication.
+
+Why it was scoped out of batch-61:
+  Adding a timeout changes the fetch path for all 23 endpoints plus the
+  weather-alerts poll, and needs its own decisions -- what timeout value
+  (the NWS alerts endpoint is documented as slow, and /api/opportunities
+  does live Kalshi calls, so one global number may not fit), whether a
+  timeout should count as a failure for keep-last-known-good purposes, and
+  whether an aborted request should be retried. That is a fetch-layer
+  change with its own failure modes, not the display fix batch-61 item 3
+  was scoped to.
+
+Recommendation:
+  Give apiFetch an AbortController with a per-endpoint-overridable timeout
+  (a global default in the 15-30s range, longer for /api/weather-alerts and
+  /api/opportunities), so a hung request rejects, `safe()` maps it to null,
+  and the existing keep-last-known-good + fetchedAt machinery reports it as
+  a failed feed exactly like a 500 already does. Pair it with a test that a
+  never-resolving fetch mock still lets fetchAllSafe settle. Consider also
+  surfacing "no successful poll in N minutes" globally (the `connected`
+  indicator is SSE-only today and cannot see this).
+
+[OPEN -- filed 2026-08-25 during batch-61] the `graphify update` CLI path still
+  rebuilds the WHOLE repo even though manifest.json is now portable, because
+  the AST cache is keyed by content hash rather than by path -- so a scoped
+  step-29 refresh is only reachable via the manual extract workaround, never
+  the documented command
+Priority: Low -- zero runtime or trading impact (graphify-out/ is a developer
+  knowledge-graph artifact the bot never reads). It costs every session that
+  reaches workflow step 29 a decision, and makes that step dead weight.
+Files: graphify-out/cache/ast/v0.9.48-s2/**, graphify-out/manifest.json,
+  graphify-out/graph.json
+
+Context -- what is ALREADY fixed, do not redo:
+  The absolute-path manifest keying is RESOLVED by commit 599a0225
+  ("chore(graphify): un-key manifest.json so the cache is portable across
+  worktrees"). Verified on origin/master 2026-08-25: manifest.json holds 544
+  keys, zero absolute. Before that migration it held 1,697 keys for 544 real
+  files -- four generations layered together, three of them absolutely
+  anchored to worktrees that no longer exist. A worktree branched from before
+  599a0225 still carries the old 1,697-key copy, which is what prompted this
+  entry; that is a stale checkout, not a live bug.
+
+Problem (the part that is NOT fixed):
+  There are TWO caches and the migration only fixed one.
+    - manifest.json is keyed by file PATH -- now relative and portable.
+    - graphify-out/cache/ast/<version>/ is keyed by CONTENT HASH, and its
+      entries correspond to older file content.
+  So `graphify update` re-extracts every file regardless of how the manifest
+  is keyed. Measured immediately after the manifest migration, same session:
+  227/227 files reported uncached (100%), producing a 1,007,745-line graph.json
+  diff (+548,673 / -468,496), 526 communities renamed by hub, 183 paths
+  touched, and 64 extraction warnings (32x nodes missing `label`, 32x missing
+  `source_file`). The 415/544 "cache hit" figure measurable from the
+  manifest's own ast_hash is NOT what `graphify update` consults.
+
+  Net effect: a change touching 3 files still produces a near-whole-file diff
+  across a 13,671-file tracked directory, so the honest move is to skip the
+  refresh -- which is what recent batches have done, batch-61 included.
+
+Update 2026-08-25 (commit 14162c46, batch-59's refresh): a scoped refresh IS
+  achievable and was done -- five changed files re-extracted, 883 nodes
+  substituted positionally, clustering metadata preserved per node id so no
+  repo-wide re-cluster fired, 245k-line diff instead of 475k. That was the
+  MANUAL workaround, not `graphify update`. So the accurate statement is that
+  the CLI path is unusable, not that scoped refreshes are impossible; the same
+  commit also repaired 12,994 backwards edges the corruption had left behind.
+
+Recommendation:
+  Until the CLI path is fixed, either use the manual extract workaround (as
+  14162c46 did) or state plainly that step 29 is being skipped -- do not run
+  `graphify update` expecting it to be scoped. If it is picked up:
+  work out whether the AST cache can be re-anchored or rebuilt once so that
+  subsequent runs hit (a one-time full rebuild is acceptable; a full rebuild
+  EVERY run is not), and confirm the property that is broken today -- two
+  consecutive `graphify update` runs from different worktrees should produce
+  no diff on the second. Note the separate, still-live failure modes before
+  touching this: graph.json edge-direction corruption on reload+resave, and
+  the Obsidian regen pruning unrelated notes. The manual scoped-extract
+  workaround (call graphify.extract.extract() on an explicit file list, merge
+  into graph.json by hand, skip Obsidian/HTML regen) is the only path that has
+  actually worked here.

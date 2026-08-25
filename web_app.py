@@ -6,7 +6,6 @@ Opens a browser tab showing the analyze table, open positions, and P&L chart.
 from __future__ import annotations
 
 import base64 as _base64
-import functools
 import hmac as _hmac
 import json
 import logging
@@ -18,7 +17,6 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from flask import Response
 from flask import request as _flask_request
 from markupsafe import escape as _html_escape
 
@@ -40,38 +38,6 @@ from paths import (
 )
 
 _log = logging.getLogger(__name__)
-
-
-def _require_auth(f):
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        import utils as _utils
-
-        pwd = _utils.DASHBOARD_PASSWORD
-        if not pwd:
-            return f(*args, **kwargs)
-        auth = _flask_request.headers.get("Authorization", "")
-        if auth.startswith("Basic "):
-            try:
-                decoded = _base64.b64decode(auth[6:]).decode("utf-8")
-                _, password = decoded.split(":", 1)
-                # WA-auth: compare_digest raises TypeError on non-ASCII str
-                # arguments; encoding to bytes first (its documented-safe usage)
-                # avoids a silent permanent lockout if DASHBOARD_PASSWORD ever
-                # contains a non-ASCII character — the bare except below would
-                # otherwise swallow the TypeError and always 401, even for the
-                # exactly-correct password, with no diagnostic anywhere.
-                if _hmac.compare_digest(password.encode(), pwd.encode()):
-                    return f(*args, **kwargs)
-            except Exception:
-                pass
-        return Response(
-            "Authentication required",
-            401,
-            {"WWW-Authenticate": 'Basic realm="Kalshi Dashboard"'},
-        )
-
-    return decorated
 
 
 _app = None  # module-level Flask app
@@ -113,17 +79,142 @@ def _get_live_market_snapshot(max_markets: int = 5) -> list[dict]:
         return []
 
 
+# ---------------------------------------------------------------------------
+# Request-scoped paper-ledger cache — batch-61 item 1 (backlog L23722 /
+# AUD-0053).
+#
+# paper._load() is unmemoized: every get_balance()/get_open_trades()/
+# get_all_trades() call is a full open() + json.load() + SHA-256 verify of
+# data/paper_trades.json. Routes that want more than one of those figures
+# (/api/status wants an open count twice AND a balance; the SSE loop wants a
+# balance and an open count every 10s) paid for the whole file once per
+# figure, and got each figure from a DIFFERENT read -- so a settle landing
+# mid-request could make one response report a post-settle balance next to a
+# pre-settle position count.
+#
+# SCOPE, measured rather than assumed (opus review): this covers only the
+# accessors routed through it. One real /api/status request does 14 _load()
+# calls after this change and did 16 before -- the other 12 come from
+# paper-internal helpers the route also calls (fear_greed_index,
+# get_daily_pnl, get_peak_balance, drawdown_scaling_factor,
+# get_max_drawdown_pct, get_portfolio_expected_value, and simulate_portfolio's
+# own get_balance), each of which calls _load() inside paper.py where this
+# layer cannot reach. Collapsing those too means memoizing _load() itself,
+# which is the cross-process-staleness risk this design deliberately refuses.
+# The SSE loop, whose only ledger reads ARE these two, really is halved:
+# 6 _load() calls per 3 ticks before, 3 after.
+#
+# The cache is deliberately per-HTTP-request, not process-lifetime:
+# paper_trades.json is written by other processes (cron, watch) and carries
+# its own content checksum, so a long-lived in-process copy could serve
+# trades that no longer match the file and mask a real corruption. A request
+# is short enough that a snapshot is simply "the state when this response
+# began".
+#
+# EXCEPT that "a request is short" is NOT true for every route here:
+# /api/stream wraps an INFINITE generator in stream_with_context, which keeps
+# the request (and therefore flask.g) alive for as long as the browser tab
+# holds the connection open. Verified empirically -- without the explicit
+# invalidate below, every SSE tick for the lifetime of that connection would
+# re-serve the very first snapshot. Any future long-lived streaming route
+# must invalidate the same way.
+#
+# CONTRACT: the returned dict/trade rows are SHARED within the request.
+# Callers must treat them as read-only. /api/trades deliberately keeps its
+# own uncached paper.get_all_trades() call because it writes live-quote
+# fields into the rows it returns (and it already reads the ledger only
+# once, so it has nothing to gain here anyway).
+# ---------------------------------------------------------------------------
+_REQ_LEDGER_KEY = "_paper_ledger_snapshot"
+
+
+def _req_ledger() -> dict:
+    """One paper-ledger read per HTTP request. Treat the result as read-only."""
+    from flask import g, has_request_context, request
+
+    from paper import load_ledger_snapshot
+
+    if not has_request_context():
+        # Called outside a request (unit tests, or a future background
+        # caller): no cache to scope to, so just do the honest live read
+        # rather than inventing a process-lifetime one.
+        return load_ledger_snapshot()
+
+    # flask.g lives on the APPLICATION context, not the request context, and
+    # RequestContext.push() only creates a new app context when one for this
+    # app isn't already active. So if anything ever pushes an outer
+    # `with app.app_context():` -- a Flask CLI command, a scheduler job, a
+    # warm-up hook, a test helper -- every request handled inside it would
+    # share one `g`, silently turning this into exactly the process-lifetime
+    # cache the comment above rejects as unsafe. Nothing does that today
+    # (opus review confirmed no app_context push in this repo), but the
+    # failure would be invisible: two consecutive /api/status polls returning
+    # an identical balance and open_count forever, with no error and no log.
+    #
+    # Keying on the request OBJECT (held by reference, compared with `is`)
+    # makes the cache genuinely per-request regardless of how contexts nest.
+    # Deliberately not `id(request)`: an id is only unique among LIVE objects,
+    # so a freed request's address can be reused by a later one and produce a
+    # false hit -- the exact bug this guard exists to prevent.
+    req = request._get_current_object()
+    cached = g.get(_REQ_LEDGER_KEY)
+    if cached is not None and cached[0] is req:
+        return cached[1]
+    snapshot = load_ledger_snapshot()
+    setattr(g, _REQ_LEDGER_KEY, (req, snapshot))
+    return snapshot
+
+
+def _invalidate_req_ledger() -> None:
+    """Drop this request's cached ledger snapshot.
+
+    Called by the SSE loop before each tick (its request context outlives any
+    single snapshot's usefulness) and, via try/finally, around the two routes
+    that WRITE to the ledger, so nothing downstream in the same request can
+    read back a pre-write copy. Cheap; a no-op outside a request.
+    """
+    from flask import g, has_request_context
+
+    if has_request_context():
+        g.pop(_REQ_LEDGER_KEY, None)
+
+
+def _req_balance() -> float:
+    # Subscript, not .get(<default>): paper.get_balance() is `_load()["balance"]`,
+    # so a ledger missing the key raises there and the calling route turns that
+    # into a 500. Defaulting to 0.0 here would instead render "$0.00" on the
+    # dashboard -- a silent wrong number where the operator previously got a
+    # visible error. Keep the failure mode identical to the uncached path.
+    return _req_ledger()["balance"]
+
+
+def _req_open_trades() -> list[dict]:
+    """Open trades from this request's snapshot. Rows are shared — read-only."""
+    # Byte-for-byte paper.get_open_trades()'s own filter, `not t["settled"]`
+    # (subscript, not .get) -- these call sites used to BE that function, and
+    # this change is meant to be behaviour-preserving for them. An earlier
+    # draft used .get() to match api_trades' local filter and opus review
+    # caught the consequence: a ledger row missing `settled` would have turned
+    # a 500 into a 200 that silently counted the row as an open position, and
+    # /health -- which still calls paper.get_open_trades() directly -- would
+    # then have reported a different open count than /api/status for the same
+    # ledger. `["trades"]` and `["balance"]` above are the same fail-loud call.
+    return [t for t in _req_ledger()["trades"] if not t["settled"]]
+
+
 def _build_stream_data() -> dict:
     """Build SSE payload. Extracted for testability."""
     from datetime import UTC, datetime
 
-    from paper import get_balance, get_open_trades
     from tracker import brier_score_rolling_with_n
 
     _brier, _brier_n = brier_score_rolling_with_n()
+    # batch-61 item 1: balance and open_count now come from ONE ledger read
+    # (was two), and from the SAME read -- so this payload can no longer pair
+    # a post-settle balance with a pre-settle position count.
     return {
-        "balance": round(get_balance(), 2),
-        "open_count": len(get_open_trades()),
+        "balance": round(_req_balance(), 2),
+        "open_count": len(_req_open_trades()),
         "brier": _brier,
         "brier_n": _brier_n,
         "markets": _get_live_market_snapshot(),
@@ -167,11 +258,16 @@ def _build_app(client):
     def _check_auth():
         # Single auth layer for ALL routes — including kill switch, halt/resume,
         # paper-order, close-position, and override endpoints.
-        # Route-level @_require_auth decorators are redundant (WA-16):
-        # before_request runs unconditionally on every request, so any route
-        # still wearing @_require_auth (api_emos_status, api_weather_alerts,
-        # as of AUD-0075) is a confusing but harmless dual-layer, not a gap —
-        # this hook is the actual, sole blocking authority either way.
+        # This hook is the SOLE auth mechanism. Route-level @_require_auth
+        # decorators were removed by WA-16; the last two stragglers
+        # (api_emos_status, api_weather_alerts) and the decorator itself went
+        # with batch-61 item 2 (AUD-0075). They were verifiably dead, not a
+        # second gate: this hook runs unconditionally and FIRST, and is
+        # strictly stricter than the decorator was (it adds the CSRF
+        # X-Requested-With requirement below, which the decorator had no
+        # equivalent of), so nothing this hook rejects could ever have
+        # reached them. Do not reintroduce a per-route decorator — it can
+        # only ever be weaker than this, while reading like an extra layer.
         import utils as _utils
 
         pwd = _utils.DASHBOARD_PASSWORD
@@ -182,9 +278,11 @@ def _build_app(client):
             try:
                 decoded = _base64.b64decode(auth[6:]).decode("utf-8")
                 _, password = decoded.split(":", 1)
-                # WA-auth: see _require_auth's identical fix above — encode to
-                # bytes so a non-ASCII DASHBOARD_PASSWORD can't silently lock out
-                # every request (including correct ones) via an unlogged TypeError.
+                # WA-auth: compare_digest raises TypeError on non-ASCII str
+                # arguments, so encode to bytes first (its documented-safe
+                # usage). Otherwise a non-ASCII DASHBOARD_PASSWORD would
+                # silently lock out every request — including correct ones —
+                # via a TypeError the bare except below swallows unlogged.
                 if _hmac.compare_digest(password.encode(), pwd.encode()):
                     # WA-csrf: Basic Auth alone doesn't stop CSRF — browsers
                     # re-attach cached Basic credentials to same-origin requests
@@ -377,6 +475,14 @@ def _build_app(client):
         def generate():
             while True:
                 try:
+                    # batch-61 item 1: MANDATORY, not an optimization.
+                    # stream_with_context keeps this generator's request
+                    # context -- and therefore flask.g -- alive for the whole
+                    # life of the SSE connection, so the request-scoped
+                    # ledger cache would otherwise re-serve the very first
+                    # snapshot on every 10s tick until the tab closed,
+                    # freezing balance and open_count for the operator.
+                    _invalidate_req_ledger()
                     data = _build_stream_data()
                     yield f"data: {json.dumps(data)}\n\n"
                 except GeneratorExit:
@@ -1622,7 +1728,13 @@ setInterval(() => {{
     @app.route("/api/status")
     def api_status():
         try:
-            from paper import get_balance, get_open_trades
+            # batch-61 item 1: balance + the two open-trade reads below now
+            # come from ONE request-scoped ledger snapshot (_req_ledger)
+            # instead of three separate full read+parse+SHA-256 passes, and
+            # from the same read, so they can no longer disagree with each
+            # other. Note this route still makes ~14 _load() calls in total --
+            # see _req_ledger's SCOPE note; the rest are inside paper helpers
+            # this layer cannot reach.
             from tracker import brier_score_rolling_with_n
 
             try:
@@ -1718,7 +1830,7 @@ setInterval(() => {{
             try:
                 from monte_carlo import simulate_portfolio as _sim_portfolio
 
-                _mc_open = get_open_trades()
+                _mc_open = _req_open_trades()
                 if _mc_open:
                     _mc_result = _sim_portfolio(
                         _mc_open, n_simulations=1000, include_distribution=True
@@ -1733,8 +1845,8 @@ setInterval(() => {{
 
             _brier_r, _brier_n = brier_score_rolling_with_n()
             data = {
-                "balance": round(get_balance(), 2),
-                "open_count": len(get_open_trades()),
+                "balance": round(_req_balance(), 2),
+                "open_count": len(_req_open_trades()),
                 "brier": _brier_r,
                 "brier_n": _brier_n,
                 "fear_greed_score": fg_score,
@@ -1974,7 +2086,6 @@ setInterval(() => {{
             return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/emos-status")
-    @_require_auth
     def api_emos_status():
         """Return EMOS parameter status — whether trained, params, and training date."""
         from paths import EMOS_PARAMS_PATH
@@ -2015,7 +2126,6 @@ setInterval(() => {{
             )
 
     @app.route("/api/weather-alerts")
-    @_require_auth
     def api_weather_alerts():
         """Fetch NWS active weather alerts for cities with open positions.
 
@@ -3167,19 +3277,32 @@ setInterval(() => {{
             _market_for_order.get("close_time") if _market_for_order else None
         )
         try:
-            trade = place_paper_order(
-                ticker=ticker,
-                side=side,
-                quantity=quantity,
-                entry_price=entry_price,
-                entry_prob=float(entry_prob) if entry_prob is not None else None,
-                net_edge=float(net_edge) if net_edge is not None else None,
-                city=city,
-                target_date=target_date,
-                thesis="manual approval via dashboard",
-                days_out=_days_out,
-                close_time=_close_time,
-            )
+            # batch-61 item 1: try/finally, not a plain call after the write.
+            # place_paper_order writes paper_trades.json, so any snapshot this
+            # request cached is now pre-write -- and that is just as true if it
+            # raises PART WAY through as if it succeeds. opus review caught the
+            # first version invalidating on the success path only, which does
+            # not deliver the guarantee its own comment claimed. Nothing below
+            # reads through the cache today; this exists so that stays safe if
+            # something is added later, rather than resting on an unstated
+            # invariant.
+            try:
+                trade = place_paper_order(
+                    ticker=ticker,
+                    side=side,
+                    quantity=quantity,
+                    entry_price=entry_price,
+                    entry_prob=float(entry_prob) if entry_prob is not None else None,
+                    net_edge=float(net_edge) if net_edge is not None else None,
+                    city=city,
+                    target_date=target_date,
+                    thesis="manual approval via dashboard",
+                    days_out=_days_out,
+                    close_time=_close_time,
+                )
+            finally:
+                _invalidate_req_ledger()
+
             # Register in tracker predictions so sync_outcomes / auto_settle
             # can find the Kalshi outcome automatically when the market resolves.
             # Without this, only trades placed by cron end up in predictions and
@@ -3374,7 +3497,17 @@ setInterval(() => {{
         # malicious client stuff arbitrary text into the trade ledger.
         reason = "manual_close" if body.get("manual") is True else None
         try:
-            trade = close_paper_early(trade_id, exit_price, reason=reason)
+            # batch-61 item 1: same try/finally guarantee as /api/paper-order's
+            # -- the write invalidates any snapshot cached earlier in this
+            # request, whether it succeeds or fails part way. (This route's own
+            # earlier open-trades read at the quote sanity check goes through
+            # the UNCACHED paper.get_open_trades(), so there is nothing to
+            # invalidate today; opus review caught the first version's comment
+            # claiming otherwise.)
+            try:
+                trade = close_paper_early(trade_id, exit_price, reason=reason)
+            finally:
+                _invalidate_req_ledger()
             return jsonify({"ok": True, "pnl": trade.get("pnl")}), 200
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 404
@@ -3390,7 +3523,6 @@ setInterval(() => {{
         """Enriched alias of /api/suggested_bets with star ratings and flag fields."""
         from flask import request as _freq
 
-        from paper import get_balance, get_open_trades
         from paper import kelly_bet_dollars as _kbd_opp
         from utils import MIN_EDGE
         from weather_markets import (
@@ -3410,8 +3542,9 @@ setInterval(() => {{
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc), "opportunities": []}), 500
 
-        balance = get_balance()
-        open_trades = get_open_trades()
+        # batch-61 item 1: one ledger read for both, instead of one each.
+        balance = _req_balance()
+        open_trades = _req_open_trades()
         results: list[dict] = []
 
         for m in markets:

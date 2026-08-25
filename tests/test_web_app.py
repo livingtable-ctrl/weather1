@@ -1,7 +1,9 @@
 """Tests for web_app.py dashboard API endpoints."""
 
+import itertools
+import json
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -146,9 +148,17 @@ def test_build_stream_data_has_markets_key():
     """_build_stream_data includes markets key."""
     from web_app import _build_stream_data
 
+    # batch-61 item 1: _build_stream_data reads through
+    # paper.load_ledger_snapshot() now, so patching get_balance/get_open_trades
+    # here would be a silent no-op and this test would quietly fall through to
+    # the real paper._load() (opus review F2 -- safe only because conftest's
+    # autouse isolate_paper_data redirects DATA_PATH, but not what the test
+    # claims to be doing).
     with (
-        patch("paper.get_balance", return_value=1000.0),
-        patch("paper.get_open_trades", return_value=[]),
+        patch(
+            "paper.load_ledger_snapshot",
+            return_value={"balance": 1000.0, "trades": []},
+        ),
         patch("tracker.brier_score", return_value=0.20),
     ):
         data = _build_stream_data()
@@ -1306,8 +1316,13 @@ class TestKillSwitchAPI:
 
         with app.test_client() as c:
             with (
-                patch("paper.get_balance", return_value=1000.0),
-                patch("paper.get_open_trades", return_value=[]),
+                # batch-61 item 1: /api/status's balance + open count come
+                # from load_ledger_snapshot now; the old get_balance/
+                # get_open_trades patches were silent no-ops (opus review F2).
+                patch(
+                    "paper.load_ledger_snapshot",
+                    return_value={"balance": 1000.0, "trades": []},
+                ),
                 patch("tracker.brier_score", return_value=0.10),
                 patch("paper.fear_greed_index", return_value=(50, "Neutral")),
             ):
@@ -1491,8 +1506,12 @@ def test_status_includes_brier_drift(tmp_path, monkeypatch):
 
     with app.test_client() as c:
         with (
-            patch("paper.get_balance", return_value=1000.0),
-            patch("paper.get_open_trades", return_value=[]),
+            # batch-61 item 1: see the F2 note above -- load_ledger_snapshot is
+            # the read path /api/status actually uses now.
+            patch(
+                "paper.load_ledger_snapshot",
+                return_value={"balance": 1000.0, "trades": []},
+            ),
             patch("tracker.brier_score", return_value=0.10),
             patch("paper.fear_greed_index", return_value=(50, "Neutral")),
             patch("tracker.detect_brier_drift", return_value=fake_drift),
@@ -2498,3 +2517,384 @@ class TestAnomalyStatusMatchesRealCheck:
         )
         assert data["wins"] == 6
         assert data["losses"] == 4
+
+
+# ---------------------------------------------------------------------------
+# batch-61 item 1 (backlog L23722 / AUD-0053): request-scoped paper-ledger
+# cache. paper._load() is unmemoized -- every get_balance()/get_open_trades()
+# call is a full open()+json.load()+SHA-256 verify of paper_trades.json -- so
+# a route wanting a balance AND an open count paid for the file once per
+# figure, from two different reads.
+# ---------------------------------------------------------------------------
+class TestRequestScopedLedgerCache:
+    # A FACTORY, not a class attribute copied with dict(): the change's whole
+    # contract is "cached rows are shared within a request, treat them as
+    # read-only", and a shallow dict() copy would hand every test in this
+    # class the same `trades` list and the same row dicts. A mutating caller
+    # would then corrupt sibling tests non-deterministically instead of
+    # failing cleanly -- the weakest possible place to detect exactly the
+    # violation these tests exist to catch (opus review F8).
+    @staticmethod
+    def _ledger(**overrides):
+        base = {
+            "_version": 2,
+            "balance": 1234.5,
+            "peak_balance": 2000.0,
+            "trades": [
+                {"id": "t1", "ticker": "KXHIGHATL-1", "settled": False},
+                {"id": "t2", "ticker": "KXHIGHATL-2", "settled": True},
+                {"id": "t3", "ticker": "KXHIGHATL-3", "settled": False},
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def test_one_request_reads_the_ledger_once_no_matter_how_many_accessors(self):
+        """Two _req_* helpers plus a repeat call must cost ONE file read.
+
+        This is the whole point of the entry: /api/status alone used to make
+        three independent full reads to serve one dashboard poll.
+        """
+        import web_app
+
+        calls = []
+
+        def _fake_snapshot():
+            calls.append(1)
+            return self._ledger()
+
+        app = web_app._build_app(object())
+        with (
+            patch("paper.load_ledger_snapshot", side_effect=_fake_snapshot),
+            app.test_request_context("/api/status"),
+        ):
+            assert web_app._req_balance() == 1234.5
+            assert len(web_app._req_open_trades()) == 2
+            assert len(web_app._req_open_trades()) == 2
+            assert web_app._req_balance() == 1234.5
+
+        assert len(calls) == 1, f"expected exactly one ledger read, got {len(calls)}"
+
+    def test_separate_requests_do_not_share_a_snapshot(self):
+        """The cache must be per-request, not process-lifetime.
+
+        paper_trades.json is written by cron/watch and carries its own content
+        checksum, so a snapshot outliving its request could serve trades that
+        no longer match the file and mask a real corruption. A second request
+        must see the second read's value.
+        """
+        import web_app
+
+        ledgers = [self._ledger(balance=100.0), self._ledger(balance=999.0)]
+        app = web_app._build_app(object())
+
+        with patch("paper.load_ledger_snapshot", side_effect=ledgers):
+            with app.test_request_context("/api/status"):
+                first = web_app._req_balance()
+            with app.test_request_context("/api/status"):
+                second = web_app._req_balance()
+
+        assert (first, second) == (100.0, 999.0), (
+            "a second request must re-read the file, not reuse request one's "
+            f"snapshot: {(first, second)}"
+        )
+
+    def test_an_outer_app_context_does_not_merge_two_requests(self):
+        """flask.g is APP-context scoped, not request-scoped.
+
+        RequestContext.push() only creates a new app context when one for
+        this app isn't already active, so two requests handled inside an
+        outer `with app.app_context():` share a single `g` -- silently
+        turning this into the process-lifetime cache the design explicitly
+        rejects as unsafe (stale trades masking a real checksum corruption).
+        Nothing pushes an app context today; this guards the accident. Keying
+        on the request object rather than on `g` alone is what fixes it
+        (opus review F1, which reproduced the merged-snapshot bug).
+        """
+        import web_app
+
+        ledgers = [self._ledger(balance=111.0), self._ledger(balance=222.0)]
+        app = web_app._build_app(object())
+
+        with patch("paper.load_ledger_snapshot", side_effect=ledgers):
+            with app.app_context():
+                with app.test_request_context("/api/status"):
+                    first = web_app._req_balance()
+                with app.test_request_context("/api/status"):
+                    second = web_app._req_balance()
+
+        assert (first, second) == (111.0, 222.0), (
+            "two requests nested in one app context must NOT share a "
+            f"snapshot: {(first, second)}"
+        )
+
+    def test_close_position_invalidates_even_when_the_write_raises(self, client):
+        """try/finally, not a call on the success path.
+
+        A write that fails PART WAY through still leaves any cached snapshot
+        pre-write. Nothing downstream reads through the cache today, so this
+        asserts the mechanism directly -- deleting the _invalidate_req_ledger
+        call is otherwise caught by no test at all (opus review F6/F9).
+        """
+        import web_app
+
+        # A shared parent records the ORDER of the two calls. Asserting only
+        # `spy.called` would stay green if _invalidate_req_ledger were moved to
+        # the first statement of the route -- which destroys the guarantee it
+        # exists for, since the point is that it runs AFTER a partial write
+        # (opus review F3).
+        order = Mock()
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.close_paper_early",
+                side_effect=lambda *a, **k: (
+                    order.write(),
+                    (_ for _ in ()).throw(RuntimeError("mid-write")),
+                ),
+            ),
+            patch.object(
+                web_app, "_invalidate_req_ledger", side_effect=order.invalidate
+            ),
+        ):
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.5, "manual": True},
+            )
+
+        # Positive control: prove the request actually REACHED the write and
+        # failed there, rather than being rejected by an earlier guard (which
+        # would make the call-order assertion vacuous).
+        assert resp.status_code == 500, resp.get_data(as_text=True)
+        assert order.mock_calls == [call.write(), call.invalidate()], (
+            "/api/close-position must invalidate the request-scoped ledger "
+            f"snapshot AFTER the write, even when it raises: {order.mock_calls}"
+        )
+
+    def test_paper_order_invalidates_even_when_the_write_raises(
+        self, client, monkeypatch, tmp_path
+    ):
+        """Same try/finally guarantee on the other ledger-writing route."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        order = Mock()  # records call ORDER -- see the F3 note above
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2099, 6, 1)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}),
+            patch(
+                "paper.place_paper_order",
+                side_effect=lambda *a, **k: (
+                    order.write(),
+                    (_ for _ in ()).throw(RuntimeError("mid-write")),
+                ),
+            ),
+            patch.object(
+                web_app, "_invalidate_req_ledger", side_effect=order.invalidate
+            ),
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JUN01-T70",
+                    "side": "yes",
+                    "quantity": 1,
+                    "entry_price": 0.50,
+                },
+            )
+
+        assert resp.status_code == 500, resp.get_data(as_text=True)
+        assert order.mock_calls == [call.write(), call.invalidate()], (
+            "/api/paper-order must invalidate the request-scoped ledger "
+            f"snapshot AFTER the write, even when it raises: {order.mock_calls}"
+        )
+
+    def test_invalidate_forces_a_fresh_read_within_the_same_request(self):
+        """_invalidate_req_ledger must actually drop the cached snapshot.
+
+        Load-bearing for /api/stream (see the SSE test below) and for the two
+        routes that WRITE the ledger mid-request.
+        """
+        import web_app
+
+        ledgers = [self._ledger(balance=1.0), self._ledger(balance=2.0)]
+        app = web_app._build_app(object())
+
+        with (
+            patch("paper.load_ledger_snapshot", side_effect=ledgers),
+            app.test_request_context("/api/status"),
+        ):
+            before = web_app._req_balance()
+            web_app._invalidate_req_ledger()
+            after = web_app._req_balance()
+
+        assert (before, after) == (1.0, 2.0)
+
+    def test_sse_generator_sees_a_fresh_ledger_on_every_tick(self):
+        """The regression this batch's design hinges on.
+
+        /api/stream wraps an INFINITE generator in stream_with_context, which
+        keeps the request context -- and therefore flask.g -- alive for the
+        whole life of the SSE connection. Without the explicit invalidate at
+        the top of each tick, a request-scoped cache freezes balance and
+        open_count at their first-tick values until the tab is closed. The
+        handoff for this batch assumed flask.g was "safe by construction
+        because a request is short-lived"; for this route it is not.
+        """
+        import web_app
+
+        balances = [10.0, 20.0, 30.0]
+        ledgers = [self._ledger(balance=b) for b in balances]
+        app = web_app._build_app(object())
+
+        # Drives the REAL /api/stream route (not a hand-rolled imitation of
+        # its loop) so this also guards the wiring, not just the primitive.
+        # time.sleep is patched out because the loop sleeps 10s per tick.
+        app.config["TESTING"] = True
+        seen = []
+        with (
+            patch("paper.load_ledger_snapshot", side_effect=ledgers),
+            patch("tracker.brier_score_rolling_with_n", return_value=(0.2, 5)),
+            patch("time.sleep"),
+            app.test_client() as c,
+        ):
+            resp = c.get("/api/stream")
+            # islice, not zip(stream, range(3)): zip evaluates next(stream)
+            # BEFORE next(range(3)) on the terminating iteration, pulling a
+            # 4th tick that exhausts side_effect and logs a spurious
+            # "_build_stream_data failed" warning every run (opus review F7).
+            stream = itertools.islice(resp.response, 3)
+            try:
+                for chunk in stream:
+                    payload = json.loads(chunk.decode().removeprefix("data: ").strip())
+                    assert "error" not in payload, payload
+                    seen.append(payload["balance"])
+            finally:
+                resp.close()
+
+        assert seen == balances, (
+            "each SSE tick must reflect the current ledger; a frozen "
+            f"per-connection snapshot would give {[balances[0]] * 3}: {seen}"
+        )
+
+    def test_outside_a_request_context_it_still_returns_live_data(self):
+        """No request to scope to => an honest live read, never a global cache."""
+        import web_app
+
+        ledgers = [self._ledger(balance=5.0), self._ledger(balance=6.0)]
+        with patch("paper.load_ledger_snapshot", side_effect=ledgers):
+            assert web_app._req_balance() == 5.0
+            assert web_app._req_balance() == 6.0
+
+    def test_open_trades_filter_matches_papers_own(self):
+        """_req_open_trades must agree with paper.get_open_trades() exactly.
+
+        Not just "excludes settled rows" -- actually compared against the
+        real function on the same ledger, because these call sites used to BE
+        that function and the change is meant to be behaviour-preserving.
+        An earlier draft filtered with `.get("settled")` instead of the
+        subscript, which would have made a row missing that key count as open
+        here while /health (still on paper.get_open_trades()) reported a
+        different number for the same file (opus review F4).
+        """
+        import paper
+        import web_app
+
+        ledger = self._ledger()
+        app = web_app._build_app(object())
+        with (
+            patch("paper.load_ledger_snapshot", return_value=ledger),
+            patch("paper._load", return_value=ledger),
+            app.test_request_context("/api/status"),
+        ):
+            cached = web_app._req_open_trades()
+            direct = paper.get_open_trades()
+
+        assert [t["id"] for t in cached] == ["t1", "t3"], f"got {cached}"
+        assert [t["id"] for t in cached] == [t["id"] for t in direct]
+
+    def test_a_row_missing_settled_fails_the_same_way_paper_does(self):
+        """The divergence guard: both must raise, not one silently counting it.
+
+        Positive control for the test above -- without this, `.get("settled")`
+        vs `["settled"]` is indistinguishable, since a well-formed ledger
+        exercises both identically.
+        """
+        import paper
+        import web_app
+
+        ledger = self._ledger(trades=[{"id": "bad", "ticker": "X"}])
+        app = web_app._build_app(object())
+        with (
+            patch("paper.load_ledger_snapshot", return_value=ledger),
+            patch("paper._load", return_value=ledger),
+            app.test_request_context("/api/status"),
+        ):
+            with pytest.raises(KeyError):
+                web_app._req_open_trades()
+            with pytest.raises(KeyError):
+                paper.get_open_trades()
+
+    def test_api_trades_deliberately_does_NOT_use_the_shared_cache(self):
+        """The aliasing exclusion, pinned.
+
+        /api/trades writes current_yes_bid/current_yes_ask into the rows it
+        returns, so it must keep its own uncached paper.get_all_trades() read
+        -- routing it through the shared snapshot would let one route's
+        response-shaping mutations leak into every other reader in the same
+        request (opus review F4/F9 coverage gap).
+        """
+        import web_app
+
+        snapshot_calls = []
+        app = web_app._build_app(object())
+        app.config["TESTING"] = True
+        with (
+            patch(
+                "paper.load_ledger_snapshot",
+                side_effect=lambda: (snapshot_calls.append(1), self._ledger())[1],
+            ),
+            patch("paper.get_all_trades", return_value=[]) as _gat,
+            app.test_client() as c,
+        ):
+            resp = c.get("/api/trades")
+
+        assert resp.status_code == 200
+        assert _gat.called, "/api/trades must still read via paper.get_all_trades()"
+        assert not snapshot_calls, (
+            "/api/trades must NOT pull the shared request snapshot -- it "
+            "mutates the rows it returns"
+        )
+
+    def test_api_status_serves_balance_and_open_count_from_one_read(self, client):
+        """Positive control at the route level.
+
+        Asserts the route still returns the RIGHT numbers (not just that it
+        reads once) -- a cache that returned an empty ledger would satisfy a
+        pure call-count assertion.
+        """
+        calls = []
+
+        def _fake_snapshot():
+            calls.append(1)
+            return self._ledger()
+
+        with patch("paper.load_ledger_snapshot", side_effect=_fake_snapshot):
+            resp = client.get("/api/status")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["balance"] == 1234.5
+        assert data["open_count"] == 2
+        assert len(calls) == 1, (
+            "/api/status previously cost three full ledger reads per poll "
+            f"(open trades twice + balance); got {len(calls)}"
+        )
