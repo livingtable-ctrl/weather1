@@ -56,6 +56,8 @@ real (if latent) gaps in the first version of this scan:
 from __future__ import annotations
 
 import ast
+import functools
+import os
 import re
 from pathlib import Path
 
@@ -94,14 +96,42 @@ _EXCLUDED_DIR_NAMES = {
 
 
 def _production_py_files() -> list[Path]:
-    """Every .py file in the repo outside the excluded directories above."""
+    """Every .py file in the repo outside the excluded directories above.
+
+    Uses ``os.walk`` with IN-PLACE ``dirnames[:]`` pruning rather than
+    ``Path.rglob("*.py")``. rglob walks the entire tree and only then
+    filters, so from the MAIN CLONE -- whose ``.claude/worktrees/`` holds
+    every checked-out worktree, each with its own ``.venv`` and ``.git`` --
+    it traversed 13,979 paths to keep 80. Measured on the same tree the
+    pruned walk is 4.3s -> 0.05s (~86x). Batch-62 recorded ~8 minutes for
+    the rglob form; that did not reproduce here and is best read as a
+    COLD-cache number (a `du` over the same directory timed out at 2
+    minutes cold, while a warm rglob repeat took 4.3s). The absolute cost
+    swings hugely with cache state; the structural win -- never traversing
+    .venv/.claude/.git -- is what holds regardless.
+
+    ``_EXCLUDED_DIR_NAMES`` already lists ``.claude``,
+    ``.venv``, ``.git`` and ``node_modules``, so pruning on that same set
+    skips those subtrees entirely instead of walking and discarding them.
+
+    The selection is unchanged: the old code tested ``rel_parts[:-1]``,
+    i.e. DIRECTORY components only, never the filename -- and pruning on
+    directory names reproduces exactly that. Result is now sorted, which
+    the old form did not guarantee; every consumer builds a set or dict so
+    ordering was never load-bearing, but a stable order makes the guard's
+    failure messages reproducible.
+
+    Same shape as ``test_bare_write_bytes_guard._production_source_files``
+    (batch-62).
+    """
     files = []
-    for path in _REPO_ROOT.rglob("*.py"):
-        rel_parts = path.relative_to(_REPO_ROOT).parts
-        if any(part in _EXCLUDED_DIR_NAMES for part in rel_parts[:-1]):
-            continue
-        files.append(path)
-    return files
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        # Prune BEFORE descending -- this is the whole optimisation.
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIR_NAMES]
+        for name in filenames:
+            if name.endswith(".py"):
+                files.append(Path(dirpath) / name)
+    return sorted(files)
 
 
 # (relative_file_path, qualified_function_name) -> reason. Every function
@@ -204,11 +234,20 @@ def _func_for_line(spans: list[tuple[int, int, str]], lineno: int) -> str | None
     return min(containing, key=lambda t: t[0])[1]
 
 
-def _iter_outcomes_join_sites() -> list[tuple[str, int, str | None]]:
+@functools.cache
+def _iter_outcomes_join_sites() -> tuple[tuple[str, int, str | None], ...]:
     """Return (relative_file, line_number, enclosing_qualified_function_name)
     for every raw `outcomes` (not `outcomes_valid`) join/from anywhere in a
     production .py file, scanning full file text so a JOIN/table-name split
-    across lines is still found."""
+    across lines is still found.
+
+    ``@functools.cache``d because two tests in this module call it, and
+    without the cache each one re-walks the tree and re-parses every
+    production file -- i.e. the scan cost was being paid twice per run.
+    Returns a tuple rather than a list so the cached value cannot be
+    mutated by a caller. Mirrors the identical decorator already on
+    ``test_isoformat_cutoff_guard._iter_isoformat_cutoff_sites``, whose
+    two-caller shape this module otherwise matched but never cached."""
     pattern = re.compile(r"\bJOIN\s+outcomes\b(?!_valid)|\bFROM\s+outcomes\b(?!_valid)")
     sites: list[tuple[str, int, str | None]] = []
     for path in _production_py_files():
@@ -222,7 +261,7 @@ def _iter_outcomes_join_sites() -> list[tuple[str, int, str | None]]:
         for m in pattern.finditer(text):
             lineno = text.count("\n", 0, m.start()) + 1
             sites.append((rel, lineno, _func_for_line(spans, lineno)))
-    return sites
+    return tuple(sites)
 
 
 def test_no_new_raw_outcomes_join_outside_allowlist():

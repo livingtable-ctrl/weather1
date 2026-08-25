@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import ast
 import functools
+import os
 import re
 from pathlib import Path
 
@@ -91,14 +92,42 @@ _EXCLUDED_DIR_NAMES = {
 
 
 def _production_py_files() -> list[Path]:
-    """Every .py file in the repo outside the excluded directories above."""
+    """Every .py file in the repo outside the excluded directories above.
+
+    Uses ``os.walk`` with IN-PLACE ``dirnames[:]`` pruning rather than
+    ``Path.rglob("*.py")``. rglob walks the entire tree and only then
+    filters, so from the MAIN CLONE -- whose ``.claude/worktrees/`` holds
+    every checked-out worktree, each with its own ``.venv`` and ``.git`` --
+    it traversed 13,979 paths to keep 80. Measured on the same tree the
+    pruned walk is 4.3s -> 0.05s (~86x). Batch-62 recorded ~8 minutes for
+    the rglob form; that did not reproduce here and is best read as a
+    COLD-cache number (a `du` over the same directory timed out at 2
+    minutes cold, while a warm rglob repeat took 4.3s). The absolute cost
+    swings hugely with cache state; the structural win -- never traversing
+    .venv/.claude/.git -- is what holds regardless.
+
+    ``_EXCLUDED_DIR_NAMES`` already lists ``.claude``,
+    ``.venv``, ``.git`` and ``node_modules``, so pruning on that same set
+    skips those subtrees entirely instead of walking and discarding them.
+
+    The selection is unchanged: the old code tested ``rel_parts[:-1]``,
+    i.e. DIRECTORY components only, never the filename -- and pruning on
+    directory names reproduces exactly that. Result is now sorted, which
+    the old form did not guarantee; every consumer builds a set or dict so
+    ordering was never load-bearing, but a stable order makes the guard's
+    failure messages reproducible.
+
+    Same shape as ``test_bare_write_bytes_guard._production_source_files``
+    (batch-62).
+    """
     files = []
-    for path in _REPO_ROOT.rglob("*.py"):
-        rel_parts = path.relative_to(_REPO_ROOT).parts
-        if any(part in _EXCLUDED_DIR_NAMES for part in rel_parts[:-1]):
-            continue
-        files.append(path)
-    return files
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        # Prune BEFORE descending -- this is the whole optimisation.
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIR_NAMES]
+        for name in filenames:
+            if name.endswith(".py"):
+                files.append(Path(dirpath) / name)
+    return sorted(files)
 
 
 # (relative_file_path, qualified_function_name) -> reason. Every function

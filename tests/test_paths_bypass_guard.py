@@ -36,6 +36,7 @@ simplicity, at the cost of this kind of indirection).
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -71,23 +72,52 @@ _ALLOWLIST: dict[str, tuple[int, str]] = {}
 
 
 def _all_source_files() -> list[Path]:
+    """Every scannable ``*.py`` under the repo root.
+
+    Uses ``os.walk`` with IN-PLACE ``dirnames[:]`` pruning rather than
+    ``Path.rglob("*.py")``. rglob walks the entire tree and only then
+    filters, so from the MAIN CLONE -- whose ``.claude/worktrees/`` holds
+    every checked-out worktree, each with its own ``.venv`` and ``.git`` --
+    it traversed 13,979 paths to keep 260. The pruned walk never descends
+    into those subtrees at all: measured on the same tree, 4.3s -> 0.05s
+    (~86x). Batch-62 recorded ~8 minutes for the rglob form; that figure
+    did not reproduce here and is best read as a COLD-cache/contended-FS
+    number -- a `du` over the same directory timed out at 2 minutes cold,
+    while a warm repeat of the rglob walk took 4.3s. The absolute cost
+    swings by orders of magnitude with cache state; the structural win
+    (never traversing .venv/.claude/.git) is what holds regardless.
+
+    The selection is unchanged. Skip hidden dirs (.git, .mypy_cache,
+    .pytest_cache, .ruff_cache, .superpowers, ...) and __pycache__ -- none
+    of the repo's real source lives there, confirmed via a find sweep when
+    this guard was written; a real source file should never need to sit
+    under a dot-directory or __pycache__.
+
+    Crucially the walk still starts AT ``_REPO_ROOT`` and prunes only names
+    BELOW it, which preserves the old code's reason for testing the
+    RELATIVE path rather than the absolute one: this repo is commonly
+    checked out under a dot-directory itself (e.g. a worktree under
+    ``.claude/worktrees/...``), and excluding on the absolute path's parts
+    would silently drop every file in that checkout.
+
+    Same shape as ``test_bare_write_bytes_guard._production_source_files``
+    (batch-62). ``is_file()`` is retained for exact equivalence --
+    ``os.walk`` can list a dangling symlink under ``filenames``, which the
+    old ``rglob`` + ``is_file()`` pair rejected.
+    """
     result = []
-    for p in _REPO_ROOT.rglob("*.py"):
-        if not p.is_file() or p in (_REPO_ROOT / "paths.py", _SELF):
-            continue
-        rel_parts = p.relative_to(_REPO_ROOT).parts
-        # Skip hidden dirs (.git, .mypy_cache, .pytest_cache, .ruff_cache,
-        # .superpowers, ...) and __pycache__ -- none of the repo's real
-        # source lives there, confirmed via a find sweep when this guard
-        # was written; a real source file should never need to sit under a
-        # dot-directory or __pycache__. Checked against the path RELATIVE
-        # to _REPO_ROOT, not the absolute path -- this repo is commonly
-        # checked out under a dot-directory itself (e.g. a worktree under
-        # `.claude/worktrees/...`), and checking the absolute path's parts
-        # would silently exclude every file in that checkout.
-        if any(part.startswith(".") or part == "__pycache__" for part in rel_parts):
-            continue
-        result.append(p)
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        # Prune BEFORE descending -- this is the whole optimisation.
+        dirnames[:] = [
+            d for d in dirnames if not d.startswith(".") and d != "__pycache__"
+        ]
+        for name in filenames:
+            if not name.endswith(".py") or name.startswith("."):
+                continue
+            p = Path(dirpath) / name
+            if not p.is_file() or p in (_REPO_ROOT / "paths.py", _SELF):
+                continue
+            result.append(p)
     return sorted(result)
 
 

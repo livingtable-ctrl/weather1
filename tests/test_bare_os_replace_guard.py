@@ -75,6 +75,7 @@ text-mention allowlist entries for it specifically.
 from __future__ import annotations
 
 import ast
+import os
 import re
 from pathlib import Path
 
@@ -127,6 +128,19 @@ _ALLOWLIST: dict[str, tuple[int, int, str]] = {
         "_load_state()'s own comment documents the READER-side precedent "
         "for this exact Windows behavior -- text mention, not a call.",
     ),
+    "nearby_station_obs.py": (
+        1,
+        0,
+        "_load_cache()'s docstring cites circuit_breaker.py's READER-side "
+        "PermissionError precedent by name while explaining why this "
+        "module's own cache read is unlocked -- text mention, not a call. "
+        "Added 2026-08-25: batch-56 introduced this file (44221356) with "
+        "the mention but no allowlist entry, so this guard has been RED on "
+        "master since. Verified pre-existing by running master's own "
+        "unmodified copy of this test, which fails identically; the "
+        "os.walk port that landed alongside this entry scans a byte-"
+        "identical file set and did not cause it.",
+    ),
     "tests/test_p1_remaining.py": (
         1,
         0,
@@ -174,14 +188,47 @@ _ALLOWLIST: dict[str, tuple[int, int, str]] = {
 
 
 def _all_source_files() -> list[Path]:
+    """Every scannable ``*.py`` under the repo root.
+
+    Uses ``os.walk`` with IN-PLACE ``dirnames[:]`` pruning rather than
+    ``Path.rglob("*.py")``. rglob walks the entire tree and only then
+    filters, so from the MAIN CLONE -- whose ``.claude/worktrees/`` holds
+    every checked-out worktree, each with its own ``.venv`` and ``.git`` --
+    it traversed 13,979 paths to keep 260. The pruned walk never descends
+    into those subtrees at all: measured on the same tree, 4.3s -> 0.05s
+    (~86x). Batch-62 recorded ~8 minutes for the rglob form; that figure
+    did not reproduce here and is best read as a COLD-cache/contended-FS
+    number -- a `du` over the same directory timed out at 2 minutes cold,
+    while a warm repeat of the rglob walk took 4.3s. The absolute cost
+    swings by orders of magnitude with cache state; the structural win
+    (never traversing .venv/.claude/.git) is what holds regardless.
+
+    The selection is unchanged: the pruning predicate is the same
+    ``startswith(".") or == "__pycache__"`` test the old per-path filter
+    applied, just hoisted to the directory level where it can skip work
+    instead of doing it and discarding the result. The filename itself is
+    still checked for a leading dot, since the old check ran over
+    ``rel_parts`` INCLUDING the final component. ``is_file()`` is retained
+    for exact equivalence -- ``os.walk`` can list a dangling symlink under
+    ``filenames``, which the old ``rglob`` + ``is_file()`` pair rejected.
+
+    Same shape as ``test_bare_write_bytes_guard._production_source_files``
+    (batch-62), ported here per its own note that this sibling still had
+    the slow form.
+    """
     result = []
-    for p in _REPO_ROOT.rglob("*.py"):
-        if not p.is_file() or p in (_SAFE_IO, _SELF):
-            continue
-        rel_parts = p.relative_to(_REPO_ROOT).parts
-        if any(part.startswith(".") or part == "__pycache__" for part in rel_parts):
-            continue
-        result.append(p)
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        # Prune BEFORE descending -- this is the whole optimisation.
+        dirnames[:] = [
+            d for d in dirnames if not d.startswith(".") and d != "__pycache__"
+        ]
+        for name in filenames:
+            if not name.endswith(".py") or name.startswith("."):
+                continue
+            p = Path(dirpath) / name
+            if not p.is_file() or p in (_SAFE_IO, _SELF):
+                continue
+            result.append(p)
     return sorted(result)
 
 

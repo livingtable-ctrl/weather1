@@ -55,11 +55,25 @@ def _production_source_files() -> list[Path]:
     Uses ``os.walk`` with IN-PLACE pruning rather than ``Path.rglob("*.py")``:
     rglob walks the whole tree and only then filters, so from the MAIN CLONE
     (whose ``.claude/worktrees/`` holds every checked-out worktree, plus
-    ``.venv``) it visits ~14k files and takes ~8 minutes, versus ~250 files in
-    well under a second here. Pruning skips those subtrees entirely.
-    Opus-review-caught, batch-62. The sibling
-    ``test_bare_os_replace_guard.py`` still has the rglob shape and the same
-    cost -- left alone as out of this batch's scope, and noted in backlog.txt.
+    ``.venv``) it visits ~14k files, versus ~250 files here. Pruning skips
+    those subtrees entirely. Opus-review-caught, batch-62.
+
+    Updated 2026-08-25 -- two corrections to what this docstring used to say:
+
+    1. It claimed the sibling ``test_bare_os_replace_guard.py`` "still has
+       the rglob shape". No longer true: that guard plus
+       ``test_paths_bypass_guard.py``, ``test_disputed_row_guard.py`` and
+       ``test_isoformat_cutoff_guard.py`` were all ported to this same
+       shape when the backlog entry this note pointed at was picked up.
+       FOUR files had the pattern, not one.
+    2. It recorded "~8 minutes" for the rglob form. That did not reproduce
+       on re-measurement: the old form traversed 13,979 paths (matching the
+       "~14k" above) but took 4.3s warm, versus 0.05s for the pruned walk
+       -- a real ~86x win, but three orders of magnitude off the recorded
+       figure. Cache state is the likely explanation; a cold ``du`` over
+       ``.claude/worktrees/`` timed out at 120s in the same session. The
+       structural win (never descending into .venv/.claude/.git) is what
+       holds regardless -- the absolute seconds swing enormously.
     """
     result = []
     for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):

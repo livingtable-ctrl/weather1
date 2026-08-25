@@ -34260,9 +34260,15 @@ Recommendation:
   test_no_trades_placed_when_at_cap at the same time: it asserts `== 0`, which
   currently passes for the same wrong reason.
 
-[OPEN 2026-08-25 -- found by opus review during batch-62 item 4, measured while writing its sibling guard] tests/test_bare_os_replace_guard.py's rglob scan takes ~8 minutes when run from the main clone
+[RESOLVED 2026-08-25 -- see resolution below. SCOPE WIDENED on pickup: four guards had this pattern, not one.] tests/test_bare_os_replace_guard.py's rglob scan takes ~8 minutes when run from the main clone
 Priority: LOW -- test-suite latency only; the guard itself works correctly.
 Files: tests/test_bare_os_replace_guard.py (_all_source_files)
+  WIDENED 2026-08-25: also tests/test_paths_bypass_guard.py
+  (_all_source_files), tests/test_disputed_row_guard.py and
+  tests/test_isoformat_cutoff_guard.py (both _production_py_files) -- all
+  four carried the identical `_REPO_ROOT.rglob("*.py")`-then-filter shape.
+  The entry named only the first because that was the one batch-62's
+  sibling docstring happened to cite.
 
 Problem:
   `_REPO_ROOT.rglob("*.py")` walks the ENTIRE tree and only then filters out
@@ -34281,4 +34287,66 @@ Recommendation:
   and hoist its repeated _all_source_files() call into a local. Confirm the
   allowlist counts are unchanged afterwards -- that guard keys on exact
   per-file match counts, so any change in the scanned set fails loudly.
+
+Resolution (2026-08-25):
+  Ported the os.walk + in-place `dirnames[:]` pruning shape from
+  test_bare_write_bytes_guard._production_source_files into all FOUR guards
+  carrying the rglob form. Each keeps its own exclusion semantics rather
+  than adopting the template's: the two `_all_source_files` guards prune
+  `startswith(".") or == "__pycache__"` (and still test the filename for a
+  leading dot, since the old check ran over rel_parts INCLUDING the final
+  component); the two `_production_py_files` guards prune on their existing
+  _EXCLUDED_DIR_NAMES, which already lists .claude/.venv/.git/node_modules.
+
+  Correctness check (the one the Recommendation asks for, done as a set
+  comparison rather than by eye): captured each guard's returned file set
+  before and after, byte-compared. All four IDENTICAL -- 258/258, 258/258,
+  80/80, 80/80. The comparison was itself mutation-tested: deliberately
+  adding "tests" to one guard's prune list moved it 258 -> 79 and the
+  probe caught it, so a wrong port could not have slipped through. 17
+  tests pass across the four files plus the template sibling; ruff,
+  ruff-format and mypy clean via the real pre-commit hook.
+
+  TWO CORRECTIONS to this entry's own text, both found on pickup:
+
+  1. "the test calls _all_source_files() more than once" -- not true of
+     test_bare_os_replace_guard.py, which calls it exactly once (line 206).
+     The genuine double-scan was in test_disputed_row_guard.py, whose
+     _iter_outcomes_join_sites() has two callers and no cache, so the walk
+     AND the full AST re-parse ran twice per session. Fixed by adding the
+     @functools.cache that its sibling test_isoformat_cutoff_guard.py
+     already had on the equivalent collector (return type changed list ->
+     tuple so the cached value can't be mutated by a caller).
+
+  2. "~8 minutes" / "Measured 488s" did NOT reproduce. Re-measured against
+     the same main-clone tree: the old rglob shape traverses 13,979 paths
+     (matching this entry's "~14,000") but completed in 4.3s, versus 0.05s
+     for the pruned walk -- a real ~86x win, but three orders of magnitude
+     off the recorded figure. Best explanation is cache state: a cold `du`
+     over .claude/worktrees/ timed out at 120s in the same session, while
+     warm repeats were seconds. The 488s number is presumably a cold /
+     antivirus-contended measurement. The four docstrings state the
+     measured numbers and flag the discrepancy rather than repeating 488s
+     as fact -- the structural win (never descending into .venv/.claude/
+     .git at all) is what holds regardless of cache state.
+
+  FIFTH FILE TOUCHED (docstring only, no logic change): a self-review pass
+  caught that tests/test_bare_write_bytes_guard.py -- the template being
+  copied FROM -- still asserted "the sibling test_bare_os_replace_guard.py
+  still has the rglob shape", which this very change made false. Its
+  docstring now records that four files carried the pattern and carries the
+  same 488s-did-not-reproduce correction, so the template stops propagating
+  two stale claims to whoever reads it next.
+
+  ADJACENT FIX, pre-existing and unrelated to the port:
+  test_bare_os_replace_guard was already RED on master. batch-56's
+  nearby_station_obs.py (44221356) has a docstring that mentions
+  ``os.replace()`` while citing circuit_breaker.py's reader-side
+  PermissionError precedent, and no allowlist entry was added -- so the
+  text-regex detector flagged it. Confirmed pre-existing by running
+  master's own unmodified copy of the test, which fails identically; the
+  port scans a byte-identical file set and cannot have caused it. Added
+  the one-line allowlist entry (1 bare-form mention, 0 AST-form) so the
+  guard is green again. Worth noting the guard's slowness is the likely
+  reason this sat unnoticed -- which is the case for fixing it.
 
