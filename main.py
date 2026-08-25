@@ -10082,7 +10082,47 @@ def cmd_menu(client: KalshiClient):
                                             )
                                         )
                                     else:
-                                        close_paper_early(t["id"], exit_price)
+                                        # batch-63 item 1: this operator path
+                                        # has never checked the kill switch or
+                                        # TRADING_PAUSED. That bypass is now
+                                        # deliberate, for cmd_close's reason
+                                        # (an exit reduces exposure) -- but it
+                                        # used to be SILENT: an operator could
+                                        # close through an engaged halt without
+                                        # being told one was engaged, and
+                                        # nothing recorded it. Announce and log.
+                                        _engaged = _engaged_halt_gates()
+                                        _warn_halt_bypass(_engaged)
+                                        _closed = close_paper_early(t["id"], exit_price)
+                                        # Own try (round-2 opus review L8):
+                                        # the close has COMMITTED by now, and
+                                        # this sits inside an `except` that
+                                        # prints "Could not close" -- so a
+                                        # raise while building the record
+                                        # would tell the operator the close
+                                        # failed when it did not, prompting a
+                                        # retry that reports "already
+                                        # settled" and reads as a second
+                                        # failure. Same reasoning as
+                                        # cmd_close's balance read.
+                                        try:
+                                            _log_operator_close(
+                                                "exit-signals menu",
+                                                t["id"],
+                                                t["ticker"],
+                                                _held_side,
+                                                t.get("quantity", t.get("qty", 0)),
+                                                exit_price,
+                                                (_closed or {}).get("pnl", 0.0),
+                                                _engaged,
+                                            )
+                                        except Exception:  # noqa: BLE001
+                                            _log.exception(
+                                                "operator close: audit record "
+                                                "failed for trade #%s (the close "
+                                                "itself succeeded)",
+                                                t.get("id"),
+                                            )
                                         print(
                                             green(f"  #{t['id']} {t['ticker']} closed.")
                                         )
@@ -10575,6 +10615,332 @@ def cmd_backtest(client: KalshiClient, args: list):
             )
 
 
+# ── Operator close (batch-63 item 1) ─────────────────────────────────────────
+
+
+def _engaged_halt_gates() -> list[str]:
+    """Names of the operator halt gates currently engaged, or [].
+
+    Shared by the two OPERATOR-initiated paper-close paths that
+    deliberately run THROUGH those gates (cmd_close, and the interactive
+    paper menu's exit-signals close) so they cannot drift into disagreeing
+    about which gates a close is bypassing. One definition, two callers, on
+    purpose -- this project has a recurring bug class of a shared safety
+    check having exactly one caller forget its own copy; see
+    trading_gates._check_never_skippable's own note on the same pattern.
+
+    This is a REPORTING helper, not a gate: neither caller blocks on a
+    non-empty result. See cmd_close's docstring for why.
+    """
+    engaged = []
+    if KILL_SWITCH_PATH.exists():
+        engaged.append("kill switch")
+    if is_trading_paused():
+        engaged.append("TRADING_PAUSED")
+    return engaged
+
+
+def _exit_side_quote(
+    client, ticker: str, side: str
+) -> tuple[float | None, float | None, str | None]:
+    """(realizable_price, ceiling, why_not) for an open position's exit side.
+
+    `realizable_price` is what closing right now would actually realize --
+    a YES holder can only realize yes_bid, a NO holder only 1 - yes_ask.
+    None when that side of the book is empty or the lookup failed.
+
+    `ceiling` is an upper bound on any defensible exit price, taken from the
+    OPPOSITE side (round-2 opus review L5). A one-sided book is "common
+    overnight" per positions.liquidation_price's own docstring, and when the
+    exit side is the empty one, the deviation cross-check in cmd_close has
+    nothing to compare against and silently drops -- so `close 42 0.95`
+    against a book whose YES ask is 0.05 would book a fabricated $9.50 of
+    proceeds straight into balance -> peak_balance -> graduation P&L. A
+    holder can never realize more than the other side is asking, so that
+    price is a sound bound even when their own side is empty.
+
+    Both are clamped to (0, 1] (round-2 opus review M1). kalshi_client.
+    get_market is deliberately warn-only on an out-of-range field, so a
+    malformed yes_bid of 105 coalesces to 1.05 -- and an unclamped 1.05 was
+    still being used as the cross-check REFERENCE, refusing an operator's
+    correctly-typed 0.60 while quoting an impossible $1.050 realizable price
+    back at them. The command exists to work when other things are broken;
+    it must not be blocked by the broken thing.
+
+    The try covers ONLY the lookup/parse -- `_liquidation_price`'s
+    price-SELECTION logic is deliberately outside it, matching the boundary
+    web_app's own close route documents (opus review F6): a bug in the
+    selection logic must raise loudly rather than be misreported to the
+    operator as "no quote available" alongside a legitimate miss.
+    """
+
+    def _sane(price: float | None) -> float | None:
+        return price if price is not None and 0.0 < price <= 1.0 else None
+
+    try:
+        from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
+
+        if client is None:
+            raise RuntimeError("no Kalshi client available")
+        # The {"bid","ask"} shape _liquidation_price expects, built the same
+        # way the menu's exit-signal close does. NOT
+        # weather_markets.parse_market_price's shape (yes_bid/yes_ask) --
+        # passing that dict through unconverted would make both .get()s
+        # return None and silently report "no quote" for every position.
+        market = client.get_market(ticker)
+        prices = {
+            ticker: {
+                "bid": coalesce_market_price(market, *YES_BID_KEYS),
+                "ask": coalesce_market_price(market, *YES_ASK_KEYS),
+            }
+        }
+    except Exception as exc:  # noqa: BLE001 -- reported to the operator
+        return None, None, str(exc)
+
+    quote = prices[ticker]
+    # The opposite side, in the holder's own price space: a YES holder can
+    # never realize more than yes_ask, a NO holder never more than
+    # 1 - yes_bid.
+    raw_ceiling = (
+        quote["ask"]
+        if side == "yes"
+        else (1.0 - quote["bid"] if quote["bid"] else None)
+    )
+    return _sane(_liquidation_price(prices, ticker, side)), _sane(raw_ceiling), None
+
+
+def _log_operator_close(
+    source: str,
+    trade_id: int,
+    ticker: str,
+    side: str,
+    qty,
+    exit_price: float,
+    pnl: float,
+    engaged: list[str],
+) -> None:
+    """Audit record for an operator-initiated paper close.
+
+    Shared by BOTH operator paths, and emitted UNCONDITIONALLY -- not only
+    when a halt was bypassed (opus review F9). The first version logged
+    unconditionally from the CLI but only-when-bypassed from the menu, so
+    reconstructing "what did the operator close, and when" from the log
+    produced an incomplete picture that looked complete.
+
+    The bypass itself is what makes this path acceptable at all (see
+    cmd_close's docstring), so the record has to exist for every close.
+    """
+    _log.warning(
+        "operator close (%s): paper trade #%s %s %s x%s @ %.4f, pnl %.2f%s",
+        source,
+        trade_id,
+        ticker,
+        side,
+        qty,
+        exit_price,
+        pnl,
+        f" (bypassed: {', '.join(engaged)})" if engaged else "",
+    )
+
+
+def _warn_halt_bypass(engaged: list[str]) -> None:
+    """Print the deliberate-bypass notice for a non-empty _engaged_halt_gates()."""
+    if not engaged:
+        return
+    print(
+        yellow(
+            f"  ⚠  {' and '.join(engaged)} engaged — closing anyway.\n"
+            "     Closing REDUCES exposure; these gates block new exposure."
+        )
+    )
+
+
+def cmd_close(client: KalshiClient | None, args: list) -> None:
+    """Close an open PAPER position by trade id, regardless of the kill
+    switch or TRADING_PAUSED.
+
+    Usage: py main.py paper close <trade_id> [exit_price]
+           py main.py close <trade_id> [exit_price]   (top-level alias)
+
+    batch-63 item 1. This is the only path that can close an ARBITRARY open
+    paper position while either gate is engaged, and it bypasses both
+    DELIBERATELY. Read this before "fixing" it by adding a gate.
+
+    Both gates exist to stop risk-INCREASING action. Closing a position
+    removes exposure, so freezing exits under a halt makes the account
+    strictly riskier at the exact moment the operator reached for the halt.
+    That is the same principle batch-58 used to build
+    trading_gates.pre_live_exit_check, and this does not contradict it:
+    58 kept the kill switch blocking the BOT's automated live exits
+    (order_executor._exit_live_position), and its own docstring hands this
+    question here, saying the answer "must be an explicit operator action,
+    not this gate quietly deciding on their behalf". Typing a trade id at a
+    shell prompt is that explicit action. Nothing here reaches the real
+    exchange either -- close_paper_early only writes the paper ledger --
+    so two of the four checks 58 kept (prod-ness, LIVE_TRADING_ENABLED)
+    are not even meaningful on this path.
+
+    /api/close-position keeps BOTH gates and its 503. Do not mirror this
+    bypass there: a dashboard button is misclickable in a way a typed trade
+    id is not, which is the whole reason the capability lives on the CLI.
+
+    Every close through this path is logged at WARNING with the engaged
+    gates named, so a bypass is always reconstructible from the log.
+    """
+    from paper import close_paper_early, get_balance, get_open_trades
+
+    if not args:
+        print("Usage: py main.py paper close <trade_id> [exit_price]")
+        return
+    try:
+        trade_id = int(args[0])
+    except (TypeError, ValueError):
+        print(red("  trade_id must be an integer."))
+        return
+
+    # exit_price is optional: omitted means "use the live realizable quote".
+    exit_price: float | None = None
+    if len(args) > 1:
+        try:
+            exit_price = float(args[1])
+        except (TypeError, ValueError):
+            print(red("  exit_price must be a number in (0, 1]."))
+            return
+        # Fast-fail on an obviously bad typed price BEFORE the quote lookup,
+        # so the operator gets "must be in (0, 1]" rather than a confusing
+        # deviation message from the cross-check below. The authoritative
+        # check is the one further down, which covers the DERIVED price too.
+        if not (0.0 < exit_price <= 1.0):
+            print(red("  exit_price must be in (0, 1]."))
+            return
+
+    trade = next((t for t in get_open_trades() if t.get("id") == trade_id), None)
+    if trade is None:
+        print(red(f"  No OPEN paper trade #{trade_id}. `py main.py paper` lists them."))
+        return
+
+    side = (trade.get("side") or "yes").lower()
+    ticker = trade.get("ticker") or "?"
+    typed = exit_price is not None
+
+    # One quote lookup, used for BOTH jobs: deriving the price when none was
+    # given, and sanity-checking it when one was.
+    derived, ceiling, quote_err = _exit_side_quote(client, ticker, side)
+
+    if exit_price is None:
+        # Deliberately NOT falling back to entry_price or a fabricated mark:
+        # booking a made-up exit price into the ledger is worse than refusing
+        # and telling the operator to state one, which is exactly the case
+        # the optional argument exists for.
+        if derived is None:
+            detail = f" ({quote_err})" if quote_err else ""
+            print(
+                red(f"  No realizable {side.upper()} quote for {ticker}{detail}.\n")
+                + dim(
+                    f"  Pass a price explicitly: py main.py paper close {trade_id} 0.42"
+                )
+            )
+            return
+        exit_price = derived
+    elif derived is not None and abs(exit_price - derived) > 0.15:
+        # Mirrors /api/close-position's own +/-0.15 cross-check (audit-M-9),
+        # which exists because close_paper_early does no validation and a
+        # supplied price feeds proceeds -> balance -> drawdown tier,
+        # peak_balance and graduation total_pnl (opus review F2). Without it
+        # `close 42 0.95` against a 5c book books a fat-fingered WIN, and the
+        # confirmation preview renders it as +P&L rather than as an error.
+        # Skipped, not enforced, when no quote could be reached -- that is
+        # the no-quote case a typed price is FOR, and it matches the web
+        # route's own stance.
+        print(
+            red(
+                f"  ${exit_price:.3f} deviates from the current {side.upper()}-side "
+                f"realizable price ${derived:.3f} by more than 0.15 -- refusing "
+                "(stale price?)."
+            )
+        )
+        return
+    elif derived is None and ceiling is not None and exit_price > ceiling:
+        # The exit side of the book is empty, so there is no realizable price
+        # to deviate FROM -- but the opposite side still bounds what this
+        # position could possibly be worth (round-2 opus review L5). Without
+        # this, the one-sided-book case silently skipped every price check.
+        print(
+            red(
+                f"  ${exit_price:.3f} is above the most this {side.upper()} "
+                f"position could realize (${ceiling:.3f}) -- refusing. "
+                "The exit side of the book is empty."
+            )
+        )
+        return
+
+    # The (0, 1] contract applies to the FINAL price whatever its origin
+    # (opus review F4). kalshi_client.get_market is deliberately warn-only on
+    # an out-of-range field -- it logs and hands back what the API said,
+    # leaving the decision to its caller -- so a malformed yes_bid of 105
+    # coalesces to 1.05 and would otherwise book proceeds ABOVE the $1.00/
+    # contract maximum payout straight into balance and peak_balance.
+    if not (0.0 < exit_price <= 1.0):
+        print(red("  exit_price must be in (0, 1]."))
+        return
+
+    # Name every engaged gate rather than closing silently through it. This
+    # is the audit trail for a deliberate bypass, so it goes to the log at
+    # WARNING as well as to the operator's screen.
+    engaged = _engaged_halt_gates()
+    _warn_halt_bypass(engaged)
+
+    qty = trade.get("quantity", 0)
+    est_pnl = round(exit_price * qty - trade.get("cost", 0.0), 2)
+    pnl_preview = (
+        green(f"+${est_pnl:.2f}") if est_pnl >= 0 else red(f"-${abs(est_pnl):.2f}")
+    )
+    print(
+        f"  Close #{trade_id}  {ticker}  {side.upper()}  x{qty}  "
+        f"@ ${exit_price:.3f}   est. P&L {pnl_preview}"
+    )
+    try:
+        confirm = input(yellow("  Confirm close? (y/N): ")).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+    if confirm != "y":
+        print(dim("  Cancelled."))
+        return
+
+    try:
+        # Origin is recorded, not collapsed (opus review F7): /api/close-
+        # position keeps "manual_close" distinct from a quote-derived close
+        # for audit, and the distinction matters MORE here -- a typed price
+        # is the one that skipped the cross-check when no quote was reachable.
+        closed = close_paper_early(
+            trade_id,
+            exit_price,
+            reason="operator_close_manual" if typed else "operator_close",
+        )
+    except ValueError as exc:
+        print(red(f"  {exc}"))
+        return
+    except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
+        print(red(f"  Could not close: {exc}"))
+        return
+
+    pnl = closed.get("pnl", 0.0)
+    _log_operator_close("cli", trade_id, ticker, side, qty, exit_price, pnl, engaged)
+    pnl_str = green(f"+${pnl:.2f}") if pnl >= 0 else red(f"-${abs(pnl):.2f}")
+    # The close is already committed AND already logged by this point, so the
+    # confirmation must not depend on a second ledger read succeeding (opus
+    # review F10): get_balance() -> paper._load() can raise on a corrupt or
+    # unreadable file, and a traceback here would tell the operator the close
+    # FAILED when it did not -- prompting a retry that then reports "already
+    # settled", reading like a second failure.
+    try:
+        balance_note = f"  Balance: ${get_balance():.2f}"
+    except Exception as exc:  # noqa: BLE001
+        balance_note = f"  (balance unavailable: {exc})"
+    print(green(f"  #{trade_id} {ticker} closed.") + f"  P&L: {pnl_str}{balance_note}")
+
+
 # ── Paper trading ────────────────────────────────────────────────────────────
 
 
@@ -10584,6 +10950,7 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
       paper buy <ticker> <yes/no> <price> [qty]
       paper results
       paper settle <trade_id> <yes/no>
+      paper close <trade_id> [exit_price]
       paper reset
     """
     from paper import (
@@ -10920,6 +11287,12 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             )
         except ValueError as e:
             print(red(f"  {e}"))
+
+    elif sub == "close":
+        # batch-63 item 1 -- see cmd_close's docstring for why this one
+        # deliberately runs while the kill switch / TRADING_PAUSED are
+        # engaged, unlike `paper buy` directly above.
+        cmd_close(client, args[1:])
 
     elif sub == "reset":
         confirm = (
@@ -12427,6 +12800,11 @@ def main():
         cmd_loop(client, args[1:])
     elif cmd == "paper":
         cmd_paper(args[1:], client)
+    elif cmd == "close":
+        # Alias for `paper close` (batch-63 item 1). PAPER-only, like every
+        # other close path in this file -- the live side exits through
+        # order_executor._exit_live_position, never through here.
+        cmd_close(client, args[1:])
     elif cmd == "backtest":
         cmd_backtest(client, args[1:])
     elif cmd == "dashboard":

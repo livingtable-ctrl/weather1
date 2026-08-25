@@ -1001,6 +1001,197 @@ export function formatFeedAge(ageMs) {
   return hours === 1 ? '1 hr ago' : `${hours} hrs ago`;
 }
 
+// ---------------------------------------------------------------------------
+// ORDER-ACTION QUOTE FRESHNESS (batch-63 item 3)
+// ---------------------------------------------------------------------------
+// Approve / Close submit a PRICE (buildPaperOrderBody's entry_price,
+// /api/close-position's exit_price). Nothing on either path checked how old
+// the quote behind that price was. batch-47's visibility-gated polling made
+// that materially worse: polling stops entirely while the tab is
+// backgrounded, so an operator returning to a long-backgrounded tab can
+// click Approve/Close against arbitrarily old quotes, before the catch-up
+// fetch (~22 concurrent requests, not instant) resolves.
+//
+// WHY THIS IS TIGHTER THAN FEED_STALE_MS, DELIBERATELY. batch-61 set
+// FEED_STALE_MS = 180s for a DISPLAY banner, where a false alarm is
+// expensive (an operator learns to ignore a badge that cries wolf) and the
+// cost of being 30s late to say "feed down" is near zero. An order confirm
+// inverts both: an unnecessary "this quote is 95s old" line costs the
+// operator one extra glance, while a missed stale quote books a real
+// mispriced trade into the ledger, balance, drawdown tier and graduation
+// P&L. So the order gate is half the banner's tolerance.
+//
+// It is DERIVED from FEED_STALE_MS rather than written as its own 90_000 so
+// the divergence is structural and visible: retune the banner and this
+// follows, instead of the dashboard quietly ending up with two unrelated
+// magic numbers that disagree about what "stale" means.
+export const ORDER_STALE_MS = FEED_STALE_MS / 2;
+
+// SCAN_STALE_MS -- the age at which the SIGNALS SCAN behind an Approve price
+// is worth flagging. A completely different quantity from ORDER_STALE_MS, and
+// round-2 opus review (H1) caught the first version of batch-63 reusing the
+// 90s order threshold for it, which made the Approve warning fire on every
+// single click no matter how healthy everything was.
+//
+// The scan is produced by cron, which runs every THREE HOURS, and
+// /api/live_signals serves its cache for up to four (MAX_SIGNALS_CACHE_AGE_
+// SECS). "Signal prices are somewhat old" is therefore the normal, correct
+// state -- gating it at 90 seconds is off by ~60x against the field being
+// measured, and a notice that is always present is a notice nobody reads.
+// Worse, it is the same component and wording as the Close-path notice,
+// which DOES fire meaningfully, so crying wolf here would corrode that one.
+//
+// 90 minutes is not a new number: it is the threshold SignalsTab's own
+// "Last scan" header chip has always used to turn amber. Reusing it means
+// the confirm dialog says "out of date" exactly when the header already
+// says so, instead of the two disagreeing on screen at the same time.
+export const SCAN_STALE_MS = 90 * 60_000;
+
+// orderQuoteStaleness — feedFreshness() specialized for an order action.
+//
+// One deliberate behavioral difference from the banner: a reading that is
+// only "fresh" because the `since` visibility credit restarted the tolerance
+// window counts as STALE here. That credit exists so a polling gap we could
+// not have polled through does not fabricate a feed-down alarm -- a fair
+// rule for "is the backend alive", and the wrong rule for "is this price
+// current", because the price really is that old either way. feedFreshness
+// exposes exactly that distinction as `suppressedBySince` (batch-61 added it
+// naming this consumer); this is the consumer.
+//
+// Returns { stale, ageMs, label }. `ageMs`/`label` are null when the feed has
+// never answered, which is a distinct case from "answered a while ago" and
+// the caller's copy needs to say so -- see staleQuoteWarning.
+export function orderQuoteStaleness(fetchedAt, opts) {
+  // `opts || {}`, not a `= {}` default: the default only fires on `undefined`,
+  // so a caller passing an explicit `null` used to throw a TypeError -- during
+  // RENDER, at the top of both tab components, which the ErrorBoundary would
+  // turn into a blank tab. staleQuoteWarning was already hardened this way
+  // (opus review F9); this matches it.
+  const { now, maxAgeMs, since } = opts || {};
+  const maxAge =
+    Number.isFinite(maxAgeMs) && maxAgeMs >= 0 ? maxAgeMs : ORDER_STALE_MS;
+  // hardMaxAgeMs is deliberately not passed: feedFreshness defaults it to
+  // max(maxAge, FEED_HARD_STALE_MS) = 720s, and every input where that
+  // ceiling would change the answer is already stale via `suppressedBySince`
+  // below -- i.e. it is inert here (opus review F8, verified by sweep). If
+  // the OR is ever weakened, that dormant 720s ceiling silently becomes the
+  // real gate, so change the two together.
+  const f = feedFreshness(fetchedAt, { now, maxAgeMs: maxAge, since });
+  // A stamp in the FUTURE means the client clock stepped backwards, so the
+  // age is not merely large, it is meaningless. feedFreshness deliberately
+  // reads that as fresh (an NTP correction must not fabricate a feed-down
+  // alarm on a banner) -- but for an ORDER gate that is failing open on a
+  // quote of genuinely unknown age, and one backward step would silence all
+  // four actions at once until every stamp caught up. `label` is already
+  // null here (formatFeedAge rejects a negative age), so the caller renders
+  // the same "no trustworthy age" wording a never-answered feed gets.
+  const clockStepped = f.ageMs != null && f.ageMs < 0;
+  return {
+    stale: f.stale || f.suppressedBySince || clockStepped,
+    // NULL, not the negative value (round-2 opus review L2). A stepped clock
+    // means the age is unknowable, and worstStaleness ranks an unknown age
+    // above every known one -- passing the raw negative through made it rank
+    // BELOW them instead, so a genuinely unknowable source lost to a merely
+    // old one and the notice named the wrong age.
+    ageMs: clockStepped ? null : f.ageMs,
+    label: clockStepped ? null : formatFeedAge(f.ageMs),
+  };
+}
+
+// parseFeedTimestamp -- an ISO timestamp from the backend to epoch ms, or
+// null. Appends 'Z' when the string carries no timezone, so a naive UTC
+// timestamp is not read as local time (which makes the age NEGATIVE in US
+// timezones). Extracted from SignalsTab's "Last scan" header, which had this
+// inline: the order gate now measures the same age, and two copies of a
+// timezone fix is exactly how the two end up disagreeing.
+export function parseFeedTimestamp(ts) {
+  if (typeof ts !== 'string' || !ts) return null;
+  // Matches a trailing +HH:MM / -HHMM offset as well as 'Z' (round-2 opus
+  // review I7). The `includes('+')` heuristic this replaces -- carried over
+  // verbatim from the inline version -- appended a second 'Z' to a NEGATIVE
+  // offset like "...T10:00:00-05:00", making it unparseable. Not reachable
+  // from this backend (it emits 'Z' or naive UTC), but the function is now
+  // shared by the order gate and the header chip.
+  const utc = /(?:Z|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : ts + 'Z';
+  const ms = new Date(utc).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+// worstStaleness -- combine several staleness readings into the one worth
+// warning about (opus review F3).
+//
+// An order action can be stale for more than one INDEPENDENT reason, and the
+// dashboard's own fetch age is only one of them: /api/live_signals happily
+// serves a signals_cache.json up to 4 HOURS old with a 200, so the poll can
+// be seconds fresh while the price behind it is hours old. feedFreshness's
+// own docstring warns that `fetchedAt` means only "this endpoint answered".
+//
+// An UNKNOWN age (ageMs null -- never answered, or a stepped clock) outranks
+// any known age: knowing nothing is worse than knowing it is old.
+export function worstStaleness(...parts) {
+  const rank = p => (Number.isFinite(p.ageMs) ? p.ageMs : Infinity);
+  let worst = null;
+  for (const p of parts) {
+    if (!p || !p.stale) continue;
+    if (worst === null || rank(p) > rank(worst)) worst = p;
+  }
+  return worst || { stale: false, ageMs: null, label: null };
+}
+
+// staleQuoteWarning — the single wording for all four order actions, so
+// Approve, bulk Approve, Close and bulk Close cannot describe the same
+// condition differently. Returns null when there is nothing to warn about,
+// so a caller can render `{msg && <Banner>{msg}</Banner>}`.
+//
+// Phrased number-agnostically (and with a PLURAL `noun` at the call sites)
+// because two of the four surfaces are bulk actions covering many rows, and
+// one of them (bulk Close) has no confirm modal at all — the notice sits in
+// the selection bar next to the button, where singular copy would be wrong.
+//
+// SOFT WARN, NOT A BLOCK, on purpose: this is a paper dashboard, and a hard
+// disable would trap an operator who needs to act on a stale quote -- the
+// same trap batch-63 item 1 exists to undo on the close path. The age is
+// named so the decision is informed rather than removed. Revisit toward a
+// hard block if live trading is ever enabled from this surface.
+export function staleQuoteWarning(staleness, noun = 'prices') {
+  if (!staleness || !staleness.stale) return null;
+  // A CACHED quote is stale for a reason that has nothing to do with age
+  // (round-2 opus review M2). Reusing the age wording produced "Last
+  // refreshed less than a minute ago -- mark prices may be out of date" in
+  // exactly the scenario the flag exists for (dashboard polling happily,
+  // Kalshi unreachable), which reads as reassurance and invites the click
+  // it is trying to prevent. Say what actually happened instead.
+  if (staleness.reason === 'cached') {
+    return `Live quote unavailable — ${noun} came from a cached snapshot.`;
+  }
+  return staleness.label
+    ? `Last refreshed ${staleness.label} — ${noun} may be out of date.`
+    : `Not refreshed since the page loaded — ${noun} may be out of date.`;
+}
+
+// StaleQuoteNotice — the one rendering of staleQuoteWarning(), so all four
+// order actions look identical as well as read identically. Presentational
+// only; the decision itself lives in the two pure functions above, which is
+// where the tests are (frontend/ has no jsdom/RTL, so a component cannot be
+// unit-tested here — keep logic out of it).
+export function StaleQuoteNotice({ staleness, noun, id }) {
+  const msg = staleQuoteWarning(staleness, noun);
+  if (!msg) return null;
+  // role="status" alone is not enough inside a dialog (opus review F10): a
+  // live region inserted with its content already present is not reliably
+  // announced, so the two approve dialogs also point aria-describedby at
+  // this `id` when a warning is showing.
+  return (
+    <p role="status" id={id} style={{
+      margin: '0 0 14px', padding: '8px 12px', borderRadius: 8,
+      border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.10)',
+      color: '#f59e0b', fontSize: 12, lineHeight: 1.45,
+    }}>
+      ⚠ {msg}
+    </p>
+  );
+}
+
 // alarmSafeFlag — how a boolean safety reading should degrade when its feed
 // goes stale (batch-61 item 3, opus review F2).
 //
@@ -1087,6 +1278,15 @@ function _onFeedClockVisible() {
 }
 
 function _startFeedClock(tickMs) {
+  // KNOWN, DELIBERATE LIMITATION (opus review F13): the FIRST subscriber's
+  // tickMs wins for the lifetime of the timer -- a later subscriber asking
+  // for a shorter interval silently gets the incumbent's. Latent today
+  // (every consumer uses the default, and only one tab is mounted at a
+  // time), and left alone rather than "fixed" blind, since a restart path
+  // is untestable here (no jsdom/RTL). It is called out because it is a
+  // trap: do NOT try to tighten a consumer's resolution by passing a
+  // smaller tickMs -- it may do nothing. batch-63's order gate deliberately
+  // measures its age with Date.now() at render instead, for this reason.
   if (_feedClockTimer !== null) return;
   _feedClockTickMs = tickMs;
   _feedClockTimer = setInterval(() => {
@@ -1116,9 +1316,38 @@ export function useFeedClock(tickMs = FEED_STALE_MS / 3) {
   const [clock, setClock] = useState(_feedClock);
   useEffect(() => {
     _feedClockSubscribers.add(setClock);
+    // Was the clock actually STOPPED before this mount? If so, nothing has
+    // been advancing `visibleSince` either (_stopFeedClock removes the
+    // visibilitychange listener), so the whole gap is time we could not have
+    // polled through and the `since` credit should cover it -- see below.
+    const wasStopped = _feedClockTimer === null;
     _startFeedClock(safeTick);
-    // Adopt the singleton's current value on mount, so a component mounting
-    // mid-interval doesn't render a stale `now` until the next tick.
+    // REFRESH, then adopt (opus review F1, batch-63). Adopting alone was not
+    // enough: App renders tabs as `<ErrorBoundary key={activeTab}>`, so when
+    // the last feed-clock consumer unmounts, _stopFeedClock clears both the
+    // interval AND the visibilitychange listener -- from that moment nothing
+    // writes `_feedClock.now` and it is frozen at whatever it was, while
+    // useData's polling keeps running and keeps advancing `fetchedAt`. On
+    // returning to the tab, mounting adopted that frozen `now` and every
+    // consumer read the feed as fresh until the first tick up to a full
+    // interval later. That reinstated the exact blind spot the singleton was
+    // introduced to close (batch-61's own note above), on RiskTab's
+    // kill-switch checklist as well as batch-63's order gates.
+    _feedClock.now = Date.now();
+    // ...and `visibleSince` with it, but ONLY across a genuine stopped gap
+    // and only when the page is actually visible (round-2 opus review L1).
+    // Refreshing `now` alone left the pair inconsistent: `now` jumped
+    // forward while `visibleSince` stayed at its pre-background value, so
+    // feedFreshness's `since` credit -- which exists precisely so a
+    // visibility gap cannot fabricate a feed-down alarm -- was unavailable
+    // at the one moment it is needed, flashing a false "monitor not
+    // responding" amber on RiskTab for the first poll after returning.
+    // Gating on `wasStopped` keeps batch-61's fix intact: a remount while
+    // the clock is still running must NOT reset the window, which is the
+    // bug that let a dead feed read fresh at 751s.
+    if (wasStopped && !(typeof document !== 'undefined' && document.hidden)) {
+      _feedClock.visibleSince = _feedClock.now;
+    }
     setClock({ ..._feedClock });
     return () => {
       _feedClockSubscribers.delete(setClock);

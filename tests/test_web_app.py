@@ -452,6 +452,98 @@ class TestApiTradesLiveQuoteEnrichment:
             # happened to appear.
             mock_kalshi.get_markets.assert_called_once_with(tickers="T1", limit=1)
 
+    def test_quote_is_live_flags_a_live_batch_quote(self, client_and_kalshi_mock):
+        """batch-63 item 3 (opus review F3): say WHERE the quote came from.
+
+        The dashboard's order-freshness gate cannot tell a live book price
+        from the SSE snapshot fallback, because both arrive as a plain
+        current_yes_bid/ask on a 200 -- so the exact Kalshi-unreachable /
+        dashboard-healthy outage produced a live-LOOKING mark on the Close
+        button with nothing to warn the operator about.
+        """
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
+            patch("web_app._get_live_market_snapshot", return_value=[]),
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 62, "yes_ask": 65}
+            ]
+            d = c.get("/api/trades").get_json()
+            assert d["open"][0]["quote_is_live"] is True
+            # Positive control: the live path really did supply the price, so
+            # the flag is describing the branch it claims to.
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.62)
+
+    def test_quote_is_live_is_false_for_an_sse_snapshot_fallback(
+        self, client_and_kalshi_mock
+    ):
+        """The failure mode itself: live batch-fetch raises, the snapshot
+        cache supplies a usable-looking price, and the route still answers
+        200. The price is real enough to render and to submit -- it is just
+        not from the book, which is exactly what the flag has to say."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T1", "yes_bid": 0.10, "yes_ask": 0.12}],
+            ),
+        ):
+            mock_kalshi.get_markets.side_effect = RuntimeError("kalshi unreachable")
+            d = c.get("/api/trades").get_json()
+            # Positive control: a price IS present and looks perfectly normal
+            # -- that is precisely why the flag is needed.
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.10)
+            assert d["open"][0]["quote_is_live"] is False
+
+    def test_quote_is_live_is_false_when_only_one_side_came_back_live(
+        self, client_and_kalshi_mock
+    ):
+        """The flag answers for the side the position would REALIZE on.
+
+        Round-2 opus review L3: a pair-level flag marked a live exit-side
+        quote as cached whenever the OTHER side was thin, which is common
+        overnight -- false positives on a notice whose only value is its
+        credibility. self._open_trade() holds YES, so YES realizes yes_bid;
+        degrading yes_bid is what must flip the flag.
+        """
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T1", "yes_bid": 0.10, "yes_ask": 0.12}],
+            ),
+        ):
+            # yes_bid degraded to 0 -- _safe_market_price's documented
+            # "no quote" sentinel, which the enrichment already treats as a
+            # miss and falls back to the snapshot for. This is the YES
+            # holder's OWN exit side, so the flag must go false.
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 0, "yes_ask": 65}
+            ]
+            d = c.get("/api/trades").get_json()
+            assert d["open"][0]["quote_is_live"] is False
+            # Positive control: the live side that DID come back was still used.
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65)
+
+    def test_quote_is_live_ignores_a_thin_opposite_side(self, client_and_kalshi_mock):
+        """The other half of L3: a YES holder's exit side being live is
+        enough, even when the ask side is empty. Without this the flag would
+        cry wolf on every position through an ordinary overnight book."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
+            patch("web_app._get_live_market_snapshot", return_value=[]),
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 62, "yes_ask": 0}
+            ]
+            d = c.get("/api/trades").get_json()
+            assert d["open"][0]["quote_is_live"] is True
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.62)
+
     def test_live_quote_takes_precedence_over_a_different_sse_value_for_the_same_ticker(
         self, client_and_kalshi_mock
     ):

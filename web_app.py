@@ -1620,6 +1620,24 @@ setInterval(() => {{
             _live_ask = live.get("yes_ask") if live else None
             t["current_yes_bid"] = _live_bid if _live_bid else snap.get("yes_bid")
             t["current_yes_ask"] = _live_ask if _live_ask else snap.get("yes_ask")
+            # batch-63 item 3 (opus review F3): say WHERE the quote came from,
+            # not just that one exists. When the live batch-fetch above fails
+            # or omits a ticker, the fallback price comes from the SSE
+            # snapshot cache -- "stale/partial", per this block's own comment
+            # -- yet this route still answers 200 and the dashboard's mark
+            # still renders as live. That is exactly the Kalshi-unreachable /
+            # dashboard-healthy outage in which an operator would click Close
+            # against a cached price with nothing to warn them. Both sides
+            # Answered for the side this position would actually REALIZE on
+            # a close, not for the pair (round-2 opus review L3): a YES holder
+            # sells into yes_bid, a NO holder into 1 - yes_ask, and a
+            # one-sided book is "common overnight" per
+            # positions.liquidation_price's own docstring. Asking for both
+            # sides would flag a live exit-side quote as cached and add false
+            # positives to a notice whose only value is its credibility.
+            t["quote_is_live"] = bool(
+                _live_bid if (t.get("side") or "yes").lower() == "yes" else _live_ask
+            )
             # Pass through needs_manual_settle flag so the UI can badge it
             t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
 

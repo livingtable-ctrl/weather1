@@ -32174,7 +32174,7 @@ Priority: Low -- follow-up to the entry immediately above. Mirrors "GRADUATE
   into any live probability is a separate future decision with its own
   gate").
 
-[OPEN -- filed 2026-08-24 by batch-41's opus review (LOW-9)] no operator path exists to close an open paper position while the kill switch or TRADING_PAUSED is engaged
+[RESOLVED 2026-08-25 -- batch-63 item 1; `paper close` / `close` CLI added, deliberately bypassing both gates; the pre-existing silent menu bypass made explicit] no operator path exists to close an open paper position while the kill switch or TRADING_PAUSED is engaged
   batch-41 (audit-M-9) added kill-switch/TRADING_PAUSED gates to web_app.py's /api/close-position route,
   mirroring /api/paper-order's existing gates exactly, per that batch's own explicit directive. This closes
   a real gap (the route previously had neither gate, unlike its order-placement sibling) but has a side
@@ -32196,6 +32196,191 @@ Priority: Low -- follow-up to the entry immediately above. Mirrors "GRADUATE
   exists, since a kill-switch scenario is exactly when an operator might need to exit at a stale/manual
   price). Needs a real decision, not a default -- surface via AskUserQuestion when picked up.
   Source: opus review of audit/handoff_prompts/batches/batch-41.md's implementation, LOW-9.
+
+Resolution 2026-08-25 (batch-63 item 1) -- decision: option (a), the CLI.
+  For this batch the REASONING is the deliverable; the diff is small.
+
+  FIRST, A CORRECTION TO THIS ENTRY'S OWN PREMISE. The claim above that
+  "there is currently NO operator-facing way to close an open position at
+  all" was wrong when written and is wrong now. main.py's interactive paper
+  menu (P -> 4, "Exit signals") has always ended in a per-position
+  "Close this position now? (y/N)" prompt that calls close_paper_early
+  directly, inside cmd_menu, with NO kill-switch and NO TRADING_PAUSED
+  check. batch-63's own handoff file repeats the error, listing that call
+  site as one of the "automated paths". It is not automated; it is the
+  operator. (_cmd_settle_open, P -> 3 -> 2, is likewise ungated, though it
+  settles at an outcome rather than closing at market.)
+
+  So the real starting position was worse than "no path": an UNDESIGNED,
+  SILENT, partial bypass. Partial because that prompt only ever offers the
+  positions check_model_exits flags (model reversed >=10pp, or edge gone,
+  and past EXIT_MIN_HOLD_HOURS) and refuses outright without a live
+  realizable quote -- so an arbitrary position, or any position during a
+  quote outage, still had no path. Silent because nothing told the operator
+  a halt was engaged and nothing recorded that one had been bypassed.
+
+  WHY (a) AND NOT (c), GIVEN BATCH-58. 58 (320740aa) built
+  trading_gates.pre_live_exit_check, a reduced gate for risk-REDUCING live
+  orders, and deliberately KEPT the kill switch and TRADING_PAUSED in it
+  while dropping every risk-limit halt. Read shallowly that says "the kill
+  switch is absolute, even for exits", which would argue for (c). It does
+  not, for two reasons, and 58's own docstring says so:
+    1. 58 gates the BOT. Its one caller is
+       order_executor._exit_live_position -- automated exit logic deciding
+       on its own to sell. The kill switch is precisely the instruction
+       "stop deciding things on your own", so keeping it there is right.
+       An operator typing a trade id at a shell prompt is not the bot
+       deciding anything. pre_live_exit_check's docstring hands this
+       question here by name ("backlog L30045 (batch 63) owns the separate
+       question of giving the operator a deliberate way to close a position
+       while they are engaged, and the answer to that must be an explicit
+       operator action, not this gate quietly deciding on their behalf").
+       A CLI command IS that explicit operator action. (a) completes 58's
+       reasoning rather than contradicting it.
+    2. Two of the four checks 58 kept -- prod-ness and
+       LIVE_TRADING_ENABLED -- are real-money interlocks with no meaning
+       on a paper close. close_paper_early writes paper_trades.json and
+       nothing else. Only TRADING_PAUSED and the kill switch were ever in
+       question here.
+  (b) was rejected: putting the bypass on /api/close-position would make it
+  reachable by a misclick on a dashboard button, which is exactly the
+  failure mode the kill switch protects against. The gate's deliberateness
+  has to come from the interface, and typing a trade id supplies it in a
+  way a red button cannot.
+
+What shipped:
+  - main.cmd_close(client, args), reachable as `py main.py paper close
+    <trade_id> [exit_price]` and the top-level alias `py main.py close
+    <trade_id> [exit_price]`. Works on ANY open paper position, not just a
+    model-flagged one. exit_price is optional: omitted, it derives the
+    EXIT-side realizable price (yes_bid for a YES holder, 1 - yes_ask for
+    a NO holder) via positions.liquidation_price, the same convention the
+    menu path and /api/close-position already use. With no realizable
+    quote it REFUSES and tells the operator to state a price, rather than
+    fabricating one from entry_price -- a one-sided overnight book
+    (yes_bid = 0) would otherwise book a phantom total loss into balance
+    -> drawdown tier -> peak_balance -> graduation P&L. Validates
+    exit_price in (0, 1], the contract /api/close-position enforces and
+    close_paper_early itself does not. Shows ticker/side/qty/price/est.
+    P&L and requires a y/N confirm.
+  - main._engaged_halt_gates() / _warn_halt_bypass(), one shared REPORTING
+    helper (not a gate) used by cmd_close AND the menu's exit-signals
+    close, so the two operator paths cannot drift into disagreeing about
+    which gates a close is bypassing -- this repo's recurring
+    one-caller-forgot-its-copy bug class.
+  - The menu's exit-signals close now ANNOUNCES an engaged halt and logs
+    the bypass at WARNING with the gates named. Its behavior is unchanged
+    (it still closes); what changed is that the bypass is deliberate,
+    visible and reconstructible from the log instead of silent.
+  - cmd_close logs every close at WARNING, naming any bypassed gates.
+  - /api/close-position is UNCHANGED and still returns 503 under either
+    gate. Do not mirror the bypass there; cmd_close's docstring says why.
+  - COMMANDS.md documents `paper close`, including that the bypass is
+    intentional.
+
+Opus review (effort:high) then a second opus review of the fixes. Round 1
+  raised no HIGH on this half; every MEDIUM/LOW/INFO was addressed:
+  - MEDIUM: LIVE_TRADING_RUNBOOK.md still asserted, in bold, that no
+    operator path existed -- in the emergency doc, under "Immediate halt",
+    i.e. exactly where an operator would look during the halt this feature
+    was built for. Rewritten: the batch-41 note is marked superseded and a
+    batch-63 note documents the command, its paper-only scope, the
+    deliberate bypass, the WARNING record, and that /api/close-position
+    still 503s on purpose. The "Live exit blocked" alert row was qualified
+    to say it concerns LIVE positions.
+  - MEDIUM: a TYPED exit_price had no live-quote cross-check, while
+    /api/close-position has had a +/-0.15 one since audit-M-9. `close 42
+    0.95` against a 5c book would book a fat-fingered WIN into balance ->
+    peak_balance -> graduation P&L, and the confirmation preview renders
+    it as +P&L rather than as an error. Added, mirroring the route --
+    including its stance of SKIPPING the check when no quote is reachable,
+    since that is the case a typed price exists for.
+  - MEDIUM (test quality): the alias test's docstring claimed it covered
+    the top-level `close` branch while only exercising cmd_paper, so that
+    branch had ZERO coverage. A real dispatcher test was added; mutating
+    `args[1:]` to `args` now fails it.
+  - LOW: the DERIVED price was bounded below but not above. kalshi_client.
+    get_market is deliberately warn-only on an out-of-range field, so a
+    malformed yes_bid of 105 coalesces to 1.05 and would book proceeds
+    above the $1.00/contract maximum payout. The (0, 1] bound now applies
+    to the final price whatever its origin.
+  - LOW: _liquidation_price sat inside the broad `except`, so a future
+    signature change would have been misreported to the operator as "no
+    quote available". Extracted `_exit_side_quote`, whose try covers only
+    the lookup/parse -- the boundary web_app's own close route documents.
+  - LOW: reason= collapsed typed and derived closes into one tag.
+    Now "operator_close_manual" vs "operator_close", so a later P&L
+    anomaly can be traced to the closes whose price skipped the
+    cross-check. Verified against every exit_reason consumer first.
+  - LOW: the two callers logged differently (CLI unconditionally, menu
+    only on a bypass), making bot.log an incomplete history that looked
+    complete. Extracted `_log_operator_close`; both now log every close.
+  - LOW: the WARNING record -- the entire reason the bypass is acceptable
+    -- had no test at all. Two added.
+  - LOW: get_balance() ran outside the try AFTER the close had committed,
+    so a corrupt-ledger read would show a traceback and no confirmation,
+    telling the operator the close FAILED when it had not.
+  - INFO: fixed the _compute_live_orders_possible test's argv shape; moved
+    a loop's output assertion inside the loop so a silently-rejected value
+    cannot hide.
+  DELIBERATE NO-OPS, each an explicit decision rather than a drop:
+  - `close` was NOT added to main()'s credential-free early-return block
+    (alongside kill/resume). That block returns before build_client(), so
+    `close` there would ALWAYS have client=None and could never derive a
+    price from the live quote -- breaking the normal case to serve the
+    broken-key case. Documented in COMMANDS.md and the runbook instead.
+  - No interactive-menu entry for closing an ARBITRARY position: the
+    design's whole argument is that a typed trade id is deliberate in a
+    way a menu selection is not.
+  - main.KILL_SWITCH_PATH (not cron's) is the right read here -- it
+    matches every other main.py site and what the tests patch.
+  - `close 42 --verbose` reports "exit_price must be a number"; confusing
+    wording, but it correctly refuses to act.
+
+  A THIRD review round reviewed those fixes, and found two more real bugs
+  the round-2 fixes had themselves introduced or left:
+  - MEDIUM: the new (0, 1] clamp was applied to the derived price but the
+    UNCLAMPED value was still used as the cross-check REFERENCE. A
+    malformed yes_bid of 105 -> 1.05 therefore refused an operator's
+    correctly-typed 0.60 with "deviates from ... $1.050" -- the command
+    that exists to work when things are broken, blocked by the broken
+    thing. The clamp moved inside _exit_side_quote, so a nonsense quote now
+    reads as "no realizable quote" and the typed price goes through.
+  - LOW: when the EXIT side of the book is empty (yes_bid = 0, "common
+    overnight" per liquidation_price's docstring) there is no realizable
+    price to deviate from, so the whole cross-check silently dropped and
+    ANY typed price was accepted -- reopening the exact fat-finger hole it
+    was added to close. _exit_side_quote now also returns a ceiling from
+    the OPPOSITE side (a holder can never realize more than the other side
+    is asking) and a typed price above it is refused.
+  - LOW: the menu's new audit-log call sat inside the pre-existing `except`
+    that prints "Could not close", AFTER the ledger write commits -- the
+    same misreporting the CLI path had just been fixed for. Given its own
+    try/except.
+  - LOW (tests): the "exactly on the bound" case cannot be tested at all --
+    0.15 has no exact binary representation and every realistic pair lands
+    a few ULPs to one side, so `>` vs `>=` is unobservable here. The claim
+    was dropped from the docstring rather than faked, and the test now pins
+    what is observable. Also: no NO-side position was exercised anywhere, so
+    a sign inversion in the 1 - yes_ask derivation would have gone unseen;
+    and the alias test leaked main()'s process-wide logging.disable and
+    depended on the ambient .env. All three fixed.
+  - INFO: the close mock returned a bare {"pnl": ...}, a shape the real
+    close_paper_early never returns.
+
+Tests: tests/test_menu_ux.py 38 (20 in TestOperatorClose, plus one added
+  to TestExitSignals for the menu's bypass notice); tests/
+  test_phase2_batch_l.py 70, including a new guard that `close`/`paper
+  close` are NOT live-capable per _compute_live_orders_possible (positive
+  control: `buy` still True). Mutation-tested individually: loosening the
+  exit_price bound to `0.0 <=` fails the range test; swapping YES_BID_KEYS
+  for YES_ASK_KEYS fails the exit-side AND one-sided-book tests; deleting
+  the kill-switch branch of _engaged_halt_gates fails three tests across
+  both classes; widening the cross-check to 0.95 fails two; unclamping the
+  derived quote fails two; deleting the one-sided-book ceiling fails one;
+  inverting the ceiling's side fails one; `args[1:]` -> `args` fails the
+  alias test. Every absence-style assertion carries a positive control.
+
 
 [RESOLVED 2026-08-24] BATCH-51: KXRAIN DAILY/WEEKEND (TRACK-ONLY) + KXHOLIDAYTMAX/TMIN (SHADOW-TRADE, THE LABOR DAY DEADLINE ITEM) + CATALOG/SETTLEMENT-SOURCE DRIFT WATCHER
 Priority: High -- item 2 was the batch's only deadline (KXHOLIDAYTMAX/TMIN
@@ -32741,7 +32926,7 @@ When to revisit:
 
 Source: audit/handoff_prompts/batches/batch-51.md.
 
-[OPEN 2026-08-24 -- split out of the batch-51 entry above per its own "item 3" diagnosis, since the root cause needs a design decision, not a mechanical fix] HURRICANE NEXT-EVENT MODEL LOGS ZERO PREDICTIONS -- GENERIC trade_cycle.py GATES FILTER EVERY REAL CANDIDATE, NOT A ROUTING/DB BUG
+[CLOSED 2026-08-25 -- batch-63 item 2; decision made: option (c), accept and document. No code change, by design. See the Resolution block at the end of this entry] HURRICANE NEXT-EVENT MODEL LOGS ZERO PREDICTIONS -- GENERIC trade_cycle.py GATES FILTER EVERY REAL CANDIDATE, NOT A ROUTING/DB BUG
 Priority: Low -- shadow-only, zero live-money risk; only affects whether a
   shadow-logged calibration sample accumulates at all for this one family.
 
@@ -32845,6 +33030,58 @@ When to revisit:
     toward market consensus), treat it as its own scoped design task with
     its own go/no-go-style validation, not a quick tweak to the existing
     climatology formula.
+
+Resolution 2026-08-25 (batch-63 item 2) -- DECISION: (c), accept and
+  document. This is an explicit, reasoned close, not an inconclusive drop:
+  the question was put to the user with all three options and (c) was
+  chosen. NO CODE CHANGED -- config.py, trade_cycle.py's gates and
+  weather_markets._CONDITION_CONFIDENCE are all untouched.
+
+  Re-verified against live data 2026-08-25 before deciding, since six
+  sibling batches landed after this entry was written:
+    predictions.db  hurricane_next_event = 0 rows (the family is absent
+    from the table entirely), hurricane_count = 120, storm_order = 11.
+    trade_cycle.py's two hard gates are unchanged and still fire before
+    tier logic; utils.MIN_MARKET_PROB_TO_BET_WITH = 0.25 and
+    MAX_MARKET_DIVERGENCE_RATIO = 2.0; _CONDITION_CONFIDENCE
+    ["hurricane_next_event"] = 0.50.
+
+  Why (c) over (a) -- and note this contradicts batch-63.md's own
+  Recommendation, which said (a). The handoff file's recommendation was
+  written without weighing the live-traced diagnosis already recorded in
+  this entry, which recommends (c) and says outright "do NOT change the
+  generic gates to accommodate one model family". That diagnosis is the
+  more careful document and it wins. Concretely: shadow logging exists to
+  score would-have-traded candidates, so loosening the gates for one
+  family would log candidates the real placement path would never have
+  taken -- contaminating the very calibration sample the 20-settled
+  graduation floor exists to validate against. Buying rows at the cost of
+  the rows meaning something is a bad trade.
+
+  Why not (b): raising _CONDITION_CONFIDENCE cannot fix this even
+  mechanically. Of the two real candidates traced live, only ONE died at
+  the edge floor (where confidence applies); the other
+  (KXNEXTHURDATE-26DEC01-26SEP01, forecast_prob 0.90 vs market_prob 0.255,
+  ratio 3.53) died at the divergence-ratio gate, which runs BEFORE tier
+  logic and never consults confidence at all. (b) also conflates "how much
+  do we trust this model" with "we would like more samples", which is
+  exactly what that constant must not become.
+
+  Why not retiring the family: 9 of the 11 markets traced were gated on
+  extreme price (e.g. yes_ask 0.99 for "a hurricane before Oct 15", correct
+  market pricing in August), which is a SEASONAL condition, not a permanent
+  property. Retiring now would discard a model on evidence from one point
+  in the season.
+
+  The zero-row state is therefore the correct output of gates working as
+  designed, on a model whose climatology-only probabilities (0.80-0.99)
+  structurally diverge from Kalshi's pricing of the same contracts
+  (0.25-0.81). The entry's existing "When to revisit" triggers stand
+  unchanged and are the follow-up path: re-check the row count after more
+  weeks across a genuinely wider range of market states before concluding
+  anything, and treat (b) as its own scoped design task with its own
+  go/no-go validation if it is ever prioritized.
+
 
 [RESOLVED 2026-08-24 -- batch-61 item 3; fetchedAt freshness primitive added
   and the card now has a distinct STATUS UNAVAILABLE state] RISKTAB
@@ -33220,7 +33457,7 @@ What it would look like:
   predicts Kalshi's actual declared result. Revisit tolerance_min and the cross-check's framing
   based on the result.
 
-[OPEN -- filed 2026-08-24 by batch-47's opus review, MEDIUM] No data-freshness gate on order actions (Approve/Close) -- batch-47's visibility-gated polling made a pre-existing gap materially wider
+[RESOLVED 2026-08-25 -- batch-63 item 3; soft warn naming the age, on all four order actions, at ORDER_STALE_MS = FEED_STALE_MS / 2] No data-freshness gate on order actions (Approve/Close) -- batch-47's visibility-gated polling made a pre-existing gap materially wider
 Priority: Medium
 Files: frontend/src/App.jsx (Nav's Override button aside, no relevant order actions there),
   frontend/src/tabs/SignalsTab.jsx (Approve button, buildPaperOrderBody), frontend/src/tabs/
@@ -33262,6 +33499,195 @@ What it would look like:
   which actions to cover (Approve in SignalsTab, Close in PositionsTab -- check RiskTab and any
   other order-adjacent controls too) and whether hard-block or soft-warn is the right UX for a
   paper-trading dashboard versus what it should be if/when live trading is enabled.
+
+Resolution 2026-08-25 (batch-63 item 3) -- three decisions, taken together.
+
+  THRESHOLD: ORDER_STALE_MS = FEED_STALE_MS / 2 (= 90s today).
+  A DELIBERATE divergence from batch-61's 180s display banner, not a second
+  accidental constant. The cost profile inverts between the two surfaces:
+  for a banner a false alarm is expensive (an operator learns to ignore a
+  badge that cries wolf) and being 30s late to say "feed down" costs
+  nothing, while for an order confirm an unnecessary "95s old" line costs
+  one extra glance and a MISSED stale quote books a real mispriced trade
+  into the ledger, balance, drawdown tier and graduation P&L. It is
+  written as `FEED_STALE_MS / 2` rather than `90_000` precisely so the two
+  numbers stay structurally linked -- retune the banner and this follows,
+  instead of the dashboard ending up with two unrelated magic numbers that
+  quietly disagree about what "stale" means.
+
+  BLOCK vs WARN: soft warn, naming the age.
+  A hard disable would trap an operator who needs to act on a stale quote
+  -- the same trap batch-63 item 1 exists to undo on the close path -- and
+  a tab returning from a long background stretch is mid-catch-up (~22
+  concurrent requests, not instant) exactly when they may most need to
+  act. Naming the age informs the decision instead of removing it. This is
+  a paper dashboard; the note in shared.jsx says to revisit toward a hard
+  block if live trading is ever enabled from this surface.
+
+  SCOPE: all four order actions -- Approve, bulk Approve (SignalsTab),
+  Close, bulk Close (PositionsTab). Verified this is the COMPLETE set, not
+  a partial sweep: RiskTab has no POST at all, and SettingsTab's only POST
+  is configuration, not an order.
+
+What shipped (frontend only; no Python touched):
+  - shared.jsx: ORDER_STALE_MS, orderQuoteStaleness(fetchedAt, {now,
+    maxAgeMs, since}) and staleQuoteWarning(staleness, noun) as pure,
+    unit-tested functions, plus a presentational StaleQuoteNotice so all
+    four surfaces render identical copy.
+  - This REUSES batch-61's staleness layer rather than building a second
+    one. orderQuoteStaleness is a thin specialization of feedFreshness,
+    and the ticking clock is 61's useFeedClock singleton -- which matters
+    here for 61's own reason: every other re-render source (fetchAll's
+    setData, SSE, the alerts poll) dies in exactly the failure mode this
+    warning exists to surface, so without the independent heartbeat the
+    age would freeze at whatever it was when something last re-rendered.
+  - ONE deliberate behavioral difference from the banner: a reading that
+    is only "fresh" because the `since` visibility credit restarted the
+    tolerance window counts as STALE for an order. That credit is the
+    right rule for "is the backend alive" and the wrong rule for "is this
+    price current" -- the price is that old either way. batch-61 exposed
+    exactly this distinction as feedFreshness's `suppressedBySince`,
+    naming batch-63's order gate as the intended consumer; this is that
+    consumer.
+  - useData.js: `positions` and `opportunities` added to the SAME
+    mergeFetchedAt map 61 built (not a parallel one), each keyed off its
+    own merge's resolved value, so a timestamp can never claim freshness
+    for data the merge did not take. mapTrades exported so that predicate
+    is mutation-testable, matching resolveOpportunities/mapAlerts.
+    Verified fetchAll is the only writer of both: the SSE stream patches
+    stats (balance/open_count/brier) and nothing else.
+  - PositionsTab's bulk Close is the one order action with NO confirm
+    modal (it submits every selected position's p.mark immediately), so
+    its notice lives in the selection bar beside the button. The wording
+    is number-agnostic for that reason. The single-close modal shows the
+    notice only on the live-mark branch -- the other branch is the
+    operator typing the price themselves, which no feed staleness can
+    make out of date.
+  - static/dist rebuilt in the same commit.
+
+  NOT double-counted: batch-48 already closed the stale-MODAL half on the
+  Signals side (resolveByKey re-derives the opportunity from live data
+  every render). This closes the different half -- M.opportunities and
+  M.positions being minutes old underneath.
+
+Opus review (effort:high) then a second opus review of the fixes. Round 1
+  found one HIGH and four MEDIUMs on this half; all addressed:
+  - HIGH: useFeedClock's mount path ADOPTED the singleton's `now` without
+    refreshing it. App renders tabs as <ErrorBoundary key={activeTab}>, so
+    when the last consumer unmounts, _stopFeedClock clears both the
+    interval and the visibilitychange listener -- from then on nothing
+    writes `now` and it freezes, while useData keeps polling and keeps
+    advancing fetchedAt. Returning to the tab adopted the frozen value, so
+    a 20-minute-old mark read FRESH and NO warning rendered for up to a
+    full tick -- the exact window in which the operator selects rows and
+    clicks Close. This was batch-61's bug, not this batch's, and it also
+    silently reinstated the blind spot on RiskTab's kill-switch checklist.
+    Fixed at the source: mount now refreshes before adopting.
+  - MEDIUM: the effective threshold was 90-150s, not 90s, because the gate
+    read the 60s-lagging clock. Both tabs now use useFeedClock purely as a
+    re-render heartbeat and measure with Date.now() at render. (Passing a
+    smaller tickMs would NOT have worked: _startFeedClock returns early if
+    a timer exists, so the first subscriber's tick wins -- documented in
+    place as a trap.)
+  - MEDIUM: the gate measured POLL age, not QUOTE age -- feedFreshness's
+    own docstring warns fetchedAt means only "this endpoint answered".
+    Two real holes, both closed: (a) /api/live_signals serves
+    signals_cache.json for up to FOUR HOURS with a 200, so Approve could
+    submit an hours-old scan price under a seconds-fresh timestamp -- the
+    gate now also reads signalsMeta.generatedAt/.stale, combined via the
+    new worstStaleness; (b) /api/trades falls back to the SSE snapshot
+    cache ("stale/partial", per its own comment) whenever the live Kalshi
+    batch-fetch fails, still answering 200 with a live-LOOKING mark -- so
+    the Kalshi-unreachable/dashboard-healthy outage gave Close a cached
+    price with nothing to warn about. Added `quote_is_live` to /api/trades
+    (both sides must be live) and carried it through mapTrades as
+    `quoteIsLive`; undefined from an older backend makes no claim.
+  - MEDIUM: a fetchedAt in the FUTURE (backward NTP/DST/manual clock step)
+    reported fresh, which would silence all four gates at once until every
+    stamp caught up. A negative age is now stale, with the "no trustworthy
+    age" wording.
+  - MEDIUM: the stamping predicates were unreachable from any test --
+    mutating `positions: trades.open != null` to a bare `true` left all
+    235 tests green. Extracted as the pure `orderFeedSuccess`; that
+    mutation now kills four tests.
+  - LOW: `.not.toBeNull()` passes for undefined, so the "an empty list
+    stamps" test could not catch the bug its own comment described; LOW:
+    mapTrades treated a 200-with-error body as success, which would clear
+    positions AND stamp fresh (not reachable through today's backend, now
+    closed by construction); LOW: orderQuoteStaleness threw on an explicit
+    null options bag, during render, at the top of both tabs; LOW: the
+    notice was unlikely to reach screen readers -- both approve dialogs now
+    point aria-describedby at it; LOW: the bulk bar's restructured flex
+    container left the buttons off-centre when the notice showed.
+  DELIBERATE NO-OPS: the hard 720s ceiling inside feedFreshness is inert
+  for this gate (the suppressedBySince OR subsumes it) -- documented in
+  place, with a note to change the two together; the palette literal
+  matches existing amber usage; and one extra re-render per minute on two
+  tabs is accepted. WHICH fetchedAt key each tab reads remains untestable
+  (no jsdom/RTL) and is an accepted, stated risk.
+
+  A THIRD review round reviewed those fixes and found a HIGH that round 2
+  had INTRODUCED, plus three more:
+  - HIGH: the new scan-age source was gated at ORDER_STALE_MS (90 SECONDS)
+    -- but the scan is produced by a cron that runs every THREE HOURS, and
+    /api/live_signals serves its cache for four. So the Approve and bulk
+    Approve modals would have shown the amber warning on EVERY click
+    forever, while the header chip ten lines above said "Last scan: 45m
+    ago" in neutral grey. A permanent warning is one nobody reads -- and
+    because it is the same component, wording and colour as the Close-path
+    notice, which does fire meaningfully, it would have corroded that one
+    too. Exactly the alarm-fatigue cost ORDER_STALE_MS's own comment says
+    the design is optimising against, introduced by the fix for it. Added
+    SCAN_STALE_MS = 90 min: not a new number, but the threshold the header
+    chip has always used, which the chip now reads from the same constant
+    so the two cannot disagree on screen.
+  - MEDIUM: the cached-quote path forced `stale` but carried the FETCH age
+    through, so the notice read "Last refreshed less than a minute ago"
+    in precisely the scenario it exists for (dashboard polling happily,
+    Kalshi unreachable) -- reassurance that invites the click. It now says
+    the live quote was unavailable and the mark came from a cached
+    snapshot.
+  - LOW: refreshing `_feedClock.now` on mount without `visibleSince` left
+    the pair inconsistent, so feedFreshness's `since` credit was
+    unavailable right after a background stretch and RiskTab could flash a
+    false "monitor not responding" amber. Now refreshed together, but ONLY
+    across a genuinely stopped clock, so batch-61's own fix stays intact.
+  - LOW: a clock-stepped reading passed its NEGATIVE age through, which is
+    finite and therefore ranked BELOW every real age in worstStaleness --
+    so an unknowable age lost to a merely old one, contradicting that
+    function's own documented rule. Now reports a null age.
+  - LOW: quote_is_live was a PAIR-level flag, so an ordinary overnight
+    one-sided book marked a live exit-side quote as cached. Now answered
+    for the side the position would actually realize on.
+  - LOW: the bulk notice ranged over selected rows that handleBulkClose
+    then silently skips (no id, or no live mark), tainting the batch for a
+    row not in it. Now uses the exact submit set.
+  - LOW/INFO: useFeedClock had no coverage at all and its
+    __resetFeedClockForTests seam was dead, so reverting the round-1 HIGH
+    fix broke nothing; parseFeedTimestamp's `includes('+')` heuristic
+    (inherited verbatim from the inline version it replaced) mangled
+    NEGATIVE UTC offsets. Both addressed.
+  REMAINING ACCEPTED RISK, stated rather than dropped: with no jsdom/RTL,
+  WHICH fetchedAt key each tab reads, and whether the notice is rendered at
+  all, cannot be tested -- those four insertion points are guarded by
+  review only. PositionsTab's close modal has no role="dialog" to hang
+  aria-describedby on (pre-existing), so its notice keeps the same
+  screen-reader limitation the Signals modals just had fixed; giving that
+  modal real dialog semantics is its own accessibility task.
+
+Tests: frontend/src/shared.test.js 156 (+29) and useData.test.js 103
+  (+10); tests/test_web_app.py 99, with four quote_is_live cases.
+  Mutation-tested individually: ORDER_STALE_MS = FEED_STALE_MS fails 5;
+  SCAN_STALE_MS = ORDER_STALE_MS fails 2; dropping
+  `|| f.suppressedBySince` fails the since-credit test; passing the
+  negative age through fails the clock-step ranking test; dropping the
+  cached-reason wording fails 1; mapTrades returning [] instead of null on
+  a failed fetch fails the does-not-stamp test; `positions: true` fails 4;
+  an empty open list returning undefined fails 4; inverting
+  quote_is_live's side fails 2. The since-credit, clock-step and
+  cached-wording tests each carry a positive control, so none can pass
+  vacuously.
+
 
 ======================================================
 [RESOLVED 2026-08-24 -- batch-62 item 8; see resolution below.] README.md's *_TRADING_ENABLED table is missing 2 newer shadow flags (HOLIDAY_TEMP, BETWEEN), and .env.example documents none of the 8 at all

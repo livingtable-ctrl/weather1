@@ -219,8 +219,21 @@ export function computeMark(t) {
  * already present in the paper_trades.json schema).
  * Open trades are shaped to match the PositionsTab's expected keys.
  */
-function mapTrades(raw) {
-  if (!raw) return { closed: null, open: null };
+// Exported (batch-63 item 3) only so the `trades.open != null` predicate
+// the fetchedAt merge below keys off is independently mutation-testable --
+// the same reason resolveOpportunities/mapAlerts are exported. frontend/
+// has no jsdom/RTL, so an inline predicate inside fetchAll cannot be
+// reached from a test at all (opus review F7, batch-61).
+export function mapTrades(raw) {
+  // `raw.error` is treated exactly like a failed fetch (opus review F7), for
+  // parity with mapAnomalyStatus: a 200-with-an-error body is truthy, so the
+  // old guard let `raw.open || []` produce `[]`, which simultaneously CLEARED
+  // next.positions and stamped fetchedAt.positions as a successful refresh --
+  // a timestamp vouching for data the merge never took. Not reachable through
+  // today's backend (/api/trades only emits `error` with a 500, which apiFetch
+  // turns into a throw), so this closes the gap by construction rather than by
+  // coincidence.
+  if (!raw || raw.error) return { closed: null, open: null };
 
   const closed = (raw.closed || []).filter(t => t.settled);
   // Closed trades already have the right shape for TradesTab
@@ -237,6 +250,16 @@ function mapTrades(raw) {
       qty:        t.quantity,
       mark,
       markIsLive,
+      // batch-63 item 3 (opus review F3): markIsLive only says "a price
+      // exists", not "it came from the live book". /api/trades falls back to
+      // the SSE snapshot cache (its own comment: "stale/partial") whenever
+      // the Kalshi batch-fetch fails, and still returns 200 with non-zero
+      // bid/ask -- so the exact Kalshi-unreachable/dashboard-healthy outage
+      // produced a live-LOOKING mark on the Close button with nothing to
+      // warn about. quote_is_live is the backend's own per-ticker answer.
+      // Undefined for an older backend, which the consumer treats as "no
+      // claim either way" rather than as false.
+      quoteIsLive: t.quote_is_live,
       fcst:       t.entry_prob,
       edge:       t.net_edge,
       // Use the date portion of close_time (when Kalshi closes the market)
@@ -492,6 +515,26 @@ export function mapScanStats(raw) {
 // merge, and mutating that would poison the module-level mock object for
 // every later consumer.
 // ---------------------------------------------------------------------------
+// orderFeedSuccess -- which feeds this fetchAll pass actually TOOK data for.
+//
+// Extracted (batch-63 item 3, opus review F5) because the predicates lived
+// inline in fetchAll's setData updater, where no test could reach them:
+// mutating `positions: trades.open != null` to a bare `true` left all 235
+// tests green, and that mutation is precisely the failure the freshness
+// gate cannot tolerate -- a timestamp claiming freshness for data a failed
+// fetch never delivered.
+//
+// Each predicate must stay byte-for-byte the same condition as the
+// corresponding `next.* = ...` assignment in fetchAll. That coupling is the
+// whole invariant, so they are asserted together in useData.test.js.
+export function orderFeedSuccess(trades, resolvedOpportunities, anomalyStatus) {
+  return {
+    anomalyStatus: Boolean(anomalyStatus),
+    positions: (trades ? trades.open : null) != null,
+    opportunities: resolvedOpportunities !== undefined,
+  };
+}
+
 export function mergeFetchedAt(prev, succeeded, now = Date.now()) {
   const next = { ...(prev || {}) };
   for (const [key, ok] of Object.entries(succeeded || {})) {
@@ -858,9 +901,27 @@ export default function useData(setConnected) {
         // the merge did not actually take. mapAnomalyStatus returns null
         // both for a failed fetch and for an `{error: ...}` body, so a
         // backend answering 200-with-an-error counts as unreachable too.
-        next.fetchedAt = mergeFetchedAt(prev.fetchedAt, {
-          anomalyStatus: Boolean(anomalyStatus),
-        });
+        //
+        // batch-63 item 3 adds `positions` and `opportunities` to the SAME
+        // map rather than building a second freshness path -- two
+        // definitions of "when did this last refresh" is exactly the
+        // dashboard-wide inconsistency 61 built this to avoid.
+        //
+        // Each key reuses its own merge's resolved value, so the same rule
+        // holds: a timestamp can never claim freshness for data the merge
+        // did not actually take. mapTrades returns open === null only when
+        // the /api/trades fetch itself failed, and resolveOpportunities
+        // returns undefined only when /api/live_signals failed -- a
+        // genuinely empty list IS a successful refresh and correctly stamps.
+        //
+        // fetchAll is the only writer of these two: the SSE stream patches
+        // stats (balance/open_count/brier) and nothing else, so no live
+        // update can advance `positions`/`opportunities` behind this map's
+        // back and make it under-report freshness.
+        next.fetchedAt = mergeFetchedAt(
+          prev.fetchedAt,
+          orderFeedSuccess(trades, resolvedOpportunities, anomalyStatus),
+        );
 
         // Multi-day temperature-scaling calibration gate
         if (calibStatusR && !calibStatusR.error) next.calibrationStatus = calibStatusR;

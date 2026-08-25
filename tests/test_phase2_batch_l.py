@@ -549,6 +549,29 @@ class TestLiveOrderPathsGuard:
             "expected count."
         )
 
+    def test_the_new_close_command_is_not_live_capable(self):
+        """batch-63 item 1 added `close` / `paper close` (main.cmd_close).
+
+        It is PAPER-only -- it calls paper.close_paper_early and never any
+        trading_gates entry point -- so the startup banner must not claim it
+        can reach a real live order. Pinned here so wiring cmd_close to the
+        live side later cannot silently leave the banner lying: the
+        call-site count above would move, and this would still say False.
+        """
+        import main
+
+        # Real argv shape (opus review F14): main() passes the FULL arg list
+        # including the command itself, not the trailing slice.
+        assert main._compute_live_orders_possible("close", ["close", "42"]) is False
+        assert (
+            main._compute_live_orders_possible("paper", ["paper", "close", "42"])
+            is False
+        )
+        # Positive control: the same helper still says True for a genuinely
+        # live-capable command, so the two Falses above are a real answer and
+        # not a helper that has started returning False for everything.
+        assert main._compute_live_orders_possible("buy", []) is True
+
     def test_the_two_gates_are_counted_separately(self):
         """Positive control for the guard above: prove the count really is
         made of both gates, so a future edit that drops the

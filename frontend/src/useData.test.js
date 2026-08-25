@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray,
   mapForecasts, normalizeForecastEntry, mapScanStats, mapAnomalyStatus, mapAlerts,
-  mergeFetchedAt,
+  mergeFetchedAt, mapTrades, orderFeedSuccess,
   startVisibilityGatedPoll,
 } from './useData.js';
 
@@ -1013,5 +1013,156 @@ describe('mergeFetchedAt', () => {
     }
     const good = Boolean(mapAnomalyStatus({ active: false, anomaly_detected: false }));
     expect(mergeFetchedAt({}, { anomalyStatus: good }, NOW)).toEqual({ anomalyStatus: NOW });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-63 item 3: the order-action freshness gate reads
+// M.fetchedAt.positions / .opportunities, so those two keys must obey exactly
+// the rule mergeFetchedAt already established for anomalyStatus -- stamped
+// only when the merge actually TOOK the data. A key that stamps on a failed
+// fetch would report a fresh quote that was never fetched, which is worse
+// than having no gate at all.
+// ---------------------------------------------------------------------------
+describe('fetchedAt keys for the order-action gate (batch-63 item 3)', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('a genuinely EMPTY list is a successful refresh and stamps', () => {
+    // The predicates fetchAll keys off, evaluated on real mapper output.
+    // Closing the last position, or a scan finding nothing, must advance
+    // freshness -- treating "empty" as "failed" would make the confirm modal
+    // warn forever on a legitimately quiet dashboard.
+    expect(mapTrades({ open: [], closed: [] }).open).toEqual([]);
+    expect(resolveOpportunities(mapSignals({ signals: [] }))).not.toBeUndefined();
+  });
+
+  it('a FAILED fetch does not stamp, so the timestamp stops advancing', () => {
+    expect(mapTrades(null).open).toBeNull();
+    expect(resolveOpportunities(mapSignals(null))).toBeUndefined();
+  });
+
+  it('one endpoint failing never disturbs the other two keys', () => {
+    // The realistic three-key shape fetchAll now passes. positions failed;
+    // its previous timestamp must survive untouched while the other two
+    // advance -- otherwise a single /api/trades blip would either erase the
+    // Close gate's age or fabricate a fresh one.
+    const prev = { anomalyStatus: NOW - 500_000, positions: NOW - 400_000, opportunities: NOW - 300_000 };
+    const next = mergeFetchedAt(prev, {
+      anomalyStatus: true,
+      positions: false,
+      opportunities: true,
+    }, NOW);
+    expect(next).toEqual({
+      anomalyStatus: NOW,
+      positions: NOW - 400_000,
+      opportunities: NOW,
+    });
+    // Positive control: prev itself was not mutated, so a later consumer
+    // reading the old object still sees the old values.
+    expect(prev.anomalyStatus).toBe(NOW - 500_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-63 item 3, opus-review round 2 (F5): the stamping predicates used to
+// live inline in fetchAll's setData updater, where no test could reach them --
+// mutating `positions: trades.open != null` to a bare `true` left all 235
+// tests green. orderFeedSuccess is that logic extracted so the mutation dies.
+// ---------------------------------------------------------------------------
+describe('orderFeedSuccess', () => {
+  it('reports success only for the feeds whose data the merge actually took', () => {
+    const ok = orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                                resolveOpportunities(mapSignals({ signals: [] })),
+                                mapAnomalyStatus({ active: false }));
+    expect(ok).toEqual({ anomalyStatus: true, positions: true, opportunities: true });
+  });
+
+  it('a failed fetch on any feed reports false for that feed ONLY', () => {
+    // The failure this exists to prevent: a key stamping fresh for data that
+    // never arrived, which is worse than having no freshness gate at all.
+    expect(orderFeedSuccess(mapTrades(null),
+                            resolveOpportunities(mapSignals({ signals: [] })),
+                            mapAnomalyStatus({ active: false })))
+      .toEqual({ anomalyStatus: true, positions: false, opportunities: true });
+
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                            resolveOpportunities(mapSignals(null)),
+                            mapAnomalyStatus({ active: false })))
+      .toEqual({ anomalyStatus: true, positions: true, opportunities: false });
+
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                            resolveOpportunities(mapSignals({ signals: [] })),
+                            mapAnomalyStatus(null)))
+      .toEqual({ anomalyStatus: false, positions: true, opportunities: true });
+  });
+
+  it('every feed failing reports all false, and never throws on undefined input', () => {
+    expect(orderFeedSuccess(mapTrades(null), undefined, null))
+      .toEqual({ anomalyStatus: false, positions: false, opportunities: false });
+    expect(() => orderFeedSuccess(undefined, undefined, undefined)).not.toThrow();
+  });
+
+  it('feeds straight into mergeFetchedAt: only the successes advance', () => {
+    // The pairing is the whole invariant -- the predicate and the merge have
+    // to agree, and this is the only place both are exercised together.
+    const NOW = 1_700_000_000_000;
+    const prev = { anomalyStatus: NOW - 500_000, positions: NOW - 400_000 };
+    const next = mergeFetchedAt(
+      prev,
+      orderFeedSuccess(mapTrades(null), resolveOpportunities(mapSignals({ signals: [] })), null),
+      NOW,
+    );
+    expect(next).toEqual({
+      anomalyStatus: NOW - 500_000,   // failed: carried forward, not erased
+      positions: NOW - 400_000,        // failed: carried forward, not erased
+      opportunities: NOW,              // succeeded: stamped
+    });
+  });
+});
+
+// opus review F7: a 200-with-an-error body is truthy, so the old `if (!raw)`
+// guard let it simultaneously CLEAR next.positions and stamp fetchedAt as a
+// successful refresh -- a timestamp vouching for data the merge never took.
+describe('mapTrades treats a 200-with-error body as a failed fetch', () => {
+  it('returns the null sentinel for an error body, so nothing stamps', () => {
+    const r = mapTrades({ error: 'sqlite is locked', open: [], closed: [] });
+    expect(r.open).toBeNull();
+    expect(r.closed).toBeNull();
+    expect(orderFeedSuccess(r, undefined, null).positions).toBe(false);
+    // Positive control: the same shape WITHOUT the error field stamps.
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }), undefined, null).positions)
+      .toBe(true);
+  });
+});
+
+// opus review F3: /api/trades answers 200 with a snapshot-cache price when the
+// live Kalshi batch-fetch fails, so "a mark exists" never meant "it is live".
+describe('mapTrades carries the backend quote_is_live flag', () => {
+  it('passes the flag through for the Close gate to read', () => {
+    const cached = mapTrades({
+      open: [{ id: 1, ticker: 'T', side: 'yes', current_yes_bid: 0.4, current_yes_ask: 0.5, quote_is_live: false }],
+      closed: [],
+    });
+    expect(cached.open[0].quoteIsLive).toBe(false);
+    // markIsLive is still true here -- that is exactly the gap: a cached
+    // price looks live to every existing consumer.
+    expect(cached.open[0].markIsLive).toBe(true);
+
+    const live = mapTrades({
+      open: [{ id: 1, ticker: 'T', side: 'yes', current_yes_bid: 0.4, current_yes_ask: 0.5, quote_is_live: true }],
+      closed: [],
+    });
+    expect(live.open[0].quoteIsLive).toBe(true);
+  });
+
+  it('is undefined for an older backend that does not send it — no claim either way', () => {
+    const r = mapTrades({
+      open: [{ id: 1, ticker: 'T', side: 'yes', current_yes_bid: 0.4, current_yes_ask: 0.5 }],
+      closed: [],
+    });
+    expect(r.open[0].quoteIsLive).toBeUndefined();
+    // Must not be coerced to false, which would warn on every position
+    // forever against a backend that simply predates the field.
+    expect(r.open[0].quoteIsLive).not.toBe(false);
   });
 });

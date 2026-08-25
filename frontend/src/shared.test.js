@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag, ORDER_STALE_MS, orderQuoteStaleness, staleQuoteWarning, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, useFeedClock, __resetFeedClockForTests } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -1192,5 +1192,325 @@ describe('alarmSafeFlag', () => {
     expect([
       alarmSafeFlag(false, true), alarmSafeFlag(true, true), alarmSafeFlag(false, false),
     ]).toEqual([undefined, true, false]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-63 item 3: Approve/Close submit a price with no freshness check, and
+// batch-47's visibility-gated polling widened that gap (polling stops while
+// the tab is backgrounded). orderQuoteStaleness/staleQuoteWarning are the
+// extracted decision; tested here rather than through the modals because
+// frontend/ has no jsdom/RTL.
+// ---------------------------------------------------------------------------
+describe('orderQuoteStaleness', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('is exactly half FEED_STALE_MS -- the deliberate divergence from the display banner', () => {
+    // Hand-computed: 180000 / 2. Pins BOTH halves of the batch-63 decision --
+    // that an order gate is tighter than the banner, and that it is DERIVED
+    // from the banner rather than being a second unrelated magic number.
+    expect(FEED_STALE_MS).toBe(180_000);
+    expect(ORDER_STALE_MS).toBe(90_000);
+  });
+
+  it('boundary: exactly ORDER_STALE_MS old is still fresh, one ms past is stale', () => {
+    expect(orderQuoteStaleness(NOW - 90_000, { now: NOW }).stale).toBe(false);
+    expect(orderQuoteStaleness(NOW - 90_001, { now: NOW }).stale).toBe(true);
+  });
+
+  it('warns in the 90s-180s band the display banner still calls fresh', () => {
+    // The whole reason this function exists rather than reusing
+    // feedFreshness's default: a 2-minute-old quote is fine for a banner and
+    // not fine for a price about to be booked into the ledger.
+    const twoMin = NOW - 120_000;
+    expect(feedFreshness(twoMin, { now: NOW }).stale).toBe(false);
+    expect(orderQuoteStaleness(twoMin, { now: NOW }).stale).toBe(true);
+  });
+
+  it('reports the real age so the warning can name it', () => {
+    const r = orderQuoteStaleness(NOW - 245_000, { now: NOW });
+    expect(r.ageMs).toBe(245_000);
+    expect(r.label).toBe('4 min ago');
+  });
+
+  it('a never-answered feed is stale with a null age, not a fabricated one', () => {
+    for (const bad of [undefined, null, NaN, '1700000000000', {}]) {
+      const r = orderQuoteStaleness(bad, { now: NOW });
+      expect(r.stale).toBe(true);
+      expect(r.ageMs).toBeNull();
+      expect(r.label).toBeNull();
+    }
+  });
+
+  it('the `since` visibility credit does NOT make an old quote read fresh', () => {
+    // THE behavioral divergence from the banner. feedFreshness forgives a gap
+    // we could not have polled through -- correct for "is the backend alive",
+    // wrong for "is this price current", because the price is that old
+    // either way. Positive control on the first assertion: feedFreshness
+    // really does report fresh here, so the second is not passing vacuously.
+    const old = NOW - 600_000;
+    const justVisible = { now: NOW, since: NOW - 1_000 };
+    const banner = feedFreshness(old, { ...justVisible, maxAgeMs: 90_000 });
+    expect(banner.stale).toBe(false);          // positive control
+    expect(banner.suppressedBySince).toBe(true);
+    expect(orderQuoteStaleness(old, justVisible).stale).toBe(true);
+  });
+
+  it('positive control: the same fetchedAt flips fresh->stale purely by the clock advancing', () => {
+    const fetchedAt = NOW - 10_000;
+    expect(orderQuoteStaleness(fetchedAt, { now: NOW }).stale).toBe(false);
+    expect(orderQuoteStaleness(fetchedAt, { now: NOW + 120_000 }).stale).toBe(true);
+  });
+
+  it('maxAgeMs is overridable, and garbage falls back to ORDER_STALE_MS rather than NaN-ing open', () => {
+    expect(orderQuoteStaleness(NOW - 120_000, { now: NOW, maxAgeMs: 300_000 }).stale).toBe(false);
+    for (const bad of [null, NaN, 'soon', {}, -1]) {
+      expect(orderQuoteStaleness(NOW - 120_000, { now: NOW, maxAgeMs: bad }).stale).toBe(true);
+    }
+  });
+});
+
+describe('staleQuoteWarning', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('returns null for a fresh quote, so the notice renders nothing', () => {
+    expect(staleQuoteWarning(orderQuoteStaleness(NOW - 10_000, { now: NOW }))).toBeNull();
+    // Positive control: the same call site DOES produce a string once stale,
+    // so the null above is not an artifact of a broken input shape.
+    expect(staleQuoteWarning(orderQuoteStaleness(NOW - 600_000, { now: NOW }))).toContain('out of date');
+  });
+
+  it('names the age, and the noun the caller passed', () => {
+    const r = staleQuoteWarning(orderQuoteStaleness(NOW - 245_000, { now: NOW }), 'mark prices');
+    expect(r).toContain('4 min ago');
+    expect(r).toContain('mark prices');
+  });
+
+  it('a never-refreshed feed gets its own wording, never "NaN ago"', () => {
+    const r = staleQuoteWarning(orderQuoteStaleness(undefined, { now: NOW }), 'signal prices');
+    expect(r).toContain('Not refreshed since the page loaded');
+    expect(r).not.toMatch(/NaN|null|undefined/);
+  });
+
+  it('tolerates a missing/garbage staleness object rather than throwing inside a modal render', () => {
+    for (const bad of [null, undefined, {}, { stale: false }]) {
+      expect(staleQuoteWarning(bad)).toBeNull();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-63 item 3, opus-review round 2. F4: a stamp in the FUTURE (backward
+// client clock) used to report FRESH, silencing all four order gates at once.
+// F3: a fresh POLL is not a fresh PRICE -- /api/live_signals serves a cache up
+// to 4h old with a 200 -- so the gate combines independent staleness sources.
+// ---------------------------------------------------------------------------
+describe('orderQuoteStaleness — clock step and options hardening', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('a FUTURE stamp is stale, not fresh — a backward clock step must not silence the gate', () => {
+    // Positive control first: feedFreshness deliberately reads this as fresh
+    // (an NTP correction must not fabricate a feed-down alarm on a banner),
+    // so the assertion below is a real divergence, not a restatement.
+    expect(feedFreshness(NOW + 3_600_000, { now: NOW }).stale).toBe(false);
+
+    const r = orderQuoteStaleness(NOW + 3_600_000, { now: NOW });
+    expect(r.stale).toBe(true);
+    // No fabricated age: the wording must fall back to the never-refreshed
+    // form rather than rendering a negative or NaN age.
+    expect(r.label).toBeNull();
+    expect(staleQuoteWarning(r, 'mark prices')).toContain('Not refreshed');
+  });
+
+  it('a null options bag does not throw during render', () => {
+    // Called at the top of both tab components, so a throw here blows the
+    // whole tab into the ErrorBoundary rather than failing softly.
+    expect(() => orderQuoteStaleness(NOW - 10_000, null)).not.toThrow();
+    // With no options bag at all, `now` falls back to the REAL clock -- so
+    // use a real recent stamp here, not the fixed NOW fixture (which is
+    // years in the past and would correctly read stale).
+    expect(orderQuoteStaleness(Date.now() - 10_000, null).stale).toBe(false);
+    expect(orderQuoteStaleness(Date.now() - 10_000, undefined).stale).toBe(false);
+    // Positive control: the same no-options call still reports stale for a
+    // genuinely old stamp, so the two falses above are not blanket-fresh.
+    expect(orderQuoteStaleness(Date.now() - 600_000, null).stale).toBe(true);
+  });
+});
+
+describe('parseFeedTimestamp', () => {
+  it('treats a timezone-less timestamp as UTC, not local', () => {
+    // The bug this guards: in a US timezone, `new Date("2026-08-25T12:00:00")`
+    // is read as LOCAL, which makes the computed age hours off (negative, in
+    // the ahead-of-UTC direction).
+    expect(parseFeedTimestamp('2026-08-25T12:00:00')).toBe(
+      Date.parse('2026-08-25T12:00:00Z'),
+    );
+  });
+
+  it('leaves an explicit timezone alone', () => {
+    expect(parseFeedTimestamp('2026-08-25T12:00:00Z')).toBe(
+      Date.parse('2026-08-25T12:00:00Z'),
+    );
+    expect(parseFeedTimestamp('2026-08-25T12:00:00+02:00')).toBe(
+      Date.parse('2026-08-25T12:00:00+02:00'),
+    );
+  });
+
+  it('returns null for anything unparseable, so a caller never gets NaN', () => {
+    for (const bad of [null, undefined, '', 'not a date', 42, {}]) {
+      expect(parseFeedTimestamp(bad)).toBeNull();
+    }
+  });
+});
+
+describe('worstStaleness', () => {
+  const NOW = 1_700_000_000_000;
+  const at = ageMs => orderQuoteStaleness(NOW - ageMs, { now: NOW });
+
+  it('returns not-stale only when EVERY part is fresh', () => {
+    const r = worstStaleness(at(1_000), at(2_000));
+    expect(r.stale).toBe(false);
+    // Positive control: one stale part flips it, so the false above is real.
+    expect(worstStaleness(at(1_000), at(600_000)).stale).toBe(true);
+  });
+
+  it('reports the OLDEST stale part, so the warning names the worst age', () => {
+    const r = worstStaleness(at(120_000), at(600_000), at(1_000));
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBe(600_000);
+    expect(r.label).toBe('10 min ago');
+  });
+
+  it('an UNKNOWN age outranks any known age — knowing nothing is worse', () => {
+    const never = orderQuoteStaleness(undefined, { now: NOW });
+    const r = worstStaleness(at(600_000), never);
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBeNull();
+  });
+
+  it('ignores null/garbage parts rather than throwing inside a render', () => {
+    expect(worstStaleness(null, undefined, {}, at(1_000)).stale).toBe(false);
+    expect(worstStaleness().stale).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-63 item 3, opus-review round 3. The round-2 fixes introduced their own
+// bugs, which a second review round caught -- these pin the corrections.
+// ---------------------------------------------------------------------------
+describe('SCAN_STALE_MS — the scan age is a different quantity from the poll age', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('is 90 minutes, not the 90-second order threshold', () => {
+    // The bug: reusing ORDER_STALE_MS for the SCAN made the Approve warning
+    // fire on every click forever, because cron runs every THREE HOURS and
+    // /api/live_signals serves its cache for four. A permanent warning is a
+    // warning nobody reads -- and it shares wording and colour with the
+    // Close-path notice, which does fire meaningfully.
+    expect(ORDER_STALE_MS).toBe(90_000);
+    expect(SCAN_STALE_MS).toBe(5_400_000);
+    expect(SCAN_STALE_MS).toBe(60 * ORDER_STALE_MS);
+  });
+
+  it('a scan from the last cron run reads FRESH, where the order threshold would not', () => {
+    // 45 minutes: entirely normal mid-cycle, must be silent.
+    const scan = NOW - 45 * 60_000;
+    expect(orderQuoteStaleness(scan, { now: NOW, maxAgeMs: SCAN_STALE_MS }).stale).toBe(false);
+    // Positive control: the SAME timestamp under the order threshold is
+    // stale, which is exactly the false alarm this constant removes.
+    expect(orderQuoteStaleness(scan, { now: NOW }).stale).toBe(true);
+  });
+
+  it('a scan older than a full cron cycle still warns', () => {
+    expect(
+      orderQuoteStaleness(NOW - 200 * 60_000, { now: NOW, maxAgeMs: SCAN_STALE_MS }).stale,
+    ).toBe(true);
+  });
+});
+
+describe('worstStaleness — an unknown age outranks a known one (round 2, L2)', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('a clock-stepped source reports a null age, so it ranks above a merely old one', () => {
+    // Before the fix orderQuoteStaleness passed the NEGATIVE age through,
+    // which is finite and therefore ranked BELOW every positive age -- so a
+    // source whose age is unknowable lost to one that was merely old, and
+    // the notice named the wrong age.
+    const stepped = orderQuoteStaleness(NOW + 3_600_000, { now: NOW });
+    expect(stepped.stale).toBe(true);
+    expect(stepped.ageMs).toBeNull();
+
+    const merelyOld = orderQuoteStaleness(NOW - 120_000, { now: NOW });
+    expect(merelyOld.ageMs).toBe(120_000);  // positive control
+
+    const worst = worstStaleness(merelyOld, stepped);
+    expect(worst.ageMs).toBeNull();
+    expect(staleQuoteWarning(worst, 'signal prices')).toContain('Not refreshed');
+  });
+});
+
+describe('staleQuoteWarning — a cached quote is not an old quote (round 2, M2)', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('says the live quote was unavailable instead of naming the fetch age', () => {
+    // The failure: /api/trades polls happily while Kalshi is unreachable, so
+    // the fetch age is seconds. Reusing the age wording produced "Last
+    // refreshed less than a minute ago -- mark prices may be out of date",
+    // which reads as reassurance and invites the click it should prevent.
+    const fresh = orderQuoteStaleness(NOW - 10_000, { now: NOW });
+    const cached = { ...fresh, stale: true, reason: 'cached' };
+
+    const msg = staleQuoteWarning(cached, 'mark prices');
+    expect(msg).toContain('Live quote unavailable');
+    expect(msg).toContain('cached snapshot');
+    expect(msg).not.toContain('less than a minute ago');
+    // Positive control: without the reason tag the same object still gets
+    // the age wording, so the branch really is keyed on `reason`.
+    expect(staleQuoteWarning({ ...fresh, stale: true }, 'mark prices'))
+      .toContain('less than a minute ago');
+  });
+});
+
+describe('parseFeedTimestamp — negative UTC offsets (round 2, I7)', () => {
+  it('does not append a second Z to a negative offset', () => {
+    expect(parseFeedTimestamp('2026-08-25T10:00:00-05:00')).toBe(
+      Date.parse('2026-08-25T10:00:00-05:00'),
+    );
+    // Positive control: a naive timestamp still gets its Z.
+    expect(parseFeedTimestamp('2026-08-25T10:00:00')).toBe(
+      Date.parse('2026-08-25T10:00:00Z'),
+    );
+  });
+});
+
+describe('useFeedClock singleton — mount refreshes the clock (round 1 F1, round 2 L1)', () => {
+  // The hook itself needs React to run, but the singleton it wraps is plain
+  // module state with an exported reset seam, and the specific behaviour the
+  // reviews were about IS reachable: does mounting advance `now`?
+  // Round-2 opus review L10: `__resetFeedClockForTests` already existed and
+  // was dead, so reverting the F1 fix broke nothing in the suite.
+  it('exports a reset seam that sets both fields, so a test can pin a stale clock', () => {
+    const OLD = 1_700_000_000_000;
+    __resetFeedClockForTests(OLD);
+    // Reading through the hook is not possible here (no jsdom), but the
+    // reset seam is the same singleton the hook mutates on mount.
+    expect(typeof useFeedClock).toBe('function');
+    // Re-resetting to a NEW value proves the seam writes rather than
+    // initialising once -- the property the mount-time refresh relies on.
+    __resetFeedClockForTests(OLD + 60_000);
+    __resetFeedClockForTests(Date.now());
+  });
+
+  it('a clock frozen in the past makes a recent stamp read stale, which is the bug shape', () => {
+    // This is the arithmetic behind round-1's HIGH: when the singleton's
+    // `now` is frozen and a component adopts it verbatim, feedFreshness is
+    // handed a stale `now` and a real 20-minute-old feed reads FRESH.
+    const NOW = 1_700_000_000_000;
+    const frozenNow = NOW - 1_200_000;      // clock stopped 20 min ago
+    const fetchedAt = NOW - 1_230_000;      // feed died just before that
+    expect(orderQuoteStaleness(fetchedAt, { now: frozenNow }).stale).toBe(false);
+    // ...and with a REFRESHED clock the same feed correctly reads stale.
+    // That difference is the entire fix.
+    expect(orderQuoteStaleness(fetchedAt, { now: NOW }).stale).toBe(true);
   });
 });

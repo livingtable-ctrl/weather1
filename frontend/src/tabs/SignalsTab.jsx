@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected, resolveByKey } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected, resolveByKey, orderQuoteStaleness, staleQuoteWarning, StaleQuoteNotice, useFeedClock, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS } from '../shared.jsx';
 
 // batch-48 item 1: both confirm modals below render as an unfocusable div
 // with onKeyDown="Enter confirms" -- since nothing inside them ever receives
@@ -53,6 +53,45 @@ export default function SignalsTab() {
   const [pendingApprovalQty, setPendingApprovalQty] = useState(1);
   const confirmModalRef = useRef(null);
   const bulkConfirmModalRef = useRef(null);
+  // batch-63 item 3: how old is the price these buttons submit?
+  //
+  // useFeedClock is used ONLY as a re-render heartbeat here -- its return
+  // value is deliberately not the clock the gate reads (opus review F2). It
+  // ticks every 60s, so its `now` lags true wall time by up to a full tick,
+  // which would stretch the 90s threshold to an effective 90-150s and erode
+  // most of the divergence from the 180s display banner that ORDER_STALE_MS
+  // exists to create. It is still required: without it the age only advances
+  // when something ELSE re-renders, and every other render source (fetchAll's
+  // setData, SSE, the alerts poll) dies in exactly the failure mode this
+  // warning exists to surface.
+  useFeedClock();
+  const nowMs = Date.now();
+  // TWO INDEPENDENT AGES (opus review F3), because a fresh poll does not mean
+  // a fresh price: /api/live_signals serves signals_cache.json for up to FOUR
+  // HOURS with a 200, so `fetchedAt.opportunities` can be seconds old while
+  // the scan behind the quoted price is hours old. signalsMeta.generatedAt is
+  // the scan's own timestamp and signalsMeta.stale is the backend saying so
+  // outright; worstStaleness reports whichever is worse.
+  //
+  // The two ages need DIFFERENT thresholds (round-2 opus review H1). The
+  // dashboard's own fetch should be seconds fresh, so ORDER_STALE_MS (90s)
+  // is right for it. The scan is produced by a cron that runs every three
+  // hours, so the same 90s applied to it made this warning permanent and
+  // therefore worthless -- SCAN_STALE_MS (90 min, the header chip's own
+  // long-standing threshold) is the scan-appropriate bar.
+  const quoteStaleness = worstStaleness(
+    orderQuoteStaleness(M.fetchedAt?.opportunities, { now: nowMs }),
+    (() => {
+      const scan = orderQuoteStaleness(
+        parseFeedTimestamp(M.signalsMeta?.generatedAt),
+        { now: nowMs, maxAgeMs: SCAN_STALE_MS },
+      );
+      // The backend's own stale flag is a hard override: it means the cache
+      // is past MAX_SIGNALS_CACHE_AGE_SECS entirely, whatever the clock says.
+      return M.signalsMeta?.stale ? { ...scan, stale: true } : scan;
+    })(),
+  );
+  const staleQuoteMsg = staleQuoteWarning(quoteStaleness, 'signal prices');
   const PLACED_KEY = 'kalshi-placed-signals';
   const [placedSet, setPlacedSet] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem(PLACED_KEY) || '[]')); }
@@ -567,15 +606,27 @@ export default function SignalsTab() {
               </span>
             )}
             {M.signalsMeta?.generatedAt && (() => {
-              // Append 'Z' if the timestamp has no timezone info so browsers
-              // treat it as UTC rather than local time (which would make
-              // ageMs negative for US timezones and break the label).
-              const ts = M.signalsMeta.generatedAt;
-              const utcTs = (ts.endsWith('Z') || ts.includes('+')) ? ts : ts + 'Z';
-              const ageMs = Date.now() - new Date(utcTs).getTime();
-              const ageMin = Math.max(0, Math.round(ageMs / 60000));
-              const isStale = M.signalsMeta.stale || ageMin > 90;
-              const label = ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin / 60)}h ${ageMin % 60}m ago`;
+              // parseFeedTimestamp (shared.jsx) appends 'Z' when the
+              // timestamp carries no timezone, so a naive UTC value is not
+              // read as local time -- which would make ageMs negative in US
+              // timezones and break the label. Shared with batch-63's order
+              // gate so the chip and the gate cannot disagree about the age.
+              const parsed = parseFeedTimestamp(M.signalsMeta.generatedAt);
+              // A truthy-but-unparseable timestamp is treated as stale with
+              // an unknown age. Previously it rendered a literal "NaNm ago";
+              // reading it as 0 would be worse still -- falsely reassuring.
+              const ageMin =
+                parsed == null ? null : Math.max(0, Math.round((Date.now() - parsed) / 60000));
+              // Same threshold the Approve gate uses, from one constant, so the
+              // chip and the confirm dialog cannot disagree on screen.
+              const isStale =
+                M.signalsMeta.stale || ageMin == null || ageMin > SCAN_STALE_MS / 60_000;
+              const label =
+                ageMin == null
+                  ? 'unknown'
+                  : ageMin < 60
+                    ? `${ageMin}m ago`
+                    : `${Math.round(ageMin / 60)}h ${ageMin % 60}m ago`;
               return (
                 <span style={{ marginLeft: 10, color: isStale ? '#f59e0b' : 'var(--text-faint)', fontSize: 11 }}>
                   {isStale ? '⚠ ' : ''}Last scan: {label}
@@ -835,6 +886,7 @@ export default function SignalsTab() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="confirm-trade-title"
+          aria-describedby={staleQuoteMsg ? 'confirm-trade-stale' : undefined}
           onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) handleConfirm(); trapTabFocus(e, confirmModalRef); }}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
@@ -845,6 +897,7 @@ export default function SignalsTab() {
             borderRadius: 14, padding: '24px 28px', minWidth: 340, maxWidth: 420,
           }}>
             <h3 id="confirm-trade-title" style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
+            <StaleQuoteNotice id="confirm-trade-stale" staleness={quoteStaleness} noun="signal prices" />
             {(() => {
               // batch-26: cost/price shown must match what handleConfirm will
               // actually submit (the side-aware ask price), not the YES mid.
@@ -903,6 +956,7 @@ export default function SignalsTab() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="confirm-bulk-title"
+            aria-describedby={staleQuoteMsg ? 'confirm-bulk-stale' : undefined}
             // opus review CRITICAL (same as the single-approve modal above):
             // e.target === e.currentTarget is required so Enter can't fire
             // handleBulkConfirm() while Cancel is focused, or double-fire it
@@ -917,6 +971,7 @@ export default function SignalsTab() {
               borderRadius: 14, padding: '24px 28px', minWidth: 380, maxWidth: 480,
             }}>
               <h3 id="confirm-bulk-title" style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm {rows.length} trade{rows.length !== 1 ? 's' : ''}</h3>
+              <StaleQuoteNotice id="confirm-bulk-stale" staleness={quoteStaleness} noun="signal prices" />
               <div style={{ maxHeight: 220, overflowY: 'auto', margin: '10px 0 14px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 {rows.map(({ opp, price, qty, cost }) => (
                   <div key={opp.ticker} style={{

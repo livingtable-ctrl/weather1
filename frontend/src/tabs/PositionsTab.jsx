@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned, positionUnrealizedPnl } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned, positionUnrealizedPnl, orderQuoteStaleness, StaleQuoteNotice, useFeedClock } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // WeatherAlertBanner — NWS active alerts for cities with open positions
@@ -115,6 +115,51 @@ export default function PositionsTab() {
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkActionMsg, setBulkActionMsg] = useState('');
+
+  // batch-63 item 3: both close paths submit `p.mark`, derived from the last
+  // successful /api/trades fetch. batch-47's visibility-gated polling stops
+  // that fetch entirely while the tab is backgrounded, so a returning
+  // operator can close against an arbitrarily old mark before the catch-up
+  // fetch lands.
+  //
+  // useFeedClock is the re-render heartbeat only; the gate reads Date.now()
+  // at render (opus review F2) -- see SignalsTab's fuller note on why the
+  // clock's own 60s-lagged `now` must not be the gate's clock.
+  useFeedClock();
+  const feedStaleness = orderQuoteStaleness(M.fetchedAt?.positions, { now: Date.now() });
+  // A SECOND, independent reason a mark can be stale (opus review F3):
+  // /api/trades answers 200 with a snapshot-cache price whenever the live
+  // Kalshi batch-fetch fails, so the poll is fresh while the quote is not.
+  // `quoteIsLive === false` is the backend saying so; undefined (older
+  // backend, or a position with no quote at all) makes no claim and is left
+  // to the fetch-age reading alone.
+  // `reason: 'cached'` so the notice says the live quote was unavailable
+  // rather than naming the (perfectly recent) fetch age, which read as
+  // reassurance in exactly this case -- round-2 opus review M2.
+  function markStalenessFor(pos) {
+    return pos && pos.quoteIsLive === false
+      ? { ...feedStaleness, stale: true, reason: 'cached' }
+      : feedStaleness;
+  }
+  // For the bulk bar: any SELECTED position sitting on a cached quote taints
+  // the whole batch, since bulk Close submits each one's p.mark with no
+  // per-row confirmation step.
+  function markStalenessForAll(list) {
+    return list.some(p => p && p.quoteIsLive === false)
+      ? { ...feedStaleness, stale: true, reason: 'cached' }
+      : feedStaleness;
+  }
+
+  // Exactly the rows handleBulkClose will submit -- it narrows the selection
+  // to `p.id != null && p.markIsLive` and silently skips the rest, so
+  // including a skipped row (an expired market with no quote at all) would
+  // taint the notice for a batch that row is not part of. Round-2 opus
+  // review L4.
+  function bulkSubmitSet() {
+    return filtered.filter(
+      p => effSelectedIds.has(rowKey(p)) && p.id != null && p.markIsLive,
+    );
+  }
 
   useEffect(() => {
     const handler = () => {
@@ -340,8 +385,17 @@ export default function PositionsTab() {
           position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
           background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
           padding: '12px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          display: 'flex', gap: 16, alignItems: 'center', zIndex: 100,
+          display: 'flex', flexDirection: 'column', zIndex: 100, maxWidth: 420,
         }}>
+          {/* batch-63 item 3: bulk Close is the one order action with no
+              confirm modal -- it submits every selected position's p.mark
+              immediately -- so its staleness notice has to live here, beside
+              the button, rather than in a dialog that doesn't exist. */}
+          <StaleQuoteNotice
+            staleness={markStalenessForAll(bulkSubmitSet())}
+            noun="mark prices"
+          />
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{effSelectedIds.size} selected</span>
           <button onClick={handleBulkClose} style={{
             padding: '6px 14px', borderRadius: 6, border: '1px solid #ef4444',
@@ -357,6 +411,7 @@ export default function PositionsTab() {
             background: 'transparent', color: 'var(--text-muted)',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>Clear</button>
+          </div>
         </div>
       )}
 
@@ -563,9 +618,15 @@ export default function PositionsTab() {
           }}>
             <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700 }}>Close position?</h3>
             {confirmClose.markIsLive ? (
+              <>
+              {/* Only the live-mark branch. The other branch is the operator
+                  typing the exit price themselves, which no feed staleness
+                  can make out of date. */}
+              <StaleQuoteNotice staleness={markStalenessFor(confirmClose)} noun="mark prices" />
               <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
                 Close <strong style={{ color: '#3b82f6' }}>{confirmClose.ticker}</strong> at mark price <strong>{(confirmClose.mark * 100).toFixed(0)}¢</strong>?
               </p>
+              </>
             ) : (
               <div style={{ margin: '0 0 18px' }}>
                 <p style={{ margin: '0 0 10px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>

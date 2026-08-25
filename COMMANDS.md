@@ -40,6 +40,7 @@ All commands: `py main.py <command> [args]`
 | `paper buy <TICKER> <yes/no> <price> <qty>` | Manually place with specific quantity |
 | `paper results` | Show all paper trades with P&L, directional exposure, and unrealized P&L |
 | `paper settle <trade_id> <yes/no>` | Manually settle a specific paper trade |
+| `paper close <trade_id> [exit_price]` | Close an open paper position early at the live realizable quote (or a price you state). Also available as `close <trade_id>`. Needs a readable `.env`/key like every other command, though it never touches the exchange. **Deliberately runs while the kill switch / `TRADING_PAUSED` are engaged** — closing reduces exposure, and freezing exits under a halt is backwards. Every bypass is logged at WARNING. The dashboard's Close button still returns 503 under either gate. |
 | `paper reset` | **⚠ Destructive** — wipe all paper trades and reset balance to $1,000 |
 | `settle` | Sync settled market outcomes from Kalshi and record in tracker |
 | `watch-settle` | Poll until all same-day open trades are settled |
@@ -152,6 +153,7 @@ All commands: `py main.py <command> [args]`
 py main.py paper buy <TICKER> <yes/no> <price> [qty]
 py main.py paper results
 py main.py paper settle <trade_id> <yes/no>
+py main.py paper close <trade_id> [exit_price]
 py main.py paper reset
 ```
 

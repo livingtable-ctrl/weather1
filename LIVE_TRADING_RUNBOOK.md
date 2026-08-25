@@ -226,7 +226,7 @@ Kalshi by hand and settle the position row.
 | `status == 'unknown'` order row | Persists past a few cron/watch cycles | Manually check that ticker against Kalshi's own order history before assuming it's safe to ignore |
 | `status == 'unresolved'` order row | Any (the bot alerts once when it parks the row) | Reconcile the row's stored `client_order_id` against Kalshi by hand and set its real status — the bot will not re-check it again |
 | "Live exit order stuck unresolved" alert | Any | Urgent. A protective SELL could not be reconciled, so the position it closed is still tracked as open and the exit scanner will keep firing real SELLs at it. Reconcile the exit against Kalshi and settle the position row by hand |
-| "Live exit blocked" alert | Any | A protective exit could not be placed because TRADING_PAUSED or the kill switch is engaged. The position is still open and unprotected. Note `py main.py sell` runs the FULL gate and is blocked by the same condition, so clearing the block is what re-enables any in-bot close — Kalshi's own web UI is the only path that bypasses it |
+| "Live exit blocked" alert | Any | A protective exit could not be placed because TRADING_PAUSED or the kill switch is engaged. The position is still open and unprotected. Note `py main.py sell` runs the FULL gate and is blocked by the same condition, so clearing the block is what re-enables any in-bot close of a LIVE position (a PAPER position can be closed during a halt — see the batch-63 note under "Immediate halt") — Kalshi's own web UI is the only path that bypasses it |
 
 ### Weekly review
 
@@ -251,7 +251,19 @@ python main.py kill
 
 `python main.py kill` writes `data/.kill_switch`, which is checked at the start of every cycle (`cron.py`, `order_executor.py`). The bot will log `KILL SWITCH ACTIVE` and exit without placing orders. Re-enable with `python main.py resume` (this also clears black-swan halt state, which manually deleting the file would not).
 
-**Batch-41 note:** as of the dashboard's `/api/close-position` route gaining the same kill-switch/`TRADING_PAUSED` gates its order-placement siblings already had (audit-M-9), engaging the kill switch or `TRADING_PAUSED` also blocks closing a position from the dashboard — not just placing new ones. `cron.py` (the automated exit path — settlement-lag closes, model-reversal exits) also aborts its whole run under either gate, and `main.py` has no standalone CLI command to manually close an arbitrary open paper position (`undo` only reverses a just-placed trade within a short window, not a general close). **There is currently no operator-facing way to close an open position at all while the kill switch or `TRADING_PAUSED` is engaged.** If this ever needs to be actionable during a real halt, it needs its own fix (e.g. a `main.py close <trade_id>` command, or carving the close path out from under the gate with its own justification) — flagged here rather than fixed as part of batch-41, which only mirrored the existing sibling-route pattern per its own directive.
+**Batch-41 note, SUPERSEDED by batch-63 — read the batch-63 note below.** When the dashboard's `/api/close-position` route gained the same kill-switch/`TRADING_PAUSED` gates its order-placement siblings already had (audit-M-9), engaging either gate also blocked closing a position from the dashboard, not just placing new ones. `cron.py` (the automated exit path — settlement-lag closes, model-reversal exits) also aborts its whole run under either gate. At the time this was written that appeared to leave no operator-facing way to close an open position during a halt; batch-63 found that was not quite true (the interactive paper menu's "Exit signals" close had never checked either gate) and closed the gap properly.
+
+**Batch-63 note — how to close a position during a halt.** There IS now a deliberate operator path, and it is the CLI:
+
+```bash
+python main.py close <trade_id> [exit_price]      # alias for `paper close`
+```
+
+- **PAPER positions only.** Live positions still exit through the bot's own protective path (`order_executor._exit_live_position`), which runs `trading_gates.pre_live_exit_check` and is still blocked by the kill switch and `TRADING_PAUSED` — see the "Live exit blocked" row in the alert table above.
+- **It deliberately bypasses BOTH gates.** Closing reduces exposure; freezing exits under a halt makes the account strictly riskier at the moment you reached for the halt. Every close through it is logged at WARNING with the bypassed gates named.
+- Omit `exit_price` to close at the live realizable quote; supply one when there is no quote. A supplied price is cross-checked against the live quote (±0.15) when one is reachable.
+- **`/api/close-position` still returns 503 under either gate, on purpose.** A dashboard button is misclickable in a way a typed trade id is not. Do not "fix" the route to match the CLI.
+- It still needs a readable `.env` and Kalshi key to start (the standard preflight), even though it never touches the exchange. If the key itself is what broke, supply `exit_price` explicitly — but the preflight runs first, so fix the key or use the dashboard once the halt is cleared.
 
 ### Canceling open orders
 
