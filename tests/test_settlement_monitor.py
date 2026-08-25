@@ -11,6 +11,30 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Month abbreviations spelled out rather than via strftime("%b"): that format
+# code is locale-dependent, and weather_markets.parse_city_date's regex needs
+# the English 3-letter token regardless of the runner's locale.
+_MON_ABBR = (
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+)  # fmt: skip
+
+
+def _today_ticker(prefix: str, suffix: str, tz: str = "America/New_York") -> str:
+    """Build a market ticker carrying TODAY's city-local date token.
+
+    batch-59 item 2: check_city_settlement now requires the market's own
+    ticker-parsed event date to match the observation's city-local date, so a
+    fixture whose date token is a frozen literal is skipped before any lock
+    logic ever runs — which would silently turn every
+    `assert signals == []` in this file into a vacuous pass. Every fixture
+    that reaches check_city_settlement uses this helper instead.
+    """
+    from zoneinfo import ZoneInfo
+
+    d = datetime.now(ZoneInfo(tz)).date()
+    return f"{prefix}-{d.year % 100:02d}{_MON_ABBR[d.month - 1]}{d.day:02d}-{suffix}"
+
 
 class TestCitySeriesTickerDerivation:
     def test_stale_known_weather_series_raises_at_import(self, monkeypatch):
@@ -380,7 +404,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 69.5,
             "upper": 71.5,
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
         }
 
@@ -412,7 +436,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 69.5,
             "upper": 71.5,
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
         }
 
@@ -424,7 +448,7 @@ class TestBTickerParsing:
 
         assert len(signals) == 1
         assert signals[0]["outcome"] == "yes"
-        assert signals[0]["ticker"] == "KXHIGHNY-26MAY17-B70.5"
+        assert signals[0]["ticker"] == _today_ticker("KXHIGHNY", "B70.5")
         assert signals[0]["comp_temp_f"] == pytest.approx(69.5)
         assert signals[0]["max_temp_f"] == pytest.approx(69.5)
 
@@ -446,7 +470,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 69.5,
             "upper": 71.5,
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
         }
 
@@ -484,7 +508,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 69.5,
             "upper": 71.5,
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
         }
 
@@ -524,7 +548,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 69.5,
             "upper": 71.5,
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
         }
 
@@ -554,7 +578,7 @@ class TestBTickerParsing:
             "direction": "between",
             "lower": 85.5,
             "upper": 87.5,
-            "ticker": "KXHIGHNY-26MAY17-B86.5",
+            "ticker": _today_ticker("KXHIGHNY", "B86.5"),
             "threshold": None,
         }
 
@@ -583,7 +607,7 @@ class TestBTickerParsing:
         }
         mock_market = {
             "direction": "between",
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "threshold": None,
             # lower/upper deliberately omitted
         }
@@ -619,7 +643,7 @@ class TestBTickerParsing:
         mock_market = {
             "direction": "above",
             "threshold": 72.0,
-            "ticker": "KXHIGHNY-26MAY17-T72",
+            "ticker": _today_ticker("KXHIGHNY", "T72"),
         }
 
         with (
@@ -668,7 +692,7 @@ class TestCheckCitySettlementDateGuard:
         mock_market = {
             "direction": "above",
             "threshold": 91.0,
-            "ticker": "KXHIGHOKC-26JUN25-T91",
+            "ticker": _today_ticker("KXHIGHOKC", "T91", tz="America/Chicago"),
         }
 
         with (
@@ -700,7 +724,7 @@ class TestCheckCitySettlementDateGuard:
             "direction": "between",
             "lower": 85.5,
             "upper": 87.5,
-            "ticker": "KXHIGHOKC-26JUN25-B86.5",
+            "ticker": _today_ticker("KXHIGHOKC", "B86.5", tz="America/Chicago"),
             "threshold": None,
         }
 
@@ -724,7 +748,7 @@ class TestCheckCitySettlementDateGuard:
         mock_market = {
             "direction": "above",
             "threshold": 91.0,
-            "ticker": "KXHIGHOKC-26JUN25-T91",
+            "ticker": _today_ticker("KXHIGHOKC", "T91", tz="America/Chicago"),
         }
         fake_lockout = {"locked": True, "outcome": "no", "confidence": 0.9}
 
@@ -736,6 +760,160 @@ class TestCheckCitySettlementDateGuard:
 
         assert len(signals) == 1
         assert signals[0]["outcome"] == "no"
+
+
+class TestCheckCitySettlementMarketEventDateGuard:
+    """batch-59 item 2 (backlog.txt "check_city_settlement never checks the
+    market's own event date"): the pre-existing guard above only proves the
+    OBSERVATION is from today. run_settlement_monitor's active_tickers build
+    filters solely on status == "open", so a market whose event date is some
+    OTHER day still reaches the per-market loop and would be settled against
+    today's temperature."""
+
+    def _market(self, ticker):
+        return {"direction": "above", "threshold": 72.0, "ticker": ticker}
+
+    def _run(self, market):
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import settlement_monitor as sm
+
+        # obs_time is pinned to 16:00 NYC-local TODAY rather than
+        # datetime.now(UTC): the real check_metar_lockout this test
+        # deliberately does NOT mock refuses to lock before 14:00 local, so a
+        # bare "now" made these cases pass or fail depending on what time of
+        # day the suite ran (caught by a scoped run that happened to cross
+        # local midnight). Still a real "today" date, so the guard under test
+        # sees exactly what it would in production.
+        _et = ZoneInfo("America/New_York")
+        obs_time = datetime.now(_et).replace(hour=16, minute=0, second=0, microsecond=0)
+        # 80.0 vs threshold 72.0 with _SETTLEMENT_MARGIN_F=1.0 is a
+        # comfortably-locked YES, so anything that comes back empty came
+        # back empty because of the date guard, not the temperature.
+        fake_obs = {"current_temp_f": 80.0, "obs_time": obs_time}
+        with patch("metar.fetch_metar", return_value=fake_obs):
+            return sm.check_city_settlement("NYC", [market])
+
+    def test_todays_market_still_settles(self):
+        """Positive control for every absence-assertion below: the exact same
+        observation and threshold DO produce a signal once the ticker carries
+        today's date, proving the lock path is genuinely reachable here."""
+        signals = self._run(self._market(_today_ticker("KXHIGHNY", "T72")))
+        assert len(signals) == 1
+        assert signals[0]["outcome"] == "yes"
+
+    def test_tomorrows_market_is_skipped(self, caplog):
+        """A next-day market is 'open' and passes the obs-date guard, but must
+        not be settled against today's reading."""
+        import logging
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        tomorrow = datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+        ticker = (
+            f"KXHIGHNY-{tomorrow.year % 100:02d}"
+            f"{_MON_ABBR[tomorrow.month - 1]}{tomorrow.day:02d}-T72"
+        )
+        # DEBUG, not INFO: a non-today market in an open-status list is the
+        # routine case and is deliberately logged at debug so it can't spam
+        # the operator console (opus review finding LM6). Asserting the level
+        # here pins that choice rather than just the message text.
+        with caplog.at_level(logging.DEBUG, logger="settlement_monitor"):
+            signals = self._run(self._market(ticker))
+        assert signals == []
+        assert "not a today-settling market" in caplog.text
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.INFO and "not a today-settling" in r.getMessage()
+        ], "routine non-today skips must stay below INFO"
+
+    def test_prior_day_market_is_skipped(self):
+        """The mirror case: a still-open market whose event date already
+        passed must not be re-settled off today's reading."""
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        yday = datetime.now(ZoneInfo("America/New_York")).date() - timedelta(days=1)
+        ticker = (
+            f"KXHIGHNY-{yday.year % 100:02d}"
+            f"{_MON_ABBR[yday.month - 1]}{yday.day:02d}-T72"
+        )
+        assert self._run(self._market(ticker)) == []
+
+    def test_undated_ticker_fails_closed(self, caplog):
+        """parse_city_date returns None for a ticker carrying no day-level
+        date token; that must skip, not settle on an unverifiable date.
+
+        Unlike the routine wrong-date case above, an unparseable date IS
+        anomalous (a renamed series, an unrecognised ticker shape), so it
+        keeps INFO — opus review finding LM6's other half."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="settlement_monitor"):
+            assert self._run(self._market("KXHIGHNY-T72")) == []
+        assert "no parseable event date" in caplog.text
+
+    def test_between_ticker_for_another_day_is_also_skipped(self):
+        """The guard sits at the TOP of the per-market loop, before the
+        `if direction == "between"` branch — so a B-ticker gets it too.
+
+        Opus review finding M4: every other case here uses direction="above",
+        so moving the guard below the between branch's own `continue` was a
+        surviving mutation — a tomorrow-dated B-ticker would again be settled
+        against today's temperature, through the path that force-closes paper
+        positions via cron.py's >=0.80 gate. Positive control first."""
+        from datetime import timedelta
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import settlement_monitor as sm
+
+        _et = ZoneInfo("America/New_York")
+        obs_time = datetime.now(_et).replace(hour=16, minute=0, second=0, microsecond=0)
+        fake_obs = {"current_temp_f": 68.0, "obs_time": obs_time}
+
+        def _between(ticker):
+            return {
+                "direction": "between",
+                "lower": 69.5,
+                "upper": 71.5,
+                "ticker": ticker,
+                "threshold": None,
+            }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=69.5),
+        ):
+            # Positive control: today's B-ticker DOES lock on these inputs.
+            today_sigs = sm.check_city_settlement(
+                "NYC", [_between(_today_ticker("KXHIGHNY", "B70.5"))]
+            )
+            assert len(today_sigs) == 1 and today_sigs[0]["outcome"] == "yes"
+
+            tomorrow = datetime.now(_et).date() + timedelta(days=1)
+            tkr = (
+                f"KXHIGHNY-{tomorrow.year % 100:02d}"
+                f"{_MON_ABBR[tomorrow.month - 1]}{tomorrow.day:02d}-B70.5"
+            )
+            assert sm.check_city_settlement("NYC", [_between(tkr)]) == []
+
+    def test_hurricane_next_event_ticker_is_skipped_not_misdated(self):
+        """parse_city_date deliberately early-returns (None, None) for the
+        hurricane-next-event series rather than matching its ticker's
+        season-reference date segment. That behavior is preserved here as a
+        skip -- the right outcome, since a hurricane market must never be
+        settled from a city METAR reading."""
+        import weather_markets as wm
+
+        ticker = "KXNEXTHURDATE-26DEC01-26SEP15"
+        # Guard the premise rather than assuming it: if parse_city_date ever
+        # stops early-returning for this family, this test's reasoning (and
+        # the skip below) would no longer describe why it passes.
+        assert wm.parse_city_date({"ticker": ticker}) == (None, None)
+        assert self._run(self._market(ticker)) == []
 
 
 class TestMetarSettlementCalibration:
@@ -752,13 +930,18 @@ class TestMetarSettlementCalibration:
     # an arbitrary toy model.
     _REAL_PARAMS = (0.22619580826228397, 0.22619580826228397, 0.4000758536385143)
 
-    def _run(
-        self, monkeypatch, outcome, confidence, params, ticker="KXHIGHNY-26MAY17-T72"
-    ):
+    def _run(self, monkeypatch, outcome, confidence, params, ticker=None):
         from datetime import datetime
         from unittest.mock import patch
 
         import settlement_monitor as sm
+
+        # Resolved per call, not as a default argument: a default is
+        # evaluated once at class-definition time, which would go stale (and
+        # start failing check_city_settlement's new event-date guard) if a
+        # long test session crossed local midnight.
+        if ticker is None:
+            ticker = _today_ticker("KXHIGHNY", "T72")
 
         monkeypatch.setattr(sm, "_load_metar_calibration", lambda: params)
         fake_obs = {"current_temp_f": 80.0, "obs_time": datetime.now(UTC)}
@@ -860,7 +1043,7 @@ class TestMetarSettlementCalibration:
         fake_obs = {"current_temp_f": 68.0, "obs_time": datetime.now(UTC)}
         mock_market = {
             "direction": "between",
-            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "ticker": _today_ticker("KXHIGHNY", "B70.5"),
             "lower": 69.5,
             "upper": 71.5,
         }
@@ -896,7 +1079,7 @@ class TestMetarSettlementCalibration:
         mock_market = {
             "direction": "above",
             "threshold": 72.0,
-            "ticker": "KXHIGHNY-26MAY17-T72",
+            "ticker": _today_ticker("KXHIGHNY", "T72"),
         }
 
         with (

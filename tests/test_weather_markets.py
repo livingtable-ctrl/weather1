@@ -1903,6 +1903,135 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     assert result["model_consensus"] is False
 
 
+# ── batch-59 item 4: model_consensus must ignore a quarantined member ────────
+# backlog.txt "MODEL_CONSENSUS SHOULD EXCLUDE A QUARANTINED MEMBER": the
+# icon-vs-gfs divergence check ran regardless of quarantine, so a model the
+# blend had already stopped trusting could still set model_consensus=False
+# and halve Kelly via order_executor.py's consensus_mult.
+
+
+def _consensus_disagree_setup(monkeypatch):
+    """Same deterministic analyze_trade fixture as
+    test_model_consensus_false_when_models_disagree above (icon 0.75 vs gfs
+    0.60 — a 15pp disagreement, comfortably past the 0.12 threshold), factored
+    out so the quarantine tests below differ from it in exactly one variable."""
+    import mos
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.75, 0.60, 74.0, 68.0, None)
+    )
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 76.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
+    monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
+    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+
+    from datetime import datetime, timedelta
+
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": tomorrow,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T80",
+        "title": "Will NYC high temperature be above 80°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.20,
+        "yes_bid": 0.15,
+        "no_bid": 0.80,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (datetime.now(UTC) + timedelta(hours=20)).isoformat(),
+    }
+
+
+@pytest.mark.parametrize("quarantined", ["icon_seamless", "gfs_seamless"])
+def test_model_consensus_ignores_quarantined_member(monkeypatch, quarantined):
+    """With either half of the icon/gfs pair quarantined there is no second
+    trusted model left to compare against, so the divergence check must be
+    skipped entirely and model_consensus left at its True default — the same
+    fail-open this branch already takes when a probability comes back None."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    enriched = _consensus_disagree_setup(monkeypatch)
+    monkeypatch.setattr(wm, "get_quarantined_members", lambda: {quarantined})
+
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["model_consensus"] is True
+
+
+def test_model_consensus_still_fires_when_nothing_is_quarantined(monkeypatch):
+    """Positive control for the two absence-assertions above: the identical
+    fixture with an EMPTY quarantine set still produces model_consensus=False,
+    proving the 15pp disagreement really does reach the divergence check and
+    that the skip above came from quarantine, not from the check being
+    unreachable in this fixture."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    enriched = _consensus_disagree_setup(monkeypatch)
+    monkeypatch.setattr(wm, "get_quarantined_members", lambda: set())
+
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["model_consensus"] is False
+
+
+def test_model_consensus_unaffected_by_non_pair_quarantine(monkeypatch):
+    """ecmwf_aifs025_ensemble is a quarantine CANDIDATE but is not part of the
+    icon-vs-gfs consensus pair, so quarantining it must not suppress the
+    divergence check."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    enriched = _consensus_disagree_setup(monkeypatch)
+    monkeypatch.setattr(
+        wm, "get_quarantined_members", lambda: {"ecmwf_aifs025_ensemble"}
+    )
+
+    result = analyze_trade(enriched)
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert result["model_consensus"] is False
+
+
+def test_consensus_pair_membership_matches_get_consensus_probs(monkeypatch):
+    """The new gate keys off ENSEMBLE_MODELS rather than re-hardcoding the two
+    model names. Pin that list to exactly the pair _get_consensus_probs
+    actually fetches — if a third model is ever added to ENSEMBLE_MODELS
+    without teaching _get_consensus_probs about it, the gate would start
+    over-blocking on a model the check never compares."""
+    import inspect
+
+    import weather_markets as wm
+
+    assert set(wm.ENSEMBLE_MODELS) == {"icon_seamless", "gfs_seamless"}
+    src = inspect.getsource(wm._get_consensus_probs)
+    for name in wm.ENSEMBLE_MODELS:
+        assert f'"{name}"' in src
+
+
 def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     """backlog.txt 'TRACK ECMWF FORECAST ACCURACY': analyze_trade must surface
     BOTH real ECMWF products' own means in the result dict, alongside icon/gfs
@@ -7016,6 +7145,324 @@ class TestMetarLockInLowMarketAsymmetry:
         assert details.get("outcome") == "yes"
 
 
+# ── TestMetarLockInHighMarketAsymmetry ───────────────────────────────────────
+# batch-59 item 1 (backlog.txt "weather_markets._metar_lock_in's above/below
+# branch has no monotonic-safety veto for HIGH markets ... the OKC/SATX
+# incident's core shape ... is still fully reachable with entirely
+# legitimate, correctly-dated same-day data").  The exact mirror of
+# TestMetarLockInLowMarketAsymmetry above, for the opposite market direction.
+
+
+class TestMetarLockInHighMarketAsymmetry:
+    """A HIGH market's running daily-max-so-far can only INCREASE as the day
+    progresses — 'max already rose above threshold+margin' is monotone-safe,
+    but 'max has stayed below threshold-margin' is not (the day's true peak
+    typically lands 15:00-17:00 local, after the 14:00 lock-in gate). Only
+    the unsafe direction should be rejected."""
+
+    def _call(
+        self, max_temp_f, threshold, cond_type, local_hour=16, daily_extreme=None
+    ):
+        """`daily_extreme` defaults to max_temp_f (both sources agree). Pass it
+        explicitly to make fetch_metar's instantaneous reading and
+        fetch_metar_daily_extreme's running extreme DISAGREE, which is what
+        pins the veto to the combined `_comp_temp` rather than to either
+        source alone (opus review finding L6)."""
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+        from zoneinfo import ZoneInfo
+
+        import metar as _metar
+        import weather_markets as wm
+
+        # Same city-local ("America/New_York" for NYC) clock the LOW-market
+        # class above matches -- see its comment for why UTC would flip this
+        # false for part of every day.
+        today = datetime.now(ZoneInfo("America/New_York")).date()
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=local_hour)
+        fake_obs_local.date.return_value = today
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with (
+                patch.object(
+                    _metar,
+                    "fetch_metar",
+                    return_value={
+                        "current_temp_f": max_temp_f,
+                        "obs_time": fake_obs_time,
+                    },
+                ),
+                # ticker is always a KXHIGH* ticker here, so _metar_lock_in
+                # only ever requests the "max" extreme.
+                patch.object(
+                    _metar,
+                    "fetch_metar_daily_extreme",
+                    return_value=(
+                        max_temp_f if daily_extreme is None else daily_extreme
+                    ),
+                ),
+            ):
+                return wm._metar_lock_in(
+                    city="NYC",
+                    target_date=today,
+                    condition={"type": cond_type, "threshold": threshold},
+                    ticker="KXHIGHNY-26JUL10-T91",
+                )
+
+    def test_high_market_above_still_below_margin_is_not_locked(self):
+        """'high above 91', running max=86 (<= 91-3 margin): NOT monotone-safe
+        — the max can still climb past 91 later this afternoon. Must reject."""
+        locked, _prob, _details = self._call(
+            max_temp_f=86.0, threshold=91.0, cond_type="above"
+        )
+        assert locked is False
+
+    def test_high_market_above_already_above_margin_is_locked(self):
+        """'high above 91', running max=95 (>= 91+3 margin): monotone-safe —
+        the max can only stay at or above 95. Safe to lock YES."""
+        locked, _prob, details = self._call(
+            max_temp_f=95.0, threshold=91.0, cond_type="above"
+        )
+        assert locked is True
+        assert details.get("outcome") == "yes"
+
+    def test_high_market_below_still_below_margin_is_not_locked(self):
+        """'high below 60', running max=55 (<= 60-3 margin): NOT monotone-safe
+        for the YES outcome — the max could still rise past 60. Reject.
+
+        Positive control (opus review finding L7): nothing else in this class
+        proves a direction="below" YES lock is reachable through this harness
+        at all, so assert directly that check_metar_lockout does produce one
+        for these inputs before asserting its absence downstream."""
+        from unittest.mock import MagicMock
+
+        import metar as _metar
+
+        fake_obs_time = MagicMock()
+        fake_obs_time.astimezone.return_value = MagicMock(hour=16)
+        raw = _metar.check_metar_lockout(
+            current_temp_f=55.0,
+            threshold_f=60.0,
+            direction="below",
+            obs_time=fake_obs_time,
+            city_tz="America/New_York",
+        )
+        assert raw["locked"] is True and raw["outcome"] == "yes", (
+            "positive control: the below/YES lock must be reachable"
+        )
+
+        locked, _prob, details = self._call(
+            max_temp_f=55.0, threshold=60.0, cond_type="below"
+        )
+        assert locked is False
+        assert "HIGH market" in details.get("reason", "")
+
+    def test_high_market_below_already_above_margin_is_locked(self):
+        """'high below 60', running max=65 (>= 60+3 margin): monotone-safe —
+        the max already passed 60 and can only stay there or go higher."""
+        locked, _prob, details = self._call(
+            max_temp_f=65.0, threshold=60.0, cond_type="below"
+        )
+        assert locked is True
+        assert details.get("outcome") == "no"
+
+    def test_high_market_veto_boundary_is_inclusive_at_threshold_plus_margin(self):
+        """Exactly threshold+margin (91+3 = 94.0) is the monotone-safe edge
+        check_metar_lockout itself locks on, so the veto must NOT fire there.
+
+        The 93.9 half is deliberately asserted on the REASON, not just on
+        `locked` (opus review finding M2): the open interval
+        (threshold-margin, threshold+margin) is one check_metar_lockout never
+        locks in at all, so the veto block never even executes at 93.9 —
+        an earlier version of this test claimed 93.9 was "inside the unsafe
+        zone and must [veto]", which is wrong and taught a wrong mental model
+        of where the veto's live region actually is. Asserting the reason
+        pins which code path produced the not-locked verdict."""
+        locked_at_edge, _p1, _d1 = self._call(
+            max_temp_f=94.0, threshold=91.0, cond_type="above"
+        )
+        assert locked_at_edge is True
+
+        locked_below_edge, _p2, d2 = self._call(
+            max_temp_f=93.9, threshold=91.0, cond_type="above"
+        )
+        assert locked_below_edge is False
+        assert "HIGH market" not in d2.get("reason", ""), (
+            "93.9 is inside check_metar_lockout's own no-lock band — the "
+            "not-locked verdict must come from there, not from the veto"
+        )
+        assert "within margin" in d2.get("reason", "")
+
+    def test_high_market_veto_fires_at_exactly_threshold_minus_margin(self):
+        """The tightest unsafe case: threshold-margin exactly (91-3 = 88.0) is
+        the precise point check_metar_lockout starts returning a NO lock, so
+        the veto must already be firing there.
+
+        Mutation-found (batch-59): writing the veto as
+        `_comp_temp < threshold - margin` instead of `+ margin` is
+        indistinguishable from the correct form on every other locked input —
+        88.0 is the single value that separates them, so it needs its own
+        case. Positive control below proves the lock is reachable here."""
+        from unittest.mock import MagicMock
+
+        import metar as _metar
+
+        fake_obs_time = MagicMock()
+        fake_obs_time.astimezone.return_value = MagicMock(hour=16)
+        raw = _metar.check_metar_lockout(
+            current_temp_f=88.0,
+            threshold_f=91.0,
+            direction="above",
+            obs_time=fake_obs_time,
+            city_tz="America/New_York",
+        )
+        assert raw["locked"] is True, "positive control: lock must be reachable"
+
+        locked, _prob, details = self._call(
+            max_temp_f=88.0, threshold=91.0, cond_type="above"
+        )
+        assert locked is False
+        assert "HIGH market" in details.get("reason", "")
+
+    def test_okc_satx_incident_shape_at_1400_is_rejected(self):
+        """The incident's own shape, verbatim from the backlog entry: NYC
+        KXHIGHNY-...-T91, direction="above", threshold=91.0, 14:05 local,
+        real same-day running max = 86.0 with correctly-dated data.
+
+        Positive control (this test asserts an absence, so it must prove the
+        lock was genuinely reachable): check_metar_lockout — the function
+        _metar_lock_in delegates the decision to — DOES return locked=True
+        for these exact inputs, so the rejection below comes from the new
+        veto and not from the candidate never getting that far."""
+        from unittest.mock import MagicMock
+
+        import metar as _metar
+
+        # ── positive control ────────────────────────────────────────────
+        fake_obs_time = MagicMock()
+        fake_obs_time.astimezone.return_value = MagicMock(hour=14)
+        raw = _metar.check_metar_lockout(
+            current_temp_f=86.0,
+            threshold_f=91.0,
+            direction="above",
+            obs_time=fake_obs_time,
+            city_tz="America/New_York",
+        )
+        assert raw["locked"] is True, "positive control: lock must be reachable"
+        assert raw["outcome"] == "no"
+
+        # ── the veto ────────────────────────────────────────────────────
+        locked, prob, details = self._call(
+            max_temp_f=86.0, threshold=91.0, cond_type="above", local_hour=14
+        )
+        assert locked is False
+        assert prob == 0.0
+        assert details.get("outcome") is None
+        assert "HIGH market" in details.get("reason", "")
+
+    @pytest.mark.parametrize("local_hour", [14, 15, 17, 19, 20, 21, 22, 23])
+    def test_veto_has_no_late_hour_escape(self, local_hour):
+        """There is deliberately NO hour-of-day escape on the HIGH side: the
+        veto fires at every hour check_metar_lockout will lock at, right up to
+        23:00 local.
+
+        Opus review finding M1: every other test in this class runs at 16:00
+        or 14:00, so a mutant that re-adds an escape (e.g. `if _lh < 20 and
+        _comp_temp < threshold + _margin`) survived the whole class. That is
+        the single property a future maintainer is most likely to "helpfully"
+        relax, and it was the explicit product decision — measured across
+        22,799 real station-days, the running max still rises >= 3F after
+        21:00 local on ~2.8% of days, so lateness never makes this direction
+        safe. See the veto's own comment in weather_markets.py."""
+        locked, _prob, details = self._call(
+            max_temp_f=86.0, threshold=91.0, cond_type="above", local_hour=local_hour
+        )
+        assert locked is False, f"veto must still fire at {local_hour}:00 local"
+        assert "HIGH market" in details.get("reason", "")
+
+    def test_veto_margin_matches_check_metar_lockout_default(self):
+        """The veto hardcodes `_margin = 3.0` and its comment claims that
+        "matches check_metar_lockout's own default". Pin that claim to the
+        real signature default rather than to a second hand-copied literal.
+
+        Opus review finding L5: because the veto only ever runs on values
+        check_metar_lockout already locked, ANY margin in (-3.0, 3.0] is
+        behaviourally identical, so no behavioural test can catch the call
+        site and the veto drifting apart. This checks the invariant directly.
+        """
+        import inspect
+        import re
+
+        import metar as _metar
+
+        default_margin = (
+            inspect.signature(_metar.check_metar_lockout).parameters["margin_f"].default
+        )
+        assert default_margin == 3.0
+
+        src = inspect.getsource(__import__("weather_markets")._metar_lock_in)
+
+        # The call site must not pass an explicit override that would
+        # desynchronise the veto from the lock it is vetoing.
+        assert "margin_f=" not in src, (
+            "_metar_lock_in now passes an explicit margin_f — the veto's "
+            "hardcoded _margin = 3.0 must be updated to match it"
+        )
+
+        # ...and every hardcoded _margin literal in the function must equal
+        # that default. Asserted against the source text because no
+        # behavioural assertion can reach it: the veto only ever runs on
+        # values already outside (threshold-3, threshold+3), so any margin in
+        # (-3.0, 3.0] produces identical results.
+        literals = re.findall(r"^\s*_margin = ([0-9.]+)", src, re.MULTILINE)
+        assert literals, "expected at least one hardcoded _margin in _metar_lock_in"
+        assert all(float(v) == default_margin for v in literals), (
+            f"_margin literals {literals} must all equal check_metar_lockout's "
+            f"own default {default_margin}"
+        )
+
+    def test_veto_uses_the_combined_comp_temp_not_the_instantaneous_reading(self):
+        """The veto must key off `_comp_temp` = max(current_temp_f,
+        daily_extreme), not either source alone.
+
+        Opus review finding L6: every other case in this class feeds both
+        sources the SAME value, so substituting current_temp_f for _comp_temp
+        was behaviourally invisible. Here the running daily extreme (95.0) has
+        already cleared 91+3 while the instantaneous reading (86.0) has cooled
+        back below it — the lock must stand on the extreme."""
+        locked, _prob, details = self._call(
+            max_temp_f=86.0, threshold=91.0, cond_type="above", daily_extreme=95.0
+        )
+        assert locked is True, (
+            "the running max already cleared threshold+margin; a cooled-off "
+            "instantaneous reading must not veto a monotone-safe lock"
+        )
+        assert details.get("outcome") == "yes"
+        assert details.get("comp_temp_f") == 95.0
+
+    def test_low_market_veto_is_untouched_by_the_high_branch(self):
+        """The two vetoes are separate blocks on purpose — adding the HIGH
+        one must not change the LOW one's verdict in either direction.
+
+        Opus review finding L8: an earlier version reused the exact inputs of
+        two existing LOW tests, making it a pure duplicate that killed no
+        mutant they didn't, and covered only cond_type="above". Both LOW
+        directions are exercised here, with the full allow/reject pair for
+        each, so a cross-direction regression has somewhere to show up."""
+        low = TestMetarLockInLowMarketAsymmetry()
+        # "above" direction: reject the non-monotone case, allow the safe one.
+        assert low._call(min_temp_f=45.0, threshold=40.0, cond_type="above")[0] is False
+        assert low._call(min_temp_f=30.0, threshold=40.0, cond_type="above")[0] is True
+        # "below" direction: same asymmetry, opposite outcome labels.
+        below_unsafe = low._call(min_temp_f=65.0, threshold=60.0, cond_type="below")
+        assert below_unsafe[0] is False
+        below_safe = low._call(min_temp_f=50.0, threshold=60.0, cond_type="below")
+        assert below_safe[0] is True
+        assert below_safe[2].get("outcome") == "yes"
+
+
 # ── TestMetarLockInCombinesCurrentWithDailyExtreme ───────────────────────────
 # Backlog.txt "weather_markets._metar_lock_in never combines current_temp_f
 # with the daily-extreme cache" (filed 2026-08-21, round-3 review of AUD-0016):
@@ -7030,8 +7477,10 @@ class TestMetarLockInLowMarketAsymmetry:
 # tests/test_phase2_batch_d.py), this above/below branch does NOT need a
 # separate "gate on the raw extreme, measure clearance on the combined
 # value" split. Not because every branch check_metar_lockout can reach is
-# monotone-safe (a HIGH market's "below"-direction YES is not, and remains a
-# separate, pre-existing, out-of-scope gap) -- rather, combining always
+# monotone-safe (a HIGH market's "below"-direction YES is not -- that one is
+# rejected by the HIGH-side veto added in batch-59, see
+# TestMetarLockInHighMarketAsymmetry above; it was a pre-existing,
+# then-out-of-scope gap when this comment was written) -- rather, combining always
 # moves _comp_temp in the single direction that tightens whichever
 # comparison a given branch performs: it can only make a monotone-safe
 # branch fire at least as readily (a correct tighter bound) and can only

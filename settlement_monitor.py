@@ -24,6 +24,7 @@ from weather_markets import (
     KNOWN_WEATHER_SERIES,
     _load_metar_calibration,
     _parse_city_from_ticker,
+    parse_city_date,
 )
 
 _log = logging.getLogger(__name__)
@@ -475,6 +476,56 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
 
     new_signals = []
     for market in active_tickers:
+        # batch-59 item 2 (backlog.txt "check_city_settlement never checks
+        # the market's own event date"): the guard above only proves THIS
+        # OBSERVATION is from today -- it says nothing about whether THIS
+        # MARKET is a today-settling market. run_settlement_monitor's own
+        # active_tickers build filters solely on status == "open", so a
+        # market whose event date is tomorrow (or any other day) reaches
+        # this loop and would be settled against today's temperature.
+        #
+        # Reuses weather_markets.parse_city_date rather than adding a
+        # second date parser -- note it deliberately early-returns
+        # (None, None) for the hurricane-next-event series, which this
+        # guard preserves as a skip (correct: a hurricane market has no
+        # business being settled from a city METAR reading). A None date
+        # from any other cause -- a ticker with no day-level date token, a
+        # renamed series -- fails closed here for the same reason every
+        # other unresolvable input in this function does.
+        #
+        # Compared against _obs_local_date (the observation's OWN city-local
+        # calendar date) rather than _local_today, per this item's own
+        # framing; the two are already provably equal at this point thanks
+        # to the guard above, so this is a naming choice, not a behavior
+        # difference.
+        _mkt_date = parse_city_date({"ticker": market.get("ticker", "")})[1]
+        if _mkt_date != _obs_local_date:
+            # Level split (opus review finding, LOW-MEDIUM 6): a non-today
+            # market in an open-status list is the ROUTINE case, not an
+            # anomaly -- the loop polls every 300s for 120 minutes and 8 of
+            # the 20 monitored cities share America/Chicago, so they all sit
+            # inside the 17:00-19:00 gate at once. At INFO (this module's
+            # console handler level, see AUD-0047) that would spam the
+            # operator console once per open non-today strike per city per
+            # cycle. An UNPARSEABLE date is the genuinely anomalous case --
+            # a renamed series or a ticker shape this guard can't read -- so
+            # that one keeps INFO.
+            if _mkt_date is None:
+                _log.info(
+                    "check_city_settlement: %s has no parseable event date "
+                    "-- cannot confirm it settles today, skipping",
+                    market.get("ticker", "?"),
+                )
+            else:
+                _log.debug(
+                    "check_city_settlement: %s event date %s != observation's "
+                    "local date %s -- not a today-settling market, skipping",
+                    market.get("ticker", "?"),
+                    _mkt_date,
+                    _obs_local_date,
+                )
+            continue
+
         direction = market.get("direction", "above")
 
         if direction == "between":

@@ -4870,7 +4870,7 @@ When to revisit:
     CONFIRMS ROLLOVER)" -- see that entry for the full research trail and
     when-to-revisit trigger.
 
-[OPEN 2026-08-07 -- new, split out of "HURRICANE MARKETS -- TIME-TO-NEXT-EVENT MODEL SHIPPED SHADOW-ONLY" above per its own "user's explicit decision: defer as its own follow-up entry" note] HURRICANE NEXT-EVENT MODEL'S OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED, NOT ISSUANCE-SCOPED (KALSHI CONFIRMS ROLLOVER)
+[RESOLVED (partial) 2026-08-25 -- batch-59 item 3; originally OPEN 2026-08-07 -- new, split out of "HURRICANE MARKETS -- TIME-TO-NEXT-EVENT MODEL SHIPPED SHADOW-ONLY" above per its own "user's explicit decision: defer as its own follow-up entry" note] HURRICANE NEXT-EVENT MODEL'S OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED, NOT ISSUANCE-SCOPED (KALSHI CONFIRMS ROLLOVER)
 Priority: Low -- shadow-only, zero live-money risk regardless (see below);
   only affects the accuracy of a shadow-logged signal, not any real order.
 
@@ -4953,6 +4953,89 @@ When to revisit:
     KXHURRICANENAMES markets' own settlement timestamps rather than just
     their yes/no result), then key occurred_this_season off "any qualifying
     storm since this event's own open_time" instead of season-wide count.
+
+Resolution (2026-08-25 -- batch-59 item 3):
+  PARTIALLY SHIPPED -- the mispricing is removed, but the positive signal this
+  entry asked for still does not exist, and deliberately was not faked.
+
+  What shipped:
+  1. refresh_hurricane_count_to_date now also writes `last_yes_close_time`
+     per basin (the latest close_time among "yes"-settled KXHURRICANENAMES
+     markets, parsed to a real datetime and normalized to UTC before max()).
+     Backward compatible: a cache without the key reads as None = unknown.
+  2. New reader _get_cached_last_hurricane_event_time, delegating the
+     staleness / season_year / corruption guards to the shared
+     _get_cached_hurricane_names_entry like the count and storms-named
+     readers do.
+  3. _analyze_hurricane_next_event_trade no longer treats a season-wide
+     count >= 1 as "already happened". count == 0 still means False ->
+     conditional mode, unchanged. ANY count >= 1 now returns None -- no
+     signal, no shadow row -- the same path already taken when HURDAT2 is
+     unavailable.
+
+  Why no-signal rather than the issuance comparison this entry proposed.
+  This entry's own "if ever prioritized" note called for "WHEN each settled
+  storm actually crossed hurricane strength (a date)". The available
+  timestamp is a SETTLEMENT time, not a formation time, and an opus review
+  proved the substitution does not hold. Both halves independently
+  re-verified against live data before acting on the review:
+    * Direction: settlement lags formation by days-to-weeks and runs in
+      batches. Live-verified 2026-08-24/25 -- the three settled ATL name
+      markets share close_time 2026-08-21T15:40:37Z (one batch run) while the
+      whole open KXNEXTHURDATE ladder shares open_time 2026-08-06T14:00:00Z.
+      Settlement landed FIFTEEN DAYS AFTER issuance. So
+      `last_yes_close_time >= open_time` does NOT establish "formed after
+      issuance" -- and that is the aggressive direction (0.99). The reverse
+      inference IS sound: close_time < open_time proves the storm predates
+      issuance. A sound negative, an unsound positive.
+    * The climatology fallback was not a fail-safe. Measured directly against
+      the repo's real HURDAT2 data: unconditional next_event_outcomes answers
+      "did the season's FIRST hurricane occur on or before target", which for
+      any late-season strike is ~always true -- 30/30 for targets Sep 15,
+      Oct 1 and Dec 1, giving probability 0.99 with a ZERO-width bootstrap
+      CI. That is the same 0.99 the confirmed branch emits, with a TIGHTER
+      CI, so it produced a ~3% LARGER Kelly stake than the bug it replaced.
+      Six of the seven open KXNEXTHURDATE markets are Sep 15 or later, so
+      this was the live case, not an edge case. Pinned by a regression test
+      against real HURDAT2 so nobody reinstates it believing it conservative.
+
+  Consequence, stated plainly: the `occurred_this_season is True` branch
+  (method "hurricane_next_event_confirmed", prob 0.99) is now UNREACHABLE.
+  It is kept, with a comment saying so, as the landing spot for the day a
+  real formation-date signal exists -- not left as silent dead code.
+
+  Still open, and why this is PARTIALLY rather than fully resolved: building
+  the per-storm formation-date signal. `last_yes_close_time` is groundwork
+  toward it (it already supports the sound negative). That remaining work is
+  filed as its own OPEN entry -- "BUILD A PER-STORM HURRICANE FORMATION-DATE
+  SIGNAL SO THE NEXT-EVENT MODEL CAN CONFIRM A STORM FELL INSIDE A MARKET'S
+  OWN WINDOW" -- specifically so it stays visible in BACKLOG_OPEN.md instead
+  of disappearing behind this entry's RESOLVED bracket (backlog_index.py
+  excludes on the bracket's literal first word, and "RESOLVED (partial)"
+  matches). Live impact of the change today is ~zero: the traded next-event
+  basin is ATL and its count is 0, so it takes the count == 0 -> conditional
+  path either way; EPAC (2) and CPAC (1) are not traded by this family.
+
+  Mutation-tested: revert to season-scoped True -> 5 tests fail; fall through
+  to climatology instead of returning None -> 5 fail; `< 1` -> `< 2` on the
+  count boundary -> 1 fails (count == 1 is a live CPAC value and was
+  previously untested); market-side tzinfo normalization removed -> raises
+  the exact TypeError predicted; writer-side normalization removed -> the
+  cache file is not written AT ALL (the function-level except swallows the
+  mixed-tz max() TypeError and skips atomic_write_json, losing the count
+  refresh for every basin with only a DEBUG trace).
+
+  Opus review findings addressed: HIGH 1 (the fix did not change the outcome
+  -- redesigned, above), MEDIUM-HIGH 2 (residual inherited-storm window --
+  removed by not taking the positive at all), M5 (count == 1 untested), LM7
+  (market-side tz normalization untested), LM8 (writer lacked the reader's
+  naive/aware guard). Informational 11: on first deploy, basins with count >=
+  1 read as unanchorable until cron's next refresh writes the new field --
+  now moot, since count >= 1 yields no signal regardless.
+
+  Tests: 625 passed across the scoped suite; ruff + ruff-format + mypy clean
+  via the real pre-commit hook.
+
 
 [RESOLVED 2026-08-08] hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC -- THE ONLY RAW-TEXT CACHE IN THIS CODEBASE THAT SKIPS safe_io
 Priority: Low -- currently low-probability (needs two processes racing to
@@ -24942,7 +25025,7 @@ UPDATE 2026-08-20 (2nd independent opus review, effort=high, reviewing the
   the first place. Flagged explicitly to the user rather than silently
   decided.
 
-[OPEN 2026-08-20 -- filed as a review-caught follow-up (MEDIUM-9) rather
+[RESOLVED 2026-08-25 -- batch-59 item 4; originally OPEN 2026-08-20 -- filed as a review-caught follow-up (MEDIUM-9) rather
   than expanded into the quarantine change above; genuinely separate
   consumer/file, not this change's own file-line citations.]
   ANALYZE_TRADE'S model_consensus CHECK (AND ORDER_EXECUTOR'S KELLY-HALVING)
@@ -24977,6 +25060,67 @@ Recommendation: decide explicitly (AskUserQuestion -- this is a judgment
   corrected docstring. Needs its own scoped change to order_executor.py/
   weather_markets.py's analyze_trade, not a stretch of the quarantine
   module itself.
+
+Resolution (2026-08-25 -- batch-59 item 4):
+  SHIPPED, option (a) from this entry's own Recommendation, chosen by the
+  user via AskUserQuestion exactly as the entry asked for.
+
+  analyze_trade's model_consensus check now skips the icon-vs-gfs divergence
+  comparison entirely when either member of that pair is quarantined, leaving
+  model_consensus at its True default -- identical to what the branch already
+  does when either probability comes back None. Membership is
+  `get_quarantined_members() & set(ENSEMBLE_MODELS)`, reusing the same
+  quarantine source of truth blend_models uses rather than a third hand-copied
+  pair of model-name literals; ENSEMBLE_MODELS is exactly the pair
+  _get_consensus_probs fetches, pinned by its own test.
+
+  Option (b) (substitute a non-quarantined peer) was rejected for the reason
+  the code already documents: _get_consensus_probs deliberately does not
+  return ecmwf_aifs025_ensemble's probability, its Gaussian/vote-fraction
+  methodology differs, and picking a 3-way divergence threshold is its own
+  unscoped backlog item. There is no second surviving comparator, so
+  excluding one member leaves nothing to compare -- the check cannot be
+  "kept," only skipped.
+
+  Exposure trade-off, recorded explicitly because this is the one item in
+  batch-59 that INCREASES position size: during a quarantine window
+  consensus_mult goes 0.5 -> 1.0, doubling the stake relative to prior
+  behaviour, in the regime where the blend is thinnest. An opus reviewer
+  argued for the opposite (leave model_consensus=False, the conservative
+  direction this repo picks elsewhere) on the grounds that a wide icon-gfs
+  spread is a forecast-uncertainty proxy independent of which model is more
+  accurate. That counter-argument was put to the user as a third option and
+  fail-open was reaffirmed: a quarantined model is one the blend has already
+  stopped trusting, so shrinking positions on its disagreement is penalising
+  noise -- which is precisely what this entry was filed to stop. Currently
+  inert: all three candidates are quarantined=false in
+  data/member_quarantine.json.
+
+  Interaction with the adjacent open entry (EMOS/anomaly/bimodal guards fit
+  on the unfiltered 3-model blend) checked as the batch required: this change
+  does not make it worse -- it touches neither the blend nor its spread -- but
+  it does make the pipeline asymmetric during a quarantine window, removing
+  the bad model where it made the system more cautious while leaving it where
+  it contaminates calibration. Noted on that entry too so the two get
+  sequenced together.
+
+  Also flagged by review, filed rather than fixed: model_consensus now
+  conflates "the models agreed" with "we did not check", and that value is
+  persisted to predictions.model_consensus and fed to main.py's
+  model_agreement feature, so quarantine-window rows are unmarked. A third
+  state cannot simply be written -- order_executor.py's
+  `0.5 if not a.get("model_consensus", True) else 1.0` treats None as falsy
+  and would apply the halving it was just decided not to apply -- so it needs
+  its own consumer change. See the new entry "MODEL_CONSENSUS CONFLATES
+  'AGREED' WITH 'NOT CHECKED'".
+
+  Mutation-tested: quarantine exclusion disabled -> 2 tests fail; the
+  `& set(ENSEMBLE_MODELS)` pair filter removed (so quarantining the non-pair
+  ecmwf member also suppresses the check) -> 1 fails.
+
+  Tests: 625 passed across the scoped suite; ruff + ruff-format + mypy clean
+  via the real pre-commit hook.
+
 
 [OPEN 2026-08-20 -- filed as a review-caught follow-up (2nd review's
   MEDIUM-4) rather than blocked on; latent/not-live today, so not a
@@ -25013,6 +25157,27 @@ Recommendation: before (or as part of) ever activating EMOS, check whether
 
 [RESOLVED 2026-08-24 -- batch-57 item 1; see Resolution below. Originally
   filed 2026-08-20 as an adjacency finding during batch-06 (item 3, "SEVERAL
+
+Update 2026-08-25 (batch-59 item 4, cross-reference -- entry stays OPEN):
+  The sibling entry "ANALYZE_TRADE'S model_consensus CHECK ... DOESN'T
+  EXCLUDE A QUARANTINED ENSEMBLE MEMBER" is now RESOLVED -- model_consensus
+  skips the icon-vs-gfs comparison entirely when either member is
+  quarantined. That change does NOT touch the blend or its spread, so it
+  does not make this entry's problem worse directly. But it does make the
+  pipeline ASYMMETRIC during a quarantine window, which is worth knowing
+  before this entry is picked up (opus review of batch-59 raised it): the
+  quarantined member is now removed from the one place it made the system
+  more CAUTIOUS (the consensus penalty that halved Kelly), while it is still
+  present in the places that contaminate CALIBRATION (the EMOS variance fit,
+  is_forecast_anomalous's threshold, the bimodal guard -- all fit on the
+  unfiltered 3-model spread this entry describes). Net effect during a
+  quarantine window is therefore larger positions AND uncalibrated spread
+  guards at the same time. Sequence the two together: whoever resolves this
+  entry should re-check batch-59 item 4's fail-open decision against whatever
+  the spread-calibration fix turns out to be, rather than treating them as
+  independent.
+
+[OPEN 2026-08-20 -- adjacency finding during batch-06 (item 3, "SEVERAL
   BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER"): a genuinely
   separate consumer (web_app.py dashboard display only), not a duplicate of
   the tuple that fix unified -- filed as its own entry per workflow step 27
@@ -27260,7 +27425,7 @@ Resolution 2026-08-23 (batch-25 item 4):
   3 rounds of independent opus review (effort=high) before push given this protects the live-order ledger and the emergency kill-switch path -- round 1 (2 HIGH + 6 MEDIUM), round 2 reviewing round 1's fixes (0 HIGH + 4 MEDIUM + 8 LOW, all in what round 1's fixes themselves introduced), round 3 focused on round 2's fixes (0 HIGH + 1 MEDIUM + 6 LOW). Every fix mutation-tested individually (reverted via Edit, confirmed the specific new test fails, restored) rather than trusted from the review's own writeup. Full scoped suite (218 tests across the touched files) passes; ruff+ruff-format+mypy clean via the actual pre-commit hook.
 
 
-[OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
+[RESOLVED 2026-08-25 -- batch-59 item 1; originally OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
 session's own above/below date-guard fix, while checking whether the new
 `_daily_ext is None` refusal was the safer choice or a hidden regression;
 pre-existing, not introduced by that fix] weather_markets._metar_lock_in's
@@ -27340,7 +27505,115 @@ Update 2026-08-24 (batch-40 "Between-bracket calibration design", M-14 /
   entry's own HIGH-market above/below gap is unaffected by that gate and
   remains open.)
 
-[OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
+Resolution (2026-08-25 -- batch-59 item 1):
+  SHIPPED. weather_markets._metar_lock_in's above/below branch now carries a
+  HIGH-market monotonic-safety veto, the exact mirror of the pre-existing
+  `_is_low_mkt` one, as its own `elif not _is_low_mkt and _lockout.get(
+  "locked"):` block (deliberately NOT merged into one shared comparison --
+  afternoon-max and overnight-min have different diurnal timing, so a future
+  direction-specific rule must be able to land on one without silently
+  changing the other).
+
+  Predicate: reject when `_comp_temp < threshold + margin`. Verified against
+  check_metar_lockout's real branch logic for all four HIGH-market
+  (direction x outcome) combinations -- `above`/YES and `below`/NO fire only
+  at `comp >= T+3` (monotone-safe, allowed); `above`/NO and `below`/YES fire
+  only at `comp <= T-3` (not safe, vetoed). Boundaries confirmed live:
+  comp == T+3.0 locks, comp == T-3.0 is vetoed.
+
+  NO hour-of-day escape, on either side. This was the batch file's one open
+  design question ("verify the hour-of-day boundary you pick against real
+  settled data, not intuition") and the answer turned out to be that no
+  defensible boundary exists. Method, so it is reproducible rather than
+  asserted -- the numbers below appear nowhere else in the repo, which an
+  opus reviewer correctly flagged (L9):
+    * Source: Iowa State Mesonet ASOS archive (hourly METAR, city-local tz)
+      for all 21 traded stations, 2023-09-01..2026-08-25 -> 22,799
+      station-days with >=20 observations.
+    * Metric: P(the running daily extreme at local hour H still moves by
+      >= 3.0F -- the lock's own margin -- before the day ends). That is
+      exactly the error probability of a monotone-safety-violating lock at
+      hour H.
+    * Refinement: the running extreme is taken from HOURLY METAR (what
+      metar._fetch_daily_temps_f actually returns) while the day's TRUE
+      extreme is taken from 5-minute-sampled 1-minute ASOS (IEM asos1min),
+      a far closer proxy for the official climate report Kalshi settles
+      against. Measured on a 4-station high-risk subset (BOS/MSP/OKC/SAT,
+      908 station-days, Sep 2025-Aug 2026); fine-vs-hourly max uplift is
+      mean +0.77F, median +1.0F, p90 +2.0F.
+    * HIGH (running max), hourly-truth over all 21 stations: 6.8% at 14:00,
+      1.8% at 15:00, 0.8% at 16:00, 0.4% at 18:00, 0.1% at 20:00.
+    * HIGH, fine-truth on the high-risk subset: 26.9% at 14:00, 8.9% at
+      15:00, 4.4% at 16:00, 3.1% at 18:00, and a FLOOR of ~2.8% that never
+      clears even at 21:00 -- because the hourly running max never quite
+      catches the continuous max. Per-station at 14:00: SAT 39.0%, MSP
+      31.2%, OKC 22.6%, BOS 15.4%. The two worst are the incident's own
+      cities.
+    * LOW (running min), fine-truth: 12.8% at 14:00 and still 9.7% at 20:00
+      / 7.3% at 21:00 -- it never becomes safe before local midnight, which
+      independently vindicates the existing LOW veto having no hour escape
+      either.
+  So the two directions genuinely differ in shape (HIGH has a knee at ~16:00
+  then a floor; LOW has no knee at all), exactly as the batch file warned --
+  but an hour cutoff would not remove the harm it appears to remove, because
+  the residual never reaches zero and the lock's stated probability stays far
+  from the true one at every hour. Consistent with the batch-40 decision
+  ("what would give us the best chance of making money") not to add bespoke
+  later cutoffs. A vetoed market is NOT a skipped market: it falls through to
+  the normal, calibrated ensemble path.
+
+  Mutation-tested via genuine Edit-revert-run-restore cycles on the real
+  source (not a string-replace script, and not a reimplementation stand-in):
+  veto disabled -> 3 tests fail; `+ _margin` -> `- _margin` -> caught only
+  after adding test_high_market_veto_fires_at_exactly_threshold_minus_margin
+  (the two predicates are behaviourally IDENTICAL on every input
+  check_metar_lockout admits except exactly T-margin, because the upstream
+  gate carves the interior band out of the input space -- the first-pass
+  suite missed it); hour escape re-added -> 4 tests fail; `_comp_temp` ->
+  `current_temp_f` -> 1 fails; `_margin` 3.0 -> 2.0 -> 1 fails.
+
+  Opus review (effort=high, dedicated pass for this item alone per the batch
+  file's instruction): 0 HIGH, 3 MEDIUM, 7 LOW, 4 informational -- all
+  addressed. M1 no test pinned the "no hour escape" property (added, 8-hour
+  parametrization); M2 the 93.9 boundary assertion was vacuous and its
+  docstring factually wrong -- 93.9 sits inside check_metar_lockout's own
+  no-lock band, so the veto never executes there (now asserts on the reason
+  string, docstring corrected); M3 a ruff F401 (already auto-fixed by the
+  pre-commit hook); L4 stale mirrored comment in the test file still calling
+  this an out-of-scope gap (updated); L5 `_margin` was unpinnable
+  behaviourally -- any value in (-3.0, 3.0] is identical -- so added a
+  source-level invariant test against check_metar_lockout's signature
+  default; L6 the veto's use of the combined `_comp_temp` was only half
+  pinned (added a case where the instantaneous reading and the daily extreme
+  disagree); L7 an absence assertion with no positive control (added); L8 the
+  LOW-untouched test was a pure duplicate covering only one direction (now
+  both); L9 the empirical study had no artifact in the repo (this note);
+  I2 the reason strings used "F" where the rest of the module uses "degF"
+  (fixed in both vetoes). The reviewer independently enumerated all 120
+  series names and confirmed KXHOLIDAYTMIN is the ONLY other family whose
+  ticker yields no HIGH/LOW token -- filed separately, see the new entry
+  "_var_from_ticker_prefix RETURNS None FOR KXHOLIDAYTMIN".
+
+  Also found while tracing this item, filed as its own new entry rather than
+  stretched into this change (workflow step 27 -- separate consumer, separate
+  design decision, and it affects the monotone-SAFE locks this veto does not
+  touch): on the METAR-locked path the market-divergence gate is skipped and
+  recommended_side is still just `blended_prob > market_prob`, so a lock can
+  produce a trade on the side it just ruled out. See the new entry
+  "METAR-LOCKED PATH'S RECOMMENDED SIDE CAN CONTRADICT THE LOCK'S OWN
+  OUTCOME".
+
+  Tests: 625 passed across the scoped suite (tests/test_weather_markets.py,
+  tests/test_settlement_monitor.py, tests/test_hurricane_markets.py,
+  tests/test_hurricane_gating.py), plus 644 across the 20-file caller sweep.
+  Two pre-existing failures in test_weather_markets.py
+  (test_analyze_trade_captures_hrrr_forecast_mean_same_day,
+  test_analyze_trade_survives_hrrr_fetch_exception) reproduce identically on
+  a pristine origin/master checkout and are unrelated -- filed as their own
+  new entry. ruff + ruff-format + mypy clean via the real pre-commit hook.
+
+
+[RESOLVED 2026-08-25 -- batch-59 item 2; originally OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
 session's own settlement_monitor.py date-guard fix, while checking whether
 hoisting one guard per check_city_settlement call (rather than per-market)
 was correct; pre-existing, not introduced by that fix] settlement_monitor.
@@ -27393,6 +27666,55 @@ Problem:
   downgraded/closed rather than fixed.
   Full record: none (not from the original max-depth audit -- surfaced by
   independent opus review of this session's own fix).
+
+Resolution (2026-08-25 -- batch-59 item 2):
+  SHIPPED. The entry's own open question ("verify first, live, whether the
+  caller already filters by date upstream") resolves to NO:
+  run_settlement_monitor's active_tickers build filters solely on
+  `status == "open"`, and kalshi_client.get_markets applies no server-side
+  date filter. So a market whose event date is not today did reach the
+  per-market loop and would have been settled against today's observation.
+
+  check_city_settlement now parses each market's own ticker date via
+  weather_markets.parse_city_date and skips any market whose date != the
+  observation's city-local date. Placed at the TOP of the per-market loop so
+  it covers both the between and T-ticker paths, per this entry's own
+  recommendation. parse_city_date reused rather than writing a second parser;
+  its deliberate (None, None) early return for the hurricane-next-event
+  series is preserved as a skip, which is the correct outcome. Any other
+  None cause (no day-level date token, renamed series) fails closed.
+
+  Verified by exercising parse_city_date against every ticker shape this
+  path can see: B-tickers, T-tickers, decimal strikes, single-digit strikes,
+  leading-zero days, month rollover, and the hourly form -- no mis-parse.
+
+  Test-vacuity trap caught and fixed while doing this: every pre-existing
+  fixture in tests/test_settlement_monitor.py used a FROZEN literal date
+  ("KXHIGHNY-26MAY17-T72") while feeding a today-dated observation, so the
+  new guard would have silently turned all 15 of that file's
+  check_city_settlement cases -- including several `assert signals == []` --
+  into vacuous passes. All now build their ticker via a `_today_ticker`
+  helper. The pre-existing obs-date-guard tests still genuinely exercise the
+  obs guard (today's ticker + a prior-day observation), confirmed by review.
+
+  Mutation-tested: guard disabled -> 4 tests fail; guard moved below the
+  between branch's own `continue` (so B-tickers escape it) -> 1 test fails.
+
+  Opus review (effort=high, shared pass with items 3-4) findings addressed:
+  M4 the between branch had no wrong-date test and the guard-placement
+  mutation survived (added, with a positive control); LM6 the skip was logged
+  at INFO, and with 8 of 20 monitored cities sharing America/Chicago and a
+  24-cycle poll loop that would spam the operator console -- routine
+  wrong-date skips are now DEBUG, while an UNPARSEABLE date (the genuinely
+  anomalous case) keeps INFO, both pinned by tests. Informational 12 notes
+  that this function's `_local_today` UTC fallback is dead code (a tz failing
+  the first ZoneInfo call fails the second and returns early) -- pre-existing,
+  not introduced here, and it is why comparing against _obs_local_date rather
+  than _local_today is a naming choice with no behavioural difference.
+
+  Tests: 625 passed across the scoped suite; ruff + ruff-format + mypy clean
+  via the real pre-commit hook.
+
 
 [RESOLVED 2026-08-22 -- batch-30 item 1] cron.py's cron-lock staleness check relies solely on psutil.pid_exists(pid), with no create_time/cmdline verification -- Windows PID reuse after an unclean shutdown could leave the lock permanently unacquirable
 Priority: HIGH (as a VM-move prerequisite; correction addendum in the original 2026-08-21 finding noted today's fully-manual cron invocation makes this a latent risk, not a live incident, until automation exists)
@@ -31856,3 +32178,194 @@ Why not now: it changes `py main.py walkforward` output, which is a
   Whoever picks it up should decide whether 'between' belongs in a
   per-condition breakdown (probably yes, clearly labelled) rather than
   simply deleting the predicate.
+
+
+[OPEN 2026-08-25 -- adjacency found while tracing batch-59 item 1's HIGH-market
+  veto; filed as its own entry per workflow step 27 rather than stretched into
+  that change, because it affects the monotone-SAFE locks item 1 does not touch
+  and needs its own design decision] METAR-LOCKED PATH'S RECOMMENDED SIDE CAN
+  CONTRADICT THE LOCK'S OWN OUTCOME -- AND THE DIVERGENCE GATE IS SKIPPED THERE
+Priority: HIGH -- live trade-entry path, unblocked by any existing gate, and
+  the arithmetic below was verified rather than reasoned about. Not
+  hypothetical: an opus reviewer independently reproduced the same inversion
+  end-to-end through analyze_trade on the OKC/SATX incident shape.
+Files: weather_markets.py (analyze_trade's `rec_side = "yes" if blended_prob >
+  market_prob else "no"`, and the `if not metar_locked:` guard that skips the
+  market-divergence gate a few lines above it), weather_markets.py
+  (_price_and_size's entry_side_edge), metar.py (_dynamic_lock_in_confidence,
+  the 0.72 floor)
+
+Problem:
+  A METAR lock produces BOTH a categorical verdict (outcome "yes"/"no") and a
+  probability, and nothing enforces agreement between them. The probability is
+  _dynamic_lock_in_confidence's output, floored at 0.72 and capped at 0.97,
+  which for a monotone-safe lock badly understates the truth (~99.9%). Because
+  side selection is a bare `blended_prob > market_prob`, that understatement
+  does not merely under-bet -- it flips the side.
+
+  Worked example, monotone-SAFE YES lock (running max already past
+  threshold+margin, so the outcome is structurally settled): blended_prob =
+  0.72 against a market at 0.90 -> rec_side = "no". _price_and_size then
+  computes entry_side_edge = (1 - 0.72) - (1 - 0.90) = +0.18. A positive 18%
+  edge, so nothing downstream blocks it: the bot buys NO at 10c on a market
+  that is essentially certain YES.
+
+  Mirror case, NO lock: blended_prob = 1 - confidence = 0.28 against a market
+  at 0.10 -> rec_side = "yes", entry_side_edge = 0.28 - 0.10 = +0.18 -> buys
+  YES on the outcome the lock just ruled out. batch-59 item 1's veto removes
+  the specific unsafe-direction locks that produced this shape, but the safe
+  direction still produces it.
+
+  Two aggravating factors, both verified:
+  - The market-divergence gate ("if the market is >70% confident and we are
+    <25%, skip rather than bet against a well-informed crowd") is explicitly
+    disabled on this path by `if not metar_locked:` -- so the one guard that
+    would have caught a confident-market disagreement does not run precisely
+    where the disagreement is manufactured.
+  - apply_metar_calibration makes it worse, not better: an opus reviewer
+    measured a NO-lock's raw P(yes)=0.221 being calibrated UP to ~0.536,
+    which sits above a 0.275 market price and inverts the side on its own.
+
+Recommendation: a design decision, not a mechanical fix -- take it to
+  AskUserQuestion. Options: (a) refuse any recommended side that contradicts
+  metar_lockout["outcome"] (cheap, direct, but silently drops trades where the
+  market is genuinely mispriced against a correct lock); (b) recalibrate the
+  confidence floor so a monotone-safe lock reports something near its true
+  ~99% -- batch 37 owns that calibration loop, and note the existing fit was
+  measured on a lock population batch-59's veto partly eliminates, so it needs
+  a refit either way; (c) re-enable the divergence gate on the metar_locked
+  path. (a) and (b) are not mutually exclusive. Whichever is chosen, pair it
+  with a test asserting recommended_side agrees with the lock outcome.
+  Full record: none -- surfaced by batch-59, not by the original audit.
+
+[OPEN 2026-08-25 -- found during batch-59 item 1's review, independently
+  confirmed by an opus reviewer enumerating all 120 series names in the
+  module's KNOWN_* registries] _var_from_ticker_prefix RETURNS None FOR
+  KXHOLIDAYTMIN, SO THE WHOLE DAILY PATH TREATS A DAILY-MINIMUM MARKET AS A
+  DAILY-MAXIMUM ONE
+Priority: MEDIUM -- shadow-only today (holiday temp markets are gated behind
+  _holiday_temp_gates_active(), and there are currently 0 open), so it cannot
+  reach a live order. But it silently poisons the shadow calibration data that
+  would later be used to decide whether to graduate the family.
+Files: weather_markets.py (_var_from_ticker_prefix, _daily_var_from_series,
+  and every daily-path consumer of `var` -- analyze_trade's ensemble branch,
+  its METAR-locked branch, _metar_lock_in's `_is_low_mkt`)
+
+Problem:
+  _var_from_ticker_prefix keys off the substrings "HIGH" and "LOW". The
+  KXHOLIDAYTMAX / KXHOLIDAYTMIN family (batch-51 item 2, routed into the
+  existing daily TMAX/TMIN analysis path) contains NEITHER -- it uses the
+  TMAX/TMIN naming instead. Confirmed live:
+    _var_from_ticker_prefix("KXHOLIDAYTMIN") -> None
+    _daily_var_from_series("KXHOLIDAYTMIN") -> "max"
+  The `or "max"` fallback is right for TMAX and exactly wrong for TMIN, so a
+  daily-MINIMUM market is analysed as a daily-MAXIMUM one end to end: the
+  wrong ensemble variable, and in _metar_lock_in the wrong daily extreme
+  fetched ("max" instead of "min") plus the wrong monotonic-safety veto.
+  Verified via an exhaustive sweep of the 120 registered series that
+  KXHOLIDAYTMAX/TMIN are the only two None-yielding families that reach the
+  above/below branch at all; every other None family (rain, snow, hourly,
+  hurricane) returns from analyze_trade before _metar_lock_in is called.
+
+  Note batch-59 item 1's HIGH veto now also applies to these tickers (None ->
+  not "min" -> treated as HIGH). That is strictly MORE conservative than
+  before, not a new defect -- it can only suppress locks, never manufacture
+  one -- but for a TMIN market it is the wrong veto suppressing some
+  genuinely correct locks, and the reason string will read "HIGH market" for
+  a TMIN ticker.
+
+Recommendation: teach the shared var derivation about the TMAX/TMIN naming
+  (e.g. check for "TMIN"/"TMAX" alongside "LOW"/"HIGH" in
+  _var_from_ticker_prefix) rather than special-casing at each of the ~7
+  consumers -- that consolidation is the whole point of the helper, per its
+  own docstring. Deliberately NOT fixed inside batch-59: different market
+  family, different root cause, and the fix changes behaviour for every
+  daily-path consumer of `var`, not just the veto batch-59 touched. Do NOT
+  "fix" it by making _metar_lock_in fail closed on None -- that would also
+  disable KXHOLIDAYTMAX, for which the current default is correct.
+  Full record: none -- surfaced by batch-59.
+
+[OPEN 2026-08-25 -- found during batch-59's scoped test runs; verified
+  pre-existing by stashing the batch's own diff and re-running against a
+  pristine origin/master checkout, where both failures reproduce identically]
+  TWO HRRR TESTS IN test_weather_markets.py FAIL IN A FULL-FILE RUN BUT PASS
+  IN ISOLATION -- ORDER-DEPENDENT STATE LEAK
+Priority: LOW-MEDIUM -- test-suite integrity, not production behaviour. But it
+  costs every future session real time (this one lost a round trip confirming
+  the failures were not its own), and it means two same-day HRRR capture paths
+  currently have no effective regression protection in the normal full-file
+  run.
+Files: tests/test_weather_markets.py
+  (test_analyze_trade_captures_hrrr_forecast_mean_same_day,
+  test_analyze_trade_survives_hrrr_fetch_exception)
+
+Problem:
+  Both tests pass when run alone (`pytest tests/test_weather_markets.py::
+  test_analyze_trade_captures_hrrr_forecast_mean_same_day` -> 1 passed) and
+  both fail when the whole file runs. Reproduced on pristine origin/master
+  (b67fe864) with batch-59's diff stashed: 2 failed, 344 passed -- identical
+  pair, so it is not caused by anything batch-59 changed. Almost certainly a
+  module-level cache or monkeypatch leak from an earlier test in the file
+  (this module has many: _CONSENSUS_CACHE, the ensemble disk cache, the
+  quarantine state memo, the METAR caches), but the specific leaking test was
+  not isolated -- that bisect is the work this entry is asking for.
+Recommendation: bisect with `pytest tests/test_weather_markets.py -p
+  no:randomly -x` over progressively smaller prefixes to find the polluting
+  test, then fix the leak at its source (an autouse fixture clearing the
+  relevant cache, or the offending test cleaning up after itself) rather than
+  reordering or marking the two HRRR tests. While it is open, treat these two
+  names as known-failing when reading a full-file run of this file.
+  Full record: none -- surfaced by batch-59.
+
+[OPEN 2026-08-25 -- the remaining half of "HURRICANE NEXT-EVENT MODEL'S
+  OCCURRED_THIS_SEASON SIGNAL IS SEASON-SCOPED" (marked RESOLVED (partial) by
+  batch-59 item 3, which removed that entry's mispricing but could not build
+  its positive signal); filed separately so this work stays visible in
+  BACKLOG_OPEN.md rather than disappearing behind a RESOLVED bracket] BUILD A
+  PER-STORM HURRICANE FORMATION-DATE SIGNAL SO THE NEXT-EVENT MODEL CAN
+  CONFIRM A STORM FELL INSIDE A MARKET'S OWN WINDOW
+Priority: LOW today -- the whole hurricane next-event family is shadow-gated
+  (HURRICANE_NEXT_EVENT_TRADING_ENABLED unset, plus a 20-settled-prediction
+  floor) and the traded basin (ATL) has count 0 for the 2026 season. Rises to
+  MEDIUM the moment ATL's count reaches 1, because from then until this is
+  built the family produces NO signal at all for that basin.
+Files: weather_markets.py (refresh_hurricane_count_to_date's cache write,
+  _get_cached_last_hurricane_event_time, _analyze_hurricane_next_event_trade's
+  count >= 1 branch and its currently-unreachable `occurred_this_season is
+  True` block)
+
+Problem:
+  batch-59 item 3 established, with live data, that the only per-event timing
+  currently obtainable is a SETTLEMENT timestamp (a settled KXHURRICANENAMES
+  market's close_time). That supports exactly one sound inference --
+  close_time < open_time proves the storm predates the market's issuance --
+  and cannot support the opposite one, because settlement lags formation by
+  days-to-weeks and runs in batches (live-verified: the three settled ATL name
+  markets share close_time 2026-08-21T15:40:37Z while the open KXNEXTHURDATE
+  ladder opened 2026-08-06T14:00:00Z, i.e. settlement landed 15 days AFTER
+  issuance).
+
+  Because the aggressive direction (prob 0.99) cannot be justified on that
+  evidence, the analyzer now returns None for any count >= 1, and the
+  `occurred_this_season is True` branch is unreachable. That is correct but
+  lossy: a genuine post-issuance storm -- the case where the market really IS
+  a near-certain YES -- is no longer recognised either.
+
+  Note this is the same requirement the original entry named up front ("WHEN
+  each settled KXHURRICANENAMES storm actually crossed hurricane strength (a
+  date), not just a cumulative season count"). batch-59 tried the settlement
+  timestamp as a cheaper proxy; an opus review proved it does not substitute.
+Recommendation: source a real formation/classification date per storm. Options
+  worth checking in order: (a) NHC's own public advisory archive or the
+  in-season best-track feed -- HURDAT2 itself only carries finalized PAST
+  seasons, which is exactly why the Kalshi-derived cache exists; (b) a Kalshi
+  field on the settled name market that carries the event date rather than the
+  settlement batch time (check `settlement_timestamp`/`expiration_time` and
+  the market's rules text -- not verified during batch-59); (c) failing both,
+  accept the loss and close this entry as won't-fix, since the family is
+  shadow-only. Whichever is chosen, `last_yes_close_time` is already in the
+  cache and already gives the sound negative -- extend that schema rather than
+  adding a second parallel cache. Re-enable the `occurred_this_season is True`
+  branch (it is intact and commented as this work's landing spot) rather than
+  rewriting the pricing path.
+  Full record: none -- split out of batch-59 item 3.

@@ -3707,11 +3707,13 @@ def _weights_from_mae(
 # from the candidate list feeding the blend loop entirely -- that is what
 # this module does. Note the scope: this excludes the model from the
 # ensemble blend only, not from every downstream signal that independently
-# re-derives a per-model probability (e.g. analyze_trade's model_consensus
-# check, which still compares icon/gfs regardless of quarantine -- see
-# backlog.txt's "MODEL_CONSENSUS SHOULD EXCLUDE A QUARANTINED MEMBER" entry,
-# filed as a separate follow-up rather than expanding this change into
-# order_executor.py's Kelly-sizing logic).
+# re-derives a per-model probability. analyze_trade's model_consensus check
+# used to be one of those -- it compared icon/gfs regardless of quarantine
+# until batch-59 item 4 (backlog.txt "MODEL_CONSENSUS SHOULD EXCLUDE A
+# QUARANTINED MEMBER"), which now skips the comparison entirely when either
+# member of the pair is quarantined. Still NOT covered: the EMOS / anomaly /
+# bimodal guards, which are fit on the unfiltered 3-model blend (backlog.txt's
+# own separate calibration-side entry).
 # _weights_from_mae()/_model_weights() are deliberately left untouched;
 # quarantine acts one layer above them, mirroring the existing
 # TRACKING_ONLY_MODEL_NAMES precedent in batch_prewarm_ensemble() (fetch for
@@ -11158,11 +11160,74 @@ def refresh_hurricane_count_to_date(client: KalshiClient) -> None:
                 )
                 continue
             count = sum(1 for mk in matched if mk.get("result") == "yes")
+            # batch-59 item 3 (backlog.txt "hurricane occurred_this_season is
+            # season-scoped, not issuance-scoped"): also record WHEN the most
+            # recent qualifying storm was confirmed, not just how many there
+            # have been. _analyze_hurricane_next_event_trade needs to know
+            # whether a counted storm falls inside the market's OWN window --
+            # these next-event markets roll over (live-verified 2026-08-24:
+            # the whole open KXNEXTHURDATE ladder shares open_time
+            # 2026-08-06T14:00Z, months after the names series' own
+            # 2026-05-15 season open), so a storm that predates issuance says
+            # nothing about the market being priced.
+            #
+            # close_time is a SETTLEMENT timestamp, not a formation
+            # timestamp, and it lags formation by days -- live-verified the
+            # same day: the three settled ATL name markets all share
+            # close_time 2026-08-21T15:40:37Z (one batch settlement run), and
+            # the two EPAC "yes" markets are 6 seconds apart. It is
+            # nonetheless the only per-event timing signal available (HURDAT2
+            # only carries finalized PAST seasons -- that is why this
+            # Kalshi-derived cache exists at all), and its lag direction is
+            # benign under the observed rollover pattern: Kalshi issues the
+            # next ladder after settling the previous storm, so a
+            # pre-issuance storm's close_time lands before open_time too.
+            # Written as a real ISO timestamp, None when no "yes" market has
+            # settled yet; readers treat a missing/None/unparseable value as
+            # "unknown" and fall back to unconditional climatology.
+            _yes_close_dts = []
+            for mk in matched:
+                if mk.get("result") != "yes":
+                    continue
+                _ct = mk.get("close_time")
+                if not isinstance(_ct, str) or not _ct:
+                    continue
+                try:
+                    # Parsed rather than compared as raw strings: a max() over
+                    # ISO strings is only chronological while the format is
+                    # byte-identical, and a stray fractional-seconds component
+                    # would sort '.' before 'Z' and silently pick the wrong
+                    # one.
+                    _parsed_ct = datetime.fromisoformat(_ct.replace("Z", "+00:00"))
+                    # Normalize naive -> UTC before collecting (opus review
+                    # finding, LOW-MEDIUM 8). max() over a list mixing naive
+                    # and aware datetimes raises TypeError, which the
+                    # function-level `except Exception` below would swallow
+                    # as a DEBUG line -- and because that handler wraps the
+                    # atomic_write_json too, NO basin would be written at
+                    # all, silently losing the count/storms_named refresh as
+                    # well. After _HURRICANE_COUNT_CACHE_MAX_AGE_DAYS every
+                    # hurricane reader would then degrade to no-signal with
+                    # only a DEBUG trace. The reader already defends against
+                    # exactly this shape; the writer must too.
+                    if _parsed_ct.tzinfo is None:
+                        _parsed_ct = _parsed_ct.replace(tzinfo=UTC)
+                    _yes_close_dts.append(_parsed_ct)
+                except ValueError:
+                    _log.debug(
+                        "refresh_hurricane_count_to_date: unparseable "
+                        "close_time %r on %s",
+                        _ct,
+                        mk.get("ticker", "?"),
+                    )
             existing[basin] = {
                 "date": today,
                 "season_year": season_year,
                 "count": count,
                 "storms_named": len(matched),
+                "last_yes_close_time": (
+                    max(_yes_close_dts).isoformat() if _yes_close_dts else None
+                ),
             }
 
         _safe_io.atomic_write_json(existing, HURRICANE_COUNT_TO_DATE_PATH)
@@ -11238,6 +11303,43 @@ def _get_cached_hurricane_count_to_date(basin: str, season_year: int) -> int | N
     if not isinstance(count, int):
         return None
     return count
+
+
+def _get_cached_last_hurricane_event_time(
+    basin: str, season_year: int
+) -> datetime | None:
+    """batch-59 item 3. Returns when the most recent qualifying hurricane was
+    CONFIRMED for `basin` this season (the settlement close_time of the latest
+    "yes"-settled KXHURRICANENAMES market -- see refresh_hurricane_count_to_
+    date's own comment for why that is a lagging proxy for formation and why
+    no better one exists), or None.
+
+    None means "unknown", never "nothing happened" -- a cache written before
+    this field existed, a season with no settled "yes" market yet, and a
+    corrupt value all return None, and every caller must treat that as
+    unanchorable rather than as a negative answer. Delegates the staleness /
+    season_year / corruption guards to _get_cached_hurricane_names_entry, the
+    same way the count and storms-named readers do."""
+    cached = _get_cached_hurricane_names_entry(basin, season_year)
+    if cached is None:
+        return None
+    raw = cached.get("last_yes_close_time")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        _log.debug(
+            "_get_cached_last_hurricane_event_time: unparseable "
+            "last_yes_close_time %r for basin=%s",
+            raw,
+            basin,
+        )
+        return None
+    # Kalshi always stamps UTC, but a hand-edited cache could carry a naive
+    # value -- comparing naive to aware raises TypeError, so normalize here
+    # rather than at the (single, easily-missed) comparison site.
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _get_cached_storms_named_to_date(basin: str, season_year: int) -> int | None:
@@ -11483,8 +11585,72 @@ def _analyze_hurricane_next_event_trade(
         # same way (see refresh_hurricane_count_to_date's own docstring).
         _season_year = datetime.now(UTC).date().year
         _current_count = _get_cached_hurricane_count_to_date(basin, _season_year)
-        if _current_count is not None:
-            occurred_this_season = _current_count >= 1
+        if _current_count is not None and _current_count < 1:
+            # Nothing at all has happened this season, so nothing has happened
+            # since issuance either -- no anchoring needed for this direction.
+            # This is the ONLY branch that reaches conditional mode below.
+            occurred_this_season = False
+        elif _current_count is not None:
+            # batch-59 item 3 (backlog.txt "hurricane occurred_this_season is
+            # season-scoped, not issuance-scoped"). A season-scoped count >= 1
+            # used to be enough to declare the market a near-certain YES
+            # (0.99). That is wrong for a family Kalshi ROLLS OVER: a market
+            # issued after a storm already occurred inherits that storm as if
+            # it predicted the market's own window. Live-verified 2026-08-24:
+            # every open KXNEXTHURDATE market shares open_time
+            # 2026-08-06T14:00Z, nearly three months after the season opened.
+            #
+            # The cached timestamp is a SETTLEMENT time, not a formation time,
+            # so it supports only ONE sound inference (opus review, MEDIUM-HIGH
+            # 2 -- live-verified the same day: the ATL name markets settled
+            # 2026-08-21, fifteen days AFTER that ladder's 2026-08-06 issuance,
+            # in a single batch run):
+            #   * last_event <  open_time -> the storm was already settled
+            #     before this market existed, so it CANNOT be this market's
+            #     "next" hurricane. Sound negative.
+            #   * last_event >= open_time -> settled after issuance, but it may
+            #     have FORMED well before it. Unsound as a positive, and it is
+            #     the aggressive direction (0.99), so it is not taken.
+            # The backlog entry itself called for "WHEN each settled storm
+            # actually crossed hurricane strength (a date)"; the settlement
+            # timestamp is not that, and is not a usable substitute for the
+            # positive case.
+            #
+            # So for ANY count >= 1 this function now returns no signal at all
+            # -- the same path it already takes when HURDAT2 is unavailable --
+            # rather than falling through to the climatology branch. That
+            # fallback is NOT a fail-safe here (opus review, HIGH 1, verified
+            # directly against the repo's real HURDAT2 data): unconditional
+            # next_event_outcomes answers "did the season's FIRST hurricane
+            # occur on or before target", which for any late-season strike is
+            # ~always true -- 30/30 for targets Sep 15, Oct 1 and Dec 1, giving
+            # probability 0.99 with a ZERO-width bootstrap CI. That is the same
+            # 0.99 the confirmed branch emits, with a tighter CI, so it
+            # produces a ~3% LARGER Kelly stake than the bug it was meant to
+            # replace.
+            _last_event = _get_cached_last_hurricane_event_time(basin, _season_year)
+            _open_raw = enriched.get("open_time")
+            _open_dt = None
+            if isinstance(_open_raw, str) and _open_raw:
+                try:
+                    _open_dt = datetime.fromisoformat(_open_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    _open_dt = None
+                else:
+                    if _open_dt.tzinfo is None:
+                        _open_dt = _open_dt.replace(tzinfo=UTC)
+            _log.info(
+                "_analyze_hurricane_next_event_trade[%s]: %d qualifying storm(s) "
+                "already this season and no formation-date signal exists to "
+                "place them relative to this market's issuance "
+                "(last_settled=%s open_time=%r) -- no signal",
+                ticker,
+                _current_count,
+                _last_event.isoformat() if _last_event is not None else None,
+                _open_raw,
+            )
+            return None
+
     # event_type == "cat5_hurricane": no live "already occurred" signal in
     # this pass -- occurred_this_season stays None unconditionally, so the
     # model ships climatology-only (unconditional mode) for Cat5. Same
@@ -11493,6 +11659,17 @@ def _analyze_hurricane_next_event_trade(
     # yet) -- not a silent gap.
 
     if occurred_this_season is True:
+        # CURRENTLY UNREACHABLE (batch-59 item 3) -- deliberately kept, not
+        # dead code to delete. The "hurricane" branch above now returns None
+        # outright for any count >= 1 rather than ever setting True, because
+        # the only per-event timing available is a settlement timestamp that
+        # lags formation and so cannot establish "this storm formed inside
+        # this market's window" (see that branch's own comment). Cat5 never
+        # sets it either. This block is the landing spot for the day a real
+        # formation-date signal exists -- at that point the branch above sets
+        # True again and this prices it, unchanged. Do NOT read its existence
+        # as evidence that a confirmed-YES path is live today.
+        #
         # Already happened this season -- skip the bootstrap. Still runs
         # through the normal _price_and_size pricing/Kelly path below like
         # every other branch; only the probability's SOURCE differs. 0.99 is
@@ -12185,9 +12362,10 @@ def _metar_lock_in(
             # monotone-safe (it isn't -- e.g. a HIGH market's "below"-
             # direction YES, M <= T-margin, is exactly as exposed to further
             # rise as the between branch's at-risk edge, and is only made
-            # safe here by the separate _is_low_mkt-style reasoning below /
-            # the pre-existing, out-of-scope gap for HIGH markets noted
-            # there). Rather: combining always moves _comp_temp in the
+            # safe here by the two monotonic-safety vetoes below, one per
+            # market direction -- the HIGH-side one closed in batch-59;
+            # before that it was a pre-existing, then-out-of-scope gap).
+            # Rather: combining always moves _comp_temp in the
             # single direction that tightens (never loosens) whichever
             # comparison a given branch actually performs -- max()/min()
             # with current_temp_f can only make a monotone-safe branch fire
@@ -12269,9 +12447,60 @@ def _metar_lock_in(
                             "outcome": None,
                             "confidence": 0.0,
                             "reason": (
-                                f"LOW market: running min {_comp_temp:.1f}F "
+                                f"LOW market: running min {_comp_temp:.1f}°F "
                                 "not yet confirmed below threshold-margin — "
                                 "day not over"
+                            ),
+                        }
+                elif not _is_low_mkt and _lockout.get("locked"):
+                    # batch-59 item 1 (backlog.txt "weather_markets._metar_
+                    # lock_in's above/below branch has no monotonic-safety
+                    # veto for HIGH markets"): the exact mirror of the LOW
+                    # block above, and the still-live core of the OKC/SATX
+                    # incident's shape. A running daily-max-so-far can only
+                    # INCREASE as the day progresses, so "max already rose
+                    # above threshold + margin" is monotone-safe (it can only
+                    # stay there or go higher) while "max has stayed below
+                    # threshold - margin" is NOT — the day's true peak
+                    # typically lands 15:00-17:00 local, well after the 14:00
+                    # gate check_metar_lockout uses. That unsafe direction is
+                    # reachable as an "above"-direction NO lock or a
+                    # "below"-direction YES lock (both come from
+                    # check_metar_lockout's `current_temp_f <= threshold_f -
+                    # margin_f` comparison), so — exactly like the LOW block
+                    # — reject on the temperature comparison itself rather
+                    # than on outcome/direction, which is what makes it
+                    # branch-order-independent.
+                    #
+                    # Deliberately a SEPARATE block from the LOW veto above,
+                    # not one shared/generalized comparison: the two
+                    # directions have genuinely different diurnal timing
+                    # (afternoon max vs. overnight/dawn min), so a future
+                    # direction-specific rule must be able to land on one
+                    # without silently changing the other. Measured against
+                    # 22,799 real station-days (2023-09..2026-08, all 21
+                    # traded stations, hourly METAR running extreme vs. the
+                    # near-continuous 1-minute ASOS daily extreme that
+                    # settlement actually records): P(running max still rises
+                    # >= 3F after the stated local hour) = 26.9% at 14:00,
+                    # 4.4% at 16:00, and never falls below ~2.8% even at
+                    # 21:00 — while the LOW side's mirror statistic is 12.8%
+                    # at 14:00 and still 7.3% at 21:00. No hour-of-day escape
+                    # is therefore offered here (nor is one offered on the
+                    # LOW side): the residual error never clears, and the
+                    # lock's own stated probability stays far above the true
+                    # one at every hour, so an hour cutoff would not remove
+                    # the harm it looks like it removes.
+                    _margin = 3.0  # matches check_metar_lockout's own default
+                    if _comp_temp < float(condition["threshold"]) + _margin:
+                        _lockout = {
+                            "locked": False,
+                            "outcome": None,
+                            "confidence": 0.0,
+                            "reason": (
+                                f"HIGH market: running max {_comp_temp:.1f}°F "
+                                "not yet confirmed above threshold+margin — "
+                                "day's peak may still be ahead"
                             ),
                         }
                 # Surface the value that actually decided the lock (the
@@ -13756,7 +13985,46 @@ def analyze_trade(
                 ) = _get_consensus_probs(
                     city, target_date, condition, hour=hour, var=var
                 )
-                if icon_p is not None and gfs_p is not None:
+                # batch-59 item 4 (backlog.txt "MODEL_CONSENSUS SHOULD
+                # EXCLUDE A QUARANTINED MEMBER" -- the follow-up the
+                # per-member-quarantine section's own comment above
+                # _model_bias explicitly deferred): a quarantined member is
+                # one the system has ALREADY decided not to trust -- it's
+                # excluded from the ensemble blend entirely (blend_models,
+                # ~L2138). Letting its probability still drive
+                # model_consensus=False halved Kelly via order_executor.py's
+                # `consensus_mult = 0.5 if not a.get("model_consensus", True)`
+                # on the strength of a model nothing else in the pipeline
+                # listens to any more.
+                #
+                # The comparison is a PAIR (icon vs gfs), so excluding either
+                # member leaves nothing to compare against -- there is no
+                # surviving two-model check to fall back to. _QUARANTINE_MIN_
+                # ACTIVE=2 over 3 candidates caps this at one quarantined
+                # member at a time, so "both gone" isn't reachable, but
+                # "one gone" is exactly the case that matters. Fail open
+                # (leave model_consensus at its True default), identical to
+                # what this branch already does when either probability
+                # comes back None -- deliberately NOT substituting
+                # ecmwf_aifs025_ensemble as a stand-in comparator: its
+                # probability is intentionally not returned by
+                # _get_consensus_probs at all (Gaussian vs vote-fraction
+                # methodology), and picking a 3-way divergence threshold is
+                # its own unscoped backlog item.
+                #
+                # Membership comes from ENSEMBLE_MODELS -- the same list
+                # _get_consensus_probs's own icon/gfs fetches correspond to
+                # -- rather than a third hand-copied pair of model-name
+                # string literals.
+                _cons_quarantined = get_quarantined_members() & set(ENSEMBLE_MODELS)
+                if _cons_quarantined:
+                    _log.debug(
+                        "analyze_trade: skipping model_consensus check for %s — "
+                        "quarantined consensus member(s): %s",
+                        enriched.get("ticker", "?"),
+                        ",".join(sorted(_cons_quarantined)),
+                    )
+                elif icon_p is not None and gfs_p is not None:
                     if abs(icon_p - gfs_p) > 0.12:
                         model_consensus = False
             except Exception as _e:

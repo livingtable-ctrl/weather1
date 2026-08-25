@@ -443,6 +443,246 @@ class TestHurricaneCountToDateCache:
         assert cached["EPAC"]["count"] == 2
         assert cached["CPAC"]["count"] == 0
 
+    # ── batch-59 item 3: last_yes_close_time ────────────────────────────────
+
+    def test_refresh_records_latest_yes_close_time_per_basin(
+        self, tmp_path, monkeypatch
+    ):
+        """The cache must carry WHEN the most recent qualifying storm was
+        confirmed, per basin, taken from the latest "yes"-settled market's
+        close_time — and must ignore "no"-settled markets' close_times even
+        when those are later (the real ATL batch settled 2026-08-21, weeks
+        after EPAC's real "yes" markets closed 2026-07-29)."""
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                return [
+                    # EPAC: two "yes" markets, the later one must win.
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01EPAC",
+                        "result": "yes",
+                        "close_time": "2026-07-29T14:45:58Z",
+                    },
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01EPAC",
+                        "result": "yes",
+                        "close_time": "2026-07-29T14:46:04Z",
+                    },
+                    # ATL: only "no" markets, settled LATER than EPAC's yes —
+                    # must not be mistaken for a confirmed storm.
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "no",
+                        "close_time": "2026-08-21T15:40:37Z",
+                    },
+                ]
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        cached = json.loads(cache_path.read_text())
+
+        assert cached["EPAC"]["count"] == 2
+        assert cached["EPAC"]["last_yes_close_time"].startswith("2026-07-29T14:46:04")
+        assert cached["ATL"]["count"] == 0
+        assert cached["ATL"]["last_yes_close_time"] is None
+
+    def test_refresh_skips_unparseable_close_time_without_dropping_the_basin(
+        self, tmp_path, monkeypatch
+    ):
+        """A malformed close_time must not raise, must not poison the value,
+        and must not stop the count itself from being written."""
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                return [
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "yes",
+                        "close_time": "garbage",
+                    },
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "yes",
+                        "close_time": "2026-08-21T15:40:37Z",
+                    },
+                ]
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        cached = json.loads(cache_path.read_text())
+        assert cached["ATL"]["count"] == 2
+        assert cached["ATL"]["last_yes_close_time"].startswith("2026-08-21T15:40:37")
+
+    def test_refresh_survives_a_mixed_naive_and_aware_close_time(
+        self, tmp_path, monkeypatch
+    ):
+        """A naive close_time alongside an aware one must not abort the whole
+        refresh.
+
+        Opus review finding LM8: `max()` over a list mixing naive and aware
+        datetimes raises TypeError, and the function-level `except Exception`
+        wraps the atomic_write_json too — so EVERY basin would go unwritten,
+        losing the count/storms_named refresh as well, with only a DEBUG
+        trace. After the 2-day staleness cap every hurricane reader would
+        then degrade to no-signal."""
+        from datetime import UTC, datetime
+
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                return [
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "yes",
+                        "close_time": "2026-07-29T14:45:58",  # naive
+                    },
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "yes",
+                        "close_time": "2026-08-21T15:40:37Z",  # aware
+                    },
+                    # A second basin proves the abort would have been global,
+                    # not confined to the basin carrying the bad value.
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01EPAC",
+                        "result": "yes",
+                        "close_time": "2026-07-29T14:46:04Z",
+                    },
+                ]
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        assert cache_path.exists(), "a mixed-tz close_time must not abort the write"
+        cached = json.loads(cache_path.read_text())
+        assert cached["ATL"]["count"] == 2
+        assert cached["EPAC"]["count"] == 1
+        season = datetime.now(UTC).date().year
+        assert wm._get_cached_last_hurricane_event_time("ATL", season) == datetime(
+            2026, 8, 21, 15, 40, 37, tzinfo=UTC
+        )
+
+    def test_get_cached_last_event_time_reads_back_what_refresh_wrote(
+        self, tmp_path, monkeypatch
+    ):
+        """End-to-end round trip through the real writer and the real reader,
+        rather than asserting against a hand-built cache file."""
+        from datetime import UTC, datetime
+
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        class _FakeClient:
+            def get_markets(self, series_ticker, status):
+                return [
+                    {
+                        "event_ticker": "KXHURRICANENAMES-26DEC01ATL",
+                        "result": "yes",
+                        "close_time": "2026-08-21T15:40:37Z",
+                    }
+                ]
+
+        wm.refresh_hurricane_count_to_date(_FakeClient())
+        season = datetime.now(UTC).date().year
+        got = wm._get_cached_last_hurricane_event_time("ATL", season)
+        assert got == datetime(2026, 8, 21, 15, 40, 37, tzinfo=UTC)
+
+    def test_get_cached_last_event_time_none_on_legacy_cache_without_field(
+        self, tmp_path, monkeypatch
+    ):
+        """A cache written before this field existed must read as None
+        (unknown), not raise and not fabricate a timestamp."""
+        from datetime import UTC, datetime
+
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        season = datetime.now(UTC).date().year
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ATL": {
+                        "date": datetime.now(UTC).date().isoformat(),
+                        "season_year": season,
+                        "count": 2,
+                        "storms_named": 3,
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        # Positive control: the same entry DOES resolve for the pre-existing
+        # count reader, so None below is about the missing field specifically,
+        # not about the entry being rejected wholesale by the shared guards.
+        assert wm._get_cached_hurricane_count_to_date("ATL", season) == 2
+        assert wm._get_cached_last_hurricane_event_time("ATL", season) is None
+
+    def test_get_cached_last_event_time_normalizes_a_naive_timestamp(
+        self, tmp_path, monkeypatch
+    ):
+        """A hand-edited naive value must come back tz-aware — comparing naive
+        to aware at the anchoring site would raise TypeError."""
+        from datetime import UTC, datetime
+
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        season = datetime.now(UTC).date().year
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ATL": {
+                        "date": datetime.now(UTC).date().isoformat(),
+                        "season_year": season,
+                        "count": 1,
+                        "storms_named": 1,
+                        "last_yes_close_time": "2026-08-21T15:40:37",
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+
+        got = wm._get_cached_last_hurricane_event_time("ATL", season)
+        assert got is not None and got.tzinfo is not None
+        assert got == datetime(2026, 8, 21, 15, 40, 37, tzinfo=UTC)
+
+    def test_get_cached_last_event_time_none_on_corrupt_value(
+        self, tmp_path, monkeypatch
+    ):
+        from datetime import UTC, datetime
+
+        import weather_markets as wm
+
+        cache_path = tmp_path / "hurricane_count_to_date.json"
+        season = datetime.now(UTC).date().year
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "ATL": {
+                        "date": datetime.now(UTC).date().isoformat(),
+                        "season_year": season,
+                        "count": 1,
+                        "storms_named": 1,
+                        "last_yes_close_time": "not-a-timestamp",
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr(wm, "HURRICANE_COUNT_TO_DATE_PATH", cache_path)
+        assert wm._get_cached_last_hurricane_event_time("ATL", season) is None
+
     def test_refresh_skips_basin_already_done_today(self, tmp_path, monkeypatch):
         from datetime import UTC, datetime
 
@@ -1202,6 +1442,11 @@ class TestAnalyzeHurricaneNextEventTrade:
         base = {
             "ticker": "KXNEXTHURDATE-26DEC01-26SEP15",
             "close_time": "2026-09-15T03:59:00Z",
+            # batch-59 item 3: the real open_time this whole ladder carries
+            # (live-verified 2026-08-24) -- these markets roll over, so
+            # issuance is ~3 months after the season's own start, and
+            # occurred_this_season is now anchored to it.
+            "open_time": "2026-08-06T14:00:00Z",
             "yes_bid_dollars": 0.40,
             "yes_ask_dollars": 0.45,
         }
@@ -1243,11 +1488,26 @@ class TestAnalyzeHurricaneNextEventTrade:
         )
         assert result is None
 
-    def test_already_occurred_short_circuits_to_near_certain(self, monkeypatch):
-        """occurred_this_season=True (live cache says >=1 hurricane already
-        this season) must skip the bootstrap entirely and return the same
-        [0.01,0.99]-clamp-ceiling convention every other probability in this
-        codebase uses."""
+    # -- batch-59 item 3: issuance anchoring -----------------------------
+    # backlog.txt "hurricane occurred_this_season is season-scoped, not
+    # issuance-scoped": a >=1 season count used to be enough to price the
+    # market at 0.99, even when the storm predated the market's own issuance.
+    # These markets roll over, so that is the common case, not the exception.
+    #
+    # Final shape (after opus review found the first attempt did not actually
+    # change the outcome): the only per-event timing available is a SETTLEMENT
+    # timestamp, which lags formation, so it can prove a storm predates
+    # issuance but never that it followed it. Any count >= 1 therefore yields
+    # NO SIGNAL rather than a probability.
+
+    def _anchor_run(self, monkeypatch, *, count, last_event, enriched=None):
+        """Drive _analyze_hurricane_next_event_trade with a controlled count /
+        last-event pair, capturing whether the climatology branch was reached
+        at all. Returns (result, captured)."""
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        import hurricane_climatology as hc
         import weather_markets as wm
 
         monkeypatch.setattr(
@@ -1255,26 +1515,140 @@ class TestAnalyzeHurricaneNextEventTrade:
             lambda basin: [{"year": 2020, "basin": "AL"}],
         )
         monkeypatch.setattr(
-            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: 2
+            wm, "_get_cached_hurricane_count_to_date", lambda basin, year: count
         )
+        monkeypatch.setattr(
+            wm, "_get_cached_last_hurricane_event_time", lambda basin, year: last_event
+        )
+        captured = {}
 
-        def _boom(*a, **k):
-            raise AssertionError("bootstrap must not run when already confirmed")
+        def _fake_outcomes(storms, kt, target_month_day, *, as_of_month_day=None, **kw):
+            captured["as_of_month_day"] = as_of_month_day
+            return [True] * 9 + [False] * 6
 
+        monkeypatch.setattr(hc, "next_event_outcomes", _fake_outcomes)
+        result = wm._analyze_hurricane_next_event_trade(
+            enriched if enriched is not None else self._enriched(),
+            self._condition(),
+            _dt(2026, 9, 15, tzinfo=UTC),
+            39,
+        )
+        return result, captured
+
+    def test_climatology_fallback_would_not_have_been_a_fail_safe(self):
+        """The evidence behind returning no signal at all (opus review HIGH 1).
+
+        The unconditional climatology this branch used to fall through to
+        answers "did the season's FIRST hurricane occur on or before target",
+        which for any late-season strike is ~always true. Measured against the
+        repo's REAL HURDAT2 data, not a fixture: for the live ladder's own
+        Sep 15 / Oct 1 / Dec 1 strikes it is 30/30 -> probability 0.99 with a
+        ZERO-width CI, i.e. the same number the "confirmed" branch emits but
+        with a tighter CI and therefore a LARGER Kelly stake. Pinned here so
+        nobody reinstates that fallback believing it is conservative."""
         import hurricane_climatology as hc
 
-        monkeypatch.setattr(hc, "next_event_outcomes", _boom)
+        storms = hc.load_basin_storms("ATL")
+        if not storms:
+            pytest.skip("HURDAT2 cache unavailable in this environment")
+        kt = hc.NEXT_EVENT_THRESHOLDS_KT["hurricane"]
+        for month_day in ((9, 15), (10, 1), (12, 1)):
+            outcomes = hc.next_event_outcomes(storms, kt, month_day)
+            assert hc.next_event_probability(outcomes) == pytest.approx(0.99)
+            lo, hi = hc.bootstrap_ci_next_event(outcomes)
+            assert hi - lo == pytest.approx(0.0), (
+                f"target {month_day}: unconditional climatology CI is "
+                "zero-width, so it is not a conservative fallback"
+            )
+        # Positive control: the same function DOES discriminate for an early
+        # strike, so the 0.99 above is a real property of late targets rather
+        # than this helper always returning 0.99.
+        early = hc.next_event_outcomes(storms, kt, (9, 1))
+        assert hc.next_event_probability(early) < 0.99
+
+    def test_storm_confirmed_before_issuance_yields_no_signal(self, monkeypatch):
+        """The entry's core case: a storm settled 2026-07-29, a week BEFORE
+        this market's 2026-08-06 issuance. It cannot be this market's "next"
+        hurricane, and no probability can be justified -- so no signal."""
         from datetime import UTC
         from datetime import datetime as _dt
 
-        result = wm._analyze_hurricane_next_event_trade(
-            self._enriched(), self._condition(), _dt(2026, 9, 15, tzinfo=UTC), 39
+        result, captured = self._anchor_run(
+            monkeypatch, count=2, last_event=_dt(2026, 7, 29, 14, 45, tzinfo=UTC)
         )
+        assert result is None
+        assert "as_of_month_day" not in captured, (
+            "must not reach the climatology branch at all"
+        )
+
+    def test_storm_settled_after_issuance_also_yields_no_signal(self, monkeypatch):
+        """The unsound-positive case (opus review MEDIUM-HIGH 2): settlement
+        lands days-to-weeks after formation and in batches, so "settled after
+        issuance" does NOT establish "formed after issuance". Live-verified --
+        the ATL name markets settled 2026-08-21, fifteen days after that
+        ladder's 2026-08-06 open_time. Since this is the aggressive direction
+        (0.99), it must not be taken on that evidence."""
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result, _ = self._anchor_run(
+            monkeypatch, count=2, last_event=_dt(2026, 8, 21, 15, 40, tzinfo=UTC)
+        )
+        assert result is None
+
+    def test_unanchorable_when_no_event_timestamp_is_cached(self, monkeypatch):
+        """A cache written before last_yes_close_time existed reads None --
+        unknown, not a negative -- and still yields no signal."""
+        result, _ = self._anchor_run(monkeypatch, count=2, last_event=None)
+        assert result is None
+
+    def test_unanchorable_when_market_has_no_open_time(self, monkeypatch):
+        """Symmetric gap on the market side."""
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        enriched = self._enriched()
+        del enriched["open_time"]
+        result, _ = self._anchor_run(
+            monkeypatch,
+            count=2,
+            last_event=_dt(2026, 8, 21, tzinfo=UTC),
+            enriched=enriched,
+        )
+        assert result is None
+
+    def test_count_of_one_takes_the_no_signal_path_not_the_false_branch(
+        self, monkeypatch
+    ):
+        """count == 1 is the boundary between "nothing happened this season"
+        (False -> conditional mode) and "something did" (no signal).
+
+        Opus review finding M5: every other test used count in {0, 2, None},
+        so mutating `_current_count < 1` to `< 2` survived the whole suite --
+        and with count == 1 that mutant conditions climatology on "the
+        season's first hurricane hasn't happened yet" when one demonstrably
+        has. count == 1 is a live value today for the CPAC basin."""
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        result, captured = self._anchor_run(
+            monkeypatch, count=1, last_event=_dt(2026, 7, 29, tzinfo=UTC)
+        )
+        assert result is None
+        assert "as_of_month_day" not in captured
+
+    def test_zero_count_still_uses_conditional_mode_without_any_anchor(
+        self, monkeypatch
+    ):
+        """Positive control for the anchoring branch: count==0 needs no
+        issuance anchoring at all (nothing happened this season, so nothing
+        happened since issuance either) and must still reach conditional mode
+        with a real as_of_month_day — proving the new branch didn't swallow
+        the pre-existing False path."""
+        result, captured = self._anchor_run(monkeypatch, count=0, last_event=None)
         assert result is not None
-        assert result["forecast_prob"] == 0.99
-        assert result["method"] == "hurricane_next_event_confirmed"
-        assert result["occurred_this_season"] is True
-        assert result["n_members"] == 0
+        assert result["occurred_this_season"] is False
+        assert captured["as_of_month_day"] is not None
 
     def test_not_yet_occurred_uses_conditional_mode(self, monkeypatch):
         """occurred_this_season=False (live cache confirms 0 so far) must
