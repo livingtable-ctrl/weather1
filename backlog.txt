@@ -182,10 +182,7 @@ Problem:
   live path gain the identical guard, a different one, or rely on
   upstream market-existence checks instead?
 
-[OPEN 2026-08-23 -- found by the same opus review as the two entries
-  above, itself a pre-existing bug unrelated to this session's actual
-  change (discovered only because it's now a latent input to the new
-  guard).] HURRICANE-NEXT-EVENT TICKERS GET THE WRONG _date FROM
+[RESOLVED 2026-08-24 -- see resolution below.] HURRICANE-NEXT-EVENT TICKERS GET THE WRONG _date FROM
   enrich_with_forecast (SHARED SEASON-REFERENCE SEGMENT, NOT THE REAL
   THRESHOLD DATE)
 Priority: Low -- these ticker families are shadow-gated (no real
@@ -204,6 +201,13 @@ Problem:
   threshold date. order_executor.py prefers `m["_date"]` over
   `a["target_date"]`, so this wrong value is what actually gets stored on
   a trade record and what the new stale-date guard would evaluate.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in an earlier unlogged session -- batch-51, commit ac5f8f18):
+  weather_markets.py:6957 now guards the date regex with
+  `elif ticker_up.split("-")[0] not in _HURRICANE_NEXT_EVENT_SERIES:`, so
+  KXNEXTHURDATE/KXNEXTCAT5HURDATE tickers yield `_date=None` from
+  enrich_with_forecast instead of the wrong season-reference date,
+  matching parse_city_date()'s existing early-return for the same series.
 
 [OPEN 2026-08-16 -- found by opus review (effort=high) while shipping the
   settlement-lag METAR calibration fix immediately below this entry; not
@@ -18359,9 +18363,9 @@ When to revisit:
   - N/A for the two fixed bugs. See the follow-up cousin-risk note below for
     something worth a future look, not an active bug.
 
-[PARTIALLY RESOLVED 2026-07-19 -- STALE COUNT CORRECTED 2026-07-31, see note
-  at end: 3 of the original 7 reload(utils) sites were converted the same
-  day, leaving 4, not ~6] main.py's FROZEN `from utils import ...` COULD
+[CLOSED 2026-07-19 -- STALE COUNT CORRECTED 2026-07-31, non-actionable as
+  of 2026-08-24 (see final note at end), latent risk only, no trigger
+  fired] main.py's FROZEN `from utils import ...` COULD
   REPEAT THE SAME IDENTITY-DIVERGENCE BUG -- utils IS RELOADED BY 4 TESTS
 Priority: Low -- latent structural risk, not a current bug; nothing today
   asserts an identity check that would catch it firing.
@@ -18486,6 +18490,13 @@ RE-VERIFIED 2026-08-22 (batch-18, no new action -- confirms this entry's
   the reload sites; document the hazard in main.py) was already done in
   full by 2026-07-19; nothing left to do until one of this entry's own
   "When to revisit" triggers actually fires.
+
+RE-VERIFIED 2026-08-24 (batch-48's backlog review, no new action): both
+  prescribed remediations remain done and verified in-tree -- exactly 4
+  reload(utils) sites (unchanged), main.py:114-127's hazard comment still
+  present. Closed as non-actionable rather than left open/partial; a
+  future session should reopen only if one of the "When to revisit"
+  triggers actually fires.
 
 ======================================================
 [RESOLVED 2026-07-19] AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE
@@ -22877,7 +22888,7 @@ Resolution 2026-08-21: Implemented exactly the recommendation, generalizing
   passed, 4 skipped, 0 failed. ruff/ruff-format/mypy via the actual
   pre-commit hook: all passed.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _log_shadow_predictions() re-opens the paper ledger and a fresh SQLite connection once per shadow ticker per cron cycle instead of once per batch
+[RESOLVED 2026-08-24 -- see resolution below.] _log_shadow_predictions() re-opens the paper ledger and a fresh SQLite connection once per shadow ticker per cron cycle instead of once per batch
 Priority: MEDIUM (audit id AUD-0021, status CONFIRMED, confidence VERY HIGH, evidence E3)
 Files: order_executor.py, paper.py, tracker.py
 
@@ -22888,6 +22899,14 @@ Problem:
   Financial risk: None directly -- this only affects shadow (non-trading) prediction logging, not order placement or sizing. Indirect risk is limited to CPU/IO cost and (for the shadow families with low settlement...
   Recommendation: Accumulate shadow-routed (ticker, item) pairs during the per-ticker loop instead of calling _log_shadow_predictions() inline per match; make one call with the full list after the loop (or before placement, preserving the existing ordering guarantee), letting the function's own...
   Full record: audit/AUDIT_REPORT.json (id AUD-0021), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in an earlier unlogged session):
+  order_executor.py now accumulates shadow-routed (ticker, item) pairs into
+  `_shadow_batch`/`_shadow_batch_labels` across all 8 shadow-routing
+  branches during the per-ticker loop, then makes exactly one batched
+  `_log_shadow_predictions(_shadow_batch, live=live)` call (~line 4970)
+  after the loop, matching the function's own "batched onto a single
+  connection" docstring. No per-ticker call sites remain.
 
 [RESOLVED 2026-08-22 -- batch-13, AUD-0022] Shadow-only far-tail rain-blend signal shares the global _ensemble_cb circuit breaker with the live temperature trading blend's prewarm fetch
 Priority: MEDIUM (audit id AUD-0022, status CONFIRMED, confidence HIGH, evidence E1)
@@ -22925,7 +22944,7 @@ Resolution (2026-08-22, batch-10):
   Tests: 2 new, both passing; scoped suite (tests/test_trading_gates.py + tests/test_risk_control.py) 77 passed.
   Lint/mypy: ruff check + format clean, mypy clean.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] No automated reconciliation between execution_log's internally-tracked live positions and Kalshi's real /portfolio/positions
+[RESOLVED 2026-08-24 -- see resolution below.] No automated reconciliation between execution_log's internally-tracked live positions and Kalshi's real /portfolio/positions
 Priority: MEDIUM (audit id AUD-0025, status CONFIRMED, confidence HIGH, evidence E1)
 Files: output_formatters.py, order_executor.py, kalshi_client.py
 
@@ -22936,6 +22955,13 @@ Problem:
   Financial risk: A drifted internal ledger means the bot's protective-exit system could fail to manage a real position the exchange shows but execution_log does not track. Currently low-probability given existing...
   Recommendation: Add a lightweight reconciliation check (e.g. inside cmd_watch's cycle or a dedicated cron step) comparing client.get_positions() against tracked live positions, logging a warning on mismatch.
   Full record: audit/AUDIT_REPORT.json (id AUD-0025), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in an earlier unlogged session):
+  order_executor._reconcile_live_positions() now exists (~lines 963-985),
+  comparing execution_log.get_filled_unsettled_live_orders() against
+  client.get_positions(), called once per cycle from trade_cycle.py:280-286
+  under an explicit "# AUD-0025" comment. Log-only (warns on mismatch), as
+  the entry's own recommendation asked for.
 
 [RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's unmatched-sell settlement fallback can leave the exact phantom-position shape its own fix was designed to prevent
 Priority: MEDIUM (audit id AUD-0026, status CONFIRMED, confidence HIGH, evidence E1)
@@ -23022,7 +23048,7 @@ Resolution 2026-08-19: cmd_order's matched-sell branch now mirrors
   scoped suite + broader regression sweep pass (see AUD-0003's resolution
   note). ruff + ruff-format + mypy clean via the actual pre-commit hook.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] emos-train/emos-deactivate check cron-in-flight before an unbounded human confirmation prompt, not immediately before the write
+[RESOLVED 2026-08-24 -- see resolution below.] emos-train/emos-deactivate check cron-in-flight before an unbounded human confirmation prompt, not immediately before the write
 Priority: MEDIUM (audit id AUD-0029, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py
 
@@ -23033,6 +23059,12 @@ Problem:
   Financial risk: The failure mode this gate exists to prevent — 'one scan split across two probability methods, some markets priced with the old method, some with EMOS' (per the check's own error message) — can still...
   Recommendation: Re-check _is_cron_running() (or better, acquire the actual cron lock) immediately before writing EMOS params, not just before printing the prompt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0029), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in an earlier unlogged session):
+  A second `_is_cron_running()` re-check was added immediately before the
+  write on both paths, tagged "# AUD-0029": main.py:8434-8450 (activate)
+  and main.py:8625-8638 (deactivate). Closes the TOCTOU window across the
+  confirmation prompt.
 
 [RESOLVED 2026-08-20 -- batch-04] paper._CrossProcessDataLock silently fails OPEN after 10 seconds of sustained contention
 Priority: MEDIUM (audit id AUD-0030, status CONFIRMED, confidence HIGH, evidence E2)
@@ -23534,7 +23566,7 @@ Resolution: batch-12 (`0d601705`) bumped both handlers from `_log.debug()` to
   per-city-error handlers, ~720-737 in current code) -- verified present in
   current code this session.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] execution_log.py and tracker.py never explicitly close SQLite connections
+[RESOLVED 2026-08-24 -- see resolution below.] execution_log.py and tracker.py never explicitly close SQLite connections
 Priority: LOW (audit id AUD-0048, status CONFIRMED, confidence HIGH, evidence E1)
 Files: execution_log.py, tracker.py
 
@@ -23545,6 +23577,11 @@ Problem:
   Financial risk: None observed.
   Recommendation: No urgent action needed given CPython's refcounting behavior; consider explicit con.close() in a finally block if this code is ever run under an alternate Python implementation or under heavy concurrent connection churn.
   Full record: audit/AUDIT_REPORT.json (id AUD-0048), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in an earlier unlogged session):
+  Both `_conn()` helpers are now `@contextlib.contextmanager` wrappers with
+  `try: with con: yield con / finally: con.close()`, docstring-tagged
+  AUD-0048 -- execution_log.py:112-133 and tracker.py:419-441.
 
 [CLOSED 2026-08-19 -- re-verified during batch-03, no code change needed] was_traded_today/was_recently_ordered/was_ordered_recently already treat any fill (entry OR exit) on a ticker+side as blocking re-entry -- pre-existing design, not changed by the closes_position_id-adding commits
 Priority: LOW (audit id AUD-0049, status CONFIRMED, confidence HIGH, evidence E2)
@@ -23565,7 +23602,7 @@ Resolution 2026-08-19: re-read was_recently_ordered/was_traded_today/
   No code change made -- this is a correctly-classified non-finding, not a
   deferred fix.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] trade_cycle.py's prewarm ThreadPoolExecutor tasks are not cancelled on timeout and outlive the phase that spawned them
+[RESOLVED 2026-08-24 -- see resolution below.] trade_cycle.py's prewarm ThreadPoolExecutor tasks are not cancelled on timeout and outlive the phase that spawned them
 Priority: LOW (audit id AUD-0050, status CONFIRMED, confidence HIGH, evidence E1)
 Files: trade_cycle.py, cron.py
 
@@ -23576,6 +23613,13 @@ Problem:
   Financial risk: Low — the touched caches are internally locked, so this is a performance/hang-risk finding rather than a P&L-affecting one.
   Recommendation: Pass cancel_futures=True to shutdown() (Python 3.9+) to at least drop queued-but-not-started tasks, and consider whether already-running prewarm threads need an explicit cooperative-cancellation flag if their side effects (cache writes) should not race with the next phase's reads.
   Full record: audit/AUDIT_REPORT.json (id AUD-0050), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed via AUD-0050, commit 0d601705):
+  trade_cycle.py:1309-1314 now has an explicit "# AUD-0050:" comment and
+  `warm_pool.shutdown(wait=False, cancel_futures=True)`. The soft "consider
+  a cooperative-cancel flag for already-running threads" half was never a
+  hard requirement -- ThreadPoolExecutor has no way to interrupt an
+  already-running worker thread regardless.
 
 [RESOLVED 2026-08-20 -- batch-04] settlement_monitor.py has no application-level overlap guard; relies entirely on unverified Task Scheduler default policy
 Priority: LOW (audit id AUD-0051, status CONFIRMED, confidence HIGH, evidence E1)
@@ -23876,40 +23920,63 @@ Resolution (2026-08-22):
   Testing: weather_markets.py: new test_malformed_response_recorded_as_failure_not_used (mutation-tested). nws.py: new test_malformed_response_records_failure_not_success + a positive-control well-formed-response test (both mutation-tested).
   Independent opus review (effort=high): confirmed both wired call sites (weather_markets.py, nws.py) correct and safe, and independently confirmed kalshi_client.py has zero diff; found only one theoretical (unreproducible against the real Open-Meteo/NWS APIs) false-positive edge case in the wired sites, informational only, no action taken.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window
+[RESOLVED 2026-08-24 -- see resolution below.] README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window
 Priority: LOW (audit id AUD-0061, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
   Ran `grep -n "_TRADING_ENABLED" main.py weather_markets.py order_executor.py` and found exactly the 6 flags cited (HOURLY_TRADING_ENABLED, HURRICANE_NEXT_EVENT_TRADING_ENABLED, HURRICANE_TRADING_ENABLED, RAIN_TRADING_ENABLED, SNOW_TRADING_ENABLED, STORM_ORDER_TRADING_ENABLED); grep of README.md for the same pattern returned zero matches. Confirmed via `git log --oneline --all -S` that HURRICANE_TRADING_ENABLED was introduced in 1a7c9aca and STORM_ORDER_TRADING_ENABLED in 9a7583aa, matching the cluster-G commits cited. Exact match to claim.
   Full record: audit/AUDIT_REPORT.json (id AUD-0061), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's 'bot only trades temperature and precipitation' claim is stale given hurricane market support added this window
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e "batch-11 README/docstring/CI accuracy sweep"):
+  All six flags now documented at README.md:287-292. NEW residual found
+  during re-verification, not yet filed: two newer shadow flags have since
+  appeared and are still undocumented -- HOLIDAY_TEMP_TRADING_ENABLED
+  (weather_markets.py:1318) and BETWEEN_TRADING_ENABLED
+  (weather_markets.py:1374), absent from both README.md and .env.example.
+
+[RESOLVED 2026-08-24 -- see resolution below.] README.md's 'bot only trades temperature and precipitation' claim is stale given hurricane market support added this window
 Priority: LOW (audit id AUD-0062, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
   Read README.md:361 verbatim: 'The bot only trades Kalshi weather markets (temperature and precipitation). It ignores all other market types.' Confirmed via git log -S that hurricane-model commits 1a7c9aca/9a7583aa (and d4ade606 closing a related gate-bypass gap) exist and add real hurricane-market order-placement code paths gated behind env flags, contradicting the blanket claim. Exact match.
   Full record: audit/AUDIT_REPORT.json (id AUD-0062), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's EMOS activation row count ('~25 rows') contradicts the actual 40-row floor added this window and contradicts COMMANDS.md
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  README.md:368 now reads "temperature, precipitation, and hurricane
+  markets... Several of these are shadow-only until manually enabled".
+
+[RESOLVED 2026-08-24 -- see resolution below.] README.md's EMOS activation row count ('~25 rows') contradicts the actual 40-row floor added this window and contradicts COMMANDS.md
 Priority: LOW (audit id AUD-0063, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
   Read README.md:203 — 'Once ~25 rows are accumulated, an `emos-train` command will fit...'. Read main.py:6663-6668 — `_EMOS_VAR_FLOOR = 40` with a hard refusal below that unless --force. Read COMMANDS.md:62 — correctly states 'refuses below 40 ens_var rows'. Confirmed via `git log --oneline -S"_EMOS_VAR_FLOOR"` a single introducing commit 4557a77b, and via `git show 4557a77b^:main.py` that the prior threshold was a softer `n_var >= 10` check (line 6333 pre-commit) used only to choose default vs fitted c/d values, not a hard activation floor — so README's '25' never matched any actual...
   Full record: audit/AUDIT_REPORT.json (id AUD-0063), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_schedule()'s docstring claims 'auto-scan every hour' but registers a 3-hourly task
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  README.md:204 now says "Once 40 rows are accumulated", matching
+  main.py:8319's `_EMOS_VAR_FLOOR = 40` and COMMANDS.md:63.
+
+[RESOLVED 2026-08-24 -- see resolution below.] cmd_schedule()'s docstring claims 'auto-scan every hour' but registers a 3-hourly task
 Priority: LOW (audit id AUD-0064, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
   Grepped and read main.py — docstring at line 8963 reads exactly 'Register a Windows Task Scheduler job to auto-scan every hour.'; line 8991 builds `schtasks /Create /F /SC HOURLY /MO 3 ...`; line 9008 prints 'Task ... registered — runs every 3 hours.' All three line numbers match the citation exactly. Independently ran `git blame` on both lines and confirmed the docstring (line 8963) was authored by commit d7b2ad7e on 2026-04-09 while the /MO 3 interval (line 8991) was authored by a separate commit c189f2821 on 2026-04-16, exactly matching the finding's git-blame claim.
   Full record: audit/AUDIT_REPORT.json (id AUD-0064), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's NOTIFY_CHANNELS default ('desktop,discord') doesn't match the actual code default
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  main.py's cmd_schedule docstring now reads "auto-scan every 3 hours",
+  consistent with `/SC HOURLY /MO 3` and the command's own printed output.
+
+[RESOLVED 2026-08-24 -- see resolution below.] README.md's NOTIFY_CHANNELS default ('desktop,discord') doesn't match the actual code default
 Priority: LOW (audit id AUD-0065, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
   Grepped NOTIFY_CHANNELS across README.md/notify.py/.env.example. README.md:278 reads default `desktop,discord`. notify.py:42 reads `os.getenv("NOTIFY_CHANNELS", "desktop,pushover,ntfy,discord,email")`. .env.example:43 sets `NOTIFY_CHANNELS=desktop,pushover,ntfy,discord,email`. Code and .env.example agree with each other and disagree with README exactly as claimed.
   Full record: audit/AUDIT_REPORT.json (id AUD-0065), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  README.md:279 now shows "desktop,pushover,ntfy,discord,email", matching
+  notify.py's actual default and .env.example.
 
 [RESOLVED 2026-08-20 -- batch-05] kalshi_client.py docstring claims 'no live caller uses IOC/FOK today' — now false after e5331a8d
 Priority: LOW (audit id AUD-UNMATCHED-61, status CONFIRMED, confidence MEDIUM, evidence E1)
@@ -23940,7 +24007,7 @@ Problem:
   Recommendation: Consider a multiplicative or rank-preserving tilt instead of a floor-clipped additive one if/when this signal is graduated out of shadow-only status.
   Full record: audit/AUDIT_REPORT.json (id AUD-0066), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch and cron confirmed to share one effective safety-gate chain via run_trade_cycle (no residual divergence found)
+[CLOSED 2026-08-24 -- see resolution below.] cmd_watch and cron confirmed to share one effective safety-gate chain via run_trade_cycle (no residual divergence found)
 Priority: INFO (audit id AUD-0067, status CONFIRMED, confidence HIGH, evidence E1)
 Files: trade_cycle.py, main.py, cron.py
 
@@ -23951,7 +24018,14 @@ Problem:
   Recommendation: No action needed.
   Full record: audit/AUDIT_REPORT.json (id AUD-0067), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] safe_io bare os.replace() migration is complete repo-wide (cluster J fully resolved for os.replace specifically)
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action needed" -- it is a verification
+  record, not a bug. Re-confirmed against current code: trade_cycle.py:208
+  kill switch, :230 manual override, :236 accuracy halt, :246 graduation
+  gate (line numbers shifted from the original 188-212 citation, same
+  logic). Closing as verified rather than leaving tagged [OPEN].
+
+[CLOSED 2026-08-24 -- see resolution below.] safe_io bare os.replace() migration is complete repo-wide (cluster J fully resolved for os.replace specifically)
 Priority: INFO (audit id AUD-0068, status CONFIRMED, confidence HIGH, evidence E1)
 Files: safe_io.py
 
@@ -23962,7 +24036,15 @@ Problem:
   Recommendation: No action needed for os.replace() specifically.
   Full record: audit/AUDIT_REPORT.json (id AUD-0068), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py CSRF check (X-Requested-With / method allowlist) applies globally via before_request, no per-route gap found
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action needed for os.replace()
+  specifically." Re-confirmed: repo-wide grep finds zero bare
+  `os.replace(` in production code outside safe_io.py -- only a comment in
+  circuit_breaker.py, plus a new permanent guard test
+  (tests/test_bare_os_replace_guard.py) added since. Strengthened, not
+  regressed. Closing as verified.
+
+[CLOSED 2026-08-24 -- see resolution below.] web_app.py CSRF check (X-Requested-With / method allowlist) applies globally via before_request, no per-route gap found
 Priority: INFO (audit id AUD-0069, status CONFIRMED, confidence HIGH, evidence E1)
 Files: web_app.py
 
@@ -23974,7 +24056,14 @@ Problem:
   Recommendation: No action needed; note for future reviewers that this protection is central and would need to move with any auth-model change.
   Full record: audit/AUDIT_REPORT.json (id AUD-0069), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Admin accuracy-circuit-breaker override (cluster M) confirmed CLI-only, not dashboard-reachable
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action needed." Re-confirmed: the CSRF
+  check still lives in a single unconditional @app.before_request hook
+  (web_app.py:166-211). Route count has grown 60 -> 68 since filing, but
+  coverage is by construction (applies to every route). Closing as
+  verified.
+
+[CLOSED 2026-08-24 -- see resolution below.] Admin accuracy-circuit-breaker override (cluster M) confirmed CLI-only, not dashboard-reachable
 Priority: INFO (audit id AUD-0070, status CONFIRMED, confidence HIGH, evidence E1)
 Files: web_app.py, main.py, paper.py
 
@@ -23987,7 +24076,12 @@ Problem:
   Recommendation: No action needed; flag if a future change ever adds a dashboard route for this, since it would need its own explicit auth/CSRF consideration beyond the generic before_request check.
   Full record: audit/AUDIT_REPORT.json (id AUD-0070), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] trade_cycle.py's STRONG/MED placement-gate mirror uses a different None-fallback for net_edge than the real validate() gate it mirrors
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action needed." Re-confirmed: grep for
+  `accuracy_override|accuracy-override|ACCURACY_OVERRIDE` in web_app.py
+  returns zero hits -- still CLI-only. Closing as verified.
+
+[CLOSED 2026-08-24 -- see resolution below.] trade_cycle.py's STRONG/MED placement-gate mirror uses a different None-fallback for net_edge than the real validate() gate it mirrors
 Priority: INFO (audit id AUD-0071, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: trade_cycle.py, order_executor.py, weather_markets.py
 
@@ -23999,7 +24093,15 @@ Problem:
   Recommendation: No action required -- already documented and accepted by the team with correct reasoning, and my broader grep closes the remaining audit gap (hourly/arb paths) the original finding had left open, with the same 'unreachable' conclusion holding.
   Full record: audit/AUDIT_REPORT.json (id AUD-0071), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] log_prediction's UTC-based days_out fallback remains for callers that do not supply analysis days_out
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action required -- already documented
+  and accepted." Re-confirmed the discrepancy still genuinely exists
+  (trade_cycle.py:583-587 falls back net_edge -> analysis.get('edge') ->
+  0.0, while order_executor.py:3317-3319 falls back net_edge -> 0.0 only)
+  but remains documented in-code and confirmed unreachable. Closing as
+  verified/accepted-by-design, not left open.
+
+[CLOSED 2026-08-24 -- see resolution below.] log_prediction's UTC-based days_out fallback remains for callers that do not supply analysis days_out
 Priority: INFO (audit id AUD-0072, status CONFIRMED, confidence HIGH, evidence E1)
 Files: tracker.py
 
@@ -24011,13 +24113,25 @@ Problem:
   Recommendation: No action required beyond what is already documented; could adopt the same ZoneInfo pattern if this fallback path is revisited for other reasons.
   Full record: audit/AUDIT_REPORT.json (id AUD-0072), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ml_bias.get_emos_status() mislabels a concurrent EMOS deactivation race as file corruption
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action required beyond what is
+  already documented." Re-confirmed tracker.py:906 still has the
+  documented UTC fallback in the `elif market_date is not None` branch --
+  a deliberate, accepted fallback, not a defect. Closing as
+  verified/accepted-by-design.
+
+[RESOLVED 2026-08-24 -- see resolution below.] ml_bias.get_emos_status() mislabels a concurrent EMOS deactivation race as file corruption
 Priority: INFO (audit id AUD-0073, status CONFIRMED, confidence LOW, evidence E1)
 Files: ml_bias.py
 
 Problem:
   get_emos_status() checks `_EMOS_PARAMS_PATH.exists()` then separately reads the file's contents; if deactivate_emos() deletes the file between the check and the read, the read raises FileNotFoundError, caught by a broad `except Exception` and reported as `{'active': False, 'corrupt': True, ...}` instead of the correct `{'active': False}`.
   Full record: audit/AUDIT_REPORT.json (id AUD-0073), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit b755498e "batch-14 INFO-tier verify-and-close fixes"):
+  ml_bias.py:1434-1437 now has an explicit `except FileNotFoundError:`
+  returning `{"active": False, "t_pinned": ...}` with a TOCTOU comment,
+  ahead of the broad `except Exception` corrupt-file branch.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ForecastCache disk snapshot is last-writer-wins across independent processes
 Priority: INFO (audit id AUD-0074, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24115,7 +24229,7 @@ Resolution 2026-08-21 (batch-09 item 4): user confirmed (via AskUserQuestion)
   new between-bucket-decimal-ticker test fails, proving it would have
   caught the original bug had it existed from the start.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Verified: web_app.py's dev server does NOT block concurrent requests behind an open SSE stream, despite Werkzeug's own run_simple() defaulting threaded=False
+[CLOSED 2026-08-24 -- see resolution below.] Verified: web_app.py's dev server does NOT block concurrent requests behind an open SSE stream, despite Werkzeug's own run_simple() defaulting threaded=False
 Priority: INFO (audit id AUD-0077, status CONFIRMED, confidence VERY HIGH, evidence E3)
 Files: web_app.py
 
@@ -24125,6 +24239,12 @@ Problem:
   Evidence: audit/reproductions/sse_blocking_repro2.py: built the real app via web_app._build_app(None), ran app.run(host="127.0.0.1", port=58433, debug=False, use_reloader=False) (the exact production call), opened a persistent /api/stream connection, fired 8x /api/status requests at 1s intervals -- all completed in 57-270ms with no blocking observed. Confirmed via `python -c "import inspect; from flask.app...
   Recommendation: No action needed. Documented here so a later pass doesn't re-spend time investigating the same (ultimately incorrect) hypothesis.
   Full record: audit/AUDIT_REPORT.json (id AUD-0077), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Recommendation was "No action needed" -- it's a not-a-bug
+  record filed to stop re-investigation. Re-confirmed unchanged
+  (web_app.py:3739 `_app.run(...)` with no explicit threaded= flag; Flask's
+  default is threaded=True). Closing as a documentation record.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ml_bias.py's HMAC sidecar write bypasses the codebase's atomic-write convention (but fails safe on a torn write anyway)
 Priority: INFO (audit id AUD-0078, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24139,7 +24259,7 @@ Problem:
   Recommendation: Low priority: route _write_hmac (and the adjacent .pkl write) through safe_io.atomic_write_text/atomic_write_bytes for consistency.
   Full record: audit/AUDIT_REPORT.json (id AUD-0078), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Misleading test docstring in test_full_exit_race_loss_does_not_crash_the_caller
+[RESOLVED 2026-08-24 -- see resolution below.] Misleading test docstring in test_full_exit_race_loss_does_not_crash_the_caller
 Priority: INFO (audit id AUD-0079, status CONFIRMED, confidence MEDIUM, evidence E1)
 Files: tests/test_live_execution.py, order_executor.py
 
@@ -24151,7 +24271,12 @@ Problem:
   Recommendation: Reword the docstring's final sentence, or note explicitly that the True/False contract has no current caller that branches on it (so if one is ever added, this test's assumption should be re-examined). NOTE: a caller that branches on it already exists (see verification_notes) -- the...
   Full record: audit/AUDIT_REPORT.json (id AUD-0079), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Recent-commit test suite (2026-08-02..08-17) shows unusually high, self-critical test-writing discipline
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit b755498e, further reworded by batch-31 M-4):
+  The claimed phrase "must not silently report success either" is gone;
+  the docstring at tests/test_live_execution.py now describes only the
+  RuntimeError-propagation failure mode.
+
+[CLOSED 2026-08-24 -- see resolution below.] Recent-commit test suite (2026-08-02..08-17) shows unusually high, self-critical test-writing discipline
 Priority: INFO (audit id AUD-0080, status CONFIRMED, confidence HIGH, evidence E2)
 Files: tests/test_trading_gates.py, tests/test_live_execution.py, tests/test_positions.py, tests/test_settlement_monitor.py, tests/test_rain_markets.py, tests/test_cron_integration.py, tests/test_trade_cycle
 
@@ -24161,6 +24286,11 @@ Problem:
   Evidence: Direct pytest runs this session (E2) plus extensive source reads of the listed files' test bodies and docstrings.
   Recommendation: None required; noted so this audit's overall test-quality assessment isn't skewed toward assuming pervasive weak coverage based on the handful of gaps found above, which are genuine but narrow.
   Full record: audit/AUDIT_REPORT.json (id AUD-0080), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review): this
+  entry's own Root cause is "N/A -- positive observation, not a defect"
+  and Recommendation is "None required." Not a defect, doesn't belong in
+  an open-issues tracker -- closed as a commentary record.
 
 [RESOLVED 2026-08-22 -- see resolution below.] metar.fetch_metar_daily_extreme docstring's caller list is stale after b0f4cad2 added a third caller
 Priority: INFO (audit id AUD-0081, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24178,19 +24308,28 @@ Resolution: `2a0f8e09` updated the docstring's caller enumeration to include
   weather_markets.py's _compute_persistence_prob) -- verified present in
   current metar.py this session.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] CI workflow runs the full pytest suite twice per run (coverage report + coverage gate as separate full runs)
+[RESOLVED 2026-08-24 -- see resolution below.] CI workflow runs the full pytest suite twice per run (coverage report + coverage gate as separate full runs)
 Priority: INFO (audit id AUD-0083, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
   Read .github/workflows/ci.yml in full. Lines 40-41: 'Run tests with coverage' step runs `pytest -v --cov=. --cov-report=term-missing`. Lines 43-44: 'Fail if coverage drops below 40%' step runs `pytest --cov=. --cov-fail-under=40 -q`. Both are independent full pytest invocations over the same testpaths with no test-selection narrowing between them, exactly as claimed. Recommendation (merge into one invocation or use `coverage report --fail-under`) is technically sound.
   Full record: audit/AUDIT_REPORT.json (id AUD-0083), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] pyproject.toml's `integration` marker relies entirely on tests self-skipping, not on pytest configuration excluding the marker
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  .github/workflows/ci.yml now has a single test step:
+  `pytest -v --cov=. --cov-report=term-missing --cov-fail-under=40`. The
+  separate second full run is gone.
+
+[RESOLVED 2026-08-24 -- see resolution below.] pyproject.toml's `integration` marker relies entirely on tests self-skipping, not on pytest configuration excluding the marker
 Priority: INFO (audit id AUD-0084, status CONFIRMED, confidence MEDIUM, evidence E1)
 
 Problem:
   Read pyproject.toml's [tool.pytest.ini_options] block in full — confirmed no `addopts` key exists at all, so nothing at config level excludes the `integration` marker by default. Read tests/test_integration_live.py — `pytestmark = pytest.mark.integration` (module-level) plus a per-client-construction self-skip (`if os.getenv("KALSHI_ENV") != "demo": pytest.skip(...)`) is the only mechanism preventing these tests from attempting real calls; note the file's own docstring additionally claims (also inaccurately) that these tests 'are excluded from normal pytest runs' by default, which reinforces...
   Full record: audit/AUDIT_REPORT.json (id AUD-0084), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit 330b567e):
+  pyproject.toml:4 now has `addopts = "-m 'not integration'"` under
+  `[tool.pytest.ini_options]`, closing the gap the entry confirmed.
 
 [OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0001/0002/0005/0009/0012); filed separately since it affects the whole test suite's isolation infrastructure, not that batch's own 5 findings] tests/conftest.py's mock_balance_1000 fixture does not actually isolate paper.DATA_PATH -- tests using it read/write the REAL production data/paper_trades.json
 Priority: HIGH -- real production trading-data corruption risk, though not itself a live-money safety gate
@@ -26028,7 +26167,7 @@ Problem:
   an approach, then real tests (mutation-tested) and independent review
   given this touches an actual paper-order-placement path.
 
-[OPEN 2026-08-22 -- found by independent opus review (round 1) of batch-26 item 1's fix; genuinely separate file/tree, not built or served by this repo today, so filed rather than fixed inline] weather app site V_3 (3)/src/tabs/SignalsTab.jsx carries the same wrong-side-price bugs batch-26 item 1 just fixed in the real frontend, unfixed
+[CLOSED 2026-08-24 -- see resolution below.] weather app site V_3 (3)/src/tabs/SignalsTab.jsx carries the same wrong-side-price bugs batch-26 item 1 just fixed in the real frontend, unfixed
 Priority: LOW -- this tree has no package.json/vite.config.js and nothing in this repo builds it into the git-tracked static/dist/ actually served by web_app.py, so there is no live impact today
 Files: weather app site V_3 (3)/src/tabs/SignalsTab.jsx (~44, 60, 95, 104, 213, 529, 557, 566)
 
@@ -26047,6 +26186,14 @@ Problem:
   contract) to it first. If it's genuinely dead/abandoned, consider deleting
   it or marking it explicitly as such to stop future audits/reviews from
   re-flagging its bugs as live risk.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review): the
+  recommendation's "deleting it" branch was taken -- commit 002c34cb
+  ("refactor(frontend): retire legacy single-file dashboard, promote V_3
+  tabbed app to frontend/") deleted the entire "weather app site V_3 (3)"
+  tree (git mv'd its contents into frontend/ instead, becoming the one and
+  only served frontend). `ls -d "weather app site V_3 (3)"` confirms it no
+  longer exists. Moot -- there is no longer a second copy to carry the bug.
 
 [OPEN 2026-08-22 -- found while implementing batch-13 (AUD-0022, giving
 _fetch_ensemble_precip_multiday its own dedicated _ensemble_precip_multiday_cb
@@ -27545,7 +27692,7 @@ Batch-32 process notes: full ceremony per the 29-step workflow (safety-gate surf
   print duplicate cache-reload warnings (M2-7, cosmetic -- downgrading the log level was rejected since
   tests/test_phase2_batch_a.py's TestPaperMinEdgeWarning explicitly requires WARNING level for that exact
 
-[OPEN 2026-08-23 -- never filed as its own entry despite being known since the REAL NBM VIA IEM NBS STATION BULLETINS work; recorded only inside that entry's own "Known residual" note (search backlog.txt for "fetch_mos()'s existing GFS/NAM path filters rows by"), and absent from BACKLOG_OPEN.md as a result; independently re-confirmed still present in current code this session] mos.fetch_mos()'s GFS/NAM row filter compares a UTC ftime against a city-local target date
+[RESOLVED 2026-08-24 -- see resolution below.] mos.fetch_mos()'s GFS/NAM row filter compares a UTC ftime against a city-local target date
 Priority: LOW -- same defect class as the analyze_trade UTC-vs-city-local family (AUD-0017/0044/0045/0046 and their sigma-lookup sibling below), but confined to which hourly rows feed the GFS/NAM MOS max/min for a single day, not a trade-entry gate
 Files: mos.py (fetch_mos, ~line 191 row filter; ~line 333 parses ftime as UTC in the separate NBS txn-row path for contrast)
 
@@ -27588,6 +27735,14 @@ Problem:
   scope; whoever lands second between batch-36 and any future session
   picking this entry up should add the Resolution note here rather than
   leaving it open after the code fix ships.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed via batch-36 M-18c, commit 05308761):
+  mos.py:195-215 now has `_row_is_target_local_date()` converting `ftime`
+  to `ZoneInfo(tz)` and comparing local dates, falling back to the old
+  `startswith(date_str)` only when tz is None. This is a duplicate of
+  batch-36's own already-RESOLVED entry at this file's line ~28166 (search
+  "fetch_mos" there) -- landing this note closes the cross-reference gap
+  the entry itself anticipated.
   line) were both confirmed non-blocking and left as documented, deliberate no-ops per the reviewer's own
   framing.
 
@@ -28932,7 +29087,7 @@ Batch-37 process notes: full ceremony per the 29-step workflow (calibration
   get committed) -- this branch was rebased onto that commit before any
   code work began, so there is no ordering hazard.
 
-[OPEN -- filed 2026-08-24, found incidentally re-running batch-37's widened test sweep after rebasing onto batch-36] tests/test_phase2_batch_c.py::TestClimateIndicesTTL::test_cache_served_within_ttl fails on master right now -- stale fixture vs. batch-36's own get_indices() caching-gate change
+[RESOLVED 2026-08-24 -- see resolution below.] tests/test_phase2_batch_c.py::TestClimateIndicesTTL::test_cache_served_within_ttl fails on master right now -- stale fixture vs. batch-36's own get_indices() caching-gate change
 Priority: Low -- test-only, no live behavior affected (climate_indices.py's
   actual caching logic is doing exactly what batch-36 intended; this is a
   test that predates that intent).
@@ -28971,6 +29126,14 @@ Why not now: climate_indices.py is batch-36's owned file/design decision,
   instead of just updating a stale fixture. Filed with the full root-cause
   diagnosis already done so whoever picks this up doesn't need to
   re-derive it.
+
+Resolution (2026-08-24, re-verified during batch-48's backlog review, fix landed in commit e9325bc3 "fix 7 stale CI test failures on master"):
+  Ran `tests/test_phase2_batch_c.py::TestClimateIndicesTTL` directly --
+  5 passed, including test_cache_served_within_ttl and the sibling
+  test_cache_refreshes_after_ttl this entry flagged as possibly needing
+  the identical fix. The ENSO mock now returns non-empty data
+  (tests/test_phase2_batch_c.py:232), exactly the "What it would look
+  like" fix this entry already prescribed.
 
 [RESOLVED 2026-08-24 -- batch-33 item 1 (M-1)] batch-24's two fixes defeat each other -- halt-transition edge consumed on delivery failure
 Priority: MEDIUM (skeptic-corrected scope -- see below)
