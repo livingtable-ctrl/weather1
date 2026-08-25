@@ -441,28 +441,61 @@ class TestSnowTradeWiring:
         assert r_consensus["ci_adjusted_kelly"] > r_no_consensus["ci_adjusted_kelly"]
 
 
+class _FrozenDatetime(datetime):
+    """datetime.now(tz) returns _frozen_instant converted to tz (or naive
+    _frozen_instant if tz is None); every other datetime behavior is real.
+    Same pattern as test_weather_markets.py's _FrozenDatetime/_frozen_
+    datetime_at -- duplicated locally rather than imported, matching this
+    repo's existing per-file convention (test_hurricane_markets.py also
+    keeps its own copy)."""
+
+    _frozen_instant: "datetime" = None  # type: ignore[assignment]
+
+    @classmethod
+    def now(cls, tz=None):
+        if tz is None:
+            return cls._frozen_instant.replace(tzinfo=None)
+        return cls._frozen_instant.astimezone(tz)
+
+
+def _frozen_datetime_at(instant):
+    frozen = type("_FrozenDatetimeAt", (_FrozenDatetime,), {})
+    frozen._frozen_instant = instant
+    return frozen
+
+
 def _metar_locked_temp_result(
     monkeypatch, yes_ask, yes_bid, blended_prob, current_temp_f
 ):
-    # analyze_trade's METAR-locked branch reads the real wall-clock local hour
-    # (weather_markets.py's "pre-extreme window" dampening check) to decide
-    # whether to widen ci_low/ci_high, which ci_adjusted_kelly is derived
-    # from -- undamped outside ~7am-2pm local, so any test asserting a fixed
-    # ci_adjusted_kelly value was flaky by time-of-day. METAR_HIGH_CUTOFF_HOUR/
-    # METAR_LOW_CUTOFF_HOUR are both set to 24 -- guaranteed to exceed
-    # datetime.hour's real [0,23] range, so the dampening branch is
-    # unconditionally taken for var="max" or "min" regardless of real time.
+    # analyze_trade's METAR-locked branch reads the (now frozen, see below)
+    # local hour at frozen_instant (weather_markets.py's "pre-extreme window"
+    # dampening check) to decide whether to widen ci_low/ci_high, which
+    # ci_adjusted_kelly is derived from -- undamped outside ~7am-2pm local, so
+    # any test asserting a fixed ci_adjusted_kelly value needs the dampening
+    # branch forced on regardless of what hour it actually runs at.
+    # METAR_HIGH_CUTOFF_HOUR/METAR_LOW_CUTOFF_HOUR are both set to 24 --
+    # guaranteed to exceed datetime.hour's real [0,23] range, so the
+    # dampening branch is unconditionally taken for var="max" or "min"
+    # regardless of local hour, frozen or not.
     monkeypatch.setenv("METAR_HIGH_CUTOFF_HOUR", "24")
     monkeypatch.setenv("METAR_LOW_CUTOFF_HOUR", "24")
     # days_out (which feeds time_kelly_scale) is computed by analyze_trade
-    # from datetime.now(UTC).date(), NOT system-local date.today() -- opus
-    # review caught that this file's earlier precip/forecasting fixes used
-    # the WRONG timezone here (NY-local), which only narrowed this test's
-    # flaky window (UTC 22:00-24:00) instead of eliminating it. UTC is
-    # correct for this specific code path (unlike _analyze_precip_trade,
-    # which genuinely does use the market city's own local "today").
-    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
-    close_time = (datetime.now(UTC) + timedelta(hours=20)).isoformat()
+    # from the market's CITY-LOCAL "today" (weather_markets.py's _local_today,
+    # via ZoneInfo -- see TestPastDateGateCityLocal in test_weather_markets.py
+    # for the backlog.txt "ANALYZE_TRADE'S past_date GATE" fix this depends
+    # on), NOT UTC's date -- a prior version of this comment claimed the
+    # opposite and instead just narrowed this test's flaky window to the
+    # ~4h/day where UTC's calendar date has rolled over but NYC's (EDT,
+    # UTC-4) hasn't. Freezing weather_markets.datetime.now() at a fixed UTC
+    # noon instant -- unambiguously the same calendar day in every US
+    # timezone this bot trades, so there's no rollover edge to land in --
+    # makes _local_today, and therefore days_out (and time_kelly_scale,
+    # and ci_adjusted_kelly below), genuinely deterministic instead of
+    # coincidentally passing depending on when the suite happens to run.
+    frozen_instant = datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(wm, "datetime", _frozen_datetime_at(frozen_instant))
+    tomorrow = frozen_instant.date() + timedelta(days=1)
+    close_time = (frozen_instant + timedelta(hours=20)).isoformat()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": tomorrow,
@@ -515,8 +548,8 @@ class TestTemperatureTradeWiring:
         # 0.60, then further adjusted by the consensus/CI-width Kelly formula
         # (_priced["ci_adjusted_kelly"], not a bare kelly*ci_scale multiply) --
         # this is the original test's own value, now genuinely deterministic
-        # (days_out=1 via UTC "tomorrow", dampening forced) rather than
-        # coincidentally-passing.
+        # (days_out=1 via _metar_locked_temp_result's frozen city-local
+        # "today", dampening forced) rather than coincidentally-passing.
         assert r["ci_adjusted_kelly"] == pytest.approx(0.05601, abs=1e-5)
         assert r["consensus"] is True
 
