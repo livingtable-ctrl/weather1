@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import platform
 import shutil
 import sqlite3
 import sys
@@ -455,7 +456,18 @@ def main() -> int:
         print("  3. EDIT .env -- KALSHI_PRIVATE_KEY_PATH is an ABSOLUTE path and")
         print(f"     still reads {key_path}")
         print("     Repoint it or nothing will authenticate.")
-    print("  4. Python 3.12.10 specifically, then pip install -r requirements.txt")
+    # Reported, not hardcoded. The previous text said "Python 3.12.10
+    # specifically", which was wrong twice over: this machine runs 3.14.5,
+    # and there is no single "the" version anyway -- CI pins 3.12
+    # (.github/workflows, and pyproject's ruff target-version = "py312")
+    # while local dev has drifted two minor versions ahead. Print what is
+    # actually running so the bundle cannot go stale the way that line did.
+    print(
+        f"  4. Python {platform.python_version()} is what this bundle was made "
+        f"on; CI pins 3.12."
+    )
+    print("     requirements.txt declares no floor -- match one of those two.")
+    print("     Then: pip install -r requirements.txt")
     print("\nThis bundle contains LIVE CREDENTIALS (.env + private key).")
     print("Transfer it directly -- not via email or cloud sync -- and delete it")
     print("once the new machine is verified.")
