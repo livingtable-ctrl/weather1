@@ -155,7 +155,7 @@ export default function SettingsTab() {
         </p>
 
         {s.override_until && (
-          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', color: '#92400e', fontSize: 12, marginBottom: 14 }}>
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', color: 'var(--warn)', fontSize: 12, marginBottom: 14 }}>
             {/* override_until is a Unix epoch-seconds float (the backend's
                 canonical expires_at format); Date() takes milliseconds, so
                 numbers need *1000. String branch kept for backward compat
@@ -184,7 +184,7 @@ export default function SettingsTab() {
         {/* batch-45 M-8: was hardcoded green even for "✗ Request failed" --
             conditional on the leading glyph, same convention as reportMsg
             above. opus review MEDIUM: the validation-message fallback color
-            must be legible directly on --bg-card (unlike #92400e above,
+            must be legible directly on --bg-card (unlike var(--warn) above,
             which sits on a tinted amber background) -- #ca8a04 matches the
             amber already used elsewhere in this file for that exact
             surface (backupStale text, line ~230). */}

@@ -148,7 +148,7 @@ export default function OverviewTab() {
             <div style={{
               padding: '10px 16px', borderRadius: 9,
               background: 'rgba(202,138,4,0.07)', border: '1px solid rgba(202,138,4,0.35)',
-              color: '#92400e', fontSize: 13, fontWeight: 600,
+              color: 'var(--warn)', fontSize: 13, fontWeight: 600,
             }}>
               ⚠ Brier warning — 1 week above 0.22 threshold. P10.3 alert fires if next week is also above.
             </div>

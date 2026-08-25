@@ -225,10 +225,10 @@ export function BalanceSparkline({ hist }) {
         {/* Event dots */}
         {events.map((p, i) => {
           const idx = hist.indexOf(p);
-          return <circle key={i} cx={xs[idx]} cy={ys[idx]} r="4" fill="#f59e0b" stroke="white" strokeWidth="1.5" />;
+          return <circle key={i} cx={xs[idx]} cy={ys[idx]} r="4" fill="#f59e0b" stroke="var(--bg-card)" strokeWidth="1.5" />;
         })}
         {/* Current balance endpoint dot */}
-        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill="#3b82f6" stroke="white" strokeWidth="2" />
+        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill="#3b82f6" stroke="var(--bg-card)" strokeWidth="2" />
         {/* Y-axis labels */}
         <text x={PAD.left - 6} y={PAD.top + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)"
           fontFamily="ui-monospace, monospace">${Math.round(maxB)}</text>
@@ -253,7 +253,7 @@ export function BalanceSparkline({ hist }) {
               stroke="var(--text-faint)" strokeWidth="1" strokeDasharray="3,3"
             />
             <circle cx={tip.x} cy={tip.y} r="5"
-              fill={tip.isEvent ? '#f59e0b' : '#3b82f6'} stroke="white" strokeWidth="2"
+              fill={tip.isEvent ? '#f59e0b' : '#3b82f6'} stroke="var(--bg-card)" strokeWidth="2"
             />
             <rect x={tip.tx} y={tip.ty} width={tip.tipW} height={tip.tipH} rx="5"
               fill="var(--bg-card)" stroke="var(--border)" strokeWidth="1"
@@ -303,11 +303,14 @@ export function SystemEventsCard({ alerts }) {
   }
 
   function badgeStyle(level) {
+    // batch-46 M-2: was a solid light-mode-only hex fill (e.g. #fee2e2) paired
+    // with dark text -- illegible once the surrounding page goes dark. Token
+    // fills track the active theme instead.
     const styles = {
-      error: { background: '#fee2e2', color: '#dc2626' },
-      warn:  { background: '#fef9c3', color: '#ca8a04' },
-      info:  { background: '#dbeafe', color: '#2563eb' },
-      good:  { background: '#dcfce7', color: '#16a34a' },
+      error: { background: 'var(--neg-fill)', color: 'var(--neg)' },
+      warn:  { background: 'var(--warn-fill)', color: 'var(--warn)' },
+      info:  { background: 'var(--accent-fill)', color: 'var(--accent)' },
+      good:  { background: 'var(--pos-fill)', color: 'var(--pos)' },
     };
     return styles[level] || styles.info;
   }
@@ -436,7 +439,7 @@ export function BrierTrendChart({ hist }) {
           return (
             <g key={i}>
               <circle cx={xs[i]} cy={ys[i]} r={isHov ? 6 : 4}
-                fill={color} stroke="white" strokeWidth={isHov ? 2.5 : 1.5}
+                fill={color} stroke="var(--bg-card)" strokeWidth={isHov ? 2.5 : 1.5}
                 style={{ transition: 'r 0.1s' }} />
               {/* Wide invisible hit area */}
               <rect

@@ -84,7 +84,7 @@ function BrierAlertCard() {
         <line x1={PAD.left} y1={threshY} x2={W - PAD.right} y2={threshY}
           stroke="rgba(239,68,68,0.5)" strokeWidth="1" strokeDasharray="4,3" />
         <polyline points={pts} fill="none" stroke={statusColor} strokeWidth="2" strokeLinejoin="round" />
-        <circle cx={endX} cy={endY} r="4" fill={statusColor} stroke="white" strokeWidth="2" />
+        <circle cx={endX} cy={endY} r="4" fill={statusColor} stroke="var(--bg-card)" strokeWidth="2" />
         {recent.map((e, i) => (
           <text key={i} x={toX(i)} y={H - 4} textAnchor="middle"
             fontSize="9" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">
@@ -354,7 +354,7 @@ export default function RiskTab() {
           {M.anomalyStatus.anomaly_messages.length > 0 && (
             <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
               {M.anomalyStatus.anomaly_messages.map((msg, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#92400e' }}>{msg}</div>
+                <div key={i} style={{ fontSize: 12, color: 'var(--warn)' }}>{msg}</div>
               ))}
             </div>
           )}

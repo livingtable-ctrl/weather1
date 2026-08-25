@@ -2,11 +2,17 @@ import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 
 // Level config: accent is used for the left border and badge; bg is the row tint on hover/error rows.
+// batch-46 M-2 (opus review adjacency finding): `color` used to be a fixed
+// hex, so the level badge (line ~190) and the active filter-pill text (line
+// ~108) both went illegible in dark mode -- same defect class as
+// SystemEventsCard's badgeStyle, just structured as a lookup table instead
+// of a switch. `accent`/`bg` are left as literal hex -- they're only used
+// for the left-border bar and pill borders/backgrounds, which weren't flagged.
 const LEVEL = {
-  error: { accent: '#ef4444', bg: 'rgba(239,68,68,0.05)', color: '#ef4444', label: 'ERROR', icon: '✕' },
-  warn:  { accent: '#f59e0b', bg: 'rgba(245,158,11,0.05)', color: '#ca8a04', label: 'WARN',  icon: '⚠' },
-  info:  { accent: '#3b82f6', bg: 'transparent',           color: '#64748b', label: 'INFO',  icon: 'i' },
-  good:  { accent: '#22c55e', bg: 'rgba(34,197,94,0.05)',  color: '#16a34a', label: 'OK',    icon: '✓' },
+  error: { accent: '#ef4444', bg: 'rgba(239,68,68,0.05)', color: 'var(--neg)',    label: 'ERROR', icon: '✕' },
+  warn:  { accent: '#f59e0b', bg: 'rgba(245,158,11,0.05)', color: 'var(--warn)',   label: 'WARN',  icon: '⚠' },
+  info:  { accent: '#3b82f6', bg: 'transparent',           color: 'var(--accent)', label: 'INFO',  icon: 'i' },
+  good:  { accent: '#22c55e', bg: 'rgba(34,197,94,0.05)',  color: 'var(--pos)',    label: 'OK',    icon: '✓' },
 };
 
 const FILTERS = ['all', 'error', 'warn', 'info', 'good'];
@@ -198,7 +204,7 @@ export default function ActivityTab() {
               <span style={{
                 gridColumn: 4,
                 fontSize: 13,
-                color: isError ? '#fca5a5' : 'var(--text)',
+                color: isError ? 'var(--neg)' : 'var(--text)',
                 lineHeight: 1.5,
                 wordBreak: 'break-word',
               }}>

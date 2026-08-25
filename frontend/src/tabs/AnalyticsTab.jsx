@@ -72,7 +72,7 @@ function EquityCurveChart() {
         {/* Equity line */}
         <polyline points={linePts} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
         {/* Endpoint dot */}
-        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill={lineColor} stroke="white" strokeWidth="2" />
+        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill={lineColor} stroke="var(--bg-card)" strokeWidth="2" />
         {/* Y-axis labels */}
         <text x={PAD.left - 6} y={PAD.top + 4} textAnchor="end" fontSize="10" fill="var(--text-faint)" fontFamily="ui-monospace, monospace">
           ${Math.round(maxC)}
@@ -261,7 +261,22 @@ function CalendarPnLChart() {
           const bg = w.pnl >= 0
             ? `rgba(34,197,94,${intensity})`
             : `rgba(239,68,68,${intensity})`;
-          const textColor = w.pnl >= 0 ? '#14532d' : '#7f1d1d';
+          // batch-46 M-2 (opus review adjacency finding): was a fixed
+          // near-black green/red -- illegible in dark mode wherever the
+          // tile's fill is faint (low |pnl| relative to the window max, the
+          // common case), since the composited bg is then close to
+          // --bg-card itself (measured ~1.6:1). var(--text) fixes that: the
+          // tile's own hue already carries the pos/neg signal, so the text
+          // doesn't need its own color, just to track the theme.
+          // Known remaining limitation, not introduced by this change: the
+          // single highest-|pnl| tile in a window sits at max fill
+          // intensity (0.8), where the composited bg turns bright/saturated
+          // even in dark mode -- var(--text)'s near-white there measures
+          // ~2.9:1, same order as the pre-existing near-black text's ~2.8:1.
+          // A real fix needs the tile's actual rendered luminance (theme
+          // isn't threaded down to this component) -- worth a follow-up if
+          // this specific tile's legibility matters enough to prioritize.
+          const textColor = 'var(--text)';
           const weekLabel = new Date(w.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           return (
             <div key={w.week} style={{
@@ -401,7 +416,7 @@ function SamedayCalibCard() {
                   const dotColor = isAboveDiag ? '#16a34a' : '#ef4444';
                   return (
                     <g key={i}>
-                      <circle cx={cx} cy={cy} r={r} fill={dotColor} fillOpacity={0.75} stroke="white" strokeWidth="1.5" />
+                      <circle cx={cx} cy={cy} r={r} fill={dotColor} fillOpacity={0.75} stroke="var(--bg-card)" strokeWidth="1.5" />
                       <text x={cx} y={cy + 4} textAnchor="middle" fontSize="9" fill="white" fontWeight="700">{b.n}</text>
                     </g>
                   );
@@ -925,7 +940,7 @@ function RollingWinRateChart() {
         {/* Win rate line */}
         <polyline points={linePts} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" />
         {/* Endpoint dot */}
-        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill={lineColor} stroke="white" strokeWidth="2" />
+        <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="4" fill={lineColor} stroke="var(--bg-card)" strokeWidth="2" />
       </svg>
       <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
         Latest {WINDOW}-trade window:{' '}
@@ -1065,7 +1080,7 @@ export default function AnalyticsTab() {
         <div style={{
           padding: '14px 18px', borderRadius: 10, marginBottom: 18,
           background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
-          color: '#92400e', fontSize: 13, lineHeight: 1.5,
+          color: 'var(--warn)', fontSize: 13, lineHeight: 1.5,
         }}>
           📊 <strong>Demo values shown</strong> — real analytics will appear after enough settled trades accumulate. Brier, AUC, and attribution are all computed from outcomes; there aren't enough yet.
         </div>

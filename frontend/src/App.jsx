@@ -83,11 +83,24 @@ const THEMES = {
     '--bg-page': '#fafafa', '--bg-card': '#ffffff', '--bg-subtle': '#f8f9fb',
     '--bg-muted': '#f1f5f9', '--border': '#e7eaef',
     '--text': '#0f172a', '--text-muted': '#64748b', '--text-faint': '#94a3b8',
+    // Semantic colours (batch-46 M-2): promoted out of hardcoded hex so
+    // badges/fills/chart accents track theme instead of staying light-only.
+    '--pos': '#16a34a', '--pos-fill': 'rgba(34,197,94,0.12)',
+    '--neg': '#dc2626', '--neg-fill': 'rgba(239,68,68,0.12)',
+    '--warn': '#92400e', '--warn-fill': 'rgba(234,179,8,0.12)',
+    '--accent': '#2563eb', '--accent-fill': 'rgba(59,130,246,0.12)',
   },
   dark: {
     '--bg-page': '#0f1115', '--bg-card': '#181b22', '--bg-subtle': '#1e222a',
     '--bg-muted': '#2a2f3a', '--border': '#2e333d',
     '--text': '#eef0f5', '--text-muted': '#a3acb8', '--text-faint': '#737d8a',
+    // --warn in particular can't reuse light's #92400e (near-black brown,
+    // invisible on a dark card) -- each semantic colour needs its own
+    // brighter dark-mode value tuned for contrast against --bg-card.
+    '--pos': '#4ade80', '--pos-fill': 'rgba(74,222,128,0.16)',
+    '--neg': '#f87171', '--neg-fill': 'rgba(248,113,113,0.16)',
+    '--warn': '#fbbf24', '--warn-fill': 'rgba(251,191,36,0.16)',
+    '--accent': '#60a5fa', '--accent-fill': 'rgba(96,165,250,0.16)',
   },
 };
 function applyTheme(t) {
