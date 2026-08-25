@@ -1718,9 +1718,16 @@ def _clears_taker_fee(analysis: dict) -> bool:
     min_edge threshold -- i.e. crossing as taker (guaranteed fill, real fee)
     is worth it versus continuing to wait as an uncertain-fill $0-fee maker
     order. Recomputes from analysis's own stored forecast_prob/entry_price/
-    recommended_side rather than re-deriving them, so this can never
-    disagree with what analyze_trade() itself already decided about this
-    specific trade.
+    recommended_side rather than re-deriving them, so the INPUTS can never
+    disagree with what analyze_trade() decided about this specific trade.
+    The resulting number still can: weather_markets computes the stored
+    net_edge as `min((net_ev / entry_price) * time_decay, 3.0)`, and this
+    applies neither the time_decay multiplier nor the 3.0 cap, so with
+    time_decay < 1 it sits slightly ABOVE the placement gate's value on a
+    nominally identical scale. Bounded in practice -- _validate_trade_
+    opportunity has already passed for this order just above the call site --
+    but it is a real difference, not the exact agreement an earlier version
+    of this docstring claimed.
 
     Only the main temperature analyze_trade() path stores entry_price (see
     weather_markets.py's return dict) -- the precip/snow paths don't, so
@@ -1729,16 +1736,50 @@ def _clears_taker_fee(analysis: dict) -> bool:
     improve still works. Worth threading entry_price through those paths
     too if taker-crossing there ever matters.
     """
-    from utils import KALSHI_FEE_RATE
+    from utils import kalshi_fee_rate_at
 
     entry_price = analysis.get("entry_price")
     forecast_prob = analysis.get("forecast_prob")
     side = analysis.get("recommended_side")
     if not entry_price or forecast_prob is None or side not in ("yes", "no"):
         return False
+    # Range guards, kept as fail-safe False rather than letting the arithmetic
+    # run: kalshi_fee_rate_at now RAISES outside [0, 1] (a negative fee would
+    # otherwise lower the bar), and an out-of-range forecast_prob inflates
+    # p_win without bound -- forecast_prob=1.5 used to return True here.
+    # A gate that cannot trust its inputs declines to cross; it does not throw
+    # into the caller's per-order except-Exception and it does not guess.
+    if not 0.0 < entry_price < 1.0 or not 0.0 <= forecast_prob <= 1.0:
+        return False
     p_win = forecast_prob if side == "yes" else 1.0 - forecast_prob
     payout = 1.0 - entry_price
-    net_ev_taker = p_win * payout * (1 - KALSHI_FEE_RATE) - (1 - p_win) * entry_price
+    # Batch-66 item 2: this used to charge KALSHI_FEE_RATE as a flat fraction
+    # of the WINNING payout (`p_win * payout * (1 - KALSHI_FEE_RATE)`), which
+    # is wrong twice over. Kalshi's taker fee is the curved per-contract
+    # 0.07 * P * (1-P) (fee_type "quadratic", confirmed against the exchange's
+    # own /series metadata), and it is charged on the FILL regardless of how
+    # the position later resolves -- the same two errors kalshi_taker_fee's
+    # docstring records being fixed in the settlement paths in batch-22, which
+    # never reached this gate.
+    #
+    # DIRECTION, derived rather than sampled: new_ev - old_ev collapses to
+    # 0.07 * (1-P) * (p_win - P), whose sign is just sign(p_win - P). This gate
+    # can only pass when gross edge is positive, so in the entire region that
+    # matters the OLD flat form was uniformly STRICTER -- it charged up to
+    # 0.07*(1-P) per contract against a true maximum of 0.0175. This fix
+    # therefore only ever LOOSENS the gate; no price/probability combination
+    # becomes newly rejected. Magnitude on the net_edge scale: +0.014 at
+    # P=0.20/p_win=0.25 and +0.0945 at P=0.10/p_win=0.25. Expressed as
+    # required GROSS edge at the operative live floor (MIN_EDGE=0.15), the
+    # loosening is small and peaks near 50c: 9.59pp -> 9.25pp at P=0.50,
+    # 4.36pp -> 4.12pp at P=0.20, 13.31pp -> 13.12pp at P=0.80.
+    #
+    # kalshi_fee_rate_at, not kalshi_taker_fee(1, entry_price): net_edge is a
+    # rate (EV per dollar of cost) and this gate has no contract count, so the
+    # whole-cent ceil() in kalshi_taker_fee would be a rounding artifact of
+    # the synthetic C=1 rather than a real charge -- 79% high at P=0.20.
+    fee = kalshi_fee_rate_at(entry_price, taker=True)
+    net_ev_taker = p_win * payout - (1 - p_win) * entry_price - fee
     net_edge_taker = net_ev_taker / entry_price if entry_price > 0 else 0.0
     return net_edge_taker >= _live_min_edge(analysis)
 
@@ -2182,7 +2223,25 @@ def _reprice_or_cancel_pending_orders(
                 yes_bid = coalesce_market_price(book, *YES_BID_KEYS)
                 yes_ask = coalesce_market_price(book, *YES_ASK_KEYS)
                 taker_price = yes_ask if side == "yes" else round(1.0 - yes_bid, 2)
-                if taker_price <= 0:
+                # Batch-66 item 2 (found reviewing the _clears_taker_fee fix
+                # above, which makes this branch fire more often). A `<= 0`
+                # test is only safe for the YES side. coalesce_market_price
+                # returns 0.0 when every book key is missing, so a NO cross
+                # with an absent yes_bid computes 1.0 - 0.0 = $1.00 -- which
+                # sails past `<= 0` and would place an immediate_or_cancel BUY
+                # of NO at a dollar, a guaranteed total loss on a contract that
+                # can only ever settle at 0 or 1. Bound BOTH ends instead, and
+                # treat a missing quote as no quote rather than as a price.
+                if not 0.0 < taker_price < 1.0:
+                    _log.warning(
+                        "taker-cross skipped for %s %s: implausible taker_price "
+                        "%s (yes_bid=%s yes_ask=%s) — treating as a missing quote",
+                        ticker,
+                        side,
+                        taker_price,
+                        yes_bid,
+                        yes_ask,
+                    )
                     continue
                 if _cancel_and_verify_safe_to_replace(client, order_id, order["id"]):
                     _replace_live_order(

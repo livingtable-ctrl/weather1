@@ -718,6 +718,14 @@ def _build_app(client):
                 "get_attribution",
                 "get_factor_exposure",
                 "get_stop_loss_accuracy",
+                # A1 (batch-66 item 3). Lives on the paper side of this
+                # reflection loop, not the tracker side, because its entry
+                # point is paper.get_edge_capture() -- tracker.get_edge_capture
+                # takes the trade ledger as an argument, so a tracker-side
+                # registration would raise TypeError, get swallowed by the
+                # except below into a warning, and drop the panel silently
+                # rather than failing visibly.
+                "get_edge_capture",
             ):
                 try:
                     import paper as _p
@@ -731,6 +739,31 @@ def _build_app(client):
                         fn_name,
                         _optional_exc,
                     )
+            # A10 (batch-66 item 2): the required GROSS forecast edge as a
+            # function of contract price, so the panel can show that a flat
+            # floor on net_edge is NOT a flat bar in probability terms — it
+            # scales linearly with price because net_edge divides by cost.
+            # Display-only; nothing in the sizing, gating or order path reads
+            # this. Both fee legs are emitted because the bot pays neither
+            # uniformly: entries rest as maker (fee $0 on these series) while
+            # the reprice branch and protective exits cross as taker.
+            try:
+                from utils import MIN_EDGE as _min_edge
+                from utils import required_gross_edge as _rge
+
+                result["required_gross_edge_curve"] = {
+                    "min_edge": _min_edge,
+                    "points": [
+                        {
+                            "price": round(_p / 100, 2),
+                            "maker": round(_rge(_p / 100, taker=False), 6),
+                            "taker": round(_rge(_p / 100, taker=True), 6),
+                        }
+                        for _p in range(5, 100, 5)
+                    ],
+                }
+            except Exception as _rge_exc:
+                _log.warning("api/analytics: required_gross_edge failed: %s", _rge_exc)
         except Exception as e:
             # WA-status-code: was returning 200 with {"error": ...} on total
             # failure, unlike every sibling endpoint in this chunk (e.g.

@@ -3265,7 +3265,9 @@ class TestClearsTakerFee:
             "entry_price": 0.50,
             "recommended_side": "yes",
         }
-        # net_ev = 0.85*0.50*0.93 - 0.15*0.50 = 0.32025; /0.50 = 0.6405 >> 0.07
+        # Curved per-contract taker fee (batch-66 item 2), charged on the fill
+        # regardless of outcome: fee = 0.07*0.50*0.50 = 0.0175.
+        # net_ev = 0.85*0.50 - 0.15*0.50 - 0.0175 = 0.3325; /0.50 = 0.665 >> 0.07
         assert _clears_taker_fee(analysis) is True
 
     def test_false_for_thin_edge(self, monkeypatch):
@@ -3278,7 +3280,64 @@ class TestClearsTakerFee:
             "entry_price": 0.50,
             "recommended_side": "yes",
         }
-        # net_ev = 0.53*0.50*0.93 - 0.47*0.50 = 0.01145; /0.50 = 0.0229 < 0.07
+        # fee = 0.07*0.50*0.50 = 0.0175
+        # net_ev = 0.53*0.50 - 0.47*0.50 - 0.0175 = 0.0125; /0.50 = 0.025 < 0.07
+        assert _clears_taker_fee(analysis) is False
+
+    def test_fee_is_curved_not_flat_fraction_of_payout(self, monkeypatch):
+        """Batch-66 item 2: pins the fee SHAPE, not just a pass/fail verdict.
+
+        The old code charged KALSHI_FEE_RATE as a flat fraction of the winning
+        payout; the real Kalshi taker fee is the curved per-contract
+        0.07*P*(1-P) (fee_type "quadratic", confirmed against the exchange's own
+        /series metadata) charged on the fill however it resolves. These two
+        disagree in BOTH directions depending on price, so a test that only
+        checked a strong/thin verdict would pass under either formula.
+
+        At P=0.10, p_win=0.25 the flat form is materially STRICTER:
+          flat:   0.25*0.90*0.93 - 0.75*0.10 = 0.13425; /0.10 = 1.3425
+          curved: 0.25*0.90 - 0.75*0.10 - 0.07*0.10*0.90 = 0.14370; /0.10 = 1.4370
+        so a threshold set between them accepts under curved and rejects under
+        flat -- reverting the fix flips this assertion.
+        """
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 1.40)
+        analysis = {
+            "forecast_prob": 0.25,
+            "entry_price": 0.10,
+            "recommended_side": "yes",
+        }
+        assert _clears_taker_fee(analysis) is True
+        # Positive control for the absence-side of the same boundary: nudging
+        # the bar above the curved value rejects, proving the True above came
+        # from the computed edge clearing 1.40 and not from the gate being
+        # incapable of returning False at this price/side combination.
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 1.45)
+        assert _clears_taker_fee(analysis) is False
+
+    def test_fee_uses_unrounded_rate_not_single_contract_ceil(self, monkeypatch):
+        """kalshi_taker_fee(1, P) would ceil to a whole cent; the gate must not.
+
+        At P=0.20 the true per-contract fee is 0.07*0.20*0.80 = $0.0112 and the
+        cent-rounded one is $0.02 -- a 79% overcharge that is an artifact of the
+        synthetic C=1, not of the price. With p_win=0.30:
+          unrounded: 0.30*0.80 - 0.70*0.20 - 0.0112 = 0.0888; /0.20 = 0.4440
+          ceil'd:    0.30*0.80 - 0.70*0.20 - 0.0200 = 0.0800; /0.20 = 0.4000
+        A bar of 0.42 separates them.
+        """
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.42)
+        analysis = {
+            "forecast_prob": 0.30,
+            "entry_price": 0.20,
+            "recommended_side": "yes",
+        }
+        assert _clears_taker_fee(analysis) is True
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.45)
         assert _clears_taker_fee(analysis) is False
 
     def test_no_side_computed_correctly(self, monkeypatch):
@@ -7469,3 +7528,197 @@ class TestExitBlockedAlertScope:
             # Still blocked, still returns False -- only the ALERT is scoped.
             assert result is False
             mock_alert.assert_not_called(), f"{reason} should not re-nag"
+
+
+class TestTakerCrossPriceGuard:
+    """The taker-cross branch must reject an implausible taker_price.
+
+    Batch-66 item 2. `coalesce_market_price` returns 0.0 when every book key is
+    missing, so a NO-side cross computes round(1.0 - 0.0, 2) = $1.00 — which
+    sailed past the old `taker_price <= 0` test and would place an
+    immediate_or_cancel BUY of NO at a dollar: a guaranteed total loss on a
+    contract that can only settle at 0 or 1. The same batch loosened
+    _clears_taker_fee, so this branch fires more often than it used to.
+    """
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _seed_no_side(self, ticker="KXHIGH-25MAY15-T75"):
+        from datetime import UTC, datetime, timedelta
+
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker=ticker,
+            side="no",
+            quantity=5,
+            price=0.40,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_orig"},
+        )
+        # Older than _MIN_REST_MINUTES_BEFORE_TAKER_CROSS so the age test passes
+        # and the price guard is genuinely the thing under test.
+        placed_at = (datetime.now(UTC) - timedelta(minutes=30)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?", (placed_at, row_id)
+            )
+        return row_id
+
+    def _run(self, book):
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _reprice_or_cancel_pending_orders
+
+        ticker = "KXHIGH-25MAY15-T75"
+        self._seed_no_side(ticker)
+        market = {"ticker": ticker, **book}
+        # A NO-side signal strong enough that _clears_taker_fee says cross.
+        analysis = {
+            "ticker": ticker,
+            "forecast_prob": 0.05,  # P(NO) = 0.95
+            "entry_price": 0.40,
+            "recommended_side": "no",
+        }
+        client = MagicMock()
+        with (
+            patch(
+                "order_executor._validate_trade_opportunity", return_value=(True, "ok")
+            ),
+            patch(
+                "order_executor._cancel_and_verify_safe_to_replace", return_value=True
+            ),
+            # _get_current_book returns a MagicMock with a bare client, and
+            # coalesce_market_price then reads mock attributes rather than the
+            # book under test -- which made an earlier version of this test
+            # pass on mock garbage instead of on the guard.
+            patch("order_executor._get_current_book", return_value=market),
+            patch("order_executor._replace_live_order") as replace,
+        ):
+            _reprice_or_cancel_pending_orders(
+                client, config={}, liquid_opps=[(market, analysis)]
+            )
+        return replace
+
+    def test_missing_yes_bid_does_not_cross_at_a_dollar(self):
+        """The bug: no yes_bid at all -> taker_price 1.00 -> must be refused."""
+        replace = self._run({"yes_ask": 0.60})  # no yes_bid key anywhere
+
+        assert replace.call_count == 0
+
+    def test_present_yes_bid_still_crosses(self):
+        """Positive control, paired with the absence assertion above.
+
+        Without it, "never replaces" would pass vacuously if the branch had
+        stopped being reachable at all — which is exactly how a guard that is
+        too broad hides itself.
+        """
+        replace = self._run({"yes_bid": 0.60, "yes_ask": 0.62})
+
+        assert replace.call_count == 1
+        # NO-side taker price is 1 - yes_bid = 0.40, and it must be a real,
+        # in-range price rather than the 1.00 the missing-quote case produced.
+        taker_price = replace.call_args[0][3]
+        assert 0.0 < taker_price < 1.0
+        assert taker_price == pytest.approx(0.40)
+
+
+class TestClearsTakerFeeRangeGuard:
+    """Out-of-range inputs must fail safe to False, not throw and not compute.
+
+    kalshi_fee_rate_at now RAISES outside [0, 1] (a negative fee would lower
+    the bar), and an unbounded forecast_prob inflates p_win without limit —
+    forecast_prob=1.5 used to return True here.
+    """
+
+    @pytest.mark.parametrize("bad_price", [1.0, 1.5, -0.5])
+    def test_out_of_range_entry_price_returns_false(self, bad_price, monkeypatch):
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        assert (
+            _clears_taker_fee(
+                {
+                    "forecast_prob": 0.85,
+                    "entry_price": bad_price,
+                    "recommended_side": "yes",
+                }
+            )
+            is False
+        )
+
+    @pytest.mark.parametrize("bad_prob", [1.5, -0.5, 2.0])
+    def test_out_of_range_forecast_prob_returns_false(self, bad_prob, monkeypatch):
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        assert (
+            _clears_taker_fee(
+                {
+                    "forecast_prob": bad_prob,
+                    "entry_price": 0.50,
+                    "recommended_side": "yes",
+                }
+            )
+            is False
+        )
+
+    def test_in_range_inputs_still_return_true(self, monkeypatch):
+        """Positive control: the guard is a bound, not a blanket rejection."""
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        assert (
+            _clears_taker_fee(
+                {
+                    "forecast_prob": 0.85,
+                    "entry_price": 0.50,
+                    "recommended_side": "yes",
+                }
+            )
+            is True
+        )
+
+    @pytest.mark.parametrize(
+        ("prob", "side"),
+        [(1.0, "yes"), (0.0, "no")],
+    )
+    def test_maximal_confidence_is_allowed_not_rejected(self, prob, side, monkeypatch):
+        """The prob bound is deliberately NON-strict while the price bound is
+        strict. forecast_prob 1.0 on a YES (or 0.0 on a NO) is a legitimate
+        maximal-confidence signal, not corruption — tightening these to strict
+        inequalities would silently reject the bot's most confident trades.
+        """
+        import order_executor
+        from order_executor import _clears_taker_fee
+
+        monkeypatch.setattr(order_executor, "MIN_EDGE", 0.07)
+        assert (
+            _clears_taker_fee(
+                {"forecast_prob": prob, "entry_price": 0.50, "recommended_side": side}
+            )
+            is True
+        )

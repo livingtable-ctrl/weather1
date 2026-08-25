@@ -170,6 +170,109 @@ def kalshi_maker_fee(contracts: float, price: float) -> float:
     return _kalshi_fee(KALSHI_MAKER_FEE_RATE, contracts, price)
 
 
+def kalshi_fee_rate_at(price: float, taker: bool = True) -> float:
+    """Per-contract Kalshi fee at `price`, in dollars, WITHOUT cent-rounding.
+
+    Same curved shape as _kalshi_fee (rate * P * (1-P)) with the C=1 and the
+    ceil() dropped. Use this — never kalshi_taker_fee(1, price) — whenever the
+    fee is being compared against a RATE rather than turned into a dollar
+    charge on a specific fill. kalshi_taker_fee rounds UP to the whole cent,
+    which is correct for a real fill but wildly distorting at C=1: at P=0.20
+    the true per-contract fee is 0.07*0.20*0.80 = $0.0112 and the rounded one
+    is $0.02, a 79% overcharge that is an artifact of the contract count, not
+    of the price. Batch-66 item 2 found order_executor._clears_taker_fee
+    comparing a per-dollar edge rate against exactly that artifact.
+
+    Returns dollars per contract (e.g. 0.0112). price must be in [0, 1], and
+    unlike _kalshi_fee that is ENFORCED here rather than merely documented:
+    P*(1-P) goes negative outside the unit interval, so an out-of-range price
+    yields a negative fee -- a credit. The realistic way to get there is a
+    cents-vs-dollars unit slip (price=20 gives -26.6), and since this feeds
+    required_gross_edge, a negative fee silently lowers the bar instead of
+    raising it. Failing loudly is the safe direction for a number that ends up
+    beside a trading gate.
+    """
+    if not 0.0 <= price <= 1.0:
+        raise ValueError(
+            f"price must be in [0, 1] dollars per contract, got {price!r} "
+            "(a value above 1 usually means cents were passed instead of dollars)"
+        )
+    rate = KALSHI_FEE_RATE if taker else KALSHI_MAKER_FEE_RATE
+    return rate * price * (1.0 - price)
+
+
+def required_gross_edge(
+    price: float, min_edge: float | None = None, taker: bool = False
+) -> float:
+    """Gross forecast edge (in PROBABILITY points) a fill at `price` needs to
+    clear a `min_edge` floor stated on the net_edge scale.
+
+    Batch-66 item 2 (A10). The handoff asked whether "a flat 6% edge floor is
+    not the same threshold at 20c as at 80c". It is not — but the reason is
+    not the fee, which is what the handoff assumed. Deriving it:
+
+        gross EV per contract  = p*(1-P) - (1-p)*P  =  p - P
+        net EV  per contract  = (p - P) - fee(P)
+        net_edge              = net EV / P          (EV per dollar of cost)
+
+    so net_edge >= F  <=>  (p - P) >= F*P + fee(P), i.e.
+
+        required_gross_edge(P) = F*P + fee(P)
+
+    The F*P term dominates: net_edge divides by the entry price, so a flat
+    floor on it already scales the probability-edge requirement linearly with
+    price. At the operative live floor (MIN_EDGE, which .env sets to 0.15 —
+    the 0.07 in this module is only the fallback default) a maker fill needs
+    3.0 points at 20c and 12.0 at 80c: a 4x swing with the fee contributing
+    exactly zero, because this bot's weather series carry maker multiplier
+    M=0 (see KALSHI_MAKER_FEE_RATE). The fee term only appears on a taker
+    cross, and even then it is the smaller half — 1.12 points at BOTH 20c and
+    80c, symmetric about 50c, so it adds no price-dependence between those
+    two prices at all. The handoff's premise that the floor is price-blind was
+    wrong, but so was its assumption about which term made it price-dependent.
+
+    DISPLAY-ONLY. Nothing in the sizing, gating or order path reads this —
+    same convention as log_prediction()'s gated_edge and _brier_series_stats's
+    policy label. Applying it in the gate is a separate, deliberate decision;
+    see batch-66 item 2 and backlog "PAPER_MIN_EDGE's entire soft-override
+    scale may be set below net_edge's real operating floor".
+
+    `taker` defaults to False because this bot's INITIAL ENTRY is always a
+    resting midpoint GTC limit order (order_executor._place_live_order), which
+    pays the maker fee. That is not a blanket claim about the bot -- it can
+    later cross the book as taker via _poll_pending_orders' reprice branch
+    (guarded by _clears_taker_fee), and protective exits go out
+    immediate_or_cancel. Pass taker=True when modelling either of those legs.
+    (utils.KALSHI_MAKER_FEE_RATE's own comment and weather_markets' entry-price
+    comment both still state the stronger "never a taker fill" version; that is
+    wrong for those two paths and is tracked separately rather than edited from
+    here.)
+
+    `min_edge` defaults to MIN_EDGE resolved AT CALL TIME rather than bound as
+    a default argument. Be precise about what that does and does not buy:
+    MIN_EDGE is itself a module constant evaluated once at utils import, so
+    late binding does NOT pick up a .env loaded after import. What it does buy
+    is respecting a runtime REBIND of the attribute -- main.py's settings
+    screen does importlib.reload(utils), and tests monkeypatch it. It also
+    matches kalshi_fee_rate_at, which reads its rate constants per call.
+
+    Separately, and NOT fixed here: a standalone `py web.py` server never calls
+    load_dotenv, so utils.MIN_EDGE is the 0.07 code default there while the
+    operator's .env sets 0.15 -- any panel rendering this default in that
+    process understates the requirement about 2x. That affects every
+    env-derived constant in that process, not just this one, so it is filed as
+    its own backlog entry rather than papered over here. Pass min_edge
+    explicitly if the caller knows the operative floor.
+
+    Position note: this function sits ABOVE MIN_EDGE's own definition in this
+    module, so `min_edge: float = MIN_EDGE` would NameError at import. The
+    None-default is structural, not stylistic -- do not "simplify" it back.
+    """
+    if min_edge is None:
+        min_edge = MIN_EDGE
+    return min_edge * price + kalshi_fee_rate_at(price, taker=taker)
+
+
 # Hard cap on Kelly fraction — applied in both weather_markets.py and paper.py.
 # Operative production cap is 0.25 (quarter-Kelly ceiling). Override via
 # KELLY_CAP env var — config.py's BotConfig.kelly_cap reads the same env var

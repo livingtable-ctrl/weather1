@@ -75,6 +75,41 @@ Batches 72-74 (A4, A8, A17, A9) are largely machinery for **collecting** edge mo
 
 Batch 66 is the cheap answer: it adds `min_edge` conditioning to the already-shipped `get_model_vs_market_brier()` and builds A1's P&L-side read. **Run 66 before committing to track D**, and treat its result as a go/no-go on batches 72-74 rather than a formality.
 
+> ### ⛔ 66 has now run. The verdict is NO-GO for 72-74 (2026-08-25).
+>
+> Conditioning did not rescue the pooled number — it made it worse, monotonically.
+> On the same 214 filtered settled rows (the pooled figures reproduce A14 exactly):
+> skill −0.179 pooled, −0.233 at |disagreement| ≥ 0.20, −0.349 at ≥ 0.25, −0.431 at
+> ≥ 0.30. Model Brier *rises* with disagreement (0.2596 → 0.2864 → 0.3105) while the
+> market's stays flat near 0.220 — we are most wrong exactly where we disagree most.
+> The paired advantage never turns positive at any rung.
+>
+> A second finding makes the exercise nearly moot: **the population is already the
+> tail.** 100% of settled rows clear the 0.07 live floor and 96.3% clear 0.15 (p10 of
+> disagreement = 0.1556). The scanner only logs candidates that already passed its own
+> edge bar, so the low-disagreement rows this section assumed were diluting the
+> statistic largely do not exist in the table.
+>
+> Item 3's P&L-side read agrees rather than rescuing it, and is worse: capture ratio
+> **0.378**, intercept −0.197, over **243** settled trades, with a mean realized return
+> of **−0.040** per dollar of cost and three of four claimed-edge buckets negative.
+> What positive return exists comes overwhelmingly from post-entry market drift
+> (+0.0668 per dollar of cost) rather than settlement surprise (+0.0162). (A first
+> pass reported 0.519/203 — that filter dropped all 40 `early_exit` rows, the
+> stop-lossed losers; opus review caught it.)
+>
+> **Do not start 72-74 without an explicit user decision to override this.** 64-65 and
+> 67-71 are unaffected — they observe existing data and several are prerequisites for
+> ever re-measuring this.
+>
+> Also corrected while running 66: this file's A11 row calls `price_history`
+> "1-minute OHLC". It is **60-minute** candles (`period_interval = 60`, rows 3600s
+> apart). A10's row is also wrong that "only a flat `KALSHI_FEE_RATE=0.07`" exists —
+> `utils._kalshi_fee`/`kalshi_taker_fee`/`kalshi_maker_fee` have implemented the
+> curved `P(1-P)` form since batch-22, verified against Kalshi's published schedule
+> on 2026-07-12 and re-confirmed against the exchange's own `/series` metadata on
+> 2026-08-25 (`fee_type: "quadratic"`, `fee_multiplier: 1` for KXHIGH*).
+
 The open backlog entry *"MEASURE BRIER SKILL CONDITIONED ON THE SIZE OF OUR DISAGREEMENT WITH THE PRICE"* (`BACKLOG_OPEN.md`) is batch 66's item 1.
 
 ## Not batched

@@ -2466,6 +2466,34 @@ def get_stop_loss_accuracy() -> dict:
     return tracker.get_stop_loss_accuracy(sl_trades)
 
 
+def get_edge_capture() -> dict:
+    """A1 (batch-66 item 3): how much of the claimed edge was actually
+    collected. Thin wrapper in the same shape as get_stop_loss_accuracy above:
+    filters this module's ledger to settled rows and hands them to tracker,
+    which owns the price_history/outcomes join.
+
+    The settled test is `settled and pnl is not None` -- the SAME predicate
+    get_parameter_sweep and get_attribution use, deliberately. An earlier
+    version of this wrapper filtered on `outcome in ("yes", "no")`, which
+    silently dropped all 40 `outcome == "early_exit"` rows (stop-loss and
+    model-flip exits). That is survivorship bias of exactly the kind this panel
+    exists to detect: those positions were closed BECAUSE the edge evaporated,
+    they realized a mean -0.625 per dollar of cost against +0.075 for the
+    held-to-settlement rows, and excluding them moved the headline capture ratio
+    from 0.378 to 0.519 and the mean realized return from -0.040 to +0.075 --
+    i.e. it turned a losing population into a winning one. Found by opus review;
+    do not re-narrow this filter. tracker.get_edge_capture keeps every row for
+    the capture-ratio regression and drops only early exits from the waterfall,
+    where a settled value is genuinely undefined.
+    """
+    import tracker
+
+    settled = [
+        t for t in get_all_trades() if t.get("settled") and t.get("pnl") is not None
+    ]
+    return tracker.get_edge_capture(settled)
+
+
 def get_portfolio_expected_value() -> dict:
     """Return the sum of expected profit across all open positions.
 

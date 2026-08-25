@@ -600,6 +600,41 @@ class TestAnalyticsEndpoint:
         # Same hand-computed value as test_d0_real_matches_hand_computation.
         assert payload["buckets"][0]["real"]["model"] == pytest.approx(0.26)
 
+    def test_analytics_carries_the_conditioned_ladder(self):
+        """Batch-66 item 1 reaches the endpoint, not just the query function."""
+        _fill(REPORT_N, 0.85, 0.50, _half_yes)  # disagreement 0.35
+
+        payload = (
+            self._client().get("/api/analytics").get_json()["model_vs_market_brier"]
+        )
+        rungs = [c["min_edge"] for c in payload["conditioned"]]
+        assert tuple(rungs) == tracker.BRIER_CONDITIONAL_LADDER
+        rung = next(c for c in payload["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["all"]["n"] == REPORT_N
+        assert rung["family_size"] == len(tracker.BRIER_CONDITIONAL_LADDER)
+        assert rung["all"]["market_edge_z"] is not None
+
+    def test_analytics_carries_the_required_gross_edge_curve(self):
+        """Batch-66 item 2's display half (A10).
+
+        The curve is the whole point of the item: it shows the required GROSS
+        edge rising with price even though the net_edge floor is flat.
+        """
+        body = self._client().get("/api/analytics").get_json()
+        curve = body["required_gross_edge_curve"]
+        pts = {p["price"]: p for p in curve["points"]}
+        f = curve["min_edge"]
+        # maker fee is $0 on these series, so maker == F*P exactly.
+        assert pts[0.20]["maker"] == pytest.approx(f * 0.20)
+        assert pts[0.80]["maker"] == pytest.approx(f * 0.80)
+        # 4x more gross edge required at 80c than at 20c -- the item's finding.
+        assert pts[0.80]["maker"] == pytest.approx(4 * pts[0.20]["maker"])
+        # The taker fee term is symmetric about 50c and adds NO price
+        # dependence between these two prices; only the F*P term does.
+        assert pts[0.20]["taker"] - pts[0.20]["maker"] == pytest.approx(
+            pts[0.80]["taker"] - pts[0.80]["maker"]
+        )
+
     def test_payload_is_strict_json_with_no_nan_or_infinity(self):
         # Bare NaN/Infinity tokens are invalid JSON and kill the whole panel,
         # not one cell. Python's json accepts them by default, so parse with a
@@ -639,3 +674,205 @@ class TestDegenerate:
         assert out["pooled"]["all"]["n_markets"] == 0
         assert out["n_days_out_null"] == 0
         assert all(b["all"]["policy"] == "not measured" for b in out["buckets"])
+
+
+class TestConditionalLadder:
+    """Batch-66 item 1: Brier restricted to rows where our disagreement with
+    the price was at least t, for each rung of BRIER_CONDITIONAL_LADDER.
+
+    The pooled statistic is unconditional on the SIZE of that disagreement, so
+    it cannot isolate the tail large enough to actually trade. These tests pin
+    the partitioning, the unchanged-pooled invariant, and the fact that the
+    verb still comes from the paired significance test rather than from a raw
+    threshold on a small sample.
+    """
+
+    def test_rungs_are_the_ladder_and_are_sorted(self):
+        _fill(REPORT_N, 0.6, 0.5, _half_yes)
+
+        out = tracker.get_model_vs_market_brier()
+        rungs = [c["min_edge"] for c in out["conditioned"]]
+        assert rungs == sorted(rungs)
+        assert tuple(rungs) == tracker.BRIER_CONDITIONAL_LADDER
+
+    def test_min_edge_argument_adds_one_rung(self):
+        _fill(REPORT_N, 0.6, 0.5, _half_yes)
+
+        out = tracker.get_model_vs_market_brier(min_edge=0.42)
+        rungs = [c["min_edge"] for c in out["conditioned"]]
+        assert 0.42 in rungs
+        assert rungs == sorted(rungs)
+        assert len(rungs) == len(tracker.BRIER_CONDITIONAL_LADDER) + 1
+
+    def test_min_edge_already_in_ladder_does_not_duplicate(self):
+        _fill(REPORT_N, 0.6, 0.5, _half_yes)
+
+        rung = tracker.BRIER_CONDITIONAL_LADDER[0]
+        out = tracker.get_model_vs_market_brier(min_edge=rung)
+        rungs = [c["min_edge"] for c in out["conditioned"]]
+        assert rungs.count(rung) == 1
+        assert len(rungs) == len(tracker.BRIER_CONDITIONAL_LADDER)
+
+    def test_conditioning_partitions_on_absolute_disagreement(self):
+        """abs(our_prob - market_prob), so a NEGATIVE disagreement counts too.
+
+        20 rows disagree by exactly -0.22 (our 0.28 vs market 0.50) and 20 by
+        +0.12 (our 0.62 vs market 0.50). At the 0.20 rung only the first group
+        qualifies; at 0.10 both do. If the code compared the SIGNED difference,
+        the -0.22 group would drop out of every rung and n would read 20/0
+        instead of 40/20.
+        """
+        _fill(20, 0.28, 0.50, _half_yes, prefix="NEG")
+        _fill(20, 0.62, 0.50, _half_yes, prefix="POS")
+
+        out = tracker.get_model_vs_market_brier()
+        by_rung = {c["min_edge"]: c["all"]["n"] for c in out["conditioned"]}
+        assert by_rung[0.10] == 40
+        assert by_rung[0.20] == 20
+        # 0.30 excludes both groups: 0.22 < 0.30.
+        assert by_rung[0.30] == 0
+
+    def test_rung_boundary_is_inclusive(self):
+        """>= t, not > t: a row disagreeing by exactly the rung value counts.
+
+        0.75 / 0.50 / 0.25 deliberately: all three are exact binary fractions,
+        so the comparison tests the >= semantic rather than float noise. The
+        obvious-looking 0.70 vs 0.50 does NOT work here -- that subtraction
+        yields 0.19999999999999996, which is genuinely below the 0.20 rung.
+        Rows landing exactly on a rung are therefore decided at float
+        precision; that is acceptable for a display statistic and is why no
+        epsilon was added to the production comparison, but it is the reason
+        this test picks representable values instead of round-looking ones.
+        """
+        _fill(REPORT_N, 0.75, 0.50, _half_yes)  # disagreement exactly 0.25
+
+        out = tracker.get_model_vs_market_brier()
+        by_rung = {c["min_edge"]: c["all"]["n"] for c in out["conditioned"]}
+        assert by_rung[0.25] == REPORT_N
+        # Positive control that the rows exist and the filter is live at all:
+        # the next rung up genuinely excludes them.
+        assert by_rung[0.30] == 0
+
+    def test_pooled_and_buckets_stay_unconditional(self):
+        """min_edge must not leak into the reference series.
+
+        The conditioned rungs are only interpretable against an UNCONDITIONAL
+        baseline; if min_edge also filtered `pooled`, every comparison the
+        panel exists to make would be self-referential.
+        """
+        _fill(20, 0.55, 0.50, _half_yes, prefix="NEAR")  # disagreement 0.05
+        _fill(20, 0.80, 0.50, _half_yes, prefix="FAR")  # disagreement 0.30
+
+        out = tracker.get_model_vs_market_brier(min_edge=0.30)
+        assert out["pooled"]["all"]["n"] == 40
+        assert sum(b["all"]["n"] for b in out["buckets"]) == 40
+        by_rung = {c["min_edge"]: c["all"]["n"] for c in out["conditioned"]}
+        assert by_rung[0.30] == 20
+
+    def test_n_by_lead_discloses_the_horizon_mix(self):
+        """The rungs pool horizons; n_by_lead is what makes that visible.
+
+        Without it an actionable verb on a rung would silently span D+0 and
+        D+1, which is exactly why `pooled` refuses to emit one.
+        """
+        _fill(12, 0.80, 0.50, _half_yes, prefix="A", days_out=0)
+        _fill(8, 0.80, 0.50, _half_yes, prefix="B", days_out=1)
+
+        out = tracker.get_model_vs_market_brier()
+        rung = next(c for c in out["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["n_by_lead"] == {"D+0": 12, "D+1": 8, "D+2+": 0, "unknown": 0}
+        # The sum must account for EVERY row in the rung, including
+        # days_out IS NULL ones -- that is the whole point of the disclosure.
+        assert sum(rung["n_by_lead"].values()) == rung["all"]["n"]
+
+    def test_rung_below_sample_floor_withholds_every_statistic(self):
+        """A thin tail must report counts only, never a number.
+
+        The tail rungs are the smallest samples in the payload and therefore
+        the most dangerous to render thin -- this is the structural guard, not
+        a UI convention.
+        """
+        _fill(REPORT_N - 1, 0.85, 0.50, _half_yes)  # disagreement 0.35
+
+        out = tracker.get_model_vs_market_brier()
+        rung = next(c for c in out["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["all"]["n"] == REPORT_N - 1
+        assert rung["all"]["model"] is None
+        assert rung["all"]["skill"] is None
+        assert rung["all"]["policy"] == "not measured"
+        # Positive control: one more row crosses the floor and the numbers
+        # appear, so the withholding above is the floor and not empty input.
+        _insert("EXTRA", 0.85, 0.50, 1)
+        out2 = tracker.get_model_vs_market_brier()
+        rung2 = next(c for c in out2["conditioned"] if c["min_edge"] == 0.30)
+        assert rung2["all"]["model"] is not None
+
+    def test_rung_verb_comes_from_significance_not_a_raw_threshold(self):
+        """A large but NOISY conditioned skill must not emit an actionable verb.
+
+        This is the defect an opus review already caught once in this function:
+        a fixed n>=100 floor emitted "trade" on ~22% of pure-noise samples.
+
+        Construction: our_prob 0.85 against a market at 0.15 (disagreement 0.70,
+        so every row lands on the 0.30 rung) with outcomes alternating. The
+        per-row paired difference is then exactly +0.70 on a YES row
+        (0.85^2 - 0.15^2 in loss terms: market 0.7225 - model 0.0225) and
+        exactly -0.70 on a NO row, so the paired MEAN is exactly 0 with a large
+        standard error. Both forecasts score an identical Brier of 0.3725, i.e.
+        maximal disagreement carrying zero information -- precisely the shape a
+        raw threshold on a small tail would misread.
+        """
+        _fill(
+            40,
+            0.85,
+            0.15,
+            _half_yes,
+            prefix="NOISE",
+        )
+
+        out = tracker.get_model_vs_market_brier()
+        rung = next(c for c in out["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["all"]["n"] == 40
+        # Hand-computed: (0.0225 + 0.7225) / 2 for both series.
+        assert rung["all"]["model"] == pytest.approx(0.3725)
+        assert rung["all"]["market"] == pytest.approx(0.3725)
+        assert rung["all"]["market_edge"] == pytest.approx(0.0)
+        assert rung["all"]["policy"] == "inconclusive"
+
+    def test_rung_can_emit_trade_when_the_edge_is_real(self):
+        """Positive control for the test above -- the verb IS reachable.
+
+        Without this, "never says trade" would pass vacuously if conditioning
+        had broken the actionable path entirely.
+        """
+        # Model is nearly always right; the market sits near 0.50 and is wrong
+        # by a constant margin. Outcomes vary, so climatology has something to
+        # lose to and the climatology half of the gate can also pass.
+        _fill(
+            40,
+            lambda i: 0.95 if i % 2 == 0 else 0.05,
+            lambda i: 0.55 if i % 2 == 0 else 0.45,
+            _half_yes,
+            prefix="REAL",
+        )
+
+        out = tracker.get_model_vs_market_brier()
+        rung = next(c for c in out["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["all"]["n"] == 40
+        assert rung["all"]["policy"] == "trade"
+
+    def test_shadow_and_real_split_survives_conditioning(self):
+        _fill(12, 0.85, 0.50, _half_yes, prefix="R", is_shadow=0)
+        _fill(14, 0.85, 0.50, _half_yes, prefix="S", is_shadow=1)
+
+        out = tracker.get_model_vs_market_brier()
+        rung = next(c for c in out["conditioned"] if c["min_edge"] == 0.30)
+        assert rung["real"]["n"] == 12
+        assert rung["shadow"]["n"] == 14
+        assert rung["all"]["n"] == 26
+
+    def test_empty_database_still_returns_every_rung(self):
+        out = tracker.get_model_vs_market_brier()
+        assert len(out["conditioned"]) == len(tracker.BRIER_CONDITIONAL_LADDER)
+        assert all(c["all"]["n"] == 0 for c in out["conditioned"])
+        assert all(c["all"]["policy"] == "not measured" for c in out["conditioned"])

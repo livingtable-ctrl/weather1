@@ -31071,6 +31071,68 @@ OWNER ASSIGNED 2026-08-25 -- batch-66 item 2 (do not pick this up standalone):
   at all, since "disproven, the range is fine" is a legitimate outcome.
   Whoever lands batch-66 item 2 should write this entry's resolution.
 
+MEASURED 2026-08-25 -- batch-66 item 2 (premise CONFIRMED, not disproven; the
+numeric-range fix is still open and is deliberately NOT shipped):
+  The entry asked for the real net_edge distribution to be measured before
+  assuming the floor binds. Measured, on data/paper_trades.json as of
+  2026-08-25 (n=247 all / n=200 settled): min 0.1504, p05 0.1730, p25 0.3161,
+  median 0.3873, p95 0.7094, max 0.8721. This reproduces the entry's own
+  earlier n=244 measurement exactly and CONFIRMS the premise: 100% of real
+  candidates clear 0.15, so no threshold anywhere in the declared range
+  rejects anything.
+  Checked against every floor the gate can actually apply, not just
+  PAPER_MIN_EDGE: utils._EDGE_TIERS is {HIGH: paper 0.05 / live 0.08,
+  MODERATE: 0.07 / 0.10, LOW: 0.10 / 0.15} and the untiered fallbacks are
+  get_paper_min_edge() (hard-capped at 0.05) and MIN_EDGE (0.15 via .env).
+  The highest of those is 0.15, still below the observed minimum of 0.1504 --
+  so the net_edge comparison `if edge < min_edge` rejects ZERO of 247 real
+  candidates on every path, not merely "near" no-op.
+
+  ROOT CAUSE (this is the part the entry was missing, and it changes what the
+  fix should be): the mismatch is not a mis-tuned number, it is a UNIT error.
+  net_edge is EV per dollar of COST -- order_executor divides net EV by
+  entry_price -- so it is the raw probability edge amplified by 1/entry_price,
+  empirically 2-4x larger at this bot's typical 25-50c entries. The whole
+  PAPER_MIN_EDGE soft-override family (config.py's [0.03, 0.15] clamp,
+  load_swept_min_edge's [0.03, 0.15], backtest.py's [0.04..0.10]) is stated on
+  the RAW probability-edge scale and then compared against a net_edge-scale
+  field. Rescaling the ranges without naming which scale they are on would
+  just move the same confusion.
+
+  CONFIRMED LIVE, not just by reading the code: the soft-override chain is
+  active and returns exactly 0.15 -- an untouched process start logs
+  "PAPER_MIN_EDGE loaded from param_sweep_results.json: 0.1500". That is the
+  arithmetic consequence of finding (1): run_sweep's candidates are
+  [0.15, 0.20, 0.25, 0.30, 0.35, 0.40] and load_swept_min_edge clamps to
+  [0.03, 0.15], so 0.15 is the ONLY candidate that can ever survive the clamp;
+  any other winner makes load_swept_min_edge return None and the override
+  silently no-ops. utils.get_paper_min_edge() then applies min(0.15, 0.05) and
+  the value that actually reaches the gate is 0.05.
+  Finding (1) re-verified against current master: config.py:224 [0.03, 0.15],
+  param_sweep.py:123 [0.03, 0.15] vs run_sweep's [0.15..0.40] at
+  param_sweep.py:167, backtest.py:931 THRESHOLDS [0.04..0.10]. All three still
+  disagree. Note backtest._find_optimal_min_edge reads t["edge"] (RAW edge),
+  not net_edge, so it is the one of the three already on the scale its own
+  range implies -- its thresholds are merely too low to discriminate.
+
+  WHAT DOES BIND: the gate's separate raw-edge check, `abs(raw_edge) <
+  MIN_EDGE` (order_executor.py:3742 in current master, not the :3317 the batch
+  file cites -- line drift). MIN_EDGE is 0.15 from .env, and raw edge on
+  settled predictions has p10 = 0.1554, so that check is where the real
+  filtering happens. Any future rescale must account for it or it will
+  double-count.
+
+  NOT SHIPPED, deliberately: changing any of the three ranges alters which
+  trades are permitted, and the entry's own "Why not now" reasoning still
+  holds -- it needs a decision on what PAPER_MIN_EDGE semantically represents
+  (net_edge-scale or raw-edge-scale) before any file changes. Batch-66 item 2
+  shipped only the measurement above plus display-only machinery:
+  utils.required_gross_edge()/kalshi_fee_rate_at() (which express the floor as
+  a function of contract price and show that the price-dependence comes from
+  net_edge dividing by cost, NOT from the fee) and a correctness fix to
+  order_executor._clears_taker_fee. Entry stays OPEN for the rescale decision.
+
+
 [RESOLVED 2026-08-24 -- batch-37 item 4 (L-15)] deactivate_emos discarded the restore result; get_emos_status returned no t_pinned when the params file was absent -- exactly the post-deactivate state
 Priority: Low-Medium
 Files: ml_bias.py, main.py (cmd_emos_deactivate), tests/test_ml_bias.py
@@ -34060,7 +34122,7 @@ What shipped:
   follow-up entry below before concluding anything about profitability.
 
 
-[OPEN 2026-08-24 -- follow-up to the A14 no-skill finding above] MEASURE
+[RESOLVED 2026-08-25 -- batch-66 item 1; filed 2026-08-24 as a follow-up to the A14 no-skill finding above] MEASURE
   BRIER SKILL CONDITIONED ON THE SIZE OF OUR DISAGREEMENT WITH THE PRICE
 Priority: High -- decides whether the A14 finding means "no edge anywhere"
   or "no edge on average, with edge in the tail we actually trade".
@@ -34105,6 +34167,82 @@ Recommendation:
   calibrated than the price on average", NOT as "the strategy has no edge".
   Live trading is dormant; this is a reason to keep it dormant pending the
   conditional read, not evidence to rebuild the model.
+
+Resolution (2026-08-25, batch-66 item 1) -- ANSWERED, and the answer is NO edge
+in the tail. This is the go/no-go for panel-backend track D (batches 72-74).
+  Shipped: get_model_vs_market_brier() gained an optional `min_edge` parameter
+  and a `conditioned` ladder -- the same statistic restricted to rows where
+  abs(our_prob - market_prob) >= each rung of BRIER_CONDITIONAL_LADDER
+  (0.10/0.15/0.20/0.25/0.30), with n, n_markets and a per-rung n_by_lead
+  disclosing the horizon mix. `pooled` and `buckets` stay unconditional so the
+  rungs have an honest baseline to be read against. The verb on each rung comes
+  from _paired_advantage, NOT from a raw skill threshold -- explicitly, because
+  a fixed threshold on a small tail is the defect an opus review already caught
+  once in this function.
+
+  Measured on the live DB, 2026-08-25 (n=214 filtered settled rows; the pooled
+  figures reproduce A14's published numbers exactly, so this is the same
+  population, not a re-scoped one):
+      rung    n    model   market    skill    z     policy
+      pooled 214  0.2596   0.2201  -0.1793  -2.64  (stand down)
+      0.10   211  0.2590   0.2203  -0.1760  -2.56  stand down
+      0.15   206  0.2573   0.2198  -0.1705  -2.43  stand down
+      0.20    97  0.2864   0.2322  -0.2333  -1.94  stand down
+      0.25    46  0.3105   0.2301  -0.3491  -1.63  inconclusive
+      0.30    27  0.2967   0.2073  -0.4315  -1.27  inconclusive
+
+  The hypothesis is not merely unsupported, it is inverted. The model's Brier
+  gets monotonically WORSE as the disagreement grows (0.2596 pooled -> 0.2864
+  at 0.20 -> 0.3105 at 0.25) while the market's stays flat near 0.22. Probed
+  past the last shipped rung during the investigation, the trend continues:
+  0.3483 at >=0.35 (n=18) and 0.3639 at >=0.40 (n=10) -- both below the
+  reporting floor, which is why the ladder stops at 0.30 rather than rendering
+  them.
+  We are most wrong exactly where we disagree most with the price. The paired
+  advantage never turns positive at any rung; it goes from -0.0395 to -0.1281
+  and only loses statistical significance as n shrinks -- "inconclusive" at the
+  top rungs is loss of power, not a hint of edge.
+
+  A second finding makes the whole conditioning exercise nearly moot on this
+  data: THE POPULATION IS ALREADY THE TAIL. 100% of the 214 settled rows have
+  abs(our_prob - market_prob) >= 0.07 (the live MIN_EDGE default) and 96.3%
+  clear 0.15; the 10th percentile of disagreement is 0.1556 and the median is
+  0.1943. The scanner only logs candidates that already cleared its own edge
+  bar, so the low-disagreement rows the entry hypothesised were diluting the
+  statistic largely DO NOT EXIST in the table. There was never a pooled-vs-tail
+  distinction to recover below ~0.20; only the 0.20+ rungs partition anything,
+  and those are where the model looks worst.
+
+  Both stated confounders remain, unfixed and deliberately so (they are now
+  written into the function's own docstring rather than only here):
+  - Self-selection still applies, and bites HARDER on the conditioned rungs
+    than on the pooled figure for the reason just given. Conditioning narrows
+    an already-narrow observational sample; it does not randomise it.
+  - Brier measures calibration, not P&L. That half is item 3
+    (tracker.get_edge_capture / paper.get_edge_capture): capture ratio 0.378,
+    intercept -0.197, over 243 settled trades, with a MEAN REALIZED RETURN of
+    -0.040 per dollar of cost and three of four claimed-edge buckets negative.
+    The waterfall (202 held-to-settlement rows) attributes what positive return
+    exists overwhelmingly to post-entry market drift (+0.0668 per dollar of
+    cost) rather than to settlement surprise (+0.0162) -- i.e. the P&L is not
+    obviously coming from forecast skill either. Neither read supports "edge in
+    the tail"; the P&L read is actively against it.
+    NOTE, because the first pass got this wrong: an initial version reported
+    0.519 / 203 trades. That filtered settled rows on outcome in ("yes","no"),
+    which silently dropped all 40 outcome == "early_exit" rows -- the stop-loss
+    and model-flip exits, i.e. the positions closed BECAUSE the edge evaporated,
+    mean realized -0.625. Excluding them turned a losing population into a
+    winning one. Caught by opus review; the shipped predicate is the
+    `settled and pnl is not None` one get_parameter_sweep/get_attribution
+    already use.
+
+  Consequence for track D: batches 72-74 (A4 order-book depth, A8, A17
+  execution plumbing, A9 intraday METAR) are machinery for COLLECTING edge more
+  efficiently. On this evidence there is no measured edge for them to collect,
+  and INDEX-PANEL-BACKENDS.md's own sequencing rule makes 66 the gate on them.
+  Recommend NO-GO on 72-74 pending a model change that actually moves the
+  conditional Brier, not more collection machinery. Live trading stays dormant.
+
 [RESOLVED 2026-08-24 -- batch-56] Nearby-station blended observations (Miami) -- go/no-go PASSED, shipped shadow-only
 Priority: Info (expansion roadmap batch-56, gated open by batch-52's divergence verdict)
 Files: nearby_station_obs.py (NEW), tests/test_nearby_station_obs.py (NEW),
@@ -35949,3 +36087,46 @@ Recommendation:
   While there, check the other hypothesis-based tests in the suite for the
   same default-deadline exposure.
 
+
+[OPEN -- filed 2026-08-25 by batch-66 item 2 (surfaced by a round-2 opus review of that batch's own fix)] A standalone `py web.py` server never calls load_dotenv, so every env-derived constant in the dashboard process silently shows the CODE DEFAULT rather than the operator's configured value
+Priority: Medium -- display-only today (the dashboard process places no
+  autonomous trades), but it makes the console disagree with the bot about
+  its own configuration, which is exactly the kind of thing an operator
+  reads the console to check.
+Files: web_app.py (no load_dotenv call; see the existing comment at the
+  manual-order guard noting "standalone `py web.py` runs, which never call
+  load_dotenv"), main.py (calls load_dotenv() at import, line 41), utils.py
+  (every module-level `float(os.getenv(...))` constant), config.py.
+
+Problem:
+  main.py calls load_dotenv() before importing anything else, so any process
+  launched through it sees .env. A standalone `py web.py` does not, and the
+  constants are evaluated at IMPORT time, so the difference is frozen for the
+  life of the process rather than being recoverable later.
+  Concretely measured 2026-08-25: .env sets MIN_EDGE=0.15; in a standalone
+  web_app process utils.MIN_EDGE is the 0.07 code default. Batch-66's new
+  /api/analytics `required_gross_edge_curve` therefore renders a required
+  gross edge about 2x too low in that process. That panel is only the symptom
+  the review happened to catch -- the same skew applies to every
+  os.getenv-derived constant the dashboard displays (STRONG_EDGE, MED_EDGE,
+  KELLY_CAP, MAX_DAILY_SPEND, the KALSHI_* fee rates, and so on).
+  Note this is NOT fixable by making individual readers late-binding: the
+  constants are already frozen at import, so re-reading them per call reads
+  the same frozen global. os.getenv() per call does not help either, because
+  without load_dotenv the variable was never placed in os.environ at all.
+
+What it would look like:
+  Call load_dotenv() at the top of web_app.py (or in web.py before importing
+  web_app), matching main.py. Cheap, but it changes the effective config of a
+  running dashboard, so it wants a deliberate check of which constants would
+  move and whether any of them feed a write path (the dashboard DOES have
+  manual-order endpoints -- confirm those are unaffected or intentionally
+  affected before flipping it).
+
+Why not now:
+  Batch-66 owns analytics query functions and one taker-fee gate, not the web
+  server's process bootstrap. Changing which config a live dashboard process
+  loads is a behaviour change across every env-derived constant at once, and
+  deserves its own scoped verification rather than riding along with an
+  analytics batch. Batch-66 corrected the false docstring that claimed late
+  binding solved this, and left the underlying gap documented here.

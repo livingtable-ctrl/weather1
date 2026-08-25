@@ -8,6 +8,7 @@ After markets settle, records outcomes so we can:
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import itertools
 import logging
@@ -4189,6 +4190,36 @@ BRIER_POLICY_HALF_SIZE_SKILL = 0.05
 # the right shape without dragging in scipy.
 BRIER_POLICY_Z = 1.6448536269514722
 
+# Batch-66 item 1. Thresholds for the conditional series: Brier skill measured
+# only over rows where |our_prob - market_prob| >= t. The pooled statistic is
+# unconditional on the size of that disagreement, so it cannot isolate the tail
+# large enough to actually trade -- which is where edge would live if it exists.
+#
+# AXIS WARNING: these rungs are PROBABILITY POINTS of disagreement,
+# abs(our_prob - market_prob). They are NOT on utils.MIN_EDGE's scale, despite
+# the parameter being called min_edge for continuity with the backlog entry that
+# specified it. utils.MIN_EDGE gates abs(net_edge), which is EV per dollar of
+# COST -- a different quantity, empirically 2-4x larger because it divides by
+# the entry price (mean net_edge 0.418 vs mean |our_prob - market_prob| 0.217 on
+# the same era of data). Do not pass utils.MIN_EDGE in here expecting the live
+# gate's threshold; the two 0.07s are not the same 0.07.
+#
+# The rungs span the OBSERVED disagreement distribution rather than any gate:
+# on the settled population as of 2026-08-25 every row disagrees by at least
+# 0.07 and 96.3% by at least 0.15 (p10 = 0.1556, median 0.1943), so the lower
+# rungs are near-identical to the pooled series by construction and only the
+# 0.20+ rungs partition anything. The ladder stops at 0.30 because that is the
+# last rung whose `real` (is_shadow=0) sub-series still clears
+# BRIER_POLICY_MIN_SAMPLES -- real n=20 at 0.30, 13 at 0.35, 8 at 0.40. The
+# pooled `all` series would survive further (n=18 at 0.35, 10 at 0.40), but a
+# rung that can only ever report `all` is a rung that hides the split.
+BRIER_CONDITIONAL_LADDER: tuple[float, ...] = (0.10, 0.15, 0.20, 0.25, 0.30)
+
+# Lead labels, owned here rather than re-spelled at each of the three sites that
+# need them (_bucket_of, the buckets loop, and each rung's n_by_lead) -- adding a
+# horizon to one copy while missing the others was a live footgun.
+BRIER_LEAD_LABELS: tuple[str, ...] = ("D+0", "D+1", "D+2+")
+
 
 def _paired_advantage(
     losses_a: list[float], losses_b: list[float]
@@ -4280,6 +4311,7 @@ def _brier_series_stats(
             "skill": None,
             "market_edge": None,
             "market_edge_se": None,
+            "market_edge_z": None,
             "climatology_edge": None,
             "climatology_edge_se": None,
             "policy": "not measured",
@@ -4344,6 +4376,18 @@ def _brier_series_stats(
         # reader to trust it.
         "market_edge": None if mkt is None else round(mkt[0], 6),
         "market_edge_se": None if mkt is None else round(mkt[1], 6),
+        # The standardized version of the pair above -- the z the policy verb
+        # was actually derived from (the gate is market_edge > BRIER_POLICY_Z *
+        # se). Exposed because the conditioned ladder emits many verbs from one
+        # dataset and a reader needs the raw statistic to apply their own
+        # multiple-comparisons discount rather than trusting a word. Positive =
+        # model beats the market. None when the SE is 0 or undefined, where a
+        # ratio would be meaningless rather than infinite -- note the policy
+        # verb IS still emitted in the SE=0 case (mean > Z*0 reduces to
+        # mean > 0), so a None z does not imply an absent verdict.
+        "market_edge_z": (
+            None if mkt is None or mkt[1] == 0 else round(mkt[0] / mkt[1], 4)
+        ),
         "climatology_edge": None if clm is None else round(clm[0], 6),
         "climatology_edge_se": None if clm is None else round(clm[1], 6),
         "policy": policy,
@@ -4352,20 +4396,43 @@ def _brier_series_stats(
 
 def get_model_vs_market_brier(
     min_samples: int = BRIER_POLICY_MIN_SAMPLES,
+    min_edge: float | None = None,
 ) -> dict:
     """Score our forecast and the market's mid-price against the same outcome.
 
     Asks whether our forecast is better calibrated than the price across
-    everything we looked at. Note the two caveats that question carries:
+    everything we looked at. Note the caveats that question carries:
 
-    - This is unconditional on the SIZE of our disagreement with the price, so
-      every market where we broadly agreed with the mid dilutes the statistic
-      toward zero. Trading edge, if any, lives in the tail where the
+    - The pooled figure is unconditional on the SIZE of our disagreement with
+      the price, so every market where we broadly agreed with the mid dilutes
+      it toward zero. Trading edge, if any, lives in the tail where the
       disagreement was large enough to act on; a negative pooled skill does not
-      by itself prove that tail is unprofitable.
+      by itself prove that tail is unprofitable. `conditioned` (batch-66 item
+      1) is the direct test of that: the same statistic restricted to rows
+      where |our_prob - market_prob| >= each rung of BRIER_CONDITIONAL_LADDER.
+      It does NOT rescue the pooled number on the data as of 2026-08-25. Model
+      Brier by rung: 0.2590 / 0.2573 / 0.2864 / 0.3105 / 0.2967 against 0.2596
+      pooled -- i.e. it worsens sharply across the middle rungs where the tail
+      first separates from the body, though it is NOT monotone end to end (the
+      0.10 and 0.15 rungs sit just under pooled, and 0.30 reverses on n=27).
+      The market's stays in a 0.207-0.232 band throughout. The direction of the
+      finding is robust -- we are most wrong roughly where we disagree most, and
+      the paired advantage is negative at every rung -- but the tail rungs are
+      small enough that their exact ordering is not. This caveat stays because
+      the reasoning stays valid, not because the answer is still open.
     - The population is self-selected. `predictions` holds only markets the
       scanner chose to analyze, and the is_shadow=0 subset only those it chose
-      to trade.
+      to trade. This bites harder on `conditioned` than on the pooled figure:
+      the scanner only logs candidates that already cleared its own edge bar,
+      so the low-disagreement rows that would dilute the statistic largely do
+      not exist in the table to begin with, and the lower rungs are therefore
+      near-identical to the pooled series by construction rather than by
+      finding. Conditioning narrows a population that was already narrow; it
+      does not turn an observational sample into a randomized one.
+    - Brier measures CALIBRATION, not P&L. A forecast can be worse-calibrated
+      than the price and still profitable if its errors land where the payout
+      is asymmetric. get_edge_capture() is the P&L half of the question and
+      neither answers the other.
 
     The market's Brier is the same function applied to `market_prob` instead of
     `our_prob`, so this needs no data that is not already persisted.
@@ -4390,9 +4457,15 @@ def get_model_vs_market_brier(
     lookups score differently and pooling them blurs both. Joins outcomes_valid,
     not outcomes, per this module's disputed-row convention.
 
-    Returns {"min_samples", "confidence", "buckets", "pooled",
-    "n_days_out_null"}, where each bucket and the pooled entry carry a "real",
-    "shadow" and "all" series shaped by _brier_series_stats().
+    `min_edge` adds one extra rung to the conditional ladder (deduplicated
+    against BRIER_CONDITIONAL_LADDER, so passing a value already in it changes
+    nothing). It does NOT filter `buckets` or `pooled` -- those stay the
+    unconditional reference the conditioned rungs are meant to be read against.
+
+    Returns {"min_samples", "confidence", "buckets", "pooled", "conditioned",
+    "n_days_out_null"}, where each bucket, the pooled entry and each
+    conditioned rung carry a "real", "shadow" and "all" series shaped by
+    _brier_series_stats().
     """
     init_db()
     excl_sql, excl_params = _condition_type_not_in_sql(
@@ -4435,11 +4508,11 @@ def get_model_vs_market_brier(
     def _bucket_of(d: int | None) -> str | None:
         if d is None:
             return None
-        if d == 0:
-            return "D+0"
-        if d == 1:
-            return "D+1"
-        return "D+2+"
+        # Indexes BRIER_LEAD_LABELS rather than returning literals, so the
+        # constant is the single source of the vocabulary it claims to own --
+        # the n_by_lead disclosure the actionable verb rests on breaks silently
+        # if these two drift apart.
+        return BRIER_LEAD_LABELS[min(d, len(BRIER_LEAD_LABELS) - 1)]
 
     def _series(subset: list[sqlite3.Row], actionable: bool = True) -> dict:
         # Split on explicit 0/1 rather than truthiness: is_shadow was added by
@@ -4458,7 +4531,7 @@ def get_model_vs_market_brier(
         }
 
     buckets = []
-    for label, days_out_min in (("D+0", 0), ("D+1", 1), ("D+2+", 2)):
+    for days_out_min, label in enumerate(BRIER_LEAD_LABELS):
         subset = [r for r in rows if _bucket_of(r["days_out"]) == label]
         buckets.append(
             {
@@ -4471,6 +4544,70 @@ def get_model_vs_market_brier(
             }
         )
 
+    # Conditional ladder (batch-66 item 1). Each rung re-scores the SAME rows,
+    # filtered to those whose disagreement with the price was at least `t`.
+    #
+    # actionable=True here, unlike `pooled`. The asymmetry is deliberate but it
+    # is NOT the "one verb cannot describe D+2 through D+11" argument that
+    # justifies pooled's abstention -- the D+2+ bucket is empty on the current
+    # data, so pooled and every rung span the identical two horizons, and that
+    # argument would prove both should abstain. The real reason is role:
+    # `pooled` is the permanent unconditional REFERENCE the rungs are read
+    # against, and deliberately never emits a verdict; a rung exists precisely
+    # to report the paired-significance verdict on the traded tail. Rendering
+    # "mixed leads" at every rung would withhold the only thing the ladder
+    # produces. n_by_lead discloses the mix so the verb is never read blind.
+    #
+    # The verb still comes from _paired_advantage, never from a raw skill
+    # threshold: a fixed threshold on a small tail is the exact defect
+    # BRIER_POLICY_MIN_SAMPLES' comment records an opus review catching (an
+    # n>=100 floor emitted "trade" on ~22% of pure-noise samples at this bot's
+    # own disagreement level), and the tail rungs are far smaller than the
+    # pooled population, so they are more exposed to it, not less.
+    #
+    # MULTIPLE COMPARISONS, measured rather than hand-waved. The rungs are
+    # nested, so family-wise inflation lands well under the independent bound,
+    # but it is real: Monte Carlo (4000 trials, n=214, equal-skill null,
+    # sd 0.18) puts a false actionable verb at ~8% for any single rung, 15.8%
+    # across the five `all` rungs, and 34.3% across all 15 rung x {real,
+    # shadow, all} cells. A reader who scans the ladder for the one rung that
+    # says something will find one about a third of the time under pure noise.
+    # No correction is applied -- silently adjusting a statistic the payload
+    # never exposes would be worse -- so every rung ships the z its verb came
+    # from, plus family_size, and any conclusion drawn by max-selection across
+    # rungs must be discounted accordingly.
+    rungs = sorted(
+        {*BRIER_CONDITIONAL_LADDER, *([] if min_edge is None else [min_edge])}
+    )
+    conditioned = []
+    for t in rungs:
+        sub = [r for r in rows if abs(r["our_prob"] - r["market_prob"]) >= t]
+        series = _series(sub, actionable=True)
+        n_by_lead = {
+            label: sum(1 for r in sub if _bucket_of(r["days_out"]) == label)
+            for label in BRIER_LEAD_LABELS
+        }
+        # days_out IS NULL rows carry no horizon (_bucket_of returns None), and
+        # the SQL admits them, so without this key sum(n_by_lead.values()) can
+        # silently fall short of n -- in the one disclosure the actionable verb's
+        # whole justification rests on. Mirrors pooled's own n_days_out_null.
+        n_by_lead["unknown"] = sum(1 for r in sub if r["days_out"] is None)
+        conditioned.append(
+            {
+                # Named for the backlog entry that specified it. See
+                # BRIER_CONDITIONAL_LADDER's AXIS WARNING: this is probability
+                # points of disagreement, NOT utils.MIN_EDGE's net_edge scale.
+                "min_edge": t,
+                "n_by_lead": n_by_lead,
+                "family_size": len(rungs),
+                # Each sub-series carries its own market_edge_z (see
+                # _brier_series_stats) -- the z the verb was derived from,
+                # exposed so a reader can apply their own multiple-comparisons
+                # discount rather than trusting a word.
+                **series,
+            }
+        )
+
     return {
         # The effective floor, not the raw argument: max(1, ...) is what the
         # helper actually applies, so echoing the argument would misdescribe
@@ -4478,6 +4615,7 @@ def get_model_vs_market_brier(
         "min_samples": max(1, min_samples),
         "confidence": 0.95,
         "buckets": buckets,
+        "conditioned": conditioned,
         "pooled": _series(rows, actionable=False),
         # days_out is NULL for rows logged without a resolvable market_date.
         # They carry no horizon, so they appear in `pooled` but in no bucket:
@@ -5652,6 +5790,449 @@ def _is_excluded_ladder_ticker(ticker: str) -> bool:
             exc,
         )
         return True
+
+
+# ── A1: is the claimed edge the edge actually collected? ─────────────────────
+
+# Below this many settled trades the whole panel is withheld rather than
+# rendered thin -- an OLS slope over a handful of points is noise with a
+# decimal point. Same discipline as _brier_series_stats's min_samples, and
+# deliberately its own constant: a Brier row and a P&L regression do not need
+# the same floor, and coupling them would silently retune one when the other
+# was tuned.
+EDGE_CAPTURE_MIN_TRADES = 30
+
+# Claimed-edge buckets, open-ended at BOTH ends so the bands always partition
+# the full range and sum(bucket n) == n by construction. The lowest band was
+# briefly floored at 0.15 on the grounds that the observed net_edge minimum is
+# 0.1504 -- but that is a snapshot, PAPER_MIN_EDGE is tunable below it, and a
+# floor there would silently drop rows from every bucket while still counting
+# them in `n` and in the global capture_ratio. An empty low band reading as an
+# empty region is a much smaller problem than a hole nothing reports.
+EDGE_CAPTURE_BUCKETS: tuple[tuple[float | None, float | None], ...] = (
+    (None, 0.25),
+    (0.25, 0.35),
+    (0.35, 0.50),
+    (0.50, None),
+)
+
+
+def _epoch_or_none(ts: str | None) -> int | None:
+    """Parse a stored ISO timestamp to epoch seconds, or None if unusable.
+
+    Paper-trade timestamps are written by datetime.now(UTC).isoformat(), so they
+    carry an offset; a naive value (no tzinfo) is treated as UTC rather than as
+    local time. That is deliberately BETTER than the unguarded sibling parse in
+    this module, which calls .timestamp() on a possibly-naive value and so lets
+    Python read it as LOCAL time -- do not "make it consistent" by copying that.
+
+    A bare int/float is accepted as an epoch already: paper.place_paper_order
+    always writes an ISO string, but a caller passing the epoch it just read
+    back should not silently land in n_no_mid.
+
+    Returns None rather than raising so one malformed row costs its own
+    waterfall entry, not the whole panel.
+    """
+    if ts is None or ts == "":
+        return None
+    if isinstance(ts, int | float) and not isinstance(ts, bool):
+        # Bounded, not merely finite: a millisecond epoch (1767268800000) or a
+        # stray huge float would otherwise bisect past every candle to
+        # candles[-1], making spread read (m_f - p)/p and drift read 0 -- a
+        # plausible-looking wrong number instead of an honest n_no_mid.
+        # 4e9 is ~2096-09; anything beyond is a unit error, not a timestamp.
+        if not math.isfinite(ts) or not 0 < ts < 4e9:
+            return None
+        return int(ts)
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        # str() cannot raise and fromisoformat on a str raises only ValueError,
+        # so a TypeError arm here would be dead code.
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return int(dt.timestamp())
+
+
+def _ols_slope(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
+    """Least-squares slope and intercept of y on x, or None when undefined.
+
+    None below 2 points, or when every x is identical (a vertical scatter has
+    no slope). Returned rather than raised so a degenerate bucket withholds its
+    number instead of killing the whole panel.
+    """
+    n = len(xs)
+    if n < 2:
+        return None
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx <= 0:
+        return None
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=True))
+    slope = sxy / sxx
+    return slope, my - slope * mx
+
+
+def get_edge_capture(
+    settled_trades: list[dict], min_trades: int = EDGE_CAPTURE_MIN_TRADES
+) -> dict:
+    """A1 (batch-66 item 3): how much of the claimed edge actually got collected.
+
+    settled_trades: paper trades already filtered to settled rows, each needing
+    ticker/side/entry_price/net_edge/cost/pnl. Passed in rather than loaded here
+    for the same reason get_stop_loss_accuracy takes its rows as an argument:
+    tracker.py deliberately avoids a MODULE-level dependency on paper.py, and
+    handing the rows in keeps this testable without touching the real ledger.
+    (get_stop_loss_accuracy's docstring states this as "tracker.py has no import
+    of paper.py" -- that is not quite true, there are two function-local imports
+    at tracker.py's get_all_trades and city-correlation call sites. The design
+    reason stands; the absolute claim does not.) paper.get_edge_capture() is the
+    zero-argument wrapper.
+
+    CAPTURE RATIO is the OLS slope of realized return on claimed edge, both
+    expressed per dollar of cost so they share net_edge's own unit (EV per
+    dollar of cost). Slope 1.0 means a claimed extra point of edge showed up as
+    an extra point of return; 0.37 means roughly a third did. A slope near 1.0
+    is reported exactly as legibly as a poor one -- no field here is populated
+    only when the answer is unflattering.
+
+    WATERFALL. Per contract, in the held side's price space, with P the entry
+    price, M_e the mid at entry, M_f the last mid before settlement and S the
+    settled value (1 if our side won):
+
+        S - P  =  (M_e - P)  +  (M_f - M_e)  +  (S - M_f)
+                   spread        drift          settle surprise
+
+    Read the honest caveat with it: that sum TELESCOPES. M_e cancels between
+    spread and drift, M_f between drift and settle_surprise, so the identity
+    holds for any M_e/M_f whatsoever -- a wrong candle, an unflipped NO mid, an
+    infinity. It is a decomposition, not a self-check, and an earlier version of
+    this docstring wrongly claimed a bug in one component would surface as a
+    reconciliation error. Only P, S and the fee are load-bearing in the sum.
+
+    The REAL check is `reconciliation_error`: `realized` is the ledger's own
+    pnl/cost, while `reconciled` is rebuilt from outcomes_valid.settled_yes and
+    the current maker fee, and the two genuinely can disagree -- they do on
+    about half the rows today, because paper.settle_paper_trade used to charge
+    KALSHI_FEE_RATE on winnings, so older winning rows carry a ~7%-of-winnings
+    fee inside their recorded pnl that no current-code reconstruction predicts.
+    A nonzero reconciliation_error is information, not a bug to hide. `fees`
+    reports what CURRENT code would charge (0.0, since this bot rests maker
+    orders and its weather series carry maker multiplier M=0 -- see
+    utils.KALSHI_MAKER_FEE_RATE), taken through kalshi_maker_fee so an operator
+    override is honoured; it is NOT a claim that every historical row paid zero.
+    `spread` is negative when we paid above the mid (the usual case for a buy).
+
+    `claimed_edge` is the stored net_edge exactly as the gate saw it. Do NOT
+    read it as a pure probability-derived quantity: weather_markets computes it
+    as `min((net_ev / entry_price) * time_decay, 3.0)`, so it carries a
+    horizon-decay multiplier and a cap, and its fee treatment CHANGED mid-sample
+    -- rows before 2026-07-12 were priced with the flat KALSHI_FEE_RATE, rows
+    after with KALSHI_MAKER_FEE_RATE (0.0). An earlier version of this function
+    reported a `claimed_edge_fee_bias` correcting for the flat fee on every row;
+    that was removed because it was right only for the legacy rows, wrong for
+    every row since the cutover, and converging on 100% wrong. The claim is left
+    exactly as the gate acted on it -- restating it would measure a decision
+    that was never made.
+
+    SURVIVORSHIP: every settled row is kept for the capture-ratio regression,
+    including `outcome == "early_exit"` (stop-loss / model-flip) positions,
+    which realize far worse than the held-to-settlement rows and whose exclusion
+    would flatter the headline badly -- see paper.get_edge_capture. Early exits
+    are reported as `n_early_exit` and are excluded from the WATERFALL only,
+    where a settled value S is undefined for a position closed before
+    settlement.
+
+    Mids come from price_history, whose candles are HOURLY (period_interval is
+    60 minutes, not the 1-minute cadence some batch docs claim). A trade whose
+    ticker has no usable candle keeps its capture-ratio row and is counted in
+    `n_no_mid` -- which counts only among the rows that REACH the waterfall,
+    since early exits are skipped before the candle lookup -- but is excluded
+    from the waterfall, so a thin price_history degrades the waterfall alone
+    rather than the whole panel. The three counts partition exactly:
+    n == waterfall["n"] + n_no_mid + n_early_exit.
+
+    The candle load is not time-bounded: it pulls every stored candle for every
+    traded ticker (16k rows / 333 tickers as of 2026-08-25) and keeps them in
+    memory to bisect. Deliberate for now -- the table only holds tickers this
+    bot traded, and bounding by each trade's own entry/settlement window would
+    need a per-ticker range in the SQL for a few hundred KB of savings. Revisit
+    if price_history ever starts storing markets the bot never touched.
+
+    Below `min_trades` every statistic is None and only the counts populate --
+    structurally, so a consumer cannot render a number it was never given.
+
+    Returns {"n", "min_trades", "capture_ratio", "intercept", "n_no_mid",
+    "n_early_exit", "waterfall", "buckets"}.
+    """
+    init_db()
+    from utils import kalshi_maker_fee
+
+    rows: list[dict] = []
+    for t in settled_trades:
+        side = t.get("side")
+        entry_price = t.get("entry_price")
+        cost = t.get("cost")
+        pnl = t.get("pnl")
+        net_edge = t.get("net_edge")
+        entry_prob = t.get("entry_prob")
+        ticker = t.get("ticker")
+        if side not in ("yes", "no") or not ticker:
+            continue
+        if entry_price is None or cost is None or pnl is None or net_edge is None:
+            continue
+        # Explicit > 0 rather than truthiness: cost is the divisor for every
+        # ratio below, and a negative entry_price is corruption, not a signal.
+        if float(entry_price) <= 0 or float(cost) <= 0:
+            continue
+        # isfinite, not just > 0: paper_trades.json is read with json.load,
+        # which ACCEPTS bare Infinity, and float("inf") passes every test
+        # above. An inf reaching round() stays inf, reaches jsonify(), and
+        # emits bare `Infinity` -- which RFC-8259 forbids and JSON.parse
+        # rejects, killing every panel in the single /api/analytics response,
+        # not just this one. Same hazard get_model_vs_market_brier guards in
+        # SQL; this is its json-side counterpart.
+        if not all(math.isfinite(float(v)) for v in (entry_price, cost, pnl, net_edge)):
+            continue
+        rows.append(
+            {
+                "ticker": ticker,
+                "side": side,
+                "entry_price": float(entry_price),
+                # YES-space forecast -> held-side space, the same convention
+                # order_executor._clears_taker_fee uses.
+                "p_side": (
+                    None
+                    if entry_prob is None
+                    else (
+                        float(entry_prob) if side == "yes" else 1.0 - float(entry_prob)
+                    )
+                ),
+                "claimed_edge": float(net_edge),
+                "realized_return": float(pnl) / float(cost),
+                "quantity": float(t.get("quantity") or 0),
+                "entered_ts": _epoch_or_none(t.get("entered_at")),
+                # Closed before settlement, so S is undefined for it: kept in
+                # the regression, dropped from the waterfall.
+                "early_exit": t.get("outcome") == "early_exit",
+            }
+        )
+
+    n = len(rows)
+    if n < max(1, min_trades):
+        return {
+            "n": n,
+            "min_trades": max(1, min_trades),
+            "capture_ratio": None,
+            "intercept": None,
+            "n_no_mid": None,
+            "n_early_exit": sum(1 for r in rows if r["early_exit"]),
+            "waterfall": None,
+            "buckets": [],
+        }
+
+    fit = _ols_slope(
+        [r["claimed_edge"] for r in rows], [r["realized_return"] for r in rows]
+    )
+
+    tickers = sorted({r["ticker"] for r in rows})
+    series: dict[str, list[tuple[int, float]]] = {}
+    settled_map: dict[str, int] = {}
+    with _conn() as con:
+        # Chunked so a large ledger cannot blow SQLite's variable limit.
+        for start in range(0, len(tickers), 400):
+            chunk = tickers[start : start + 400]
+            ph = ",".join("?" * len(chunk))
+            for row in con.execute(
+                f"""
+                SELECT ticker, end_period_ts,
+                       (yes_bid_close + yes_ask_close) / 2.0 AS mid
+                FROM price_history
+                WHERE ticker IN ({ph})
+                  AND yes_bid_close IS NOT NULL AND yes_ask_close IS NOT NULL
+                  -- Range guard, same reasoning as
+                  -- get_model_vs_market_brier's: SQLite stores +/-Infinity as
+                  -- a REAL, and one poisoned candle would reach jsonify() and
+                  -- emit bare `Infinity`, killing the whole analytics
+                  -- response. A mid outside [0, 1] is unambiguous corruption.
+                  AND yes_bid_close BETWEEN 0 AND 1
+                  AND yes_ask_close BETWEEN 0 AND 1
+                  -- Bound to the WRITERS' own _CANDLE_PERIOD_MINUTES rather
+                  -- than a literal 60. The unique index is (ticker,
+                  -- period_interval, end_period_ts), so a future writer at
+                  -- another granularity would interleave two series for one
+                  -- ticker and make both candles[-1] and the bisect
+                  -- nondeterministic -- while a SECOND hardcoded 60 would
+                  -- silently select zero rows if the period were ever retuned,
+                  -- surfacing as waterfall: null with no error.
+                  AND period_interval = ?
+                ORDER BY ticker, end_period_ts
+                """,
+                [*chunk, _CANDLE_PERIOD_MINUTES],
+            ):
+                series.setdefault(row["ticker"], []).append(
+                    (int(row["end_period_ts"]), float(row["mid"]))
+                )
+            for row in con.execute(
+                f"SELECT ticker, settled_yes FROM outcomes_valid "
+                f"WHERE settled_yes IN (0, 1) AND ticker IN ({ph})",
+                chunk,
+            ):
+                settled_map[row["ticker"]] = row["settled_yes"]
+
+    comp: dict[str, list[float]] = {
+        "claimed_edge": [],
+        "_slope_x": [],
+        "_slope_y": [],
+        "spread": [],
+        "drift": [],
+        "settle_surprise": [],
+        "fees": [],
+        "reconciled": [],
+        "realized": [],
+        "reconciliation_error": [],
+    }
+    n_no_mid = 0
+    n_early_exit = sum(1 for r in rows if r["early_exit"])
+    for r in rows:
+        # S is undefined for a position closed before settlement, so an early
+        # exit cannot enter the waterfall -- but it stays in `rows`, and
+        # therefore in the capture-ratio regression above.
+        if r["early_exit"]:
+            continue
+        candles = series.get(r["ticker"])
+        settled_yes = settled_map.get(r["ticker"])
+        if not candles or settled_yes is None or r["entered_ts"] is None:
+            n_no_mid += 1
+            continue
+        # The mid AT ENTRY is the last candle closing at or before the entry
+        # timestamp -- not the ticker's first candle, which is the market's
+        # opening print and can be hours or days earlier. Using the opening
+        # print made `spread` read +0.073 per dollar of cost (i.e. "we bought
+        # 7 points below fair value"), when what it was really measuring was
+        # the market moving between open and our entry.
+        idx = bisect.bisect_right(candles, (r["entered_ts"], float("inf"))) - 1
+        if idx < 0:
+            # Entry precedes every stored candle: no honest entry mid exists,
+            # so this trade sits out the waterfall rather than borrowing the
+            # market's opening print and mislabelling it as the entry mid.
+            n_no_mid += 1
+            continue
+        m_e_yes = candles[idx][1]
+        m_f_yes = candles[-1][1]
+        # price_history is YES-space; flip into the held side.
+        m_e = m_e_yes if r["side"] == "yes" else 1.0 - m_e_yes
+        m_f = m_f_yes if r["side"] == "yes" else 1.0 - m_f_yes
+        s_val = 1.0 if (settled_yes == 1) == (r["side"] == "yes") else 0.0
+        p = r["entry_price"]
+        qty = r["quantity"]
+        # Per-contract fee: kalshi_maker_fee rounds the WHOLE order up to a
+        # cent, so divide by qty rather than calling it with C=1, which would
+        # charge every trade a full cent it never paid.
+        fee = kalshi_maker_fee(qty, p) / qty if qty > 0 else 0.0
+        comp["claimed_edge"].append(r["claimed_edge"])
+        comp["_slope_x"].append(r["claimed_edge"])
+        comp["_slope_y"].append(r["realized_return"])
+        comp["spread"].append((m_e - p) / p)
+        comp["drift"].append((m_f - m_e) / p)
+        comp["settle_surprise"].append((s_val - m_f) / p)
+        comp["fees"].append(-fee / p)
+        # `reconciled` is what CURRENT code says this trade should have paid;
+        # `realized` is what the ledger actually recorded. Keeping both is the
+        # point -- their difference is the only real check in this block, since
+        # the three price components telescope and cannot disagree with it.
+        reconciled = (s_val - p - fee) / p
+        comp["reconciled"].append(reconciled)
+        comp["realized"].append(r["realized_return"])
+        comp["reconciliation_error"].append(r["realized_return"] - reconciled)
+
+    def _avg(v: list[float]) -> float | None:
+        return round(sum(v) / len(v), 6) if v else None
+
+    waterfall = None
+    if comp["realized"]:
+        waterfall = {
+            "n": len(comp["realized"]),
+            # Averaged over comp, NOT over `rows`: every other field here
+            # excludes the n_no_mid and early-exit rows, and a claim averaged
+            # over a different population than its own decomposition is
+            # exactly the mismatch this panel exists to catch.
+            "claimed_edge": _avg(comp["claimed_edge"]),
+            "spread": _avg(comp["spread"]),
+            "drift": _avg(comp["drift"]),
+            "settle_surprise": _avg(comp["settle_surprise"]),
+            "fees": _avg(comp["fees"]),
+            "reconciled": _avg(comp["reconciled"]),
+            "realized": _avg(comp["realized"]),
+            # Ledger minus reconstruction. Nonzero is expected and is
+            # information (historic fee-model changes), not a defect to hide.
+            "reconciliation_error": _avg(comp["reconciliation_error"]),
+            "n_reconciled_exactly": sum(
+                1 for d in comp["reconciliation_error"] if abs(d) < 1e-9
+            ),
+            # The waterfall's OWN capture ratio, over its own 202-row
+            # population -- deliberately not the top-level one. The top-level
+            # capture_ratio spans every settled row including early exits
+            # (0.378 on live data); this one spans only the held-to-settlement
+            # rows the decomposition above describes (0.519). Reporting one
+            # headline beside a decomposition of a different population is the
+            # exact mismatch this panel exists to catch, so both populations
+            # carry their own number rather than sharing one.
+            "capture_ratio": (
+                None
+                if (_wf := _ols_slope(comp["_slope_x"], comp["_slope_y"])) is None
+                else round(_wf[0], 6)
+            ),
+        }
+
+    if waterfall is not None:
+        comp.pop("_slope_x", None)
+        comp.pop("_slope_y", None)
+
+    buckets = []
+    for lo, hi in EDGE_CAPTURE_BUCKETS:
+        sub = [
+            r
+            for r in rows
+            if (lo is None or r["claimed_edge"] >= lo)
+            and (hi is None or r["claimed_edge"] < hi)
+        ]
+        bfit = (
+            _ols_slope(
+                [r["claimed_edge"] for r in sub], [r["realized_return"] for r in sub]
+            )
+            if len(sub) >= max(1, min_trades)
+            else None
+        )
+        buckets.append(
+            {
+                "lo": lo,
+                "hi": hi,
+                "n": len(sub),
+                # Buckets span the SAME population as the top-level
+                # capture_ratio (every settled row), not the waterfall's.
+                # n_early_exit is reported per bucket so a reader can see how
+                # much of each band is stop-lossed rather than settled.
+                "n_early_exit": sum(1 for r in sub if r["early_exit"]),
+                "claimed_edge": _avg([r["claimed_edge"] for r in sub]),
+                "realized_return": _avg([r["realized_return"] for r in sub]),
+                # Withheld, not zero: a bucket under the floor has no slope.
+                "capture_ratio": None if bfit is None else round(bfit[0], 6),
+            }
+        )
+
+    return {
+        "n": n,
+        "min_trades": max(1, min_trades),
+        "capture_ratio": None if fit is None else round(fit[0], 6),
+        "intercept": None if fit is None else round(fit[1], 6),
+        "n_no_mid": n_no_mid,
+        "n_early_exit": n_early_exit,
+        "waterfall": waterfall,
+        "buckets": buckets,
+    }
 
 
 def get_history(limit: int = 50) -> list[dict]:
