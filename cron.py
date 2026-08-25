@@ -3606,6 +3606,42 @@ def _cmd_cron_body(
             "check_miami_index_config_version call failed: %s", _miami_index_exc
         )
 
+    # batch-56: Miami nearby-station blend accuracy sample -- SHADOW ONLY.
+    # Records how well an inverse-distance blend of the 8 nearest stations
+    # tracks the Kalshi Weather Index versus KMIA alone, building the
+    # multi-day history the graduation decision needs. Placed here (rather
+    # than in run_trade_cycle alongside record_shadow_observations) because
+    # its population is weather stations and the index feed, not the cycle's
+    # market list -- it has no dependency on markets having been fetched.
+    #
+    # record_shadow_sample() never raises; the outer try/except exists only
+    # for a failure ABOVE it (e.g. the import). WARNING not DEBUG, same
+    # reasoning as its siblings: a permanently-broken recorder must not go
+    # unnoticed for months.
+    #
+    # Cost, stated accurately (an earlier version of this comment claimed
+    # "at most one cached round-trip", which is wrong for the dominant
+    # deployment mode): both of the module's caches are IN-MEMORY only, so
+    # they help a long-lived `loop`/`watch --auto` process but never a
+    # one-shot `python main.py cron`, which pays three fresh HTTP calls
+    # (NWS /points, NWS /stations, aviationweather /metar) plus the index
+    # fetch every invocation -- the same in-memory-only caveat
+    # kalshi_weather_index's own comment above records for itself. The
+    # module's timeouts are sized so the worst case stays well inside
+    # _install_cron_watchdog's hard-kill window; it is placed last in this
+    # block so a slow upstream delays only the "scan complete" line.
+    #
+    # Shares its siblings' documented post-kill-switch placement trade-off --
+    # while the kill switch is engaged this collector is silent too. Accepted
+    # rather than special-cased: a paused bot has no live trading for this
+    # shadow signal to inform anyway.
+    try:
+        from nearby_station_obs import record_shadow_sample as _record_nearby_sample
+
+        _record_nearby_sample(client)
+    except Exception as _nearby_obs_exc:
+        _log.warning("record_shadow_sample call failed: %s", _nearby_obs_exc)
+
     print(
         cyan(
             f"  [cron] scan complete \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"

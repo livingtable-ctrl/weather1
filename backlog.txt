@@ -31093,3 +31093,236 @@ Recommendation:
   calibrated than the price on average", NOT as "the strategy has no edge".
   Live trading is dormant; this is a reason to keep it dormant pending the
   conditional read, not evidence to rebuild the model.
+[RESOLVED 2026-08-24 -- batch-56] Nearby-station blended observations (Miami) -- go/no-go PASSED, shipped shadow-only
+Priority: Info (expansion roadmap batch-56, gated open by batch-52's divergence verdict)
+Files: nearby_station_obs.py (NEW), tests/test_nearby_station_obs.py (NEW),
+  paths.py (NEARBY_STATION_SHADOW_PATH), main.py (_PERMANENT_DATA_FILES),
+  cron.py (_cmd_cron_body once-per-cycle recorder hook)
+
+Gate:
+  INDEX-ROADMAP.md opened batch-56 only "if batch-52's index-vs-METAR divergence test shows
+  >=1F divergence". Batch-52 filed mean|diff| 1.58F / max 4.68F (afternoon window 1.96F mean),
+  see the "Batch-56 gate verdict" entry above. Re-verified live before starting: the Kalshi
+  live_data miami feed still serves ~24h of minute-resolution points and config_version was
+  still miami-temperature-v1.0-cal-20260824 (unchanged since batch-52 measured it).
+
+Go/no-go experiment (run FIRST, before any code was written):
+  The batch spec's own bar: "blend beats single-station by >=0.3F RMSE" against the Kalshi
+  Weather Index. Blocker found immediately -- Synoptic Data's free open-access tier requires a
+  registered API token (confirmed live: unauthenticated -> HTTP 401 "Missing token"; a bogus
+  token -> HTTP 403), and registering an account is not something this session could do.
+
+  Ran the experiment on free ASOS instead: aviationweather.gov multi-station METAR for the 8
+  nearest South Florida stations, scored against the Kalshi index at every KMIA observation
+  time over the endpoint's full retained ~24h window (2026-08-24 01:53 -- 2026-08-25 02:53 UTC,
+  n=33 paired points). Split into two temporal halves to rule out config-selection overfit,
+  evaluating ONLY the design the batch file pre-registered ("5-10 nearest stations,
+  distance-weighted") rather than an argmax over the whole config sweep:
+
+    kernel 1/(d+10km), k=5   1st half +0.369F   2nd half +0.793F   full +0.682F
+    kernel 1/(d+10km), k=8   1st half +0.589F   2nd half +1.195F   full +1.033F
+
+  (RMSE improvement of the blend over KMIA-alone. Baseline KMIA-alone RMSE over the full
+  window: 2.055F, bias -0.436F -- consistent with batch-52's independently-measured 1.6-2.0F.)
+  Every pre-registered slice clears +0.300F; k=8 dominates k=5 on every slice. PASS.
+
+  Diagnostic worth recording: an unsmoothed inverse-distance kernel does NOT pass. With the
+  anchor station at d=0 clamped to 0.5km it takes ~96% of the total weight and the blend
+  collapses back onto KMIA (+0.005F improvement, a null result). The smoothing term is what
+  makes the blend a blend -- hence SMOOTHING_KM, and a dedicated mutation-tested regression
+  guarding it.
+
+What shipped:
+  nearby_station_obs.py -- SHADOW/DATA-COLLECTION ONLY. Deliberately NOT named synoptic_obs.py
+  (the batch file's suggestion): the gate passed without Synoptic, so the implemented backend is
+  NWS /points/{lat,lon}/stations for discovery (returns ~20 nearby stations with coordinates;
+  nws._get_obs_station already calls this exact endpoint and discards everything but
+  features[0]) plus aviationweather.gov batched multi-station METAR for observations (one HTTP
+  request for the whole set, the endpoint metar.py already wraps). A StationSource Protocol is
+  the seam a Synoptic backend plugs into later without touching blend/QC/recorder logic.
+
+  A Synoptic backend was deliberately NOT written blind. The only Synoptic responses this
+  session ever observed were its 401/403 error bodies, and mocking a success shape never seen
+  live is precisely the failure mode this project has already been burned by (batch-52's
+  predecessor mocked a Kalshi order status the real exchange never returns). Synoptic's real
+  added value is CWOP + state-mesonet density, which neither free source provides -- that
+  remains the reason to add the backend if a key is ever registered.
+
+  QC replaces what Synoptic's own quality flags would have supplied (the batch's explicit
+  "a bad station must not degrade a calibrated pipeline" constraint). Four fail-closed gates:
+  plausibility (-60/130F), staleness (>90 min, AND a >5-min future-skew lower bound), median
+  outlier rejection (>8F from the surviving set's median -- loose on purpose, real South Florida
+  sea-breeze gradients reach 4-6F and this must catch a broken sensor, not a real gradient), and
+  a 3-station quorum. Gate ordering matters and is regression-tested: the outlier median is
+  computed over plausibility survivors, never over raw readings.
+
+  cron._cmd_cron_body calls record_shadow_sample(client) once per cycle, next to batch-52's
+  config_version drift watch. It never raises, and is idempotent within a METAR hour (samples
+  are keyed by the anchor station's observation time) so the accumulating RMSE is weighted by
+  distinct observations rather than by how often cron happens to run. Unlike
+  consistency.record_shadow_observations it is deliberately NOT skipped on --sameday-only: its
+  population is weather stations and the index feed, neither derived from the cycle's market
+  list, so every cycle genuinely could produce a sample and cycles_observed stays honest.
+  Index points with status != "normal" are counted as an observed cycle but never scored --
+  batch-52's module passes status through unfiltered and puts the obligation on the caller;
+  this is that caller honoring it.
+
+Explicitly NOT done (shadow-only, per INDEX-ROADMAP.md's standing rule):
+  Nothing wires the blend into any probability, lock-in, or order path. weather_markets.py's
+  obs-weight integration (analyze_trade's _obs_w blend at ~:13933 and obs_weight_used at
+  ~:14899) is UNTOUCHED -- get_live_observation remains the sole observation source for
+  probability. A regression test asserts that structurally: weather_markets.py, trade_cycle.py,
+  order_executor.py, metar.py and nws.py must not reference nearby_station_obs at all, paired
+  with a positive control that cron.py does. The graduation decision -- whether this blend
+  should ever feed KXTEMPMIAH's probability -- is a human call made later against
+  get_shadow_report()'s accumulated multi-day history. A 24h go/no-go justifies COLLECTING,
+  not TRADING; get_shadow_report's meets_gonogo_bar field is a reporting value nothing reads
+  as a switch.
+
+Scope decision (user, this session):
+  Miami only. It is the one tracked family whose settlement variable IS a multi-station index,
+  so the blend approximates the real settlement target AND the Kalshi live_data feed supplies
+  independent ground truth to score against. For the other 20 cities in MARKET_STATION_MAP the
+  settlement variable is a single station the bot already reads directly, so a blend would
+  diverge from settlement by construction -- it would measure regional smoothing, not
+  settlement tracking. The batch file makes the same point ("for 39 of 40 tracked series the
+  settlement variable is a single station the bot already reads directly").
+
+Tests: 67 new in tests/test_nearby_station_obs.py, all passing. Scoped regression sweep over
+  the touched files (test_nearby_station_obs, test_cleanup_data_dir, test_cron_integration,
+  test_main_cron_smoke, test_cron_group_c, test_sameday_only, test_infrastructure,
+  test_config_validation, test_kalshi_weather_index, test_metar): 361 passed, 20 deselected,
+  0 failed, run after the review round below and after rebasing onto origin/master a67a21a6.
+  Eight mutation cycles run individually via Edit-revert-run-restore, each confirming the
+  specific test that claims to catch it actually does: kernel collapse (SMOOTHING_KM removed),
+  anchor ignoring QC, dropped future-skew age bound, dedup disabled, degraded-status check
+  removed, GeoJSON lon/lat swapped, outlier median computed pre-QC, int() coercion moved out of
+  _load_state's self-heal guard.
+  A ninth mutation (removing the Miami-only guard added during self-review) initially was NOT
+  caught, and the fix is worth recording: the test used a raising MagicMock to prove the blend
+  was never reached, but record_shadow_sample swallows every exception by contract, so the
+  absence assertion passed vacuously. Rewritten to assert call_count on a recording double,
+  which survives the swallow; the mutation is caught now.
+
+  TWO tests were found VACUOUS by mutation testing and rewritten -- worth noting because both
+  passed a green suite beforehand:
+   (a) the outlier-ordering fixture ([-999, 80, 81, 82]) gave the same median either way
+       (80.5), so it could not distinguish the two gate orderings at all. Replaced with
+       [-100, 70, 78, 79, 80], where the correct order rejects the 70F station and the wrong
+       order keeps it.
+   (b) the city-guard test described above.
+
+Self-review finding fixed in the same change:
+  record_shadow_sample() took a `city` parameter but scored against
+  get_miami_index_reading_near() unconditionally -- a Miami-ONLY feed. A future caller widening
+  the city set would have silently built an accuracy history comparing (say) NYC stations to
+  the Miami index and reported it as meaningful. Now fails closed on any non-Miami city, with a
+  mutation-tested regression.
+
+Independent opus review (effort=high) -- 3 HIGH, 6 MEDIUM, 10 LOW, 7 INFO, ALL addressed:
+
+  H-1 TEST ISOLATION LEAK, already realised in production data. tests/conftest.py's
+    isolate_cron_generated_files fixture exists precisely to redirect "every production path
+    _cmd_cron_body() (or something it calls) can write to" -- and its own body already
+    redirects consistency.RAIN_ARB_SHADOW_PATH for this exact leak class. The new recorder's
+    _SHADOW_PATH was not added, so this batch's OWN test runs wrote 110 phantom cycles into
+    the main clone's real data/nearby_station_shadow.json (paths.py resolves data/ to the main
+    clone regardless of worktree -- [[feedback_worktree_data_dir_gotcha]] again). cycles_observed
+    is the denominator get_shadow_report() divides by, so the module's entire deliverable was
+    corrupted before production cron ever ran it. Fixed (fixture + the two module-level cache
+    resets and the _obs_cb breaker reset, added to the same proactive lists batch-52's
+    _index_cb went into), polluted file deleted, and verified BOTH directions: 112 cron tests
+    now leave no production file, and disabling the fixture again immediately recreated it with
+    18 cycles.
+
+  H-2 A single transient OSError on read destroyed the whole accumulated history. _load_state()
+    caught OSError in the same branch as malformed JSON and returned an empty state, which
+    record_shadow_sample then wrote straight back over the real file. Self-healing is correct
+    for corrupt CONTENT and wrong for a transient I/O fault. Not hypothetical on Windows:
+    circuit_breaker.py documents this precise race for its own state file (an unlocked read
+    landing mid-os.replace of a concurrent locked write raises PermissionError), and two cron
+    processes can both write this file every cycle. Now raises a distinct _StateReadError and
+    the recorder writes NOTHING that cycle.
+
+  H-3 The HALF-OPEN circuit-breaker probe was consumed and then blocked, wedging the breaker
+    permanently. CircuitBreaker.is_open() is STATEFUL: the first call after recovery_timeout
+    sets _half_open and returns False ("this caller is the probe"). blend_nearby_observation()
+    and get_nearby_stations() each called it, so the outer call took the probe and the inner
+    one returned True -- discover() never ran, neither record_success() nor record_failure()
+    fired, and _half_open stayed latched forever. In a long-lived loop/watch --auto process the
+    collector went silent after 3 consecutive upstream failures and never recovered. Every
+    sibling module calls is_open() exactly once per fetch. Fixed: exactly one check per real
+    fetch, and the discovery cache is now consulted BEFORE the check (static geometry is still
+    good while open). The original circuit test could not catch this because it reset _opened_at
+    by hand; the new one drives the real recovery path via a monkeypatched clock.
+
+  M-4 Dedup keyed on a single "last seen" scalar, defeated by the settlement station dropping
+      out and returning -- the same observation scored twice. Now checks membership across the
+      whole retained sample tail.
+  M-5 The blend could mix readings up to 95 minutes apart and score them against a single-minute
+      index value; MAX_OBS_AGE_MIN gates each station individually, which is all metar.py ever
+      needed. Added QC gate 2b (MAX_OBS_SPREAD_MIN = 30), which drops the laggard rather than
+      the whole sample.
+  M-6 rmse_single_f silently meant "whatever the nearest working station was", not KMIA-alone,
+      because the anchor falls back when the settlement station fails QC -- and meets_gonogo_bar
+      had no sample floor, reporting True off n=1 in a module whose stated convention is the
+      20-sample gate. Fixed: blend now reports primary_* (the metar.MARKET_STATION_MAP
+      settlement station) separately from anchor_*, the recorder scores ONLY primary_*, and the
+      verdict stays None below MIN_SAMPLES_FOR_VERDICT = 20.
+  M-7 get_shadow_report's docstring promised None on an unreadable file but returned a zeroed
+      report, making corruption indistinguishable from a fresh install. Now returns None.
+  M-8 The shadow-only structural test hand-listed 5 modules, so wiring the blend into
+      trading_gates.py or ml_bias.py would have kept it green. Now sweeps every root module with
+      a glob, plus a positive control on the sweep itself and on cron.py's CALL (not just its
+      import -- I-21).
+  M-9 StationSource.discover()/observe() were called outside any try, so the documented
+      fail-closed contract of both public functions was actually provided by their caller. A
+      future Synoptic backend that raised would have propagated. Both now wrapped.
+
+  LOW/INFO, all fixed: breaker+cache reset fixtures (L-10); nearby_station_shadow.json added to
+    test_cleanup_data_dir's required set (L-11); a boundary test whose docstring claimed both
+    plausibility bounds were KEPT when the fixture actually had both rejected as outliers
+    (L-12); a normalization test passing by ~8e-17 of margin and asserting rounded rather than
+    real weights (L-13); no _OBS_CACHE coverage at all -- the cache could have been deleted
+    outright with the suite green (L-14); no test exercising the real blend->recorder path or
+    the rejected-row JSON serialization (L-15); a cron comment claiming "at most one cached
+    round-trip" that is wrong for one-shot cron, where both in-memory caches are cold every
+    invocation -- comment corrected and timeouts tightened to (3, 8) so the worst case stays
+    well inside the watchdog window (L-16); an empty observe() result recording breaker SUCCESS
+    and positively caching {} for 15 min, blinding the breaker to a total outage (L-17);
+    _parse_obs_time not falling through to reportTime on a bad epoch, unlike the metar.py
+    handling it claims to reuse (L-18); the cached station list handed out by reference and a
+    cache key omitting coordinates (L-19); observe() mocks using `tmpf`, a Fahrenheit field
+    metar.py's own live audit concluded the real API never returns -- switched to Celsius
+    `temp` (I-20); the observationStations URL followed from a remote response without a host
+    check (I-23); two docstring slips (I-24); no coverage of quorum failing AFTER the outlier
+    gate (I-25); the state file rewritten every cycle purely to increment cycles_observed
+    (I-26, accepted as-is and documented -- the write is what makes cycles_observed an honest
+    denominator, and at the retained-sample cap it is far smaller than the review estimated).
+
+Workflow step 29 (graphify refresh) SKIPPED, with a NEW reason worth recording -- the old
+reason no longer applies:
+  origin/master commit 599a0225 ("chore(graphify): un-key manifest.json so the cache is
+  portable across worktrees") landed mid-session and fixed the absolute-path cache keying that
+  blocked prior batches; the manifest is now 544 relative keys, and a pure round-trip of
+  graph.json was verified clean (22411/22411 links identical), so the old edge-direction
+  corruption is fixed too. A scoped AST extract was therefore actually ATTEMPTED this session.
+  It was reverted, because AST-only refresh is structurally insufficient for a NEW module:
+  extract() emits `imports` edges to targets like `statistics` and `requests.adapters` but does
+  NOT create nodes for them -- in graph.json every such node carries `_origin: "semantic"`,
+  i.e. only the semantic layer ever mints them. nearby_station_obs.py is the first file in the
+  repo to import either, so the merged graph went from 0 dangling link endpoints to 2. Reverted
+  graph.json to its committed state rather than commit a measurably-degraded graph, and removed
+  a stray nested graphify-out/graphify-out/ cache dir the extract created (cache_root was
+  re-joined onto an already-relative base).
+  What a future session should do instead: run the full `graphify <path> --update` (semantic
+  layer included) now that the manifest is portable -- that is the only pass that can mint the
+  two missing concept nodes -- and expect the Obsidian regen churn documented previously.
+
+Open follow-up (not blocking):
+  If a Synoptic free-tier key is ever registered, add a SynopticSource implementing the same
+  StationSource protocol and re-run get_shadow_report() side by side -- the density gain from
+  CWOP/mesonet stations is the one thing this build cannot measure. Note also that KTMB is
+  discovered by NWS but never appears in the aviationweather payload (confirmed live twice); it
+  is silently skipped, which is correct, but a station that permanently never reports is
+  effectively reducing k from 8 to 7 for Miami.

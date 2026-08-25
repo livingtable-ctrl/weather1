@@ -896,6 +896,11 @@ _PERMANENT_DATA_FILES = {
     # M-19: multi-week rain-arb graduation history -- any >=2-day cron pause
     # followed by one CLI invocation would delete it, losing the whole trend.
     "rain_arb_shadow_observations.json",
+    # batch-56: same reasoning as the rain-arb file above -- a multi-week
+    # blend-vs-single-station accuracy history whose whole purpose is the
+    # eventual graduation decision. A 2-day cron pause must not silently
+    # reset the sample count back to zero.
+    "nearby_station_shadow.json",
 }
 
 

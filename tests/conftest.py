@@ -334,6 +334,7 @@ def reset_open_meteo_circuit_breaker():
     import hurricane_climatology
     import kalshi_client
     import kalshi_weather_index
+    import nearby_station_obs
     import nws
     import weather_markets
 
@@ -355,6 +356,10 @@ def reset_open_meteo_circuit_breaker():
         kalshi_client._kalshi_cb_write,
         nws._nws_cb,
         kalshi_weather_index._index_cb,
+        # batch-56: nearby_station_obs._obs_cb, same proactive add as
+        # _index_cb above -- it is constructed at import time and therefore
+        # loads the real main-clone .cb_state.json.
+        nearby_station_obs._obs_cb,
         # M-18/L-8 (batch-36): hurricane_climatology's two hurdat2_cb
         # breakers (ATL/PAC) are new module-level singletons -- same
         # missed-until-added gap as every other module in this loop's own
@@ -398,6 +403,27 @@ def reset_miami_index_cache():
     kalshi_weather_index._INDEX_CACHE.clear()
     yield
     kalshi_weather_index._INDEX_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_nearby_station_obs_caches():
+    """batch-56: nearby_station_obs's two module-level ForecastCaches.
+
+    Same shape and same rationale as reset_miami_index_cache above, but with
+    a sharper edge: _DISCOVERY_CACHE has a 24h TTL, so without this a station
+    list cached by the first test that touches the module survives for the
+    entire session and silently satisfies every later test's discovery call
+    as a cache hit. The module's own test file has an in-file fixture; this
+    is the structural backstop for every OTHER test file (the cron
+    integration files all reach this module through _cmd_cron_body).
+    """
+    import nearby_station_obs
+
+    nearby_station_obs._DISCOVERY_CACHE.clear()
+    nearby_station_obs._OBS_CACHE.clear()
+    yield
+    nearby_station_obs._DISCOVERY_CACHE.clear()
+    nearby_station_obs._OBS_CACHE.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -851,6 +877,21 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
         consistency,
         "RAIN_ARB_SHADOW_PATH",
         tmp_path / "rain_arb_shadow_observations.json",
+    )
+    # batch-56: nearby_station_obs.record_shadow_sample() is called directly
+    # from _cmd_cron_body -- same leak class again. Caught only AFTER it had
+    # already written 110 phantom cycles into the real main-clone
+    # data/nearby_station_shadow.json during this batch's own test runs
+    # (paths.py resolves data/ to the main clone regardless of worktree).
+    # cycles_observed is the denominator get_shadow_report() divides by, so
+    # unisolated test cycles corrupt the module's entire deliverable before
+    # production cron ever runs it.
+    import nearby_station_obs
+
+    monkeypatch.setattr(
+        nearby_station_obs,
+        "_SHADOW_PATH",
+        tmp_path / "nearby_station_shadow.json",
     )
 
 

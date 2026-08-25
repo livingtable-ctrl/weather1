@@ -136,6 +136,10 @@ class TestCleanupDataDir:
             # >=2-day cron pause followed by one CLI invocation.
             "execution_log_unsettled_exit_rows.json",
             "rain_arb_shadow_observations.json",
+            # batch-56: same reasoning as rain_arb_shadow_observations.json --
+            # a multi-week blend-vs-single-station accuracy history whose only
+            # purpose is the eventual graduation decision.
+            "nearby_station_shadow.json",
         }
         missing = required - _PERMANENT_DATA_FILES
         assert not missing, f"Missing from _PERMANENT_DATA_FILES: {missing}"

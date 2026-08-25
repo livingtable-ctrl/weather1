@@ -84,6 +84,14 @@ MIAMI_INDEX_STATE_PATH = _DATA / "miami_index_state.json"
 HURRICANE_COUNT_TO_DATE_PATH = _DATA / "hurricane_count_to_date.json"
 NOTIFY_COOLDOWN_STATE_PATH = _DATA / ".notify_cooldowns.json"
 RAIN_ARB_SHADOW_PATH = _DATA / "rain_arb_shadow_observations.json"
+# batch-56: blend-vs-single-station accuracy history for the Miami nearby-
+# station observation blend, scored against the Kalshi Weather Index. Shadow
+# only -- accumulates the multi-day evidence a human needs to decide whether
+# the blend should ever feed KXTEMPMIAH's probability. Its own file rather
+# than folded into MIAMI_INDEX_STATE_PATH: that one is a config_version drift
+# sentinel written on a completely different trigger, and mixing a growing
+# sample history into it would make both harder to reason about.
+NEARBY_STATION_SHADOW_PATH = _DATA / "nearby_station_shadow.json"
 # batch-24 item 4: persisted false->true edge tracking for risk-halt alerts
 # (anomaly/daily-loss/drawdown) so send_system_alert() fires once per
 # engagement instead of every cron cycle the halt stays active.
