@@ -61,7 +61,7 @@ Batches 64-67 and 70-71 all append to `tracker.py` and `web_app.py`. They are de
 
 1. **[64](batch-64.md) immediately.** Sample clocks. Nothing else has a decaying value.
 2. **[66](batch-66.md) next, then [65](batch-65.md).** See the finding below — 66 answers whether the rest is worth building.
-3. **[68](batch-68.md)** any time; it is half a day and either confirms every calibration number above it or invalidates them.
+3. ~~**[68](batch-68.md)** any time; it is half a day and either confirms every calibration number above it or invalidates them.~~ ✅ **DONE 2026-08-25.** It confirmed them: every calibration number is scored against `outcomes.settled_yes`, which is Kalshi's own `result` read only at `status="finalized"` and no earlier than 1h past close. **No regrade.** It did find two derived-path defects and fixed both — see the `A13 SETTLEMENT-SOURCE AUDIT` entry in `backlog.txt`. **Batch 74 (A9) inherits one rule from it:** METAR is a legitimate pre-settlement *trading signal* (that is all `settlement_monitor.py` and `_metar_lock_in` ever use it for) but is NOT a settlement source for any market family this bot trades — not even the hourly ones, which settle on The Weather Company and the Kalshi Weather Index. A9's "high so far" may gate an exit; it may never be written anywhere a grading consumer reads.
 4. **[65](batch-65.md), [67](batch-67.md), [69](batch-69.md)** in parallel, any order.
 5. **[70](batch-70.md), [71](batch-71.md)** once 64 has been writing long enough to have rows. 71's A15b half needs months, not days — check row counts before starting rather than assuming.
 6. **[72](batch-72.md), [73](batch-73.md), [74](batch-74.md)** last, and only after step 2's answer. See below.

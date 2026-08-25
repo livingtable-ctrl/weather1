@@ -6317,208 +6317,457 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         self.assertFalse(result)
 
-    def test_audit_settlement_hourly_writes_settled_value_not_temp_f(self):
-        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
-        item 3: a KXTEMPxxxH ticker must settle into settled_value/
-        settled_var, with settled_temp_f left NULL (that column stays
-        daily-HIGH/LOW-specific per Step 1's design)."""
-        from unittest.mock import patch
+    # ── Hourly settlement reads Kalshi's own expiration_value (batch-68) ──
+    #
+    # These replace an earlier generation of tests that pinned the IEM ASOS
+    # raw-METAR proxy this branch used until batch-68's A13 settlement-source
+    # audit. That proxy rested on the claim that "Kalshi has no analogous
+    # single-hour expiration_value to read", which was live-verified false:
+    # expiration_value is populated on 52,088 of 52,310 finalized markets
+    # sampled across all six hourly series and is uniform across every strike
+    # within each of 5,179 events. See audit_settlement()'s own docstring.
 
-        import weather_markets
+    @staticmethod
+    def _hourly_client(expiration_value="86.00", status="finalized"):
+        """get_market double for the hourly branch.
 
-        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        Returns strings for expiration_value, matching what the real Kalshi
+        API actually sends ('63.00', '82.76') rather than the floats a
+        hand-written fixture would reach for -- the daily branch's float()
+        coercion exists precisely because the wire format is a string.
+        """
+
+        class _FakeHourlyClient:
+            def __init__(self):
+                self.markets_fetched = []
+
+            def get_market(self, ticker):
+                self.markets_fetched.append(ticker)
+                market = {"status": status}
+                if expiration_value is not None:
+                    market["expiration_value"] = expiration_value
+                return market
+
+        return _FakeHourlyClient()
+
+    def _log_hourly(
+        self,
+        ticker,
+        threshold,
+        var,
+        city="NYC",
+        target_date=date(2026, 7, 20),
+        condition_type="above",
+        upper=None,
+    ):
+        condition = {"type": condition_type, "var": var}
+        if condition_type == "between":
+            condition["lower"] = threshold
+            condition["upper"] = upper
+        else:
+            condition["threshold"] = threshold
         analysis = {
-            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
+            "condition": condition,
             "forecast_prob": 0.5,
             "market_prob": 0.5,
             "edge": 0.1,
             "method": "hourly_ensemble",
         }
-        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_prediction(ticker, city, target_date, analysis)
+
+    def _settled_row(self, ticker):
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            return con.execute(
+                "SELECT settled_temp_f, settled_value, settled_var, disputed "
+                "FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+
+    def test_audit_settlement_hourly_writes_kalshi_expiration_value(self):
+        """A KXTEMPxxxH ticker settles into settled_value/settled_var from
+        Kalshi's own expiration_value, with settled_temp_f left NULL (that
+        column stays daily-HIGH/LOW-specific)."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
         tracker.log_outcome(ticker, True)
+        client = self._hourly_client("76.00")
 
         with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=76.4),
+            patch.object(tracker, "_get_settlement_kalshi_client", return_value=client),
+            patch.object(tracker, "_fetch_asos_hour_temp") as _metar,
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT settled_temp_f, settled_value, settled_var "
-                "FROM outcomes WHERE ticker = ?",
-                (ticker,),
-            ).fetchone()
+        # Positive control for the assert_not_called() below: without this,
+        # a change that made the hourly branch bail out early would leave the
+        # METAR assertion passing vacuously.
+        self.assertEqual(
+            client.markets_fetched,
+            [ticker],
+            "the hourly branch must actually have fetched the market",
+        )
+        _metar.assert_not_called()
+        row = self._settled_row(ticker)
         self.assertIsNone(row[0], "settled_temp_f must stay NULL for hourly tickers")
-        self.assertAlmostEqual(row[1], 76.4)
+        self.assertAlmostEqual(row[1], 76.0)
         self.assertEqual(row[2], "max")
 
-    def test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch(self):
-        """Must call the hour-specific fetch (_fetch_asos_hour_temp) with the
-        ticker's parsed hour, and must never reach the daily branch's Kalshi
-        market fetch."""
+    def test_audit_settlement_hourly_reproduces_the_metar_mis_grade(self):
+        """The concrete mis-grade batch-68's A13 audit found in production,
+        replayed as a regression test.
+
+        KXTEMPCHIH-26AUG2306-T62.99 settled YES on Kalshi. Its stored
+        settled_value, written by the old IEM ASOS proxy, was 62.0 -- which
+        against a "greater than 62.99" strike implies NO, the opposite side.
+        Kalshi's own expiration_value for that market is '63.00', which
+        implies YES and matches. Two of the four hourly rows settled before
+        the fix disagreed this way; hourly strikes sit at .99, so ANY 1F
+        source difference flips the implied side.
+
+        Mutation target: restoring the METAR fetch (settled_value = 62.0)
+        makes both the stored-value assertion AND the not-disputed assertion
+        fail, since the parsing cross-check would then see NO against a YES
+        settlement.
+        """
         from unittest.mock import patch
 
-        import weather_markets
-
-        ticker = "KXTEMPNYCH-26JUL2006-T60.99"
-        analysis = {
-            "condition": {"type": "above", "threshold": 60.99, "var": "min"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
-        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        ticker = "KXTEMPCHIH-26AUG2306-T62.99"
+        self._log_hourly(
+            ticker, 62.99, "min", city="Chicago", target_date=date(2026, 8, 23)
+        )
         tracker.log_outcome(ticker, True)
-
-        captured = {}
-
-        def _fake_hour_fetch(station, target_date, hour, city_tz):
-            captured["hour"] = hour
-            return 61.0
+        _METAR_WOULD_HAVE_READ = 62.0
+        self.assertFalse(
+            _METAR_WOULD_HAVE_READ > 62.99,
+            "fixture sanity: the METAR reading must genuinely imply the "
+            "WRONG side, or this test proves nothing",
+        )
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("63.00"),
             ),
+            # Patched, not left live: the mutation this test documents is
+            # "restore the METAR fetch", and without this the mutant would
+            # reach mesonet.agron.iastate.edu for real, making the mutation
+            # result depend on network state (opus review).
             patch.object(
-                tracker, "_fetch_asos_hour_temp", side_effect=_fake_hour_fetch
-            ),
-            patch.object(tracker, "_get_settlement_kalshi_client") as _client,
+                tracker, "_fetch_asos_hour_temp", return_value=_METAR_WOULD_HAVE_READ
+            ) as _metar,
         ):
-            tracker.audit_settlement(ticker, settled_yes=True)
+            result = tracker.audit_settlement(ticker, settled_yes=True)
 
-        self.assertEqual(captured.get("hour"), 6)
-        _client.assert_not_called()
+        self.assertTrue(result)
+        _metar.assert_not_called()
+        row = self._settled_row(ticker)
+        self.assertAlmostEqual(
+            row[1],
+            63.0,
+            msg="settled_value must be Kalshi's figure, not the METAR proxy",
+        )
+        self.assertNotAlmostEqual(row[1], _METAR_WOULD_HAVE_READ)
+        self.assertEqual(
+            row[3], 0, "Kalshi's own figure agrees with its own result -- no dispute"
+        )
 
-    def test_audit_settlement_hourly_no_station_skips_settlement(self):
-        """No station mapped for the city -- must return False, not crash or
-        fall through to the Open-Meteo daily-gridded fallback (which has no
-        hour-specific equivalent)."""
+    def test_audit_settlement_hourly_preserves_two_decimal_index_value(self):
+        """KXTEMPMIAH's expiration_value IS the Kalshi Weather Index, which
+        Kalshi publishes to 2 decimals ('82.76' live-verified 2026-08-25).
+
+        Mutation target: the daily branch's round(actual, 1) would store
+        82.8 here and silently discard a digit Kalshi actually settled on.
+        """
         from unittest.mock import patch
 
-        import weather_markets
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-T80.99"
+        self._log_hourly(
+            ticker, 80.99, "max", city="Miami", target_date=date(2026, 8, 24)
+        )
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("82.76"),
+            ),
+            patch.object(
+                kalshi_weather_index, "get_miami_index_reading_near", return_value=None
+            ),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        row = self._settled_row(ticker)
+        self.assertEqual(
+            row[1], 82.76, "the index's second decimal must survive the write"
+        )
+
+    def test_audit_settlement_hourly_not_finalized_leaves_row_untouched(self):
+        from unittest.mock import patch
 
         ticker = "KXTEMPNYCH-26JUL2014-T75.99"
-        analysis = {
-            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
-        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        self._log_hourly(ticker, 75.99, "max")
         tracker.log_outcome(ticker, True)
 
         with patch.object(
-            weather_markets, "_metar_station_for_city", return_value=None
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("76.00", status="active"),
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertFalse(result)
+        self.assertIsNone(self._settled_row(ticker)[1])
 
-    def test_audit_settlement_hourly_no_fetch_result_leaves_row_untouched(self):
+    def test_audit_settlement_hourly_missing_expiration_value_leaves_row_untouched(
+        self,
+    ):
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client(None),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+        self.assertIsNone(self._settled_row(ticker)[1])
+
+    def test_audit_settlement_hourly_non_numeric_expiration_value_returns_false(self):
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("n/a"),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+        self.assertIsNone(self._settled_row(ticker)[1])
+
+    def test_audit_settlement_hourly_fetch_exception_returns_false_not_raise(self):
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+
+        class _Boom:
+            def get_market(self, ticker):
+                raise RuntimeError("network down")
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_Boom()
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+        self.assertIsNone(self._settled_row(ticker)[1])
+
+    def test_audit_settlement_hourly_no_metar_station_still_settles(self):
+        """Behavioural change pinned deliberately: the hourly branch used to
+        return False for a city with no mapped METAR station. It no longer
+        needs a station at all, so a station-less city must now settle
+        normally rather than being silently skipped forever."""
         from unittest.mock import patch
 
         import weather_markets
 
         ticker = "KXTEMPNYCH-26JUL2014-T75.99"
-        analysis = {
-            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
-        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        self._log_hourly(ticker, 75.99, "max")
         tracker.log_outcome(ticker, True)
 
         with (
+            patch.object(weather_markets, "_metar_station_for_city", return_value=None),
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("76.00"),
             ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=None),
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
-        self.assertFalse(result)
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
-        self.assertIsNone(row[0])
+        self.assertTrue(result)
+        self.assertAlmostEqual(self._settled_row(ticker)[1], 76.0)
 
     def test_audit_settlement_hourly_returns_false_when_no_matching_outcomes_row(
         self,
     ):
-        """batch-37 item 9 (L-6): the hourly branch never checked
-        cur.rowcount, unlike the rain/snow/daily branches (all of which
-        return False + warn when the UPDATE matches 0 rows) -- a fetch that
-        succeeds but has no matching outcomes row (log_outcome never
-        called) must NOT be reported as a successful settlement, since
-        nothing was actually written and a caller looping over many
-        tickers (e.g. a backfill) would otherwise silently over-count.
+        """batch-37 item 9 (L-6): the hourly branch must check cur.rowcount,
+        like the rain/snow/daily branches -- a fetch that succeeds but has no
+        matching outcomes row (log_outcome never called) must NOT be reported
+        as a successful settlement, since nothing was actually written and a
+        caller looping over many tickers would otherwise silently over-count.
 
-        Mutation-tested: reverting to the plain `con.execute(...)` +
-        unconditional `return True` (dropping the rowcount check) makes
-        this fail -- confirmed via Edit revert.
+        Mutation-tested: reverting to a plain con.execute(...) +
+        unconditional `return True` makes this fail.
         """
         from unittest.mock import patch
 
-        import weather_markets
-
         ticker = "KXTEMPNYCH-26JUL2014-T75.99"
-        analysis = {
-            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
         # log_prediction only -- no log_outcome, so no matching outcomes row
         # exists for the UPDATE to hit.
-        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        self._log_hourly(ticker, 75.99, "max")
 
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=76.4),
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("76.00"),
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertFalse(
             result,
             "must return False when the UPDATE matched no outcomes row, "
-            "even though the METAR fetch itself succeeded",
+            "even though the market fetch itself succeeded",
         )
 
-    # ── Miami index cross-check (batch-52 item 4) ────────────────────────
+    # ── Hourly parsing cross-check (batch-68) ─────────────────────────────
 
-    def _log_miami_hourly(self, ticker, threshold, var, target_date=date(2026, 8, 24)):
+    def test_audit_settlement_hourly_parsing_mismatch_disputes(self):
+        """Now that the figure is Kalshi's OWN, a disagreement between what
+        it implies and what Kalshi settled can only mean our condition/
+        threshold parsing is wrong -- the same reasoning (and the same
+        dispute) the daily branch applies."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, False)  # Kalshi settled NO
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                # 80 > 75.99 implies YES, but Kalshi settled NO.
+                return_value=self._hourly_client("80.00"),
+            ),
+            # Patch notify: an unpatched mismatch fires the real
+            # desktop-toast backend in a thread.
+            patch("notify.send_system_alert"),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result, "the settled_value write itself must still succeed")
+        row = self._settled_row(ticker)
+        self.assertAlmostEqual(row[1], 80.0)
+        self.assertEqual(row[3], 1, "must dispute when our parsing disagrees")
+
+    def test_audit_settlement_hourly_between_parsing_mismatch_disputes(self):
+        """The between branch of _implied_yes must be exercised too, not just
+        above/below."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-TB80-85"
+        self._log_hourly(ticker, 80.0, "max", condition_type="between", upper=85.0)
+        tracker.log_outcome(ticker, False)  # Kalshi settled NO
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                # 82 is inside (80, 85) => implies YES, but Kalshi settled NO.
+                return_value=self._hourly_client("82.00"),
+            ),
+            # Patch notify: an unpatched mismatch fires the real
+            # desktop-toast backend in a thread.
+            patch("notify.send_system_alert"),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        self.assertEqual(self._settled_row(ticker)[3], 1)
+
+    def test_audit_settlement_hourly_agreement_clears_prior_dispute(self):
+        """Mirrors the daily branch's mark_outcome_undisputed precedent: a
+        row disputed under the pre-batch-68 METAR proxy must not stay
+        permanently excluded from outcomes_valid once Kalshi's own figure
+        agrees."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+        self.assertEqual(
+            self._settled_row(ticker)[3], 1, "test setup must actually start disputed"
+        )
+
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("80.00"),  # 80 > 75.99 => YES
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(self._settled_row(ticker)[3], 0)
+
+    def test_audit_settlement_hourly_no_threshold_neither_disputes_nor_clears(self):
+        """No usable condition_type/threshold means no implied side can be
+        computed, so the parsing check must fail closed -- neither disputing
+        a clean row nor clearing a genuinely disputed one."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
         analysis = {
-            "condition": {"type": "above", "threshold": threshold, "var": var},
+            "condition": {"type": "above"},  # no threshold at all
             "forecast_prob": 0.5,
             "market_prob": 0.5,
             "edge": 0.1,
             "method": "hourly_ensemble",
         }
-        tracker.log_prediction(ticker, "Miami", target_date, analysis)
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("80.00"),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        row = self._settled_row(ticker)
+        # Positive control: the write path really did run, so the
+        # still-disputed assertion below is not passing vacuously off an
+        # early return.
+        self.assertAlmostEqual(
+            row[1], 80.0, msg="settled_value must still have been written"
+        )
+        self.assertEqual(
+            row[3], 1, "an unresolvable threshold must not clear a real dispute"
+        )
+
+    # ── Miami index cross-check (batch-52 item 4, reworked by batch-68) ────
+
+    def _log_miami_hourly(self, ticker, threshold, var, target_date=date(2026, 8, 24)):
+        self._log_hourly(ticker, threshold, var, city="Miami", target_date=target_date)
 
     def test_audit_settlement_miami_index_agrees_no_dispute(self):
-        """Index reading confirms Kalshi's real settlement -- no dispute,
-        no alert, but the METAR-sourced settled_value write is unaffected
-        (batch-52: settled_value stays METAR-sourced for schema
-        consistency with the other 5 cities; the index only backs this
-        cross-check, log-only unless it disagrees)."""
+        """Index reading confirms Kalshi's real settlement -- no dispute, no
+        alert, and settled_value is Kalshi's own settled index figure."""
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
         self._log_miami_hourly(ticker, 85.0, "max")
@@ -6526,11 +6775,9 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
             ),
             patch.object(
                 kalshi_weather_index,
@@ -6543,21 +6790,19 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         self.assertTrue(result)
         _alert.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed, settled_value FROM outcomes WHERE ticker = ?",
-                (ticker,),
-            ).fetchone()
-        self.assertEqual(row[0], 0)
-        self.assertAlmostEqual(row[1], 86.0, msg="settled_value stays METAR-sourced")
+        row = self._settled_row(ticker)
+        self.assertEqual(row[3], 0)
+        self.assertAlmostEqual(
+            row[1], 86.0, msg="settled_value is Kalshi's own settled figure"
+        )
 
     def test_audit_settlement_miami_index_mismatch_marks_disputed_and_alerts(self):
-        """Index reading (the market's REAL settlement source) disagrees
-        with Kalshi's declared YES/NO -- must dispute and alert loudly."""
+        """The index (the market's REAL settlement source, independently
+        fetched) disagrees with Kalshi's declared YES/NO while Kalshi's own
+        figure agrees with it -- must dispute and alert loudly."""
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
         self._log_miami_hourly(ticker, 85.0, "max")
@@ -6565,11 +6810,11 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                # 80 <= 85 implies NO, agreeing with Kalshi -- so the parsing
+                # check passes and the index check below is actually reached.
+                return_value=self._hourly_client("80.00"),
             ),
             patch.object(
                 kalshi_weather_index,
@@ -6581,15 +6826,58 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         ):
             result = tracker.audit_settlement(ticker, settled_yes=False)
 
-        self.assertTrue(result, "the METAR write itself must still succeed")
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
-        self.assertEqual(row[0], 1, "must be marked disputed on an index mismatch")
+        self.assertTrue(result, "the settled_value write itself must still succeed")
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            1,
+            "must be marked disputed on an index mismatch",
+        )
         _alert.assert_called_once()
         _, kwargs = _alert.call_args
         self.assertEqual(kwargs.get("cooldown_key"), "miami_index_settlement_mismatch")
+
+    def test_audit_settlement_miami_between_index_mismatch_alerts(self):
+        """The between branch reached through the Miami index path."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-TB80-85"
+        self._log_hourly(
+            ticker,
+            80.0,
+            "max",
+            city="Miami",
+            target_date=date(2026, 8, 24),
+            condition_type="between",
+            upper=85.0,
+        )
+        tracker.log_outcome(ticker, False)  # Kalshi settled NO (outside 80-85)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                # 90 is outside (80, 85) => implies NO, agreeing with Kalshi.
+                return_value=self._hourly_client("90.00"),
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # index reads 82F -- inside the band, implies YES.
+                return_value={"temp_f": 82.0, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            1,
+            "between-condition mismatch must dispute same as above/below",
+        )
+        _alert.assert_called_once()
 
     def test_audit_settlement_miami_degraded_status_mismatch_does_not_dispute(self):
         """A 'degraded'-status index point disagreeing with Kalshi is NOT
@@ -6599,7 +6887,6 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
         self._log_miami_hourly(ticker, 85.0, "max")
@@ -6607,11 +6894,9 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # agrees with NO
             ),
             patch.object(
                 kalshi_weather_index,
@@ -6624,32 +6909,42 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         self.assertTrue(result)
         _alert.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
-        self.assertEqual(row[0], 0, "a degraded-status disagreement must not dispute")
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            0,
+            "a degraded-status disagreement must not dispute",
+        )
 
-    def test_audit_settlement_miami_no_index_reading_does_not_block_metar_write(self):
+    def test_audit_settlement_miami_no_index_reading_does_not_block_write(self):
         """Index unavailable (circuit open, endpoint down, etc.) -- the
-        METAR-sourced settled_value write must still succeed; the cross-
-        check is best-effort only, never a hard dependency."""
+        settled_value write must still succeed; the cross-check is
+        best-effort only, never a hard dependency.
+
+        ALSO the regression test for the opus-review HIGH: an index dispute
+        set at settlement time must SURVIVE every later re-audit. The Miami
+        index only spans ~24h of history, so on any later backfill pass it
+        returns None -- and a briefly-shipped version had the parsing check
+        unconditionally call mark_outcome_undisputed() before this block,
+        which silently wiped the flag. `disputed` gates outcomes_valid, every
+        Brier/calibration query, and the hourly rollout gate's sample count.
+        """
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
         self._log_miami_hourly(ticker, 85.0, "max")
         tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+        self.assertEqual(
+            self._settled_row(ticker)[3], 1, "test setup must actually start disputed"
+        )
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
             ),
             patch.object(
                 kalshi_weather_index, "get_miami_index_reading_near", return_value=None
@@ -6660,191 +6955,93 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         self.assertTrue(result)
         _alert.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
-        self.assertAlmostEqual(row[0], 86.0)
+        row = self._settled_row(ticker)
+        # Positive control: the write path really ran, so the dispute
+        # assertion below is not passing off an early return.
+        self.assertAlmostEqual(row[1], 86.0)
+        self.assertEqual(
+            row[3],
+            1,
+            "an unavailable index is no evidence -- it must leave the dispute "
+            "exactly as it found it, not clear it",
+        )
 
-    def test_audit_settlement_miami_index_lookup_exception_does_not_block_metar_write(
-        self,
-    ):
+    def test_audit_settlement_miami_index_exception_does_not_block_write(self):
         """A raised exception anywhere in the Miami cross-check (network
-        error, bad data shape, etc.) must be swallowed -- the METAR write
-        already committed above it must not be undone or reported as a
+        error, bad data shape, etc.) must be swallowed -- the settled_value
+        write already committed above it must not be undone or reported as a
         failure."""
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
-
-        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
-        self._log_miami_hourly(ticker, 85.0, "max")
-        tracker.log_outcome(ticker, True)
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
-            patch.object(
-                tracker,
-                "_get_settlement_kalshi_client",
-                side_effect=RuntimeError("client build failed"),
-            ),
-            patch.object(kalshi_weather_index, "get_miami_index_reading_near") as _near,
-        ):
-            result = tracker.audit_settlement(ticker, settled_yes=True)
-
-        self.assertTrue(result)
-        _near.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
-        self.assertAlmostEqual(row[0], 86.0)
-
-    def test_audit_settlement_non_miami_hourly_never_calls_index(self):
-        """Regression guard: the other 5 hourly cities must never touch
-        kalshi_weather_index at all -- the observation-source seam is
-        Miami-only, without restructuring anything for the rest."""
-        from unittest.mock import patch
-
-        import kalshi_weather_index
-        import weather_markets
-
-        ticker = "KXTEMPNYCH-26AUG2414-T85.0"
-        analysis = {
-            "condition": {"type": "above", "threshold": 85.0, "var": "max"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
-        tracker.log_prediction(ticker, "NYC", date(2026, 8, 24), analysis)
-        tracker.log_outcome(ticker, True)
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
-            patch.object(kalshi_weather_index, "get_miami_index_reading_near") as _near,
-        ):
-            result = tracker.audit_settlement(ticker, settled_yes=True)
-
-        self.assertTrue(result)
-        _near.assert_not_called()
-
-    def test_audit_settlement_miami_metar_wrong_index_right_does_not_dispute(self):
-        """opus review M-5: THE scenario that justifies this whole batch
-        existing -- METAR alone would have implied the wrong side, but the
-        index (Miami's REAL settlement source) agrees with Kalshi's actual
-        result. Must NOT dispute; the cross-check exists to catch
-        disagreement with the index, not with METAR."""
-        from unittest.mock import patch
-
-        import kalshi_weather_index
-        import weather_markets
-
-        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
-        self._log_miami_hourly(ticker, 85.0, "max")
-        tracker.log_outcome(ticker, True)  # Kalshi settled YES (>85F)
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            # METAR reads 80F -- implies NO (<=85), the WRONG side.
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
-            ),
-            patch.object(
-                kalshi_weather_index,
-                "get_miami_index_reading_near",
-                # index reads 90F -- implies YES, matching Kalshi's real result.
-                return_value={"temp_f": 90.0, "status": "normal"},
-            ),
-            patch("notify.send_system_alert") as _alert,
-        ):
-            result = tracker.audit_settlement(ticker, settled_yes=True)
-
-        self.assertTrue(result)
-        _alert.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed, settled_value FROM outcomes WHERE ticker = ?",
-                (ticker,),
-            ).fetchone()
-        self.assertEqual(
-            row[0], 0, "index (real settlement source) agrees with Kalshi -- no dispute"
-        )
-        self.assertAlmostEqual(
-            row[1],
-            80.0,
-            msg="settled_value column still records METAR's (wrong) reading",
-        )
-
-    def test_audit_settlement_miami_agreement_clears_prior_dispute(self):
-        """opus review M-3: mirrors the daily branch's mark_outcome_
-        undisputed precedent -- a ticker previously disputed (e.g. off a
-        stale/edge-case index point) must be un-disputed on a later
-        confirmed agreement, not stay permanently excluded from
-        outcomes_valid/Brier/calibration scoring."""
-        from unittest.mock import patch
-
-        import kalshi_weather_index
-        import weather_markets
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
         self._log_miami_hourly(ticker, 85.0, "max")
         tracker.log_outcome(ticker, True)
         tracker.mark_outcome_disputed(ticker)
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            pre = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
-            ).fetchone()
-        self.assertEqual(pre[0], 1, "test setup must actually start disputed")
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
             ),
             patch.object(
                 kalshi_weather_index,
                 "get_miami_index_reading_near",
-                return_value={"temp_f": 90.0, "status": "normal"},  # agrees w/ YES
+                side_effect=RuntimeError("index endpoint exploded"),
             ),
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
-            ).fetchone()
-        self.assertEqual(row[0], 0, "confirmed agreement must clear the prior dispute")
+        row = self._settled_row(ticker)
+        self.assertAlmostEqual(row[1], 86.0)
+        self.assertEqual(
+            row[3],
+            1,
+            "a raised cross-check is no evidence either -- the dispute must survive it",
+        )
 
-    def test_audit_settlement_miami_missing_threshold_does_not_dispute(self):
-        """A prediction row with no usable threshold (condition_type/
-        threshold_lo never resolved from the DB) must fail closed -- no
-        implied YES/NO can be computed, so no dispute/alert should ever
-        fire, regardless of what settled_yes says."""
+    def test_audit_settlement_non_miami_hourly_never_calls_index(self):
+        """Regression guard: the other 5 hourly cities must never touch
+        kalshi_weather_index at all -- the observation-source seam is
+        Miami-only."""
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
+
+        ticker = "KXTEMPNYCH-26AUG2414-T85.0"
+        self._log_hourly(ticker, 85.0, "max", target_date=date(2026, 8, 24))
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
+            ),
+            patch.object(kalshi_weather_index, "get_miami_index_reading_near") as _near,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _near.assert_not_called()
+        # Positive control for the assertion above: prove the hourly branch
+        # ran to completion rather than bailing out before the Miami gate.
+        self.assertAlmostEqual(self._settled_row(ticker)[1], 86.0)
+
+    def test_audit_settlement_miami_missing_threshold_does_not_alert(self):
+        """A prediction row with no usable threshold must fail closed -- no
+        implied YES/NO can be computed, so no index alert should ever fire,
+        regardless of what settled_yes says."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
 
         ticker = "KXTEMPMIAH-26AUG2414-T85.0"
-        # log_prediction with a condition missing "threshold" entirely --
-        # condition_type/threshold_lo end up NULL in the predictions row.
         analysis = {
-            "condition": {"type": "above"},
+            "condition": {"type": "above"},  # no threshold at all
             "forecast_prob": 0.5,
             "market_prob": 0.5,
             "edge": 0.1,
@@ -6852,14 +7049,18 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         }
         tracker.log_prediction(ticker, "Miami", date(2026, 8, 24), analysis)
         tracker.log_outcome(ticker, False)
+        # Pre-disputed on purpose (opus review): asserting `disputed == 0` on a
+        # row that was never disputed cannot tell "never disputed" apart from
+        # "disputed then cleared". Starting from 1 pins the half that actually
+        # matters -- an unresolvable threshold is no evidence, so it must
+        # neither dispute nor CLEAR.
+        tracker.mark_outcome_disputed(ticker)
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),
             ),
             patch.object(
                 kalshi_weather_index,
@@ -6872,66 +7073,451 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
         self.assertTrue(result)
         _alert.assert_not_called()
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
-            ).fetchone()
+        row = self._settled_row(ticker)
+        # Positive control: the branch really did reach the Miami gate.
+        self.assertAlmostEqual(row[1], 80.0)
         self.assertEqual(
-            row[0], 0, "no threshold means no implied YES/NO -- must not dispute"
+            row[3],
+            1,
+            "no threshold means no implied YES/NO -- must neither dispute nor "
+            "clear an existing dispute",
         )
 
-    def test_audit_settlement_miami_between_condition_mismatch_disputes(self):
-        """The between condition_type branch of _implied_yes must also be
-        exercised -- not just above/below."""
+    # ── opus-review round 1 follow-ups (batch-68) ─────────────────────────
+
+    def test_audit_settlement_miami_parsing_agreement_never_clears_dispute(self):
+        """The opus-review HIGH, stated directly: for Miami the PARSING check
+        must never undispute. The index cross-check owns that flag, because
+        the two disputers have different evidence lifetimes -- Kalshi's
+        expiration_value is available on every re-audit forever, the index
+        only spans ~24h.
+
+        Mutation target: dropping `and city != "Miami"` from the parsing
+        check's undispute condition makes this fail.
+        """
         from unittest.mock import patch
 
         import kalshi_weather_index
-        import weather_markets
 
-        ticker = "KXTEMPMIAH-26AUG2414-TB80-85"
-        analysis = {
-            "condition": {
-                "type": "between",
-                "lower": 80.0,
-                "upper": 85.0,
-                "var": "max",
-            },
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "hourly_ensemble",
-        }
-        tracker.log_prediction(ticker, "Miami", date(2026, 8, 24), analysis)
-        tracker.log_outcome(ticker, False)  # Kalshi settled NO (outside 80-85)
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
 
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KMIA"
-            ),
-            patch.object(tracker, "_fetch_asos_hour_temp", return_value=82.0),
-            patch.object(
-                tracker, "_get_settlement_kalshi_client", return_value=object()
+                tracker,
+                "_get_settlement_kalshi_client",
+                # 86 > 85 implies YES, agreeing with Kalshi -- so the parsing
+                # check reaches its undispute branch.
+                return_value=self._hourly_client("86.00"),
             ),
             patch.object(
                 kalshi_weather_index,
                 "get_miami_index_reading_near",
-                # index reads 82F -- inside [80, 85), implies YES, but
-                # Kalshi settled NO -- a real mismatch.
-                return_value={"temp_f": 82.0, "status": "normal"},
+                return_value=None,  # too old to re-dispute, as on any re-audit
+            ),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        row = self._settled_row(ticker)
+        self.assertAlmostEqual(
+            row[1], 86.0, msg="positive control: the write path really ran"
+        )
+        self.assertEqual(
+            row[3], 1, "Miami's dispute must not be cleared by the parsing check"
+        )
+
+    def test_audit_settlement_miami_index_agreement_is_the_only_undisputer(self):
+        """Companion to the test above, and the guard against over-correcting
+        it: gating the parsing check on `city != "Miami"` must leave Miami a
+        real path back into outcomes_valid, not strand it disputed forever.
+
+        A positive, normal-status index agreement is that path.
+        """
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                return_value={"temp_f": 86.5, "status": "normal"},
+            ),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            0,
+            "a confirmed normal-status index agreement must clear the dispute",
+        )
+
+    def test_audit_settlement_miami_degraded_index_does_not_clear_dispute(self):
+        """A degraded reading is not evidence in EITHER direction -- batch-52's
+        fail-toward-no-lock-in mandate. It must not clear a dispute any more
+        than it may set one."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("86.00"),
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # Agrees with Kalshi, but degraded -- must be ignored.
+                return_value={"temp_f": 86.5, "status": "degraded"},
+            ),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(self._settled_row(ticker)[3], 1)
+
+    def test_audit_settlement_non_miami_parsing_agreement_does_clear_dispute(self):
+        """The other five cities have no second disputer, so the parsing check
+        owns their flag outright and MUST still clear a stale dispute -- the
+        `city != "Miami"` guard must not have disabled undisputing globally."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPCHIH-26AUG2306-T62.99"
+        self._log_hourly(
+            ticker, 62.99, "min", city="Chicago", target_date=date(2026, 8, 23)
+        )
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+
+        with patch.object(
+            tracker,
+            "_get_settlement_kalshi_client",
+            return_value=self._hourly_client("63.00"),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(self._settled_row(ticker)[3], 0)
+
+    def test_audit_settlement_hourly_parsing_mismatch_alerts(self):
+        """A parsing mismatch disputes the row, which drops it out of
+        outcomes_valid and therefore out of count_settled_hourly_predictions'
+        rollout-gate sample count. A log line alone would make a systematic
+        mis-parse look like "the gate just never opens" (opus review)."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, False)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # implies YES vs NO
             ),
             patch("notify.send_system_alert") as _alert,
         ):
             result = tracker.audit_settlement(ticker, settled_yes=False)
 
         self.assertTrue(result)
+        self.assertEqual(self._settled_row(ticker)[3], 1)
+        _alert.assert_called_once()
+        _, kwargs = _alert.call_args
+        self.assertEqual(
+            kwargs.get("cooldown_key"), "hourly_parsing_settlement_mismatch"
+        )
+
+    def test_audit_settlement_hourly_alert_failure_does_not_undo_the_dispute(self):
+        """The notification is best-effort. If it raises, the dispute and the
+        settled_value write must both stand and the call must still succeed."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, False)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),
+            ),
+            patch("notify.send_system_alert", side_effect=RuntimeError("discord down")),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        row = self._settled_row(ticker)
+        self.assertAlmostEqual(row[1], 80.0)
+        self.assertEqual(row[3], 1)
+
+    def test_audit_settlement_hourly_agreement_sends_no_alert(self):
+        """Positive control for the alert tests above: the alert must be tied
+        to the mismatch, not fired on every hourly settlement."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # implies YES, agrees
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        self.assertAlmostEqual(self._settled_row(ticker)[1], 80.0)
+
+    def test_miami_parsing_mismatch_does_not_strand_the_row_disputed(self):
+        """The opus-review-round-3 HIGH, and the exact sequence the round-1
+        fix broke.
+
+        Round 1 gated the parsing check's UNDISPUTE on `city != "Miami"` but
+        left its DISPUTE unconditional. That gave the parsing check dispute
+        authority over Miami with no matching way to clear it: the index
+        cross-check only spans ~24h, so on every later re-audit it returns
+        None and cannot undo what the parsing check set. The row sat outside
+        outcomes_valid -- and outside the hourly rollout gate's sample count
+        -- forever.
+
+        Mutation target: dropping `if city != "Miami"` from the parsing
+        check's mark_outcome_disputed call makes run 2 below leave the row
+        disputed.
+        """
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)  # Kalshi settled YES
+
+        # Run 1, at settlement: our stored threshold disagrees with Kalshi's
+        # own figure (80 <= 85 implies NO against a YES settlement), and the
+        # index happens to be unavailable.
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),
+            ),
+            patch.object(
+                kalshi_weather_index, "get_miami_index_reading_near", return_value=None
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            self.assertTrue(tracker.audit_settlement(ticker, settled_yes=True))
+
+        # The mismatch must still be LOUD even though it does not dispute --
+        # that is the whole basis for letting the index own the flag.
+        _alert.assert_called_once()
+        _, kwargs = _alert.call_args
+        self.assertEqual(
+            kwargs.get("cooldown_key"), "hourly_parsing_settlement_mismatch"
+        )
+
+        # Run 2, a later backfill_emos_data re-audit: the threshold has since
+        # been corrected so parsing now agrees, and the index is (still) too
+        # old to read. The row must not be stranded.
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET threshold_lo = 70.0 WHERE ticker = ?",
+                (ticker,),
+            )
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # 80 > 70 => YES
+            ),
+            patch.object(
+                kalshi_weather_index, "get_miami_index_reading_near", return_value=None
+            ),
+        ):
+            self.assertTrue(tracker.audit_settlement(ticker, settled_yes=True))
+
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            0,
+            "a Miami row must never be left permanently disputed by a check "
+            "that has no way to clear it",
+        )
+
+    def test_non_miami_parsing_mismatch_still_disputes(self):
+        """Positive control for the guard above: making the parsing check
+        skip Miami must not have disabled disputing for the five cities whose
+        flag it actually owns."""
+        from unittest.mock import patch
+
+        ticker = "KXTEMPCHIH-26AUG2306-T62.99"
+        self._log_hourly(
+            ticker, 62.99, "min", city="Chicago", target_date=date(2026, 8, 23)
+        )
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("60.00"),  # 60 <= 62.99 => NO
+            ),
+            patch("notify.send_system_alert"),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertEqual(self._settled_row(ticker)[3], 1)
+
+    def test_miami_parsing_mismatch_still_reaches_the_index_check(self):
+        """Miami must fall THROUGH the parsing mismatch to the index check --
+        that check is the only thing that can dispute a Miami row, so
+        returning early would leave a genuinely bad row unflagged.
+
+        This REPLACES an earlier test that asserted the opposite (the index
+        check must not run on a parsing mismatch). That property came from
+        the round-1 fix and was itself the round-3 HIGH: skipping the index
+        check is only safe if the parsing check can also clear what it sets,
+        and for Miami it cannot. Non-Miami tickers never reach the index
+        block at all, so nothing is left uncovered by dropping it.
+        """
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # parsing mismatch
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # Also implies NO against a YES settlement, so the index
+                # independently disputes.
+                return_value={"temp_f": 80.0, "status": "normal"},
+            ) as _near,
+            patch("notify.send_system_alert"),
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        _near.assert_called_once()
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            1,
+            "the index check owns Miami's flag and must have set it here",
+        )
+
+    def test_daily_branch_audits_the_same_value_it_stores(self):
+        """opus review round 3: the "round once" fix reached only the hourly
+        branch, leaving the daily branch comparing an unrounded
+        expiration_value against the threshold while storing a rounded one.
+
+        _log_settled stores threshold_lo = 70.0, and Kalshi returns "70.04".
+        Rounded to 1dp that is 70.0, and 70.0 > 70 is False -- which AGREES
+        with the NO settlement, so no dispute. Unrounded, 70.04 > 70 is True,
+        which disagrees and disputes a perfectly clean row. The two answers
+        genuinely differ, which is what makes this fixture discriminating.
+
+        Mutation target: reverting to `actual = _coerced_daily` (unrounded)
+        plus `round(actual, 1)` at the UPDATE flips this to disputed=1.
+        """
+        from unittest.mock import patch
+
+        ticker = "KXHIGHNY-26JUL20-T70"
+        self._log_settled(ticker, 0.70, False, date(2026, 7, 20))
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "70.04"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            self.assertTrue(tracker.audit_settlement(ticker, settled_yes=False))
+
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
             row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
+                "SELECT settled_temp_f, disputed FROM outcomes WHERE ticker = ?",
+                (ticker,),
             ).fetchone()
+        self.assertAlmostEqual(row[0], 70.0, msg="stored value is rounded to 1dp")
         self.assertEqual(
-            row[0], 1, "between-condition mismatch must dispute same as above/below"
+            row[1],
+            0,
+            "the audit must compare the SAME 70.0 it stored: 70.0 > 70 is "
+            "False, which agrees with the NO settlement",
         )
-        _alert.assert_called_once()
+
+    def test_hourly_condition_read_uses_the_latest_prediction_row(self):
+        """predictions has no uniqueness on ticker, and this read now decides
+        whether a row is disputed and whether an operator is paged -- so it
+        must pick the latest row deterministically, matching
+        paper._score_ensemble_members' own read (opus review round 3).
+
+        Mutation target: dropping `ORDER BY predicted_at DESC LIMIT 1` makes
+        SQLite return the older row, whose stale threshold implies the wrong
+        side and disputes a clean settlement.
+        """
+        from unittest.mock import patch
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        self._log_hourly(ticker, 75.99, "max")
+        tracker.log_outcome(ticker, True)
+        # An OLDER row carrying a stale threshold that would imply NO.
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, "
+                "condition_type, threshold_lo, var, predicted_at) "
+                "VALUES (?, 'NYC', '2026-07-20', 'above', 999.0, 'max', "
+                "'2020-01-01 00:00:00')",
+                (ticker,),
+            )
+
+        with (
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                return_value=self._hourly_client("80.00"),  # 80 > 75.99 => YES
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            tracker.audit_settlement(ticker, settled_yes=True)
+
+        _alert.assert_not_called()
+        self.assertEqual(
+            self._settled_row(ticker)[3],
+            0,
+            "the stale 999.0 threshold must not have been the one consulted",
+        )
 
     def test_audit_settlement_daily_ticker_still_uses_daily_path(self):
         """Companion regression: an ordinary daily ticker must not be routed
@@ -10626,3 +11212,1031 @@ class TestBackfillDailyTempSettlement(unittest.TestCase):
 
     def test_zero_when_nothing_has_settled_temp_f(self):
         self.assertEqual(tracker.backfill_daily_temp_settlement(), (0, 0))
+
+
+class TestBackfillMemberActualTemp(unittest.TestCase):
+    """backfill_member_actual_temp() -- batch-68's A13 repair pass for
+    ensemble_member_scores.actual_temp rows frozen from the pre-2026-08-10
+    METAR proxy. Takes paper trade records as a param, like
+    backfill_member_brier() above."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _seed_outcome(self, ticker, settled_temp_f, disputed=0):
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?, 1)",
+                (ticker,),
+            )
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, disputed = ? WHERE ticker = ?",
+                (settled_temp_f, disputed, ticker),
+            )
+
+    def _seed_member(self, city, target_date, var, actual_temp, model="blended"):
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var,
+                    implied_prob, brier, logged_at)
+                   VALUES (?, ?, 84.0, ?, ?, ?, 0.6, 0.16, datetime('now'))""",
+                (city, model, actual_temp, target_date, var),
+            )
+
+    @staticmethod
+    def _trade(ticker, city, target_date, var="max"):
+        return {
+            "ticker": ticker,
+            "city": city,
+            "target_date": target_date,
+            "var": var,
+            "settled": True,
+        }
+
+    def _actuals(self, city="NYC"):
+        with tracker._conn() as con:
+            return [
+                r["actual_temp"]
+                for r in con.execute(
+                    "SELECT actual_temp FROM ensemble_member_scores "
+                    "WHERE city = ? ORDER BY model",
+                    (city,),
+                ).fetchall()
+            ]
+
+    def test_corrects_a_stale_proxy_value(self):
+        """The production defect, at its measured magnitude: a row whose
+        actual_temp was frozen from the old ASOS proxy (62.6F, an exact whole
+        Celsius reading) against an official settlement of 86.0F.
+
+        Hand-computed: one row, one correction, and the stored value must end
+        up exactly the official figure -- not an average, not a nudge.
+        """
+        self._seed_outcome("KXHIGHTSEA-26JUN02-B85.5", 86.0)
+        self._seed_member("Seattle", "2026-06-02", "max", 62.6)
+
+        result = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHTSEA-26JUN02-B85.5", "Seattle", "2026-06-02")]
+        )
+        updated, skipped, conflicts, errored, _unreachable = result
+
+        self.assertEqual((updated, skipped, conflicts, errored), (1, 0, 0, 0))
+        self.assertEqual(self._actuals("Seattle"), [86.0])
+
+    def test_corrects_the_one_degree_metar_cli_divergence(self):
+        """The SMALLEST real corruption class: rows logged 2026-08-07/09 are
+        off by exactly the known ~1.0F METAR-vs-CLI divergence. The tolerance
+        must be tight enough to catch these, not just the 30F outliers."""
+        self._seed_outcome("KXHIGHTLV-26AUG07-T108", 109.0)
+        self._seed_member("LasVegas", "2026-08-07", "max", 108.0)
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHTLV-26AUG07-T108", "LasVegas", "2026-08-07")]
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(self._actuals("LasVegas"), [109.0])
+
+    def test_corrects_every_model_for_the_cell(self):
+        """actual_temp is model-independent, unlike backfill_member_brier's
+        per-model implied_prob/brier -- one trade must repair every model row
+        for its (city, target_date, var), not just one."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        for model in ("blended", "icon_seamless", "gfs_seamless"):
+            self._seed_member("NYC", "2026-07-04", "max", 84.4, model=model)
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual(updated, 3)
+        self.assertEqual(self._actuals(), [88.0, 88.0, 88.0])
+
+    def test_idempotent_rerun_updates_nothing(self):
+        """Positive control for the tolerance guard: it must actually work,
+        not merely happen to pass on the first run. A second pass over
+        already-repaired history must match zero rows."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+        trade = self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")
+
+        first = tracker.backfill_member_actual_temp([trade])
+        second = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual(first[0], 1, "first pass must actually correct the row")
+        self.assertEqual(second[0], 0, "second pass must be a no-op")
+        self.assertEqual(self._actuals(), [88.0])
+
+    def test_already_correct_row_is_not_rewritten(self):
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 88.0)
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual(updated, 0)
+
+    def test_leaves_implied_prob_and_brier_alone(self):
+        """The Brier path was never corrupted by this defect -- brier derives
+        from predicted_temp and the market's YES/NO outcome, never from
+        actual_temp. Repairing actual_temp must not disturb it."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+
+        tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_prob, brier FROM ensemble_member_scores"
+            ).fetchone()
+        self.assertAlmostEqual(row["implied_prob"], 0.6)
+        self.assertAlmostEqual(row["brier"], 0.16)
+
+    def test_wrong_var_cell_is_not_touched(self):
+        """Daily-high and daily-low errors must never be pooled, so a max
+        trade must not repair a min row for the same city and date."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "min", 62.6)
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", var="max")]
+        )
+
+        self.assertEqual(updated, 0)
+        self.assertEqual(self._actuals(), [62.6])
+
+    def test_var_comes_from_the_ticker_not_the_trade(self):
+        """Trades placed before the var field existed must still resolve, via
+        _var_from_ticker_prefix."""
+        self._seed_outcome("KXLOWTNYC-26JUL04-T60", 58.0)
+        self._seed_member("NYC", "2026-07-04", "min", 62.6)
+        trade = self._trade("KXLOWTNYC-26JUL04-T60", "NYC", "2026-07-04")
+        del trade["var"]
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(self._actuals(), [58.0])
+
+    def test_trade_var_field_is_ignored_in_favour_of_the_ticker(self):
+        """The opus-review HIGH. trade["var"] comes from
+        weather_markets._daily_var_from_series, which is
+        `_var_from_ticker_prefix(series) or "max"` -- so a KXHOLIDAYTMIN
+        trade (a real daily MINIMUM series with no "LOW" substring) arrives
+        labelled "max". Trusting it would write a daily minimum into every
+        daily-MAX row for that city and date, including rows a normal KXHIGH*
+        ladder created, feeding a ~20-30F sign-flipped error into the live
+        bias corrector.
+
+        Mutation target: restoring `trade.get("var") or ...` makes this fail.
+        """
+        self._seed_outcome("KXLOWTNYC-26JUL04-T60", 58.0)
+        self._seed_member("NYC", "2026-07-04", "min", 62.6)
+        self._seed_member("NYC", "2026-07-04", "max", 91.0, model="icon_seamless")
+        trade = self._trade("KXLOWTNYC-26JUL04-T60", "NYC", "2026-07-04", var="max")
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual(updated, 1, "only the min cell may be repaired")
+        with tracker._conn() as con:
+            rows = dict(
+                con.execute(
+                    "SELECT var, actual_temp FROM ensemble_member_scores"
+                ).fetchall()
+            )
+        self.assertEqual(rows["min"], 58.0)
+        self.assertEqual(
+            rows["max"], 91.0, "the max cell must be untouched by a min ticker"
+        )
+
+    def test_ticker_with_unresolvable_var_fails_closed(self):
+        """A ticker whose var cannot be read off its own prefix is skipped
+        outright rather than defaulted to "max" -- the keyless UPDATE has no
+        ticker constraint, so a guessed var corrupts an entire cell."""
+        self._seed_outcome("KXHOLIDAYTMIN-26DEC25-T20", 18.0)
+        self._seed_member("NYC", "2026-12-25", "max", 91.0)
+        trade = self._trade("KXHOLIDAYTMIN-26DEC25-T20", "NYC", "2026-12-25", var="max")
+
+        updated, skipped, _, _, _ = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual((updated, skipped), (0, 1))
+        self.assertEqual(self._actuals(), [91.0])
+
+    def test_hourly_ticker_is_skipped(self):
+        """Hourly/monthly rows write settled_value, never settled_temp_f, so
+        the join yields NULL and the trade must fall out rather than writing
+        a settled_value into a daily-extreme column."""
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_value) "
+                "VALUES ('KXTEMPNYCH-26JUL2014-T75.99', 1, 76.0)"
+            )
+        self._seed_member("NYC", "2026-07-20", "max", 62.6)
+
+        updated, skipped, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXTEMPNYCH-26JUL2014-T75.99", "NYC", "2026-07-20")]
+        )
+
+        self.assertEqual((updated, skipped), (0, 1))
+        self.assertEqual(self._actuals(), [62.6])
+
+    def test_disputed_outcome_is_skipped(self):
+        """Joins outcomes_valid, not raw outcomes -- a disputed settlement
+        label must never be copied into the table the live station-bias
+        corrector trains on."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0, disputed=1)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+
+        updated, skipped, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual((updated, skipped), (0, 1))
+        self.assertEqual(self._actuals(), [62.6])
+
+    def test_unsettled_trade_is_skipped(self):
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+        trade = self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")
+        trade["settled"] = False
+
+        updated, skipped, _, _, _ = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual((updated, skipped), (0, 1))
+
+    def test_conflicting_official_values_are_counted_not_overwritten(self):
+        """Two tickers naming the same cell with different official values
+        cannot happen for real Kalshi data (expiration_value is uniform across
+        an event's strikes), but the last trade in iteration order must not
+        silently win if it ever does."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_outcome("KXHIGHNY-26JUL04-T90", 91.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+
+        updated, _, conflicts, _, _ = tracker.backfill_member_actual_temp(
+            [
+                self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04"),
+                self._trade("KXHIGHNY-26JUL04-T90", "NYC", "2026-07-04"),
+            ]
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(conflicts, 1)
+        self.assertEqual(
+            self._actuals(), [88.0], "the first value must stand, not the second"
+        )
+
+    def test_null_actual_temp_is_left_null(self):
+        """A row that never recorded an actual_temp is a different gap (the
+        trade never settled far enough to score) -- this pass repairs wrong
+        values, it does not invent missing ones."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", None)
+
+        updated, _, _, _, _ = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual(updated, 0)
+        self.assertEqual(self._actuals(), [None])
+
+    def test_empty_trade_list_is_a_clean_no_op(self):
+        self.assertEqual(tracker.backfill_member_actual_temp([]), (0, 0, 0, 0, 0))
+
+    def test_a_raising_trade_is_counted_as_errored_not_skipped(self):
+        """Exceptions must not be folded into `skipped` (opus review): the
+        CLI's skipped-line reads entirely as expected exclusion, so a schema
+        change or a locked DB would look routine."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+
+        class _Exploding(dict):
+            def get(self, key, default=None):
+                if key == "city":
+                    raise RuntimeError("malformed trade record")
+                return super().get(key, default)
+
+        bad = _Exploding(self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04"))
+        updated, skipped, conflicts, errored, _ = tracker.backfill_member_actual_temp(
+            [bad]
+        )
+
+        self.assertEqual(errored, 1)
+        self.assertEqual(skipped, 0, "a raise is not a routine exclusion")
+        self.assertEqual((updated, conflicts), (0, 0))
+        self.assertEqual(self._actuals(), [62.6])
+
+    def test_reports_rows_it_structurally_cannot_reach(self):
+        """The UPDATE matches `var = ?`, and SQL `var = 'max'` is NULL for a
+        NULL var -- so every row logged before the var column existed is
+        invisible to this pass. get_ensemble_member_accuracy reads actual_temp
+        with no var filter and no time window, so those rows never age out.
+        The count must be surfaced, or "N corrected" reads as a clean bill of
+        health (opus review)."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+        # Two var-NULL rows, exactly the shape this pass cannot match.
+        self._seed_member("NYC", "2026-07-04", None, 62.6, model="icon_seamless")
+        self._seed_member("NYC", "2026-07-04", None, 55.0, model="gfs_seamless")
+
+        updated, _, _, _, unreachable = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual(updated, 1, "only the var='max' row is reachable")
+        self.assertEqual(unreachable, 2)
+
+    def test_unreachable_count_is_zero_when_every_row_has_a_var(self):
+        """Positive control for the test above: the count must track the real
+        state, not be a constant."""
+        self._seed_outcome("KXHIGHNY-26JUL04-T85", 88.0)
+        self._seed_member("NYC", "2026-07-04", "max", 62.6)
+
+        *_, unreachable = tracker.backfill_member_actual_temp(
+            [self._trade("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04")]
+        )
+
+        self.assertEqual(unreachable, 0)
+
+
+class TestStationBiasStats(unittest.TestCase):
+    """_station_bias_stats() -- the arithmetic behind A15a, tested directly
+    with hand-computed values so a regression surfaces here rather than
+    downstream in the payload assembly."""
+
+    @staticmethod
+    def _rows(errs, tickers=None):
+        tickers = tickers or [f"T{i}" for i in range(len(errs))]
+        return [{"ticker": t, "err": e} for t, e in zip(tickers, errs, strict=True)]
+
+    def test_withholds_everything_below_the_floor(self):
+        stats = tracker._station_bias_stats(self._rows([1.0] * 9), min_samples=10)
+        self.assertEqual(stats["n"], 9)
+        self.assertEqual(stats["n_markets"], 9)
+        self.assertEqual(stats["label"], "not measured")
+        for key in ("mean_error", "mae", "se", "ci_lo", "ci_hi", "significant"):
+            self.assertIsNone(stats[key], f"{key} must be withheld below the floor")
+
+    def test_hand_computed_mean_se_and_interval(self):
+        """errs = [1, 2, 3, 4, 5] * 2 (n=10).
+
+        mean = 3.0 exactly.
+        sample variance (ddof=1) = 2 * sum((e-3)^2) / 9 = 2 * 10 / 9 = 20/9.
+        se = sqrt((20/9) / 10) = sqrt(2/9) = 0.4714045...
+        ci = 3.0 +/- 1.959963984540054 * 0.4714045 = [2.0761, 3.9239].
+        The interval is entirely above zero, so this is a warm bias.
+        """
+        stats = tracker._station_bias_stats(
+            self._rows([1.0, 2.0, 3.0, 4.0, 5.0] * 2), min_samples=10
+        )
+        self.assertAlmostEqual(stats["mean_error"], 3.0, places=6)
+        self.assertAlmostEqual(stats["mae"], 3.0, places=6)
+        self.assertAlmostEqual(stats["se"], 0.4714, places=4)
+        self.assertAlmostEqual(stats["ci_lo"], 2.0761, places=4)
+        self.assertAlmostEqual(stats["ci_hi"], 3.9239, places=4)
+        self.assertTrue(stats["significant"])
+        self.assertEqual(stats["label"], "warm bias")
+
+    def test_sign_convention_positive_is_warm(self):
+        """Pins the sign against get_dynamic_station_bias's own convention: a
+        forecast ABOVE the settled value (over-prediction) is POSITIVE and
+        reads as 'warm bias'. Inverting this would invert the one number the
+        panel exists to publish.
+
+        Deliberately uses errors with real spread rather than a constant --
+        a zero-variance group is now labelled "no variance" and would never
+        reach the warm/cold branch at all.
+        """
+        spread = [1.0, 2.0, 3.0, 2.0, 4.0] * 2
+        warm = tracker._station_bias_stats(self._rows(spread), min_samples=10)
+        cold = tracker._station_bias_stats(
+            self._rows([-e for e in spread]), min_samples=10
+        )
+        self.assertGreater(warm["mean_error"], 0)
+        self.assertEqual(warm["label"], "warm bias")
+        self.assertLess(cold["mean_error"], 0)
+        self.assertEqual(cold["label"], "cold bias")
+
+    def test_zero_variance_is_not_reported_as_significant(self):
+        """Every error identical collapses the interval onto the mean, so ANY
+        non-zero mean would otherwise read as significant at maximum
+        confidence (opus review). Real per-day temperature errors are never
+        identical; a zero sample variance is an artifact, not evidence.
+
+        Mutation target: deleting the `se == 0` branch makes this report
+        "warm bias" with significant=True.
+        """
+        stats = tracker._station_bias_stats(self._rows([2.0] * 10), min_samples=10)
+        self.assertAlmostEqual(stats["se"], 0.0)
+        self.assertAlmostEqual(stats["mean_error"], 2.0)
+        self.assertEqual(stats["label"], "no variance")
+        self.assertIsNone(
+            stats["significant"],
+            "None (undetermined), not False -- bit-identical errors are "
+            "maximal consistency, not absence of signal",
+        )
+
+    def test_real_but_tiny_offset_is_not_actionable(self):
+        """A14 gates its verb on significance AND magnitude
+        (BRIER_POLICY_HALF_SIZE_SKILL); this panel must too. A +0.15F residual
+        with low variance is statistically real and operationally meaningless,
+        and the label is this panel's whole output.
+
+        errs alternate 0.14/0.16 => mean 0.15, se tiny, interval excludes zero
+        but the magnitude is under STATION_BIAS_MIN_MAGNITUDE_F.
+
+        Mutation target: deleting the magnitude gate makes this "warm bias".
+        """
+        stats = tracker._station_bias_stats(
+            self._rows([0.14, 0.16] * 5), min_samples=10
+        )
+        self.assertAlmostEqual(stats["mean_error"], 0.15, places=6)
+        self.assertGreater(stats["ci_lo"], 0, "fixture must be significant")
+        self.assertLess(abs(stats["mean_error"]), tracker.STATION_BIAS_MIN_MAGNITUDE_F)
+        self.assertEqual(stats["label"], "offset too small to act on")
+        self.assertTrue(
+            stats["significant"],
+            "significant means the interval excludes zero, NOT that the label "
+            "is actionable",
+        )
+
+    def test_offset_just_past_the_magnitude_floor_is_actionable(self):
+        """Boundary companion to the test above.
+
+        An earlier version used mean 1.0 against a 0.5 floor, and its partner
+        used 0.15 -- a gap so wide that an opus reviewer showed BOTH still
+        passed with the gate moved to 0.16 or to 0.9, i.e. they pinned nothing
+        about where the boundary actually sits. These straddle it.
+        """
+        self.assertEqual(
+            tracker.STATION_BIAS_MIN_MAGNITUDE_F,
+            0.5,
+            "the straddling fixtures below are chosen for a 0.5 floor",
+        )
+        just_under = tracker._station_bias_stats(
+            self._rows([0.48, 0.50] * 5), min_samples=10
+        )
+        just_over = tracker._station_bias_stats(
+            self._rows([0.50, 0.52] * 5), min_samples=10
+        )
+        self.assertAlmostEqual(just_under["mean_error"], 0.49, places=6)
+        self.assertAlmostEqual(just_over["mean_error"], 0.51, places=6)
+        self.assertGreater(just_under["ci_lo"], 0, "both must be significant")
+        self.assertGreater(just_over["ci_lo"], 0, "both must be significant")
+        self.assertEqual(just_under["label"], "offset too small to act on")
+        self.assertEqual(just_over["label"], "warm bias")
+
+    def test_interval_spanning_zero_reports_no_offset(self):
+        stats = tracker._station_bias_stats(self._rows([3.0, -3.0] * 5), min_samples=10)
+        self.assertAlmostEqual(stats["mean_error"], 0.0, places=6)
+        self.assertEqual(stats["label"], "no offset detected")
+        self.assertFalse(stats["significant"])
+
+    def test_mae_is_not_the_signed_mean(self):
+        """A station that misses by 3F in both directions has zero bias but a
+        3F mean absolute error -- reporting only the signed mean would make it
+        look accurate."""
+        stats = tracker._station_bias_stats(self._rows([3.0, -3.0] * 5), min_samples=10)
+        self.assertAlmostEqual(stats["mean_error"], 0.0, places=6)
+        self.assertAlmostEqual(stats["mae"], 3.0, places=6)
+
+    def test_two_sided_z_is_stricter_than_a14s_one_sided(self):
+        """The two-sided critical value must genuinely be the stricter one: a
+        mean sitting between the two thresholds is significant under A14's
+        one-sided Z and NOT significant here. Without this, swapping in
+        BRIER_POLICY_Z would pass unnoticed.
+
+        errs = [-4, 16] * 5 (n=10): mean 6.0, every deviation +-10, so the
+        sample variance is 1000/9 and se = sqrt((1000/9)/10) = 10/3 exactly.
+        t = 6.0 / (10/3) = 1.8, which sits between the one-sided 1.6449 and
+        the two-sided 1.9600 by construction.
+        """
+        self.assertGreater(tracker.STATION_BIAS_Z, tracker.BRIER_POLICY_Z)
+        errs = [-4.0, 16.0] * 5
+        two_sided = tracker._station_bias_stats(self._rows(errs), min_samples=10)
+        one_sided = tracker._station_bias_stats(
+            self._rows(errs), min_samples=10, z=tracker.BRIER_POLICY_Z
+        )
+        ratio = two_sided["mean_error"] / two_sided["se"]
+        self.assertGreater(ratio, tracker.BRIER_POLICY_Z)
+        self.assertLess(ratio, tracker.STATION_BIAS_Z)
+        self.assertEqual(two_sided["label"], "no offset detected")
+        self.assertEqual(one_sided["label"], "warm bias")
+
+    def test_n_markets_counts_distinct_tickers(self):
+        """Helper-level behaviour. Note get_station_bias_by_lead() dedups to
+        one row per event, so through THAT caller n_markets always equals n --
+        see test_strikes_of_one_event_count_once for the guard that actually
+        prevents double-counting."""
+        stats = tracker._station_bias_stats(
+            self._rows([1.0] * 10, tickers=["A", "A", "B"] + ["C"] * 7),
+            min_samples=10,
+        )
+        self.assertEqual(stats["n"], 10)
+        self.assertEqual(stats["n_markets"], 3)
+
+    def test_single_row_does_not_divide_by_zero(self):
+        """Only reachable with min_samples <= 1, but a standard error is
+        undefined at n=1 and must degrade rather than raise."""
+        stats = tracker._station_bias_stats(self._rows([4.0]), min_samples=1)
+        self.assertAlmostEqual(stats["mean_error"], 4.0)
+        self.assertIsNone(stats["se"])
+        self.assertEqual(stats["label"], "not measured")
+
+    def test_empty_group_with_zero_floor_does_not_raise(self):
+        """max(1, min_samples) is load-bearing: a min_samples=0 caller must not
+        reach a division by n on an empty bucket."""
+        stats = tracker._station_bias_stats([], min_samples=0)
+        self.assertEqual(stats["n"], 0)
+        self.assertEqual(stats["label"], "not measured")
+
+
+class TestGetStationBiasByLead(unittest.TestCase):
+    """get_station_bias_by_lead() -- A15a's per-station, per-lead forecast
+    bias panel."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _row(
+        self,
+        ticker,
+        city,
+        days_out,
+        forecast,
+        settled,
+        method="ensemble",
+        condition_type="above",
+        disputed=0,
+        predicted_at="2026-07-01 12:00:00",
+        market_date="2026-07-04",
+    ):
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, "
+                "condition_type, days_out, forecast_temp_f, method, predicted_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    ticker,
+                    city,
+                    market_date,
+                    condition_type,
+                    days_out,
+                    forecast,
+                    method,
+                    predicted_at,
+                ),
+            )
+            con.execute(
+                "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?, 1)",
+                (ticker,),
+            )
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ?, disputed = ? WHERE ticker = ?",
+                (settled, disputed, ticker),
+            )
+
+    def _station(self, payload, city, var):
+        return next(
+            s for s in payload["stations"] if s["city"] == city and s["var"] == var
+        )
+
+    # Errors alternate offset-0.5 / offset+0.5 rather than being constant, so
+    # the group has real variance. A zero-variance group is labelled
+    # "no variance" by _station_bias_stats and never reaches the warm/cold
+    # branch, which would make every label assertion below meaningless.
+    _SPREAD = 0.5
+
+    def _seed_bias(self, city, var, days_out, offset, n, prefix="KXHIGH"):
+        """n markets for one city/var/lead, mean error exactly `offset`.
+
+        n must be even for the mean to land exactly on `offset`.
+        """
+        for i in range(n):
+            err = offset + (self._SPREAD if i % 2 else -self._SPREAD)
+            self._row(
+                f"{prefix}{city}-26JUL{i:02d}-T80",
+                city,
+                days_out,
+                80.0 + err,
+                80.0,
+                market_date=f"2026-07-{(i % 28) + 1:02d}",
+            )
+
+    def test_empty_db_returns_an_empty_but_shaped_payload(self):
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(payload["stations"], [])
+        self.assertEqual(payload["min_samples"], tracker.BRIER_POLICY_MIN_SAMPLES)
+        self.assertEqual(payload["leads"], ["D+0", "D+1", "D+2+"])
+        self.assertEqual(payload["confidence"], 0.95)
+        self.assertIn("caveats", payload)
+        self.assertIn("definitions", payload)
+
+    def test_hand_computed_offset_lands_in_the_right_lead_cell(self):
+        """10 D+1 markets averaging 2.0F warm: the D+1 cell must read exactly
+        +2.0 with the hand-computed standard error below, and D+0/D+2+ must be
+        empty."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        payload = tracker.get_station_bias_by_lead()
+        station = self._station(payload, "NYC", "max")
+        cells = {c["lead"]: c for c in station["cells"]}
+
+        # Hand-computed: errors alternate 1.5 / 2.5 (offset 2.0 +- _SPREAD),
+        # 5 each. mean = 2.0; every deviation is +-0.5 so sum of squares =
+        # 10 * 0.25 = 2.5, var = 2.5/9, se = sqrt((2.5/9)/10) = 1/6.
+        self.assertAlmostEqual(cells["D+1"]["mean_error"], 2.0, places=6)
+        # places=4: the payload stores round(se, 4), so 1/6 lands as 0.1667.
+        self.assertAlmostEqual(cells["D+1"]["se"], 1.0 / 6.0, places=4)
+        self.assertEqual(cells["D+1"]["label"], "warm bias")
+        self.assertEqual(cells["D+1"]["n"], 10)
+        self.assertEqual(cells["D+0"]["n"], 0)
+        self.assertEqual(cells["D+0"]["label"], "not measured")
+        self.assertEqual(cells["D+2+"]["n"], 0)
+        self.assertAlmostEqual(station["pooled"]["mean_error"], 2.0, places=6)
+
+    def test_sign_convention_matches_get_dynamic_station_bias(self):
+        """A forecast ABOVE the settled value is positive here, exactly as in
+        get_dynamic_station_bias (predicted_temp - actual_temp)."""
+        self._seed_bias("NYC", "max", 1, 3.0, 10)
+        payload = tracker.get_station_bias_by_lead()
+        self.assertGreater(
+            self._station(payload, "NYC", "max")["pooled"]["mean_error"], 0
+        )
+        self.assertEqual(
+            self._station(payload, "NYC", "max")["pooled"]["label"], "warm bias"
+        )
+
+    def test_metar_lockout_rows_are_excluded(self):
+        """Load-bearing exclusion: on a METAR-locked same-day trade
+        forecast_temp is the running extreme SO FAR, not a forecast, and
+        pooling it swamps the signal (sd 11.14 vs 2.82 in production)."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        for i in range(3):
+            self._row(
+                f"KXHIGHNY-26JUL9{i}-T80",
+                "NYC",
+                1,
+                110.0,
+                80.0,
+                method="metar_lockout",
+            )
+
+        payload = tracker.get_station_bias_by_lead()
+        station = self._station(payload, "NYC", "max")
+        self.assertEqual(station["pooled"]["n"], 10, "lockout rows must not be counted")
+        self.assertAlmostEqual(station["pooled"]["mean_error"], 2.0, places=6)
+
+    def test_null_method_rows_are_kept(self):
+        """SQLite's `NULL != 'x'` is NULL (falsy), so a bare inequality would
+        silently drop every row whose method was never recorded. Those rows are
+        of unknown provenance but are not known-contaminated."""
+        self._seed_bias("NYC", "max", 1, 2.0, 9)
+        self._row(
+            "KXHIGHNY-26JULAA-T80",
+            "NYC",
+            1,
+            82.0,
+            80.0,
+            method=None,
+            market_date="2026-09-01",
+        )
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_between_markets_are_kept(self):
+        """Unlike every Brier-quality query in this module: a between market's
+        temperature error is exactly as valid a bias sample as an above/below
+        one, and excluding it would discard 36% of the data."""
+        for i in range(10):
+            self._row(
+                f"KXHIGHNY-26JUL{i:02d}-B80.5",
+                "NYC",
+                1,
+                82.0,
+                80.0,
+                condition_type="between",
+                market_date=f"2026-09-{i + 1:02d}",
+            )
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_disputed_outcomes_are_excluded(self):
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        before = tracker.get_station_bias_by_lead()
+        self._row(
+            "KXHIGHNY-26JULZZ-T80",
+            "NYC",
+            1,
+            180.0,
+            80.0,
+            disputed=1,
+            market_date="2026-09-01",
+        )
+        after = tracker.get_station_bias_by_lead()
+        self.assertEqual(
+            self._station(before, "NYC", "max")["pooled"]["mean_error"],
+            self._station(after, "NYC", "max")["pooled"]["mean_error"],
+        )
+        self.assertEqual(self._station(after, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_high_and_low_markets_are_never_pooled(self):
+        """Daily-high and daily-low errors have different sign and magnitude.
+        var comes from the ticker's HIGH/LOW substring, not the mostly-NULL
+        predictions.var column."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10, prefix="KXHIGH")
+        self._seed_bias("NYC", "min", 1, -4.0, 10, prefix="KXLOWT")
+
+        payload = tracker.get_station_bias_by_lead()
+        self.assertAlmostEqual(
+            self._station(payload, "NYC", "max")["pooled"]["mean_error"], 2.0, places=6
+        )
+        self.assertAlmostEqual(
+            self._station(payload, "NYC", "min")["pooled"]["mean_error"], -4.0, places=6
+        )
+
+    def test_ticker_with_no_high_or_low_substring_is_dropped(self):
+        """An hourly KXTEMPxxxH ticker has neither substring, so no var can be
+        resolved and it must not be filed under a guessed default."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        self._row(
+            "KXTEMPNYCH-26JUL2014-T75.99",
+            "NYC",
+            1,
+            90.0,
+            80.0,
+            market_date="2026-09-01",
+        )
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_only_the_latest_prediction_row_per_ticker_counts(self):
+        """ROW_NUMBER dedup: a ticker re-scanned on several days must
+        contribute once, using its latest forecast."""
+        self._row(
+            "KXHIGHNY-26JUL04-T80",
+            "NYC",
+            1,
+            99.0,
+            80.0,
+            predicted_at="2026-07-01 06:00:00",
+        )
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, "
+                "condition_type, days_out, forecast_temp_f, method, predicted_at) "
+                "VALUES ('KXHIGHNY-26JUL04-T80', 'NYC', '2026-07-04', 'above', "
+                "1, 82.0, 'ensemble', '2026-07-03 06:00:00')"
+            )
+
+        payload = tracker.get_station_bias_by_lead(min_samples=1)
+        station = self._station(payload, "NYC", "max")
+        self.assertEqual(station["pooled"]["n"], 1)
+        self.assertAlmostEqual(station["pooled"]["mean_error"], 2.0, places=6)
+
+    def test_leads_two_and_beyond_pool_into_one_bucket(self):
+        self._seed_bias("NYC", "max", 2, 2.0, 5)
+        for i in range(5):
+            self._row(
+                f"KXHIGHNY-26JULB{i}-T80",
+                "NYC",
+                7,
+                82.0,
+                80.0,
+                market_date=f"2026-09-{i + 1:02d}",
+            )
+        payload = tracker.get_station_bias_by_lead()
+        cells = {c["lead"]: c for c in self._station(payload, "NYC", "max")["cells"]}
+        self.assertEqual(cells["D+2+"]["n"], 10)
+        self.assertEqual(cells["D+2+"]["days_out_min"], 2)
+
+    def test_null_days_out_appears_in_pooled_but_no_cell(self):
+        """sum(cell n) + n_days_out_null == pooled n."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        self._row(
+            "KXHIGHNY-26JULNN-T80", "NYC", None, 82.0, 80.0, market_date="2026-09-01"
+        )
+
+        payload = tracker.get_station_bias_by_lead()
+        station = self._station(payload, "NYC", "max")
+        self.assertEqual(payload["n_days_out_null"], 1)
+        self.assertEqual(
+            sum(c["n"] for c in station["cells"]) + payload["n_days_out_null"],
+            station["pooled"]["n"],
+        )
+
+    def test_out_of_range_temperatures_are_dropped(self):
+        """Range guard: a poisoned row must not reach jsonify() and emit a
+        value that kills the whole panel."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        self._row("KXHIGHNY-26JULXX-T80", "NYC", 1, 1e9, 80.0, market_date="2026-09-01")
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_non_finite_temperatures_are_dropped(self):
+        """The guard's STATED motivation is Infinity reaching jsonify(), and
+        1e9 is finite -- so the test above does not actually prove it (opus
+        review). SQLite stores +-Infinity as a REAL for which BETWEEN is
+        false, and NaN as NULL, which `IS NOT NULL` catches.
+        """
+        import json
+
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        for i, bad in enumerate((float("inf"), float("-inf"), float("nan")), start=1):
+            self._row(
+                f"KXHIGHNY-26JULQ{i}-T80",
+                "NYC",
+                1,
+                bad,
+                80.0,
+                market_date=f"2026-09-{i:02d}",
+            )
+
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+        # The assertion that actually matters: the payload must survive the
+        # exact serialisation /api/analytics performs. json.dumps emits bare
+        # `Infinity`/`NaN` by default, so pin allow_nan=False -- the strict
+        # mode that raises instead of emitting invalid JSON.
+        json.dumps(payload, allow_nan=False)
+
+    def test_a_poisoned_row_does_not_discard_its_whole_event(self):
+        """The range guards sit INSIDE the subquery, ahead of the window
+        function (opus review). With them in the outer WHERE, a poisoned row
+        that happened to win the dedup discarded its entire event even when a
+        valid sibling row existed."""
+        self._row(
+            "KXHIGHNY-26JULP1-T80",
+            "NYC",
+            1,
+            1e9,
+            80.0,
+            market_date="2026-09-01",
+            predicted_at="2026-08-31 12:00:00",  # newest -- would win the dedup
+        )
+        self._row(
+            "KXHIGHNY-26JULP2-T80",
+            "NYC",
+            1,
+            82.0,
+            80.0,
+            market_date="2026-09-01",
+            predicted_at="2026-08-30 12:00:00",
+        )
+
+        payload = tracker.get_station_bias_by_lead(min_samples=1)
+        station = self._station(payload, "NYC", "max")
+        self.assertEqual(station["pooled"]["n"], 1)
+        self.assertAlmostEqual(station["pooled"]["mean_error"], 2.0, places=6)
+
+    def test_strikes_of_one_event_count_once(self):
+        """Every strike of a ladder shares both forecast_temp_f and
+        settled_temp_f, so counting them separately feeds identical, perfectly
+        correlated observations into se = sd/sqrt(n) and makes the
+        interval-based label over-fire (opus review).
+
+        Mutation target: reverting the dedup to PARTITION BY p.ticker makes
+        this report n=3.
+        """
+        for strike in ("T80", "T82", "B80.5"):
+            self._row(
+                f"KXHIGHNY-26JUL04-{strike}",
+                "NYC",
+                1,
+                82.0,
+                80.0,
+                market_date="2026-09-01",
+            )
+
+        payload = tracker.get_station_bias_by_lead(min_samples=1)
+        station = self._station(payload, "NYC", "max")
+        self.assertEqual(station["pooled"]["n"], 1, "one event, one observation")
+        self.assertEqual(station["pooled"]["n_markets"], 1)
+
+    def test_gate_coupled_condition_types_are_excluded(self):
+        """The condition-type exclusion is provably a no-op on real data (a
+        rain row never has settled_temp_f), so nothing else would notice if it
+        stopped working. Pinned directly instead."""
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        self._row(
+            "KXHIGHNY-26JULRR-T80",
+            "NYC",
+            1,
+            99.0,
+            80.0,
+            condition_type="precip_month_total",
+            market_date="2026-09-01",
+        )
+        payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_empty_exclusion_set_does_not_raise(self):
+        """_condition_type_not_in_sql asserts a non-empty set, so subtracting
+        'between' from a set that contains only 'between' must take the
+        `1 = 1` branch rather than tripping the assertion. Unreachable on real
+        config today (five gate-coupled families are always present unless
+        every gate goes live at once), so it needs an explicit test."""
+        from unittest.mock import patch
+
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        with patch.object(
+            tracker,
+            "_excluded_brier_condition_types",
+            return_value=frozenset({"between"}),
+        ):
+            payload = tracker.get_station_bias_by_lead()
+        self.assertEqual(self._station(payload, "NYC", "max")["pooled"]["n"], 10)
+
+    def test_payload_is_json_serialisable(self):
+        """/api/analytics jsonify()s this whole structure."""
+        import json
+
+        self._seed_bias("NYC", "max", 1, 2.0, 10)
+        json.dumps(tracker.get_station_bias_by_lead())
+
+    def test_thin_cells_withhold_every_statistic(self):
+        """Structural withholding, not a UI convention: a consumer cannot
+        render a number it was never given."""
+        self._seed_bias("NYC", "max", 1, 2.0, 3)
+        payload = tracker.get_station_bias_by_lead()
+        station = self._station(payload, "NYC", "max")
+        cells = {c["lead"]: c for c in station["cells"]}
+        self.assertEqual(cells["D+1"]["n"], 3)
+        self.assertIsNone(cells["D+1"]["mean_error"])
+        self.assertEqual(cells["D+1"]["label"], "not measured")
+        self.assertIsNone(station["pooled"]["mean_error"])
+
+
+class TestCoerceExpirationValue(unittest.TestCase):
+    """_coerce_expiration_value() -- the shared guard around Kalshi's
+    expiration_value, added by batch-68's opus review.
+
+    float() succeeds on 'NaN', 'Infinity' and True, so the bare
+    float()/except (TypeError, ValueError) all four audit_settlement branches
+    used before this let each of them through.
+    """
+
+    def test_parses_the_real_wire_format(self):
+        """Kalshi sends expiration_value as a STRING ('63.00', '82.76')."""
+        self.assertAlmostEqual(tracker._coerce_expiration_value("T", "63.00"), 63.0)
+        self.assertAlmostEqual(tracker._coerce_expiration_value("T", "82.76"), 82.76)
+
+    def test_parses_a_plain_number(self):
+        self.assertAlmostEqual(tracker._coerce_expiration_value("T", 63), 63.0)
+        self.assertAlmostEqual(tracker._coerce_expiration_value("T", 63.5), 63.5)
+
+    def test_rejects_nan(self):
+        """The nastiest case: SQLite stores NaN as NULL, so the row would look
+        UNSETTLED while audit_settlement returned True -- a backfill would
+        count it as filled and never retry it."""
+        self.assertIsNone(tracker._coerce_expiration_value("T", float("nan")))
+        self.assertIsNone(tracker._coerce_expiration_value("T", "NaN"))
+
+    def test_rejects_infinity(self):
+        """Reaches jsonify() as bare `Infinity`, which RFC-8259 forbids and
+        JSON.parse rejects -- killing a whole panel."""
+        self.assertIsNone(tracker._coerce_expiration_value("T", float("inf")))
+        self.assertIsNone(tracker._coerce_expiration_value("T", float("-inf")))
+        self.assertIsNone(tracker._coerce_expiration_value("T", "Infinity"))
+
+    def test_rejects_booleans(self):
+        """bool is a subclass of int, so float(True) == 1.0 -- a JSON boolean
+        would silently become 1 degree. The isinstance check must come before
+        any numeric coercion."""
+        self.assertIsNone(tracker._coerce_expiration_value("T", True))
+        self.assertIsNone(tracker._coerce_expiration_value("T", False))
+
+    def test_rejects_non_numeric_strings_and_none(self):
+        self.assertIsNone(tracker._coerce_expiration_value("T", "n/a"))
+        self.assertIsNone(tracker._coerce_expiration_value("T", ""))
+        self.assertIsNone(tracker._coerce_expiration_value("T", None))
+        self.assertIsNone(tracker._coerce_expiration_value("T", {"v": 1}))
+
+    def test_zero_is_a_valid_settlement(self):
+        """0.0 is falsy but a perfectly real winter temperature -- it must not
+        be rejected by a truthiness test."""
+        self.assertEqual(tracker._coerce_expiration_value("T", "0.00"), 0.0)
+
+    def test_negative_is_a_valid_settlement(self):
+        self.assertAlmostEqual(tracker._coerce_expiration_value("T", "-12.00"), -12.0)

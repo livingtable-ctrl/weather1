@@ -1090,8 +1090,13 @@ def mark_outcome_disputed(ticker: str) -> None:
 
 def mark_outcome_undisputed(ticker: str) -> None:
     """Clear a ticker's disputed flag (opus-review-caught, 2026-08-10):
-    mark_outcome_disputed() is this repo's only writer of disputed=1, and
-    audit_settlement()'s daily-branch mismatch check is its only caller --
+    mark_outcome_disputed() is this repo's only writer of disputed=1. Its
+    callers were, at the time this docstring was first written, just
+    audit_settlement()'s daily-branch mismatch check; there are now three
+    (the daily branch, the hourly parsing cross-check, and the Miami index
+    cross-check), and the hourly pair deliberately splits ownership -- see
+    the `city != "Miami"` guard in the hourly branch. The reasoning below is
+    about the ORIGINAL daily-branch disputes:
     every disputed row in production was set by comparing the OLD ASOS-proxy
     temperature against Kalshi's real YES/NO result, a comparison now known
     to legitimately disagree with Kalshi's real CLI-report settlement by
@@ -5157,6 +5162,19 @@ def _fetch_asos_hour_temp(
 
     Falls back to None on any fetch/parse error or if no readings exist for
     the target local day.
+
+    No production callers as of 2026-08-25 (batch-68's A13 audit), same as
+    _fetch_asos_daily_temp (above) and _fetch_actual_daily_temp (below), and
+    same now as _fetch_asos_observations (above), whose only two callers are
+    this function and _fetch_asos_daily_temp -- audit_settlement's
+    hourly branch was its only caller and now reads Kalshi's own
+    expiration_value instead. Kept rather than deleted for the same reason
+    those two are: none of the six hourly cities settles on METAR, so this
+    is not a settlement source, but it remains the only hour-resolution
+    archive reduction in this module and is the natural building block for
+    any future measurement of how far the METAR proxy sits from a market's
+    real settlement source (the open "other 5 hourly cities settle on THE
+    WEATHER COMPANY" backlog entry asks for exactly that experiment).
     """
     from zoneinfo import ZoneInfo
 
@@ -5222,6 +5240,52 @@ _settlement_client = None
 _settlement_client_env: str | None = None
 
 
+def _coerce_expiration_value(ticker: str, exp_val: object) -> float | None:
+    """Parse Kalshi's `expiration_value` into a usable float, or None.
+
+    All four of audit_settlement()'s finalized branches (daily, hourly,
+    monthly rain, monthly snow) previously did a bare
+    `float(exp_val)` / `except (TypeError, ValueError)`. That guard has three
+    holes, because `float()` succeeds on all of them (opus review, batch-68):
+
+      float("NaN")      -> nan   -- SQLite stores NaN as NULL, so the row ends
+                                    up looking UNSETTLED while audit_settlement
+                                    returns True, meaning a backfill counts it
+                                    as filled and never retries it
+      float("Infinity") -> inf   -- reaches jsonify() as bare `Infinity`, which
+                                    RFC-8259 forbids and JSON.parse rejects
+      float(True)       -> 1.0   -- a JSON boolean silently becomes 1 degree
+
+    Each is remote, but the hourly branch newly attaches a
+    mark_outcome_disputed() side effect to whatever comes out of here, so a
+    garbage value now also flags an otherwise-clean row. Centralised rather
+    than patched four times so the next branch added inherits the guard.
+
+    The `isinstance(exp_val, bool)` test must come FIRST: bool is a subclass
+    of int, so any numeric check placed before it would accept True/False.
+    """
+    if isinstance(exp_val, bool):
+        _log.warning(
+            "audit_settlement[%s]: boolean expiration_value=%r", ticker, exp_val
+        )
+        return None
+    try:
+        value = float(exp_val)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        _log.warning(
+            "audit_settlement[%s]: non-numeric expiration_value=%r",
+            ticker,
+            exp_val,
+        )
+        return None
+    if not math.isfinite(value):
+        _log.warning(
+            "audit_settlement[%s]: non-finite expiration_value=%r", ticker, exp_val
+        )
+        return None
+    return value
+
+
 def _get_settlement_kalshi_client():
     """Lazily build a KalshiClient from env vars, mirroring main.py's
     build_client() shape, so audit_settlement() (and its other 2 callers,
@@ -5285,11 +5349,27 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     now means our own condition/threshold parsing disagrees with Kalshi's
     real settlement — i.e. a bug worth investigating, not proxy/CLI noise.
 
-    HOURLY temperature markets (KXTEMPxxxH, handled further below) are
-    unaffected by the above and still derive settled_value from the IEM
-    ASOS raw-METAR archive — Kalshi has no analogous single-hour
-    expiration_value to read, so the same proxy caveat (and the
-    proxy/CLI-report divergence risk) still applies there.
+    HOURLY temperature markets (KXTEMPxxxH, handled further below) now read
+    expiration_value the same way, as of batch-68's A13 settlement-source
+    audit (2026-08-25). This branch previously derived settled_value from
+    the IEM ASOS raw-METAR archive on the stated grounds that "Kalshi has
+    no analogous single-hour expiration_value to read" — that claim was
+    live-verified FALSE: expiration_value is populated on 52,088 of 52,310
+    finalized markets sampled across all six hourly series, and is uniform
+    across every strike within each of the 5,179 events sampled (0
+    exceptions), which is the same property the daily branch relies on.
+    The proxy was actively wrong, not merely unvalidated: none of the six
+    hourly cities settles on METAR at all (Miami → the Synoptic-sourced
+    Kalshi Weather Index, the other five → The Weather Company; see
+    kalshi_weather_index.py's docstring and backlog.txt's "other 5 hourly
+    cities settle on THE WEATHER COMPANY" entry), and hourly strikes sit at
+    .99, so any 1°F source difference flips the implied side. On the four
+    hourly rows settled before this fix, the METAR proxy implied the
+    OPPOSITE of Kalshi's settlement on two of them.
+
+    Nothing read outcomes.settled_value in production at the time of the
+    fix (exhaustively verified, batch-68), so this corrects a column ahead
+    of its first consumer rather than regrading anything.
 
     Logs a WARNING when the settled temperature contradicts Kalshi's YES/NO
     result. Skips silently if the ticker is unparseable, settlement data is
@@ -5306,7 +5386,6 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
     try:
         from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
         from weather_markets import CITY_COORDS as _coords
-        from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
         from weather_markets import parse_city_date as _parse_city_date
 
@@ -5342,14 +5421,8 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                     "audit_settlement[%s]: finalized but no expiration_value", ticker
                 )
                 return False
-            try:
-                settled_value = float(exp_val)
-            except (TypeError, ValueError):
-                _log.warning(
-                    "audit_settlement[%s]: non-numeric expiration_value=%r",
-                    ticker,
-                    exp_val,
-                )
+            settled_value = _coerce_expiration_value(ticker, exp_val)
+            if settled_value is None:
                 return False
             with _conn() as con:
                 cur = con.execute(
@@ -5388,14 +5461,8 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                     "audit_settlement[%s]: finalized but no expiration_value", ticker
                 )
                 return False
-            try:
-                settled_value = float(exp_val)
-            except (TypeError, ValueError):
-                _log.warning(
-                    "audit_settlement[%s]: non-numeric expiration_value=%r",
-                    ticker,
-                    exp_val,
-                )
+            settled_value = _coerce_expiration_value(ticker, exp_val)
+            if settled_value is None:
                 return False
             with _conn() as con:
                 cur = con.execute(
@@ -5460,7 +5527,16 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 with _conn() as _con:
                     _hv_row = _con.execute(
                         "SELECT var, condition_type, threshold_lo, threshold_hi"
-                        " FROM predictions WHERE ticker = ?",
+                        " FROM predictions WHERE ticker = ?"
+                        # ORDER BY ... LIMIT 1 matches
+                        # paper._score_ensemble_members' own read of this
+                        # column (opus review round 3). predictions has no
+                        # uniqueness on ticker -- a market re-scanned on
+                        # several days has several rows -- so a bare
+                        # fetchone() returned an arbitrary one, and this
+                        # result now decides whether the row is disputed and
+                        # whether an operator is paged.
+                        " ORDER BY predicted_at DESC LIMIT 1",
                         (ticker,),
                     ).fetchone()
                 if _hv_row:
@@ -5471,16 +5547,52 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                     hourly_threshold_hi = _hv_row[3]
             except Exception:
                 pass
-            station = _station_for_city(city)
-            if not station:
+            # batch-68 (A13 settlement-source audit): read Kalshi's own
+            # settled figure, exactly as the daily branch below does. This
+            # REPLACES the IEM ASOS raw-METAR archive proxy this branch used
+            # until 2026-08-25 -- see this function's docstring for the live
+            # verification that overturned the "Kalshi has no analogous
+            # single-hour expiration_value" assumption the proxy rested on.
+            try:
+                client = _get_settlement_kalshi_client()
+                market = client.get_market(ticker)
+            except Exception as exc:
+                _log.warning(
+                    "audit_settlement[%s]: hourly market fetch failed: %s", ticker, exc
+                )
                 return False
-            actual_value = _fetch_asos_hour_temp(station, target_date, hour, city_tz=tz)
-            if actual_value is None:
+            if market.get("status") != "finalized":
                 return False
+            exp_val = market.get("expiration_value")
+            if exp_val is None:
+                _log.warning(
+                    "audit_settlement[%s]: finalized but no expiration_value", ticker
+                )
+                return False
+            _coerced = _coerce_expiration_value(ticker, exp_val)
+            if _coerced is None:
+                return False
+            # Round ONCE, here, so the value written to settled_value and the
+            # value the parsing cross-check below audits are the same number
+            # (opus review, INFO): auditing the unrounded float while storing
+            # a rounded one could in principle disagree near a strike.
+            #
+            # round(..., 2), not the daily branch's round(..., 1):
+            # KXTEMPMIAH's expiration_value is the Kalshi Weather Index, which
+            # Kalshi publishes to 2 decimals (live-verified 2026-08-25, e.g.
+            # '82.76'). Rounding to 1 would silently discard a digit Kalshi
+            # actually settled on for 1 of the 6 hourly cities; the other 5
+            # are whole degrees from The Weather Company, for which the extra
+            # decimal is a harmless no-op. The daily branch keeps its own
+            # round(..., 1) -- every daily HIGH/LOW expiration_value observed
+            # is a whole degree.
+            actual_value = round(_coerced, 2)
             with _conn() as con:
                 cur = con.execute(
                     "UPDATE outcomes SET settled_value = ?, settled_var = ? WHERE ticker = ?",
-                    (round(actual_value, 1), hourly_var, ticker),
+                    # Already rounded at the coercion site above -- do NOT
+                    # round again here, or the two would be free to drift.
+                    (actual_value, hourly_var, ticker),
                 )
             if cur.rowcount < 1:
                 _log.warning(
@@ -5490,16 +5602,159 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 )
                 return False
 
+            # Shared by the parsing cross-check immediately below and the
+            # Miami index cross-check further down -- both ask the same
+            # question ("what does this temperature imply for THIS strike"),
+            # of two different temperatures. Hoisted out of the Miami block
+            # (where batch-52 originally defined it) rather than duplicated.
+            def _implied_yes(temp_f: float) -> bool | None:
+                if hourly_cond_type == "above" and hourly_threshold_lo is not None:
+                    return temp_f > hourly_threshold_lo
+                if hourly_cond_type == "below" and hourly_threshold_lo is not None:
+                    return temp_f < hourly_threshold_lo
+                if (
+                    hourly_cond_type == "between"
+                    and hourly_threshold_lo is not None
+                    and hourly_threshold_hi is not None
+                ):
+                    return hourly_threshold_lo < temp_f < hourly_threshold_hi
+                return None
+
+            # ── Our-parsing-vs-Kalshi cross-check (batch-68) ─────────────────
+            # Only meaningful now that actual_value is Kalshi's OWN settled
+            # figure: a disagreement can no longer be proxy/source noise, so
+            # it means our condition/threshold parsing is wrong -- the exact
+            # same reasoning (and the same dispute/undispute pair) the daily
+            # branch below already applies. Under the old METAR proxy this
+            # check would have fired on source divergence rather than on a
+            # bug, which is why the branch had none: on the 4 hourly rows
+            # settled before this fix, the proxy implied the OPPOSITE of
+            # Kalshi's settlement on 2 (measured 2026-08-25). Hourly strikes
+            # sit at .99, so ANY 1F source difference flips the implied side.
+            _official_yes = _implied_yes(actual_value)
+            if _official_yes is not None and _official_yes != settled_yes:
+                _log.warning(
+                    "settlement_audit MISMATCH (hourly) %s — Kalshi=%s "
+                    "expiration_value=%.2f°F implied=%s (%s lo=%s hi=%s)",
+                    ticker,
+                    "YES" if settled_yes else "NO",
+                    actual_value,
+                    _official_yes,
+                    hourly_cond_type,
+                    hourly_threshold_lo,
+                    hourly_threshold_hi,
+                )
+                # Disputed only for the five cities whose flag this check
+                # OWNS. Miami's belongs to the index cross-check below, and
+                # authority has to be symmetric: an earlier fix disputed
+                # Miami here while leaving the undispute gated on
+                # `city != "Miami"`, which stranded any Miami row this check
+                # ever disputed permanently outside outcomes_valid -- the
+                # index only spans ~24h, so on every later re-audit it
+                # returns None and cannot clear what this check set (opus
+                # review round 3, HIGH; reproduced). The mismatch is still
+                # logged and still pages, so a Miami parsing bug is just as
+                # visible; and since the index check derives its own implied
+                # side from the SAME parsing, it will independently dispute
+                # whenever it has a reading to judge on.
+                if city != "Miami":
+                    mark_outcome_disputed(ticker)
+                # Alert, not just a log line (opus review, MEDIUM). Disputing
+                # excludes the row from outcomes_valid, which
+                # count_settled_hourly_predictions() joins -- so a SYSTEMATIC
+                # parsing disagreement (e.g. if the stored threshold_lo
+                # convention ever drifted from the raw strike toward
+                # utils.prob_threshold's +-0.5 decision boundary) would
+                # quietly drive the hourly rollout gate's settled-sample count
+                # toward zero and keep hourly trading closed with nothing to
+                # explain why. The Miami index path below already alerts on
+                # its own mismatch; before this, the far broader all-six-city
+                # path did not. cooldown_key is shared across tickers on
+                # purpose: the failure this guards is systematic, so one alert
+                # per cooldown window is the signal -- per-ticker keys would
+                # be a pager storm on exactly the day it fires.
+                try:
+                    import notify as _notify_hourly
+
+                    # Body kept comfortably under 256 characters on purpose:
+                    # notify.py's desktop-toast backend goes through plyer,
+                    # whose Windows NOTIFYICONDATAW field is hard-capped at
+                    # 256, and a longer string raises inside the notify
+                    # thread rather than being truncated. The full detail is
+                    # already in the WARNING logged just above; this is a
+                    # pager, not a report.
+                    _notify_hourly.send_system_alert(
+                        "⚠ Hourly settlement disagrees with our parsing",
+                        f"{ticker}: Kalshi settled "
+                        f"{'YES' if settled_yes else 'NO'} on its own "
+                        f"expiration_value={actual_value:.2f}F, which our "
+                        f"stored condition ({hourly_cond_type} "
+                        f"lo={hourly_threshold_lo}) reads as "
+                        f"{_official_yes}. Our parsing is wrong; the row is "
+                        "now disputed. See the log line for full detail.",
+                        cooldown_key="hourly_parsing_settlement_mismatch",
+                        discord_color=0xF85149,
+                    )
+                except Exception as _n_exc:
+                    _log.warning(
+                        "audit_settlement[%s]: hourly mismatch notification failed: %s",
+                        ticker,
+                        _n_exc,
+                    )
+                # For the five non-Miami cities there is nothing below this
+                # point (the remaining block is Miami-only), so returning
+                # here is equivalent and states the intent. For Miami we
+                # deliberately fall THROUGH to the index cross-check: it owns
+                # Miami's flag, and it is the only thing that can either set
+                # or clear it. settled_value is already durably written
+                # above, so either exit path is correct.
+                if city != "Miami":
+                    return True
+            elif _official_yes is not None and city != "Miami":
+                # Mirrors the daily branch's own undispute precedent: a row
+                # disputed under the pre-batch-68 METAR proxy that now agrees
+                # against Kalshi's own settled figure should not stay
+                # permanently excluded from outcomes_valid. Idempotent no-op
+                # otherwise.
+                #
+                # `city != "Miami"` is load-bearing, not a micro-optimisation
+                # (opus review, HIGH). `disputed` is one boolean with no
+                # provenance, and Miami has a SECOND, independent disputer
+                # below: the index cross-check. The two have very different
+                # evidence lifetimes -- expiration_value is available on every
+                # re-audit forever, while get_miami_index_reading_near() only
+                # spans ~24h of history. Without this guard, the sequence is:
+                # run 1 (at settlement) the parsing agrees and the index
+                # disagrees, so the row is correctly disputed; run 2 (any
+                # later backfill_emos_data pass -- and its non-force pass
+                # re-selects every hourly row forever, since they never
+                # populate settled_temp_f) the parsing agrees again and
+                # clears the flag, while the index is now too old to re-dispute
+                # it. The dispute vanishes silently, and `disputed` gates
+                # outcomes_valid, every Brier/calibration query, and
+                # count_settled_hourly_predictions' rollout gate.
+                #
+                # So: for the five non-Miami cities the parsing check owns the
+                # flag outright; for Miami the index check owns it, because
+                # the index IS that market's settlement source and is the
+                # stronger evidence. The cost is that a Miami row disputed
+                # before batch-68 can only be cleared by a positive index
+                # agreement, never by parsing alone -- which is the
+                # fail-closed direction, and is moot today (0 disputed rows
+                # in production at audit time).
+                mark_outcome_undisputed(ticker)
+
             # ── Miami index cross-check (batch-52 item 4) ───────────────────
-            # KXTEMPMIAH settles on the Kalshi Weather Index, not KMIA METAR
-            # -- settled_value above is still METAR-sourced (unchanged, kept
-            # consistent with the other 5 cities' write shape -- opus review
-            # I-1: no production code actually reads outcomes.settled_value
-            # for hourly today, so this is a schema-consistency choice, not
-            # an active "existing use" being preserved), but for Miami
-            # specifically we ALSO compare Kalshi's real settled_yes against
-            # what the index would have said, since that's the market's
-            # actual settlement source. Deliberately best-effort/log+alert
+            # KXTEMPMIAH settles on the Kalshi Weather Index, not KMIA METAR.
+            # batch-68 UPDATE: settled_value above is no longer METAR-sourced
+            # -- it is now Kalshi's own expiration_value, which for Miami IS
+            # the settled index figure (live-verified 2026-08-25: 2-decimal
+            # values like '82.76', unlike the other 5 cities' whole-degree
+            # Weather Company figures). So this block no longer compares
+            # "index vs a proxy"; it compares OUR OWN independently-fetched
+            # index reading against the figure Kalshi actually settled on,
+            # which is a strictly stronger check of get_miami_index_reading_
+            # near()'s sampling. Still deliberately best-effort/log+alert
             # only (no new DB column) -- "record both index and METAR and
             # alert on disagreement" per batch-52's own item 4 wording, kept
             # proportionate to a rank-6 city (batch-52 "Key risks").
@@ -5539,41 +5794,36 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                         _client, _target_epoch, tolerance_min=5.0
                     )
                     if _index_reading is not None:
-
-                        def _implied_yes(temp_f: float) -> bool | None:
-                            if (
-                                hourly_cond_type == "above"
-                                and hourly_threshold_lo is not None
-                            ):
-                                return temp_f > hourly_threshold_lo
-                            if (
-                                hourly_cond_type == "below"
-                                and hourly_threshold_lo is not None
-                            ):
-                                return temp_f < hourly_threshold_lo
-                            if (
-                                hourly_cond_type == "between"
-                                and hourly_threshold_lo is not None
-                                and hourly_threshold_hi is not None
-                            ):
-                                return (
-                                    hourly_threshold_lo < temp_f < hourly_threshold_hi
-                                )
-                            return None
-
                         _index_yes = _implied_yes(_index_reading["temp_f"])
-                        _metar_yes = _implied_yes(actual_value)
+                        # Numeric index-vs-settled delta, logged alongside the
+                        # implied sides: this is the single measurement the
+                        # open "Miami hourly settlement-instant" backlog entry
+                        # (opus review M-4, below) actually needs. Caveat for
+                        # whoever collects it: a Miami ticker whose PARSING
+                        # cross-check mismatches returns before reaching here,
+                        # so the delta series is conditional on our own
+                        # threshold parsing agreeing with Kalshi -- a
+                        # systematic parsing bug would show up as a gap in the
+                        # series, not as skewed deltas -- a run of
+                        # near-zero deltas would confirm the tolerance_min=5.0
+                        # top-of-hour approximation matches Kalshi's real
+                        # aggregation, and a persistent non-zero one would
+                        # falsify it. Free here now that actual_value IS
+                        # Kalshi's settled index figure rather than a METAR
+                        # proxy that could never be differenced against it
+                        # meaningfully.
                         _log.info(
                             "audit_settlement[%s]: Miami index cross-check -- "
-                            "Kalshi=%s index=%.1fF(status=%s,implied=%s) "
-                            "metar=%.1fF(implied=%s)",
+                            "Kalshi=%s index=%.2fF(status=%s,implied=%s) "
+                            "settled=%.2fF(implied=%s) delta=%+.2fF",
                             ticker,
                             "YES" if settled_yes else "NO",
                             _index_reading["temp_f"],
                             _index_reading.get("status"),
                             _index_yes,
                             actual_value,
-                            _metar_yes,
+                            _official_yes,
+                            _index_reading["temp_f"] - actual_value,
                         )
                         # Only a "normal"-status index point disagreeing with
                         # Kalshi's real settlement is alert-worthy -- a
@@ -5638,6 +5888,17 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                             # settled-sample count for no ongoing reason.
                             # Idempotent no-op if this ticker was never
                             # disputed in the first place.
+                            #
+                            # batch-68: this is Miami's ONLY undisputer --
+                            # the parsing check above deliberately skips
+                            # Miami so this branch owns the flag. A briefly-
+                            # shipped version had the parsing check undispute
+                            # unconditionally, which made this line dead code
+                            # AND silently wiped index disputes on re-audit
+                            # (opus review, HIGH + MEDIUM). Requires a
+                            # positive, "normal"-status agreement: an
+                            # unavailable or degraded index is no evidence and
+                            # must leave the flag exactly as it found it.
                             mark_outcome_undisputed(ticker)
                     else:
                         _log.debug(
@@ -5730,15 +5991,16 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 "audit_settlement[%s]: finalized but no expiration_value", ticker
             )
             return False
-        try:
-            actual = float(exp_val)
-        except (TypeError, ValueError):
-            _log.warning(
-                "audit_settlement[%s]: non-numeric expiration_value=%r",
-                ticker,
-                exp_val,
-            )
+        _coerced_daily = _coerce_expiration_value(ticker, exp_val)
+        if _coerced_daily is None:
             return False
+        # Round ONCE, here, for the same reason the hourly branch does (opus
+        # review round 3, MEDIUM -- the first version of that fix reached only
+        # the hourly branch): the value written to settled_temp_f and the
+        # value the consistency check below audits must be the same number.
+        # Auditing 84.96 against a threshold of 85 says NO while storing 85.0
+        # for every downstream consumer to read.
+        actual = round(_coerced_daily, 1)
         source = "Kalshi:expiration_value"
 
         # Store the settled temperature so we can compute empirical NWS forecast
@@ -5747,7 +6009,9 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
         with _conn() as con:
             cur = con.execute(
                 "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
-                (round(actual, 1), ticker),
+                # Already rounded at the coercion site above -- do NOT round
+                # again here, or the two would be free to drift.
+                (actual, ticker),
             )
         if cur.rowcount < 1:
             _log.warning(
@@ -6979,6 +7243,247 @@ def backfill_member_brier(trades: list[dict]) -> tuple[int, int, int]:
     return updated, skipped, errored
 
 
+# Tolerance for "this stored actual_temp already matches the official
+# settlement". settled_temp_f is written as round(actual, 1), so any genuine
+# agreement is exact to within float noise; 0.05 is half a least-significant
+# digit, comfortably below the ~1.0°F METAR-vs-CLI divergence that is the
+# SMALLEST real corruption this repairs (see backfill_member_actual_temp).
+_MEMBER_ACTUAL_TEMP_TOLERANCE_F = 0.05
+
+
+def backfill_member_actual_temp(
+    trades: list[dict],
+) -> tuple[int, int, int, int, int]:
+    """One-off repair pass for ensemble_member_scores.actual_temp rows that
+    still hold a pre-2026-08-10 settlement value (batch-68's A13
+    settlement-source audit).
+
+    The defect: actual_temp is a FROZEN COPY of the settlement label, taken
+    by paper._score_ensemble_members() at the moment a trade settles. When
+    audit_settlement()'s daily branch switched from the IEM ASOS raw-METAR
+    proxy to Kalshi's own expiration_value (2026-08-10),
+    backfill_settled_temps_from_kalshi() corrected outcomes.settled_temp_f
+    but nothing re-derived the rows already copied out of it. Measured
+    2026-08-25 against the production DB: 228 of 507 rows disagreed with the
+    official figure -- 100% of every row logged 2026-05-19 through
+    2026-06-28 (the old proxy era, mean -3.8°F, extremes ±30°F), plus 14
+    rows logged 2026-08-07/09 that are off by exactly the known ~1.0°F
+    METAR-vs-CLI divergence. Every row logged 2026-08-10 or later already
+    matches.
+
+    Why it matters: actual_temp is the `actual` half of
+    get_dynamic_station_bias(), which _get_combined_station_bias() blends
+    into the live forecast before any probability is computed. All eight
+    city/var cells above that function's min_samples=10 floor were wrong at
+    audit time, the worst by 14.3°F WITH THE SIGN FLIPPED (OklahomaCity max
+    read +7.27 where the official data says -7.06). Today's live distortion
+    is capped by the 10→50 sample ramp (worst ≈1.4°F, NYC max at n=18), but
+    get_dynamic_station_bias has NO time window, so the bad rows never age
+    out and their weight rises toward 100% as counts approach 50.
+    get_member_accuracy()/get_model_weights() are affected too, but decay --
+    those carry a 60-day logged_at window. get_ensemble_member_accuracy()
+    does NOT (opus review): it reads actual_temp with no var filter and no
+    window at all, so for that consumer the corruption is permanent too.
+
+    NOT affected, and deliberately not touched: implied_prob/brier. Those
+    derive from predicted_temp and the market's YES/NO outcome
+    (backfill_member_brier's own arithmetic), never from actual_temp, so
+    the Brier/quarantine path was never corrupted by this.
+
+    ensemble_member_scores has no ticker column (see log_member_score()'s
+    docstring), so this takes paper trade records as a param and joins
+    ticker → outcomes_valid.settled_temp_f exactly the way
+    backfill_member_brier() above and paper._score_ensemble_members() do
+    live. Hourly/monthly tickers fall out for free: they write
+    settled_value, never settled_temp_f, so the join yields NULL and the
+    trade is skipped.
+
+    Safe to re-run. The UPDATE only touches rows whose stored value differs
+    from the official one by more than _MEMBER_ACTUAL_TEMP_TOLERANCE_F, so a
+    second pass over already-repaired history matches zero rows and reports
+    0 updated rather than re-writing identical values.
+
+    Returns (updated, skipped, conflicts, errored, unreachable):
+      - updated: ensemble_member_scores rows whose actual_temp was corrected
+        (all models for a given city/target_date/var, since actual_temp is
+        model-independent -- unlike backfill_member_brier's per-model write)
+      - skipped: trades legitimately not eligible -- unsettled, no resolvable
+        ticker/city/target_date, a ticker whose var cannot be read off its own
+        prefix, or no settled_temp_f (hourly/monthly/not yet audited)
+      - conflicts: trades naming a (city, target_date, var) cell this pass has
+        ALREADY written a DIFFERENT official value into. Within one event this
+        cannot happen -- expiration_value is uniform across every strike, so
+        two tickers sharing a cell share a settled_temp_f, and 0 of 313
+        production cells were ambiguous when measured. ACROSS events it is
+        exactly what the KXHOLIDAYTMIN var bug above would have produced, so
+        the guard is not merely defensive; a non-zero count here means the
+        var derivation is wrong somewhere and should be investigated, not
+        ignored.
+      - errored: trades that RAISED while being processed. Counted separately
+        from `skipped` (opus review, MEDIUM): folding them together made a
+        systematic failure -- a schema change, a locked DB, a malformed trade
+        shape -- indistinguishable from routine ineligibility in the CLI's own
+        summary line, which reads entirely reassuringly.
+      - unreachable: ensemble_member_scores rows with a non-NULL actual_temp
+        but a NULL var, which this pass structurally cannot match. 49 at audit
+        time, 39 of them still holding a wrong value. Run
+        backfill_ensemble_member_scores_var() first to make them reachable.
+    """
+    from weather_markets import _var_from_ticker_prefix
+
+    init_db()
+    updated = 0
+    skipped = 0
+    conflicts = 0
+    errored = 0
+    # (city, target_date, var) -> official value already WRITTEN this pass.
+    applied: dict[tuple[str, str, str], float] = {}
+    with _conn() as con:
+        for trade in trades:
+            try:
+                if not trade.get("settled"):
+                    skipped += 1
+                    continue
+                ticker = trade.get("ticker", "")
+                city = trade.get("city")
+                target_date = trade.get("target_date")
+                if not ticker or not city or not target_date:
+                    skipped += 1
+                    continue
+                # Ticker-derived ONLY, and fail closed -- deliberately NOT
+                # backfill_member_brier's `trade.get("var") or ... or "max"`
+                # (opus review, HIGH). Two reasons the trade's own var field
+                # cannot be trusted here, and why the "max" default is worse
+                # than useless:
+                #
+                # 1. trade["var"] comes from weather_markets.
+                #    _daily_var_from_series(), which is
+                #    `_var_from_ticker_prefix(series) or "max"`. For
+                #    KXHOLIDAYTMIN -- a real per-city daily MINIMUM series in
+                #    KNOWN_WEATHER_SERIES -- there is no "LOW" substring, so
+                #    it returns "max" (verified live 2026-08-25). The daily
+                #    minimum is then labelled max.
+                # 2. This UPDATE has no ticker and no model constraint, so a
+                #    wrong var writes that minimum into EVERY row of the
+                #    city/date/max cell -- including rows a normal KXHIGH*
+                #    ladder created for the same day. That is a ~20-30F
+                #    sign-flipped error injected straight into
+                #    get_dynamic_station_bias -> the live forecast correction.
+                #    The `applied` conflict guard below only downgrades that
+                #    from silent corruption to a coin flip plus a warning,
+                #    since whichever trade is seen first has already written.
+                #
+                # Failing closed costs nothing real: every family whose ticker
+                # lacks HIGH/LOW (hourly, monthly rain/snow, holiday) writes
+                # settled_value rather than settled_temp_f, so those trades
+                # are skipped by the join below regardless.
+                # _daily_var_from_series's own `or "max"` default is the
+                # upstream bug and has its own backlog entry.
+                var = _var_from_ticker_prefix(ticker.upper())
+                if var is None:
+                    skipped += 1
+                    continue
+                row = con.execute(
+                    "SELECT settled_temp_f FROM outcomes_valid WHERE ticker = ?",
+                    (ticker,),
+                ).fetchone()
+                if row is None or row[0] is None:
+                    skipped += 1
+                    continue
+                official = float(row[0])
+
+                key = (city, target_date, var)
+                prior = applied.get(key)
+                if (
+                    prior is not None
+                    and abs(prior - official) > _MEMBER_ACTUAL_TEMP_TOLERANCE_F
+                ):
+                    conflicts += 1
+                    # "resolved to", not "written": the cell may already have
+                    # held the correct value, in which case that trade's
+                    # UPDATE matched zero rows and nothing was written (opus
+                    # review round 3, MEDIUM -- the previous wording asserted
+                    # a write that had not happened, and main.py escalated it
+                    # in red as evidence of a var-derivation bug).
+                    #
+                    # The guard itself is deliberately UNCHANGED: two tickers
+                    # claiming one (city, target_date, var) cell with
+                    # different official settled temperatures is an anomaly
+                    # either way -- exactly the KXHOLIDAYTMIN signature -- and
+                    # letting the second one through would restore the
+                    # coin-flip this guard exists to prevent. Refusing both
+                    # and reporting is the safe resolution, so the reviewer's
+                    # suggested `if cur.rowcount:` narrowing is NOT applied.
+                    _log.warning(
+                        "backfill_member_actual_temp: %s wants %.2f for "
+                        "%s/%s/%s but this pass already resolved that cell to "
+                        "%.2f -- skipping rather than overwriting",
+                        ticker,
+                        official,
+                        city,
+                        target_date,
+                        var,
+                        prior,
+                    )
+                    continue
+
+                cur = con.execute(
+                    "UPDATE ensemble_member_scores SET actual_temp = ? "
+                    "WHERE city = ? AND target_date = ? AND var = ? "
+                    "AND actual_temp IS NOT NULL "
+                    "AND ABS(actual_temp - ?) > ?",
+                    (
+                        official,
+                        city,
+                        target_date,
+                        var,
+                        official,
+                        _MEMBER_ACTUAL_TEMP_TOLERANCE_F,
+                    ),
+                )
+                updated += cur.rowcount
+                # Recorded AFTER a successful UPDATE, and with setdefault
+                # rather than assignment (opus review, LOW). Writing it before
+                # the execute meant a raising UPDATE still seeded `applied`,
+                # so a later trade carrying a genuinely different official
+                # value would be counted as a conflict against a value that
+                # was never written, leaving a repairable cell corrupt.
+                # setdefault keeps the FIRST written value as the comparison
+                # baseline: with plain assignment, a chain of officials each
+                # within tolerance of its predecessor could drift arbitrarily
+                # far from what is actually on disk without ever tripping the
+                # guard.
+                applied.setdefault(key, official)
+            except Exception as exc:
+                errored += 1
+                _log.warning(
+                    "backfill_member_actual_temp: errored on trade %s: %s",
+                    trade.get("ticker", "?"),
+                    exc,
+                )
+
+    # Rows this pass can never reach (opus review, MEDIUM). The UPDATE matches
+    # `var = ?`, and SQL `var = 'max'` is NULL -- falsy -- for a NULL var, so
+    # every ensemble_member_scores row logged before the v34->v35 var column
+    # existed is structurally invisible here. Those rows are NOT inert:
+    # get_ensemble_member_accuracy() reads actual_temp with no var filter AND
+    # no logged_at window at all, so they never age out. Reported so an
+    # operator cannot read "N corrected" as a clean bill of health for the
+    # table -- backfill_ensemble_member_scores_var() is the pass that makes
+    # them reachable, and should be run first.
+    unreachable = 0
+    try:
+        with _conn() as con:
+            _row = con.execute(
+                "SELECT COUNT(*) FROM ensemble_member_scores "
+                "WHERE actual_temp IS NOT NULL AND var IS NULL"
+            ).fetchone()
+        unreachable = _row[0] if _row else 0
+    except Exception as exc:
+        _log.warning("backfill_member_actual_temp: unreachable count failed: %s", exc)
+    return updated, skipped, conflicts, errored, unreachable
+
+
 def log_member_score(
     city: str,
     model: str,
@@ -7412,6 +7917,458 @@ def get_dynamic_station_bias(
     except Exception as exc:
         _log.debug("get_dynamic_station_bias(%s): %s", city, exc)
         return 0.0, 0
+
+
+# ── A15a: per-station forecast bias, split by lead ───────────────────────────
+
+# Same floor as A14's Brier panel (BRIER_POLICY_MIN_SAMPLES), aliased rather
+# than re-declared so the two panels can never drift apart silently. Below it
+# every statistic is withheld -- see _station_bias_stats().
+STATION_BIAS_MIN_SAMPLES = BRIER_POLICY_MIN_SAMPLES
+
+# TWO-sided 95% critical value, deliberately NOT A14's one-sided
+# BRIER_POLICY_Z (1.6449). A14 asks a directional question ("is the model
+# better than this benchmark"); this panel asks whether a station carries any
+# systematic offset AT ALL, in either direction, so the interval that decides
+# its advisory label has to be two-sided or it would flag ~10% of pure-noise
+# stations instead of ~5%.
+STATION_BIAS_Z = 1.959963984540054
+
+# Magnitude gate applied ON TOP of significance, mirroring A14's own
+# BRIER_POLICY_HALF_SIZE_SKILL (opus review, MEDIUM -- this panel had the
+# significance half but not the magnitude half). A station whose residual is
+# +0.15F with low variance is statistically real and operationally
+# meaningless, and the label is this panel's entire output. 0.5F is a
+# defensible floor against inputs that are themselves rounded to 0.1F
+# (outcomes.settled_temp_f is stored as round(x, 1)), and is well under the
+# smallest offset anyone would actually correct a forecast by.
+STATION_BIAS_MIN_MAGNITUDE_F = 0.5
+
+
+def _station_bias_stats(
+    rows: list[sqlite3.Row], min_samples: int, z: float = STATION_BIAS_Z
+) -> dict:
+    """Signed-error summary for one (city, var, lead) group.
+
+    Each row must carry `ticker` and `err` (forecast minus settled, °F).
+
+    `n_markets` counts distinct tickers. get_station_bias_by_lead() dedups to
+    one row per EVENT, so for that caller it always equals `n` -- it is kept
+    for shape-compatibility with _brier_series_stats(), whose caller does not
+    dedup and for which the two genuinely differ. Do not read `n_markets == n`
+    in this panel as evidence that no double-counting occurred (opus review);
+    the guard against that is the event-level dedup itself.
+
+    Sign convention matches get_dynamic_station_bias() and
+    get_regional_recent_bias() exactly: POSITIVE means the model ran WARM
+    (over-predicted), and a corrector would SUBTRACT this from the raw
+    forecast. Getting this backwards would invert the one number this panel
+    exists to publish, so it is pinned by its own test.
+
+    Below `min_samples` every statistic is None and only `n`, `n_markets` and
+    `label` are populated -- structural withholding, the same shape
+    _brier_series_stats() uses: a consumer cannot render a number it was
+    never given, so a thin cell cannot be mistaken for a measurement no
+    matter what the frontend does with the payload.
+
+    `label` is advisory and DISPLAY-ONLY. Nothing in the forecast, sizing,
+    gating or order path reads it -- same convention as
+    _brier_series_stats()'s `policy` and log_prediction()'s gated_edge.
+    Applying a measured offset to the live forecast is a separate, deliberate
+    decision (batch-68 item 2 is explicitly report-only). Vocabulary:
+
+      not measured      -- fewer than min_samples rows; nothing computed
+      no variance       -- every error in the group is bit-identical, so the
+                           interval collapses onto the mean and is undefined
+                           rather than empty. `significant` is None here, not
+                           False: this is maximal consistency, not absence of
+                           signal, and mean_error is still populated. Very
+                           hard to reach on real data (196 of 210 production
+                           errors were distinct when measured, most carrying
+                           5-6 decimals) but not, as an earlier draft of this
+                           docstring claimed, reachable only on synthetic
+                           input
+      no offset detected -- the two-sided interval spans zero; this station
+                           is not distinguishable from unbiased at this lead
+      offset too small to act on
+                        -- the interval excludes zero, so the offset is real,
+                           but it is under STATION_BIAS_MIN_MAGNITUDE_F. Real
+                           and actionable are different questions and this
+                           panel answers both
+      warm bias         -- interval entirely above zero AND past the magnitude
+                           floor (the model over-predicts)
+      cold bias         -- interval entirely below zero AND past the magnitude
+                           floor (the model under-predicts)
+
+    `se` is the standard error of the mean (sample stdev / sqrt(n)), so it
+    needs n >= 2; at n == 1 (only reachable when min_samples <= 1) the mean
+    is still reported but se/ci/label degrade to None/"not measured" rather
+    than dividing by zero.
+    """
+    n = len(rows)
+    n_markets = len({r["ticker"] for r in rows})
+    if n < max(1, min_samples):
+        return {
+            "n": n,
+            "n_markets": n_markets,
+            "mean_error": None,
+            "mae": None,
+            "se": None,
+            "ci_lo": None,
+            "ci_hi": None,
+            "significant": None,
+            "label": "not measured",
+        }
+
+    errs = [float(r["err"]) for r in rows]
+    mean = sum(errs) / n
+    mae = sum(abs(e) for e in errs) / n
+    if n < 2:
+        return {
+            "n": n,
+            "n_markets": n_markets,
+            "mean_error": round(mean, 4),
+            "mae": round(mae, 4),
+            "se": None,
+            "ci_lo": None,
+            "ci_hi": None,
+            "significant": None,
+            "label": "not measured",
+        }
+
+    var = sum((e - mean) ** 2 for e in errs) / (n - 1)
+    se = (var / n) ** 0.5
+    ci_lo = mean - z * se
+    ci_hi = mean + z * se
+    # se == 0 means every error in the group is bit-identical, so the interval
+    # collapses onto the mean and ANY non-zero mean would read as significant
+    # at maximum confidence (opus review, MEDIUM). Real per-day temperature
+    # errors are never identical; a zero sample variance is an artifact of a
+    # synthetic or degenerate group, not evidence. Borrows A14's own
+    # "no variance" verb rather than inventing a new word for it.
+    if se == 0:
+        label = "no variance"
+        # None, not False (opus review round 3): a group of bit-identical
+        # errors is the STRONGEST possible consistency, and reporting it as
+        # significant=False reads as "nothing here". The interval is
+        # undefined, not empty -- mean_error is still populated so the offset
+        # itself stays visible.
+        significant = None
+    elif ci_lo > 0 or ci_hi < 0:
+        # Significant. Now the magnitude gate: an offset can be real and still
+        # too small to be worth correcting a forecast by.
+        if abs(mean) < STATION_BIAS_MIN_MAGNITUDE_F:
+            label = "offset too small to act on"
+            significant = True
+        else:
+            label = "warm bias" if ci_lo > 0 else "cold bias"
+            significant = True
+    else:
+        label = "no offset detected"
+        significant = False
+    return {
+        "n": n,
+        "n_markets": n_markets,
+        "mean_error": round(mean, 4),
+        "mae": round(mae, 4),
+        "se": round(se, 4),
+        "ci_lo": round(ci_lo, 4),
+        "ci_hi": round(ci_hi, 4),
+        # Whether the interval excludes zero -- NOT whether the label is
+        # actionable. "offset too small to act on" is significant=True.
+        "significant": significant,
+        "label": label,
+    }
+
+
+def get_station_bias_by_lead(min_samples: int = STATION_BIAS_MIN_SAMPLES) -> dict:
+    """A15a: mean signed forecast error per station, per variable, per lead.
+
+    Answers "does this city's forecast carry a systematic offset the model
+    has not already removed, and does that offset depend on how far ahead we
+    forecast" -- the free accuracy gain the Weather V3 handoff describes as
+    "subtract it". This function only REPORTS it. Wiring a correction into
+    the live forecast changes trades and is a separate, deliberate decision
+    that needs its own validation pass, so nothing here feeds the forecast,
+    sizing or gating path (batch-68 item 2's explicit constraint).
+
+    Source, and why it is NOT ensemble_member_scores: the Weather V3 handoff
+    claims this is computable from that table today. It is not -- it has
+    neither a days_out column nor a ticker to recover one from, so the lead
+    axis this panel exists to show simply is not in it (verified 2026-08-25,
+    batch-68). This reads `predictions` joined to `outcomes_valid` instead,
+    which carries days_out per row and re-reads the official settlement label
+    live on every call rather than trusting a copy frozen at settlement time
+    -- the exact failure mode batch-68's A13 audit found in
+    ensemble_member_scores.actual_temp (see backfill_member_actual_temp()).
+
+    Conventions lifted from get_regional_recent_bias(), this module's other
+    forecast-error query, so the two can be read against each other:
+      • error = forecast_temp_f - settled_temp_f. POSITIVE = model ran WARM.
+      • var comes from the ticker's own HIGH/LOW substring, NOT the
+        predictions.var column, which is NULL on the majority of historical
+        rows (466 of 563 at audit time). Daily-high and daily-low errors have
+        different sign and magnitude and must never be pooled.
+      • one row per ticker (latest predicted_at wins, ROW_NUMBER dedup) --
+        a ticker can be re-scanned on several days.
+      • joins outcomes_valid, never raw outcomes.
+
+    Excludes method='metar_lockout' rows, and this is load-bearing rather
+    than tidy-up. On a METAR-locked same-day trade, weather_markets.
+    analyze_trade sets forecast_temp to the METAR running extreme SO FAR
+    (comp_temp_f), not to any model forecast -- so its "error" is the gap
+    between an incomplete observation and the finished day, not a forecast
+    error. Measured 2026-08-25 across the rows this query selects:
+    metar_lockout D+0 gives mean -1.60°F with sd 11.14 and a worst case of
+    32.96°F, against sd 2.82 (D+1) and 3.00 (D+0) for the ensemble rows.
+    Pooling them would swamp the signal with a different quantity's noise.
+    (Those same rows DO reach get_dynamic_station_bias's live corrector via
+    ensemble_member_scores' model='blended' rows -- 69 of 151 at audit time
+    -- which is filed as its own backlog entry, not fixed here: changing
+    what the live corrector counts changes live forecasts.)
+
+    'between' is deliberately KEPT, unlike every Brier-quality query in this
+    module. The shared exclusion exists because between-brackets have a
+    structurally different probability-CALIBRATION profile; this statistic is
+    a temperature error in °F, for which a between market's forecast is
+    exactly as valid a sample as an above/below one. Dropping it would
+    discard 41 of the 209 eligible rows (20%) from an already-thin panel for
+    a reason that does not apply here. (An earlier draft said "111 of 312,
+    36%" -- opus-review-corrected: those were the counts BEFORE the
+    metar_lockout filter this same query applies, so they roughly doubled the
+    real share.) The gate-coupled shadow-only families
+    are still excluded, for continuity with the rest of the module -- though
+    that half is provably a no-op here, since rain/snow/hurricane/hourly rows
+    write settled_value and never settled_temp_f, so the `settled_temp_f IS
+    NOT NULL` filter has already removed them.
+
+    Returns {"min_samples", "confidence", "sign_convention", "leads",
+    "stations", "n_days_out_null", "definitions", "caveats"}. Each station
+    entry is {"city", "var", "cells": [...], "pooled": {...}} where every
+    cell and the pooled entry is shaped by _station_bias_stats(). `pooled`
+    aggregates that station's leads -- which is the directly comparable
+    figure to get_dynamic_station_bias(), since that function has no lead
+    split of its own.
+    """
+    init_db()
+    # _excluded_brier_condition_types() minus 'between' -- see the docstring.
+    # Guarded rather than passed straight to _condition_type_not_in_sql(),
+    # which asserts a non-empty set: if every gate-coupled family ever goes
+    # live at once, this difference IS empty and there is nothing to exclude.
+    _excl = _excluded_brier_condition_types() - {"between"}
+    if _excl:
+        cond_clause, cond_params = _condition_type_not_in_sql(_excl)
+    else:
+        cond_clause, cond_params = "1 = 1", []
+
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT elig.ticker, elig.city, elig.days_out, elig.var AS var,
+                   (elig.forecast_temp_f - elig.settled_temp_f) AS err
+            FROM (
+                SELECT p.ticker, p.city, p.market_date, p.days_out,
+                       p.forecast_temp_f, o.settled_temp_f,
+                       CASE
+                           WHEN UPPER(p.ticker) LIKE '%HIGH%' THEN 'max'
+                           WHEN UPPER(p.ticker) LIKE '%LOW%'  THEN 'min'
+                       END AS var,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY p.city, p.market_date,
+                                        CASE
+                                            WHEN UPPER(p.ticker) LIKE '%HIGH%'
+                                                THEN 'max'
+                                            WHEN UPPER(p.ticker) LIKE '%LOW%'
+                                                THEN 'min'
+                                        END
+                           -- p.id DESC makes this a TOTAL order (opus review
+                           -- round 3): predictions has no uniqueness on
+                           -- (ticker, predicted_at) and same-second writes
+                           -- are normal, so the first two keys can still tie.
+                           ORDER BY p.predicted_at DESC, p.ticker DESC,
+                                    p.id DESC
+                       ) AS rn
+                FROM predictions p
+                JOIN outcomes_valid o ON o.ticker = p.ticker
+                -- Every eligibility filter lives INSIDE the subquery, ahead of
+                -- the window function (opus review, LOW). With the range
+                -- guards in the outer WHERE, a single poisoned row that
+                -- happened to win the dedup discarded its whole event, even
+                -- when a perfectly valid sibling row existed.
+                WHERE p.forecast_temp_f IS NOT NULL
+                  AND p.city IS NOT NULL
+                  AND p.market_date IS NOT NULL
+                  AND o.settled_temp_f IS NOT NULL
+                  -- COALESCE, not `!=`: SQLite's `NULL != 'x'` is NULL, i.e.
+                  -- falsy, so a bare inequality would silently drop every row
+                  -- whose method was never recorded. Those rows have unknown
+                  -- provenance but are not known-contaminated, so they are
+                  -- kept rather than discarded.
+                  AND COALESCE(p.method, '') != 'metar_lockout'
+                  -- Range guard, same reasoning as get_model_vs_market_brier's:
+                  -- SQLite stores ±Infinity as a REAL (only NaN is coerced to
+                  -- NULL), and one poisoned row would otherwise reach jsonify()
+                  -- and emit bare `Infinity`, which RFC-8259 forbids and
+                  -- JSON.parse rejects -- killing the panel rather than one
+                  -- cell. ±200°F brackets every temperature either column can
+                  -- validly hold on Earth by a wide margin.
+                  AND p.forecast_temp_f BETWEEN -200 AND 200
+                  AND o.settled_temp_f BETWEEN -200 AND 200
+                  AND {cond_clause}
+            ) elig
+            -- One row per EVENT (city + market_date + var), not per ticker
+            -- (opus review, LOW). outcomes.ticker is a PRIMARY KEY, so a
+            -- per-ticker dedup still counted every strike of one ladder
+            -- separately -- and all strikes of an event share both
+            -- forecast_temp_f and settled_temp_f, so those are identical,
+            -- perfectly correlated observations. Counting k of them shrinks
+            -- se by sqrt(k) and makes the interval-based label over-fire. The
+            -- effect was ~0.5% on the data at audit time (1 duplicated pair in
+            -- 209) but is unbounded by construction, since it grows with how
+            -- many strikes per event the scanner logs. The `p.ticker DESC`
+            -- tiebreaker keeps the choice deterministic when two strikes share
+            -- a predicted_at.
+            WHERE elig.rn = 1
+              AND elig.var IS NOT NULL
+            """,
+            cond_params,
+        ).fetchall()
+
+    # Same bucketing as get_model_vs_market_brier: D+0 and D+1 are the
+    # horizons this bot actually trades, and splitting the long tail per
+    # integer produces a row of "not measured" per distinct days_out instead
+    # of one honest aggregate.
+    def _bucket_of(d: int | None) -> str | None:
+        # A negative horizon is malformed (every writer clamps with
+        # max(0, ...)), so it belongs in NO bucket rather than silently in
+        # D+2+ (opus review round 3). It still reaches `pooled`, exactly like
+        # a NULL horizon -- which is why n_days_out_null counts both.
+        if d is None or d < 0:
+            return None
+        if d == 0:
+            return "D+0"
+        if d == 1:
+            return "D+1"
+        return "D+2+"
+
+    leads = (("D+0", 0), ("D+1", 1), ("D+2+", 2))
+    stations = []
+    for city, var in sorted({(r["city"], r["var"]) for r in rows}):
+        subset = [r for r in rows if r["city"] == city and r["var"] == var]
+        cells = [
+            {
+                "lead": label,
+                # days_out_min, not days_out: it is the LOWEST horizon the
+                # bucket covers, and naming it days_out would collide with the
+                # row-level column whose NULL means "no horizon at all".
+                "days_out_min": days_out_min,
+                **_station_bias_stats(
+                    [r for r in subset if _bucket_of(r["days_out"]) == label],
+                    min_samples,
+                ),
+            }
+            for label, days_out_min in leads
+        ]
+        stations.append(
+            {
+                "city": city,
+                "var": var,
+                "cells": cells,
+                "pooled": _station_bias_stats(subset, min_samples),
+            }
+        )
+
+    return {
+        # The effective floor, not the raw argument -- max(1, ...) is what the
+        # helper actually applies, so echoing the argument would misdescribe a
+        # min_samples=0 call.
+        "min_samples": max(1, min_samples),
+        "confidence": 0.95,
+        "sign_convention": (
+            "positive = the model ran WARM (forecast minus settled); a "
+            "corrector would SUBTRACT this from the raw forecast"
+        ),
+        "leads": [label for label, _ in leads],
+        "stations": stations,
+        # days_out is NULL (or, malformed, negative) for rows logged without a
+        # resolvable market_date. They carry no horizon, so they appear in a
+        # station's `pooled` but in none of its cells. NOTE this count is
+        # GLOBAL, across every station (opus review round 3): the identity is
+        # sum(every cell n) + this == sum(every pooled n) summed over ALL
+        # stations, and does NOT hold per-station.
+        "n_days_out_null": sum(1 for r in rows if _bucket_of(r["days_out"]) is None),
+        "definitions": {
+            "error": (
+                "predictions.forecast_temp_f minus outcomes_valid.settled_temp_f, in °F"
+            ),
+            "forecast": (
+                "the blended forecast recorded at trade entry. It is already "
+                "POST-correction, and THREE corrections are stacked into it "
+                "by weather_markets.analyze_trade: it subtracts "
+                "_get_combined_station_bias() (the static table blended with "
+                "get_dynamic_station_bias()), then adds "
+                "_dew_point_temp_correction() for the four cities in "
+                "_DEW_POINT_SENSITIVE_CITIES only, then adds "
+                "apply_pdo_pna_correction() when the PDO/PNA blend is active. "
+                "So a non-zero value here is the RESIDUAL all three have "
+                "failed to remove, not the raw model's total bias; it must "
+                "not be added on top of the current correction without "
+                "re-deriving that correction from the same rows; and because "
+                "the dew-point term is city-conditional, the residual's "
+                "composition is not the same at every station."
+            ),
+            "settled": (
+                "Kalshi's own expiration_value for the market, written by "
+                "audit_settlement() once status='finalized' -- the literal "
+                "CLI-report figure Kalshi settled on, not a METAR proxy"
+            ),
+            "excluded": (
+                "method='metar_lockout' rows (forecast_temp is an "
+                "observation-so-far, not a forecast); the gate-coupled "
+                "shadow-only condition types; and any ticker whose prefix "
+                "carries neither HIGH nor LOW, which would drop the "
+                "KXHOLIDAYTMAX/KXHOLIDAYTMIN holiday-temperature family -- "
+                "though that one is moot rather than lossy: parse_city_date "
+                "returns (None, None) for a holiday ticker, so "
+                "audit_settlement early-returns and never writes "
+                "settled_temp_f for one, putting them outside this population "
+                "already (verified 2026-08-25; an earlier draft of this text "
+                "wrongly said it 'discards valid daily-high samples'). "
+                "'between' IS kept."
+            ),
+        },
+        "caveats": [
+            # Carried here deliberately so batch 71's A15b rank histogram
+            # inherits it rather than re-deriving it (batch-68 item 2's
+            # explicit instruction).
+            "This is a FIRST-MOMENT diagnostic only: it measures where the "
+            "forecast centre sits relative to the settled value. It says "
+            "nothing about ensemble spread, and a non-zero offset here is "
+            "not evidence about dispersion in either direction.",
+            "Rank-based and spread-error diagnostics can misdiagnose "
+            "reliability, and recent literature argues 'underdispersion' is "
+            "ill-defined when the ensemble mean sits far from climatology -- "
+            "which is exactly the regime a station with a large offset here "
+            "is in. Read this panel before a rank histogram, not after it.",
+            "A per-station-per-lead cell is thin by construction. Cells below "
+            "min_samples report every statistic as null, and a cell that does "
+            "clear the floor still carries a wide interval -- prefer the "
+            "pooled row for any station whose cells are all withheld.",
+            "The population is self-selected: `predictions` holds only markets "
+            "the scanner chose to analyze, on days it ran.",
+            "This panel has NO time window, and the residual it measures is "
+            "relative to whatever get_dynamic_station_bias() returned at the "
+            "moment each forecast was made. Running "
+            "backfill_member_actual_temp() moves that corrector -- by up to "
+            "14.3F with the sign flipped in the worst city/var cell, ~1.4F in "
+            "live effect at audit time -- so rows either side of that repair "
+            "were measured against different correctors and are pooled here "
+            "anyway. Treat a pooled label spanning 2026-08-25 as covering two "
+            "regimes.",
+            "Advisory labels are display-only. Nothing in the forecast, "
+            "sizing, gating or order path reads them.",
+        ],
+    }
 
 
 def get_market_calibration(n_buckets: int = 10) -> dict:

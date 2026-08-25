@@ -1,6 +1,237 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-25 -- found by batch-68's own test run: a real
+  notify.send_system_alert() call raised inside its notify thread during
+  tests. Filed rather than fixed: notify.py is batch-69's file.]
+  A SYSTEM ALERT LONGER THAN 256 CHARACTERS CRASHES THE DESKTOP-TOAST BACKEND
+Priority: Low -- Discord still delivers, and the exception is confined to the
+  notify thread, so no caller is affected. But it silently drops the desktop
+  half of an alert, and it does so specifically for the LONGEST (i.e. most
+  detailed, usually most serious) messages.
+Files: notify.py (send_system_alert / the plyer desktop backend) -- no code
+  changed by this entry.
+
+Problem:
+  notify.py's desktop-notification backend goes through plyer, whose Windows
+  implementation packs the message into a NOTIFYICONDATAW struct with a
+  hard 256-character field. A longer string raises:
+
+    File "plyer/platforms/win/libs/win_api_defs.py", line 93,
+      in get_NOTIFYICONDATAW: notify_data = NOTIFYICONDATAW(*largs)
+    ValueError: string too long (333, maximum length 256)
+
+  It surfaced as a PytestUnhandledThreadExceptionWarning, i.e. it escapes the
+  notify thread uncaught rather than being truncated or logged.
+
+  At least one shipped caller already exceeds the cap comfortably:
+  tracker.audit_settlement's Miami index-mismatch alert body is ~1,499
+  characters. That alert has never fired in production (0 disputed rows), so
+  the hazard has not been observed live -- but it is armed.
+
+  batch-68 kept its own new hourly-parsing-mismatch alert under the cap
+  deliberately (worst-case render measured at 227 characters) rather than add
+  a second instance, and left a comment saying why. That is a workaround at
+  each call site, not a fix.
+
+Why not fixed now:
+  notify.py belongs to batch-69 (INDEX-PANEL-BACKENDS.md, track B), which owns
+  notify/cron/alerts. Editing it from batch-68 would collide.
+
+What it would look like:
+  Truncate in send_system_alert() before handing the message to the desktop
+  backend -- e.g. pass the full text to Discord and a `message[:253] + "..."`
+  to plyer -- so the cap is enforced once, centrally, instead of every caller
+  having to know a Windows struct limit. Wrapping the plyer call in its own
+  try/except so a backend failure can never escape the thread is worth doing
+  in the same pass. Then the Miami alert body can go back to being as long as
+  it wants.
+
+[RESOLVED 2026-08-25 -- batch-68 items 1 and 2] A13 SETTLEMENT-SOURCE AUDIT:
+  EVERY GRADING CONSUMER TRACED; TWO REAL DEFECTS FOUND AND FIXED
+Priority: Info (the audit); the two defects it found were High and Medium
+Files: tracker.py (audit_settlement's hourly branch,
+  backfill_member_actual_temp, get_station_bias_by_lead,
+  _station_bias_stats, _fetch_asos_hour_temp docstring), main.py
+  (cmd_backfill_member_actual_temp), web_app.py (/api/analytics)
+
+Question asked:
+  The Weather V3 additions handoff flagged A13 as "BUILD FIRST, blocks six
+  panels", on the premise that grading might be running off a METAR proxy
+  rather than Kalshi's official settlement. INDEX-PANEL-BACKENDS.md already
+  recorded that framing as stale (audit_settlement's daily branch switched
+  to Kalshi's expiration_value on 2026-08-10), so the remaining work was to
+  confirm that holds EVERYWHERE -- an audit, not a pipeline build.
+
+VERDICT: the primary grading label is clean. Two derived paths were not.
+
+  CLEAN, verified:
+  - outcomes.settled_yes is the label every Brier/calibration/ROC/
+    attribution consumer scores against, in tracker.py, calibration.py,
+    ml_bias.py, backtest.py, main.py and web_app.py. It has exactly one
+    writer (log_outcome) with exactly one caller (sync_outcomes), which
+    reads Kalshi's own market["result"] and only when status=="finalized".
+    No METAR reaches it anywhere.
+  - Settlement is DEFERRED, never taken at market close. sync_outcomes
+    additionally requires >=1h past close_time before accepting a result
+    ("Kalshi may revise"); paper.auto_settle_paper_trades requires >=24h.
+    A grade is never taken against a provisional number.
+  - outcomes.settled_temp_f (daily HIGH/LOW) reads Kalshi's
+    expiration_value. All 320 daily rows in production are populated, 0
+    disputed. Its live re-derivations (EMOS training via
+    get_emos_training_data, get_regional_recent_bias) re-read it on every
+    call and are clean.
+  - settlement_monitor.py's METAR reads (fetch_metar, its
+    fetch_metar_daily_extreme between-branch call, check_metar_lockout) and
+    weather_markets.py's (_compute_persistence_prob, _metar_lock_in) are
+    PRE-settlement trading signals -- early force-close and lock-in
+    decisions -- and never touch a grading label. batch-59's event-date
+    guard on check_city_settlement is present and correct.
+  - The hourly family's settlement source was confirmed against the
+    current Kalshi rules text (via batch-56's live re-read): Miami settles
+    on the Synoptic-sourced Kalshi Weather Index, the other five on The
+    Weather Company. None settles on METAR. That is already its own OPEN
+    entry (see "other 5 hourly cities settle on THE WEATHER COMPANY") and
+    needed no new one.
+  - No regrade of history is required, and every calibration number in
+    batches 65-67 stands: they are all scored against settled_yes.
+
+  DEFECT 1 (High) -- FIXED. ensemble_member_scores.actual_temp is a FROZEN
+  COPY of the settlement label, taken by paper._score_ensemble_members at
+  settlement time. When the daily branch switched off the METAR proxy on
+  2026-08-10, backfill_settled_temps_from_kalshi corrected
+  outcomes.settled_temp_f but nothing re-derived the rows already copied
+  out of it. Measured against the production DB: 228 of 507 rows (45%)
+  disagreed with the official figure -- 100% of every row logged 2026-05-19
+  through 2026-06-28 (mean -3.83F, extremes +-30F; the values are exact
+  whole Celsius readings, i.e. raw METAR obs rather than daily extremes),
+  plus 14 rows logged 2026-08-07/09 off by exactly the known ~1.0F
+  METAR-vs-CLI divergence. Every row from 2026-08-10 onward already
+  matched.
+    Why it mattered: actual_temp is the `actual` half of
+    get_dynamic_station_bias(), which _get_combined_station_bias() blends
+    into the live forecast. All 8 city/var cells above that function's
+    min_samples=10 floor were wrong, the worst by 14.3F WITH THE SIGN
+    FLIPPED (OklahomaCity max read +7.27 where the official data says
+    -7.06); Denver max +10.33 vs +0.21, NYC max +9.51 vs +2.54.
+    Live distortion today was capped by the 10->50 sample ramp (worst
+    ~1.4F, NYC max at n=18) -- but get_dynamic_station_bias has NO time
+    window, so the bad rows never age out and their weight rises toward
+    100% as counts approach 50. get_member_accuracy/get_model_weights were
+    affected too but self-clean via their 60-day window.
+    implied_prob/brier were NOT affected -- they derive from predicted_temp
+    and the market's YES/NO outcome, never from actual_temp, so the Brier/
+    quarantine path was always clean.
+    Shipped: tracker.backfill_member_actual_temp(trades), mirroring
+    backfill_member_brier's join shape, plus `python main.py
+    backfill-member-actual-temp`. Idempotent (only rows differing by more
+    than 0.05F are touched), joins outcomes_valid, refuses to let two
+    tickers write conflicting values into one cell. 14 tests.
+    NOTE: the repair pass itself has NOT been run against the production DB
+    by this batch -- it writes real data, so it is left for the operator to
+    invoke deliberately.
+
+  DEFECT 2 (Medium) -- FIXED. audit_settlement's HOURLY branch derived
+  settled_value from the IEM ASOS raw-METAR archive, on the docstring's
+  stated grounds that "Kalshi has no analogous single-hour expiration_value
+  to read". Live-verified false 2026-08-25: expiration_value is populated
+  on 52,088 of 52,310 finalized markets sampled across all six hourly
+  series, and is uniform across every strike within each of 5,179 sampled
+  events (0 exceptions) -- the same property the daily branch relies on.
+  Miami's is the 2-decimal index figure ('82.76'), the other five are whole
+  degrees from The Weather Company.
+    The proxy was actively wrong, not merely unvalidated. On the 4 hourly
+    rows settled before the fix, METAR implied the OPPOSITE side to Kalshi
+    on 2 of them (KXTEMPCHIH-26AUG2306-T62.99: METAR 62.0 implies NO,
+    Kalshi settled YES on expiration_value 63.00;
+    KXTEMPLAXH-26AUG1405-T69.99: METAR 70.0 implies YES, Kalshi settled NO
+    on 69.00). Hourly strikes sit at .99, so ANY 1F source difference flips
+    the implied side.
+    No grading impact today: outcomes.settled_value and settled_var have
+    ZERO production readers (verified exhaustively across .py/.jsx/.js/
+    .html -- only writes in audit_settlement and assertions in tests). This
+    corrects a column ahead of its first consumer rather than regrading
+    anything.
+    Shipped: the hourly branch now reads expiration_value exactly as the
+    daily branch does; stores round(value, 2) rather than the daily
+    branch's round(value, 1) so Miami's second decimal survives; gained the
+    daily branch's own parsing cross-check (dispute when our
+    condition/threshold parsing disagrees with Kalshi's own figure, clear
+    the dispute when it agrees), which was previously impossible because a
+    disagreement could only have been proxy noise. The Miami index
+    cross-check now compares an independently-fetched index reading against
+    Kalshi's SETTLED index figure rather than against a METAR proxy, and
+    logs the numeric delta -- which is the measurement the open "Miami
+    hourly settlement-instant" entry needs. A parsing mismatch
+    short-circuits before the index check, so the index check's own
+    agreement path can never clear the dispute the parsing check just set.
+    _fetch_asos_hour_temp now has no production callers and is annotated as
+    such rather than deleted (same treatment as _fetch_asos_daily_temp).
+
+  ALSO FOUND, and it turned out to be ALREADY FILED by another session while this batch was in
+  flight: the live station-bias corrector trains on metar_lockout rows whose stored
+  forecast_temp_f is not a forecast. Grep the entry titled "predictions.forecast_temp_f IS
+  WRITTEN WITH AN INSTANTANEOUS METAR TEMPERATURE ON method='metar_lockout' ROWS" -- Priority
+  HIGH, and batch-75 is already scoped for it. A draft duplicate entry filed by this batch was
+  deleted in favour of theirs; what batch-68 adds is recorded as an UPDATE block on that entry.
+  Their diagnosis also CORRECTS this batch's framing: comp_temp_f is the running daily extreme
+  at lock time, not an instantaneous reading -- a hard bound, which is exactly right for the
+  lock decision and exactly wrong as a forecast. They measured the bias at +8.63F (max markets)
+  and -10.42F (min), considerably worse than this batch's own read of it.
+
+  TWO OPUS REVIEW ROUNDS (effort=high, scoped by subsystem) ran against this batch before
+  commit. Every finding was addressed; the two that changed real behaviour:
+    - HIGH (settlement scope): the new parsing-agreement mark_outcome_undisputed() ran before,
+      and unconditionally of, the Miami index cross-check -- so an index dispute set at
+      settlement was silently CLEARED on any later re-audit, because the index only spans ~24h
+      and returns None afterwards. Reproduced by the reviewer. Fixed by splitting flag
+      ownership: the parsing check owns the five non-Miami cities, the index check owns Miami.
+    - HIGH (backfill scope, latent): backfill_member_actual_temp took var from
+      `trade.get("var") or ...`, which for KXHOLIDAYTMIN is "max" (see that entry above), and
+      its UPDATE has no ticker or model constraint -- so one such trade would have written a
+      daily MINIMUM into every daily-MAX row for that city/date. Fixed: var is now ticker-derived
+      only and an unresolvable prefix fails closed.
+  Also fixed from those rounds: _coerce_expiration_value() now guards all four settlement
+  branches against NaN/Infinity/bool (float() accepts all three; NaN stores as NULL, making a
+  row look unsettled AND disputed while the call reports success); the hourly mismatch path
+  alerts instead of only logging, since disputing feeds the hourly rollout gate;
+  get_station_bias_by_lead dedups per EVENT rather than per ticker (strikes of one ladder are
+  identical observations and shrink se by sqrt(k)); its range guards moved inside the subquery
+  so one poisoned row can no longer discard its whole event; _station_bias_stats gained a
+  magnitude gate and a zero-variance guard (a constant-error group otherwise read as
+  significant at maximum confidence); and the backfill now reports `errored` separately from
+  `skipped` plus a count of the var-NULL rows it structurally cannot reach (49 at audit time,
+  39 still wrong -- run backfill-ensemble-var first). One docstring figure was corrected:
+  'between' is 41 of 209 eligible rows (20%), not 111 of 312 (36%) -- the larger pair was
+  measured before the metar_lockout filter the same query applies.
+
+  PROCESS NOTE -- graphify refresh (workflow step 29) deliberately SKIPPED, user-confirmed:
+  graphify.extract() returns the raw AST layer, but the checked-in graphify-out/graph.json is
+  the post-enrichment artifact -- its nodes carry community/community_name/_callable and all
+  22,294 links carry _src/_tgt, none of which extract() emits. A scoped hand-merge (the
+  documented workaround) would therefore inject 1,207 schema-degraded edges and 258 nodes with
+  no community into an artifact every parallel worktree session shares. Same graphify version
+  on both sides (v0.9.48-s2), so this is a layer mismatch, not version churn. A round-trip
+  integrity check on the existing graph.json passed (13,965 nodes / 22,287 edges, edge set
+  identical), so the checked-in artifact is NOT currently corrupt -- it is simply stale for
+  tracker.py/main.py/web_app.py, as it already was before this batch.
+
+Item 2 (A15a) shipped alongside: tracker.get_station_bias_by_lead() +
+  _station_bias_stats(), served in /api/analytics as
+  station_bias_by_lead. Report-only; nothing in the forecast, sizing or
+  gating path reads it. The handoff's claim that this is computable from
+  ensemble_member_scores today is wrong -- that table has neither a
+  days_out column nor a ticker to recover one from -- so it reads
+  predictions joined to outcomes_valid instead, which also re-reads the
+  official label live rather than trusting the frozen copy defect 1 was
+  about. Excludes method='metar_lockout'; KEEPS 'between' (the shared
+  exclusion exists for a probability-calibration mismatch that does not
+  apply to a temperature error, and dropping it would discard 111 of 312
+  eligible rows). Production result at ship time: 6 of 36 station/var rows
+  clear the 10-sample floor, 2 significant (Washington min -2.85F cold,
+  Minneapolis min -1.43F cold); no per-lead cell clears the floor yet, as
+  the batch predicted.
+
 [OPEN 2026-08-25 -- found by the round-3 opus review (effort=high) of
   batch-60's own fix rounds; confirmed pre-existing (present in the
   pre-cascade single-position code too), so filed rather than folded into
@@ -34218,6 +34449,32 @@ Next step (cheap, and it is a measurement not a change):
   settled-sample gate (see the batch-52 opus-review M-1 entry above). If five more cities are
   also mis-referenced, that pooled fit is not "one bad city among five good ones" -- it is six
   for six, which changes the reading of M-1 entirely.
+
+UPDATE 2026-08-25 -- batch-68's A13 settlement-source audit (SETTLEMENT half resolved, MODELLING
+  half still open):
+  The settlement-recording half of this problem is fixed. audit_settlement's hourly branch no
+  longer derives outcomes.settled_value from METAR at all -- it reads Kalshi's own
+  expiration_value, which turns out to exist for hourly markets despite that function's
+  docstring having asserted it does not. Live-verified 2026-08-25: expiration_value is populated
+  on 52,088 of 52,310 finalized markets sampled across all six hourly series and is uniform
+  across every strike within each of 5,179 sampled events. Miami's is the 2-decimal index figure
+  ('82.76'); the other five are whole degrees, consistent with The Weather Company.
+
+  Direct corroboration of THIS entry's claim, from real settlements: on the 4 hourly rows
+  settled before the fix, the METAR proxy implied the OPPOSITE side to Kalshi on 2 of them
+  (KXTEMPCHIH-26AUG2306-T62.99 METAR 62.0 => NO vs Kalshi YES on 63.00;
+  KXTEMPLAXH-26AUG1405-T69.99 METAR 70.0 => YES vs Kalshi NO on 69.00). Hourly strikes sit at
+  .99, so any 1F source difference flips the implied side -- the divergence does not need to be
+  Miami-index-sized to matter here.
+
+  STILL OPEN, unchanged: the MODELLING half. _analyze_hourly_trade still prices all six cities
+  off METAR/CLI-derived station bias (_get_combined_station_bias), and the TWC-vs-METAR
+  divergence this entry asks for has still never been measured. The "next step" experiment
+  above is unchanged and still the right one. What has changed is that a cheaper proxy for it
+  now exists: expiration_value for the 5 TWC cities IS the settled TWC figure, so a
+  TWC-vs-METAR divergence sample can be built from settled markets plus
+  tracker._fetch_asos_hour_temp (kept in the tree for exactly this reason) without needing a
+  live TWC feed or a real-time poll loop at all.
 Open follow-up (not blocking):
   If a Synoptic free-tier key is ever registered, add a SynopticSource implementing the same
   StationSource protocol and re-run get_shadow_report() side by side -- the density gain from
@@ -34388,6 +34645,28 @@ Problem:
   daily-MINIMUM market is analysed as a daily-MAXIMUM one end to end: the
   wrong ensemble variable, and in _metar_lock_in the wrong daily extreme
   fetched ("max" instead of "min") plus the wrong monotonic-safety veto.
+UPDATE 2026-08-25 -- batch-68 found a THIRD downstream consumer, and closed the
+  one path that would have made it destructive:
+  The mislabel does not stop at analysis. condition["var"] is threaded onto the
+  paper trade and paper._score_ensemble_members() logs an
+  ensemble_member_scores row under var="max" whose actual_temp is the day's
+  MINIMUM. get_dynamic_station_bias() reads exactly those rows for the max
+  cell, so once this family trades, a ~20-30F sign-flipped sample lands in the
+  correction _get_combined_station_bias() subtracts from every daily-HIGH
+  forecast for that city -- a live-forecast path, not just shadow calibration.
+  batch-68's new backfill_member_actual_temp() would have amplified it: its
+  UPDATE keys on (city, target_date, var) with no ticker or model constraint,
+  so ONE mislabelled trade would have rewritten every daily-max row for that
+  city/date, including rows a normal KXHIGH* ladder created. That specific
+  amplification is closed -- the backfill now derives var from the ticker alone
+  via _var_from_ticker_prefix and SKIPS a ticker whose prefix cannot resolve
+  one, rather than defaulting to "max" (opus review, HIGH). The upstream
+  _daily_var_from_series default this entry is about is untouched.
+  Worth noting for whoever fixes it: batch-68's fail-closed treatment is the
+  shape to copy. Widening the HIGH/LOW substring test alone is not obviously
+  right -- TMAX/TMIN is a different naming convention, and widening it risks
+  catching unrelated future series.
+
   Verified via an exhaustive sweep of the 120 registered series that
   KXHOLIDAYTMAX/TMIN are the only two None-yielding families that reach the
   above/below branch at all; every other None family (rain, snow, hourly,
@@ -35177,6 +35456,30 @@ Files: trade_cycle.py (~920, "forecast_temp_f": analysis.get("forecast_temp")
   block, ~13870), tracker.py (get_regional_recent_bias ~8797, the one query
   that joins forecast_temp_f to settled_temp_f with no method filter),
   sigma_audit.py (diagnostic reader)
+
+UPDATE 2026-08-25 -- batch-68 (A13 settlement-source audit) independently hit this while tracing
+  what get_dynamic_station_bias trains on, and filed a duplicate entry that has since been deleted
+  in favour of this one. Three things it adds:
+
+  1. SHARE OF THE CORRUPTED POPULATION, measured: 69 of the 151 model='blended' rows in
+     ensemble_member_scores (46%) trace back to a metar_lockout trade. That is the fraction of
+     get_dynamic_station_bias's PREFERRED row set that is not a forecast at all.
+  2. THE Files LIST ABOVE IS NOW ONE SHORT. It says get_regional_recent_bias is "the one query that
+     joins forecast_temp_f to settled_temp_f with no method filter". batch-68 added a second such
+     join, tracker.get_station_bias_by_lead() (the A15a panel) -- but WITH the filter: it excludes
+     method='metar_lockout' explicitly, and its docstring records why. So the panel is unaffected
+     by this bug, and is the natural place to validate a fix from.
+  3. A CLEAN COMPARISON EXISTS NOW. Because that panel measures the same quantity
+     (forecast_temp_f - settled_temp_f, per city/var/lead) over the UNCONTAMINATED subset, whoever
+     fixes this can diff the corrected get_dynamic_station_bias against it rather than having to
+     trust the corrected number on its own. batch-68 measured the panel's uncontaminated D+0/D+1
+     residuals at mostly within +-1F, against the +8.63/-10.42F this entry reports for lockout rows.
+
+  Note also that batch-68's separate ensemble_member_scores.actual_temp repair
+  (backfill_member_actual_temp, see "A13 SETTLEMENT-SOURCE AUDIT") fixes the OTHER half of the same
+  table's corruption -- the `actual` column, frozen from a pre-2026-08-10 METAR proxy. The two are
+  independent: that one is the label, this one is the prediction. Both were present at audit time,
+  and fixing either alone still leaves get_dynamic_station_bias training on bad pairs.
 
 Problem:
   On rows where analyze_trade took the METAR lock-in path

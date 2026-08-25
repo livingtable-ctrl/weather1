@@ -3,7 +3,7 @@
 > ## ⚠️ Completion status — read before picking up ANY batch file
 >
 > **As of 2026-08-25, master `a9d8a6d8` + batch 63.** This directory holds 66 batch
-> files and **~47 are already implemented and merged.** (The file count read "60" until 2026-08-25; it was stale — recounted from disk, not incremented.) Nothing inside an
+> files and **~48 are already implemented and merged.** (The file count read "60" until 2026-08-25; it was stale — recounted from disk, not incremented.) Nothing inside an
 > individual `batch-NN.md` says so — they are frozen handoffs, not living
 > documents.
 >
@@ -14,7 +14,8 @@
 > | **56-63** | ✅ **DONE** |
 > | **53, 54** | ⏸ **Deferred** — [INDEX-ROADMAP.md](INDEX-ROADMAP.md). 53 waits for the calibration cluster's slot (its replay experiment may run any idle day); 54 is optional/no-deadline. **Correction:** an earlier version of this row said 54 and 55 collide with 56's `weather_markets.py` registry region — they do not. Batch 56 shipped as a standalone `nearby_station_obs.py` and never touched `weather_markets.py`. |
 > | **55** | 🚫 **DECLINED 2026-08-25** — design batch, user go/no-go answered **no**; zero production code changed. Full reasoning in `backlog.txt`, entry "BATCH-55: KXAVGT WEEKLY AVERAGE-TEMPERATURE CONSECUTIVE-DAY STREAK MARKETS -- DECLINED". Short version: the family is eight days old, 53 of 55 brackets in its only completed week settled at ~1¢/~99¢, the book has no exit liquidity, and its settlement source (The Weather Company dailies) is not readable from this repo. Do not re-pick it up without re-running the four re-check questions in that entry. |
-> | **64-74** | 🟢 **READY** — [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md). Start with 64 (decaying sample clock); 66 is the go/no-go gating 72-74. |
+> | **68** | ✅ **DONE 2026-08-25** — A13 settlement-source audit + A15a station bias. **Verdict: the primary grading label is clean** — `outcomes.settled_yes` is Kalshi's own `result`, single writer, never accepted until `status="finalized"` and ≥1h past close. **No regrade; batches 65-67's numbers stand.** The audit did find and fix two derived-path defects: a stale frozen copy of the label in `ensemble_member_scores.actual_temp` (228 of 507 rows) feeding the live bias corrector, and the hourly branch reading a METAR proxy where Kalshi's `expiration_value` was available all along. **Batch 74 (A9) inherits one rule:** METAR is a legitimate pre-settlement *trading signal* but is NOT a settlement source for any family this bot trades — not even the hourly ones. |
+> | **64-67, 69-74** | 🟢 **READY** — [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md). Start with 64 (decaying sample clock); 66 is the go/no-go gating 72-74. |
 > | **75** | 🟢 **READY** — standalone, no index file. Filed 2026-08-25 from batch-53's replay fallout: the METAR lock's *running* daily extreme is persisted as `forecast_temp_f` and reaches `get_dynamic_station_bias` via `ensemble_member_scores`' `model='blended'` rows, so it adjusts live forecasts. Backlog entry is Priority **HIGH**. Opens with two `AskUserQuestion` decisions; includes a schema migration. |
 >
 > **Two traps this table exists to prevent, both hit for real on 2026-08-25:**

@@ -635,6 +635,12 @@ def _build_app(client):
                 # settled rows) via the multiday_predictions view. Serving both
                 # would put two different "skill vs market" figures on one page.
                 "get_model_vs_market_brier",
+                # A15a (batch-68). Deliberately distinct from the
+                # get_dynamic_station_bias() value the forecast path consumes:
+                # this one splits by lead, re-reads the settlement label live
+                # instead of trusting ensemble_member_scores' frozen copy, and
+                # is report-only.
+                "get_station_bias_by_lead",
                 "get_model_brier_scores",
                 "get_optimal_threshold",
                 "get_analysis_bias",

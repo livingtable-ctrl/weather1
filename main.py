@@ -9483,6 +9483,72 @@ def cmd_backfill_member_brier() -> None:
         )
 
 
+def cmd_backfill_member_actual_temp() -> None:
+    """One-off repair pass rewriting ensemble_member_scores.actual_temp from
+    the official Kalshi settlement figure (batch-68's A13 audit).
+
+    actual_temp is a frozen copy of outcomes.settled_temp_f taken at
+    settlement time. When audit_settlement()'s daily branch switched off the
+    IEM ASOS raw-METAR proxy (2026-08-10), backfill-settled-temps corrected
+    outcomes but nothing re-derived the rows already copied out of it —
+    measured 2026-08-25, 228 of 507 rows still disagreed with the official
+    figure, and those rows feed get_dynamic_station_bias() → the live
+    forecast bias correction. Safe to re-run: only rows that actually differ
+    are touched, so a second pass reports 0 updated.
+
+    Run `backfill-ensemble-var` FIRST: rows with a NULL var cannot be matched
+    by this pass at all, and it reports how many are in that state."""
+    from paper import get_all_trades
+    from tracker import backfill_member_actual_temp
+
+    print("Repairing ensemble_member_scores.actual_temp from official settlements…")
+    trades = get_all_trades()
+    updated, skipped, conflicts, errored, unreachable = backfill_member_actual_temp(
+        trades
+    )
+    print(f"\nDone — {updated} row(s) corrected.")
+    if skipped:
+        print(
+            yellow(
+                f"  {skipped} trade(s) skipped — unsettled, unresolvable ticker/"
+                "city/date, a ticker whose var can't be read off its own prefix, "
+                "or no settled_temp_f (hourly/monthly rows write settled_value "
+                "instead and are correctly excluded)."
+            )
+        )
+    if errored:
+        # red, not yellow, and worded as a failure: these are exceptions, not
+        # expected exclusions. Folding them into `skipped` above would let a
+        # schema change or a locked DB read as routine ineligibility.
+        print(
+            red(
+                f"  {errored} trade(s) RAISED while being processed and were not "
+                "applied — this is a failure, not an expected exclusion. Check the "
+                "log for the exception before trusting the corrected count."
+            )
+        )
+    if conflicts:
+        print(
+            red(
+                f"  {conflicts} trade(s) named a city/date/var cell already given a "
+                "DIFFERENT official value this pass — skipped rather than "
+                "overwritten. Two strikes of one event always share a settled "
+                "value, so a non-zero count here means a var was derived wrongly "
+                "somewhere; investigate before trusting the result."
+            )
+        )
+    if unreachable:
+        print(
+            yellow(
+                f"  {unreachable} row(s) have actual_temp but a NULL var and are "
+                "structurally unreachable by this pass — they are NOT covered by "
+                "the corrected count above. get_ensemble_member_accuracy() reads "
+                "them with no var filter and no time window, so they never age "
+                "out. Run `backfill-ensemble-var` and then re-run this."
+            )
+        )
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -12939,6 +13005,8 @@ def main():
         cmd_backfill_ensemble_var()
     elif cmd in ("backfill-member-brier", "backfill_member_brier"):
         cmd_backfill_member_brier()
+    elif cmd in ("backfill-member-actual-temp", "backfill_member_actual_temp"):
+        cmd_backfill_member_actual_temp()
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":
