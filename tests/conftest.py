@@ -998,6 +998,29 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
         tmp_path / "miami_index_state.json",
     )
 
+    # alerts._HALT_TRANSITION_PATH -- _cmd_cron_body() calls
+    # alerts.check_halt_transition() unconditionally every cycle for the
+    # anomaly/daily-loss/drawdown halts (cron.py:1757, 1852, 1956) plus the
+    # fee/schedule watchers (cron.py:910, 1018), and it PERSISTS on every
+    # observed change. Unisolated, a test cycle rewrote the real main-clone
+    # data/.halt_transitions.json (observed live 2026-08-25, rewritten
+    # twice in seven minutes with no cron cycle in between).
+    #
+    # This is worse than a stale-output leak: the file is the false->true
+    # edge tracker that makes a risk halt alert ONCE per engagement. A test
+    # write flipping a halt_type to False makes the next real cycle
+    # re-alert on an already-known halt; flipping it to True makes a
+    # genuine NEW halt's alert get swallowed as a duplicate and never
+    # delivered. alerts.rollback_halt_transition() reads the same module
+    # global, so patching the attribute covers both.
+    import alerts as _alerts
+
+    monkeypatch.setattr(
+        _alerts,
+        "_HALT_TRANSITION_PATH",
+        tmp_path / ".halt_transitions.json",
+    )
+
 
 def pytest_sessionfinish(session, exitstatus):
     """Clear weather_markets' forecast/ensemble disk-cache pending-write
