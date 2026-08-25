@@ -1034,7 +1034,16 @@ class TestCmdTodayPlacementGates:
 
         monkeypatch.setattr("paper.place_paper_order", _fake_place)
 
-        main.cmd_today(MagicMock())
+        # Batch-60 item 3: cmd_today now re-fetches a fresh quote for the #1
+        # pick before pricing it. A bare MagicMock client would return a
+        # MagicMock "market" whose every price field float()s to 1.0, so the
+        # booking price would silently become $1.00 in every test here --
+        # return the same market instead, the realistic outcome of a
+        # re-fetch on an unchanged book.
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = market
+
+        main.cmd_today(mock_client)
         return capsys.readouterr().out, place_calls
 
     def test_refuses_when_trading_paused(self, monkeypatch, capsys):
@@ -1286,7 +1295,12 @@ class TestCmdTodayPlacementGates:
         monkeypatch.setattr("builtins.input", lambda *a, **k: "P")
         monkeypatch.setattr("paper.place_paper_order", lambda *a, **k: {"id": 1})
 
-        main.cmd_today(MagicMock())
+        # Batch-60 item 3: see _run's own note -- the #1 pick's quote is
+        # re-fetched, so the client must return a real market dict.
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = best
+
+        main.cmd_today(mock_client)
         out = capsys.readouterr().out
         assert "Position limit check failed" in out
         assert "Also consider" in out

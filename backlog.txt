@@ -1,6 +1,158 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-25 -- found by the round-3 opus review (effort=high) of
+  batch-60's own fix rounds; confirmed pre-existing (present in the
+  pre-cascade single-position code too), so filed rather than folded into
+  batch-60.] record_live_partial_exit'S `>=` GUARD LETS AN EXACT-MATCH
+  PARTIAL WRITE fill_quantity=0, WHICH RESURRECTS THE POSITION AT ITS
+  ORIGINAL SIZE
+Priority: Medium -- LIVE_TRADING_ENABLED is unset so nothing reaches it
+  today, but the failure mode is a phantom live position reappearing at a
+  size it never had, which is the same class batch-60 item 4 exists to
+  prevent.
+Files: execution_log.py (record_live_partial_exit, ~1391-1396),
+  order_executor.py (_get_live_open_positions, ~2033), main.py
+  (cmd_order's exit cascade), order_executor.py (_exit_live_position)
+
+Problem:
+  record_live_partial_exit guards its UPDATE with
+  `COALESCE(fill_quantity, quantity) >= filled_count`. When the two are
+  EQUAL the guard passes and the UPDATE writes
+  fill_quantity = current - filled_count = 0, leaving settled_at NULL.
+  _get_live_open_positions then reads `fill_quantity or quantity` -- and 0
+  is falsy, so it falls back to `quantity`, resurfacing the position at its
+  ORIGINAL size with zero real contracts behind it.
+
+  The function's own docstring already worries about exactly this ("a
+  negative or exactly-zero fill_quantity is falsy, which
+  _get_live_open_positions()'s `fill_quantity or quantity` fallback would
+  silently misread") but the guard it chose only excludes the NEGATIVE
+  case, not the zero one.
+
+  Reachable with a stale snapshot: caller holds quantity=20, a concurrent
+  writer reduces the real row to 3, caller's remaining fill is 3.
+  record_live_exit_fill sees 3 < 20 and takes the PARTIAL branch;
+  record_live_partial_exit sees 3 >= 3, passes, writes 0. Position
+  reappears at 20.
+
+  NOT introduced by batch-60: the same sequence is possible against the
+  pre-cascade single-position code and against round-1's cascade. Flagged
+  here because batch-60's cascade is a caller and the round-3 review
+  surfaced it while reading that path.
+What it would look like:
+  Change the guard to `>`. An exact-match call is a FULL close and belongs
+  in record_live_exit_fill's other branch, so rejecting it here is correct
+  -- record_live_exit_fill would then raise its (now accurately worded)
+  settled-or-reduced RuntimeError, and main.cmd_order's cascade already
+  handles that by re-reading and retrying against the real size, which
+  routes it to the full-close branch. Needs its own check of
+  order_executor._exit_live_position, the OTHER caller, which does not have
+  that retry and would newly see a raise where it previously got a silent
+  wrong write; plus a regression test at the execution_log level
+  (fill_quantity must never be written 0) and one proving the position does
+  not resurface.
+
+[OPEN 2026-08-25 -- found by batch-60's scoped test run, which went red on
+  two tests in a file batch-60 does not touch; confirmed pre-existing, not
+  a batch-60 regression.] TWO HRRR analyze_trade TESTS ARE DATE-DEPENDENT
+  AND NOW FAIL -- tests/test_weather_markets.py
+Priority: Medium -- these are red on master RIGHT NOW, so the file no
+  longer gives a clean signal and any future change touching analyze_trade
+  has to hand-triage two known failures to tell real breakage from noise.
+  No production defect is implied.
+Files: tests/test_weather_markets.py
+  (test_analyze_trade_captures_hrrr_forecast_mean_same_day,
+  test_analyze_trade_survives_hrrr_fetch_exception, ~2251)
+
+Problem:
+  Both tests build their enriched dict with a TODAY-relative date
+  (datetime.now(ZoneInfo("America/New_York")).date()) but a hardcoded
+  ticker, KXHIGHNY-26APR09-T72, whose embedded date is 2026-04-09. They
+  assert analyze_trade() returns non-None; it now returns None, so both
+  fail on the shared "a HRRR fetch exception must not abort the trade"
+  assertion.
+
+  Confirmed pre-existing, not caused by batch-60:
+  - Ran the whole file at the clean base commit b67fe864 in a throwaway
+    detached worktree, with none of batch-60's changes present: identical
+    2 failed / 345 passed.
+  - batch-60's only edit to weather_markets.py is a single additive hunk at
+    line 6405 (the new max_days_out_for_ticker), 50 added lines and ZERO
+    deletions, ~6600 lines above analyze_trade. It cannot reach these.
+  - The same file passed clean in a full scoped run earlier the same
+    session, on 2026-08-24. The date rolled to 2026-08-25 mid-session and
+    they went red.
+
+  Same run also showed the file's pass/skip split moving between two runs
+  of identical code (345 passed/3 skipped vs 344/4). That is the same root
+  cause: four sites in this file call pytest.skip() at RUNTIME when
+  analyze_trade returns None (lines ~1205, ~4271, ~4303, ~4347), so any
+  date- or time-of-day-sensitive gate silently converts a real assertion
+  into a skip rather than a failure.
+What it would look like:
+  Derive the ticker's embedded date from the same `today` the enriched dict
+  uses (batch-60 did exactly this to tests/test_trading_gates.py's
+  _fake_analysis_triple for the same class of problem -- with a fixed
+  ASCII month table, not strftime("%b"), which is locale-dependent).
+  Separately, the four runtime pytest.skip() sites deserve their own look:
+  a test that silently downgrades to a skip when its subject returns None
+  proves nothing on the day that happens, and hid part of this.
+
+[OPEN 2026-08-25 -- found by the round-1 opus review (effort=high) of
+  batch-60 item 4, finding F9; scoped out per step 27's same-payload test
+  rather than fixed inline, since it lives in a different function with a
+  different trigger and needs its own signature change.]
+  _settle_recovered_exit_order STILL CLOSES ONLY THE OLDEST MATCHING LIVE
+  POSITION -- THE ASYNC TWIN OF THE cmd_order SELL CASCADE BATCH-60 FIXED
+Priority: Low today (LIVE_TRADING_ENABLED unset, so no live sell can reach
+  this at all), but it is a real-order bookkeeping path and inherits the
+  exact severity of the bug batch-60 item 4 just closed on the synchronous
+  route.
+Files: order_executor.py (_settle_recovered_exit_order, ~381-450;
+  _recover_pending_orders, its only caller), main.py (cmd_order's
+  OrderStatusUnknownError branch, ~6050), execution_log.py
+  (record_live_exit_fill, set_exit_row_attribution)
+
+Problem:
+  batch-60 item 4 replaced cmd_order's "hand the whole filled count to the
+  oldest matching tracked position" logic with a FIFO cascade across every
+  match, because record_live_exit_fill clamps the count to that one
+  position's quantity -- so selling 10 against positions of 4 and 6 fully
+  closed the 4 and left the 6 marked open in execution_log with no
+  contracts behind them on the exchange.
+
+  The recovery route still does exactly the old thing. If
+  client.place_order raises OrderStatusUnknownError, cmd_order logs the row
+  status='unknown' and RE-RAISES (main.py:6063), so the cascade block
+  further down never runs at all. _recover_pending_orders later resolves
+  that row and calls _settle_recovered_exit_order, which reads the single
+  exit_row["closes_position_id"] and passes the whole fill_count to
+  record_live_exit_fill against that one position (order_executor.py:414,
+  ~435-450) -- same clamp, same phantom-open remainder, just asynchronous.
+
+  Verified 2026-08-25 by reading both functions directly at
+  b67fe864+batch-60, not inferred from the round-1 finding's wording.
+
+  Sharpened by batch-60 itself: closes_position_id on that row is the
+  PRE-PLACEMENT guess (the oldest match, resolved before the order is sent
+  so a crash mid-flight still leaves a reconcilable record). On the
+  synchronous route batch-60's new execution_log.set_exit_row_attribution()
+  corrects that pointer to the position the last leg actually came from --
+  but it is called from inside the cascade, which this route never reaches.
+  So recovery reads a pointer that is now known to be provisional, with no
+  marker saying so.
+What it would look like:
+  Give _settle_recovered_exit_order the same oldest-first cascade: re-derive
+  the full match list for (ticker, side) via _get_live_open_positions()
+  rather than trusting the single stored pointer, consume fill_count across
+  it, and reuse set_exit_row_attribution() for the trailing partial exactly
+  as cmd_order now does. Needs its own tests (the recovery path has no
+  multi-position coverage today) and its own review -- it returns a
+  retry-or-not boolean that _recover_pending_orders depends on for whether
+  to revert the row to 'unknown', so a partially-completed cascade has a
+  retry-semantics question the synchronous path does not have.
+
 [RESOLVED 2026-08-23 -- found while doing a line-by-line read of a real
   cron.log run] LEAKED TEST FIXTURE PLACED A REAL PAPER TRADE AGAINST A
   MONTHS-EXPIRED MARKET (KXHIGHNY-26APR17-B70)
@@ -135,14 +287,15 @@ Opus review follow-up (effort=high, 2026-08-23): 1 HIGH + 3 MEDIUM + 10 LOW
   clean via the actual pre-commit hook on every changed file (paper.py,
   main.py, and the 6 changed test files).
 
-[OPEN 2026-08-23 -- found by the opus review (effort=high) of the
-  KXHIGHNY-26APR17-B70 stale-target_date guard immediately above this
-  entry; scoped out per step 27's same-payload test rather than fixed
-  inline -- picking a correct upper bound needs the same per-market-family
-  MAX_DAYS_OUT-style research the analysis layer already has (weather_
-  markets.py's HURRICANE_MAX_DAYS_OUT/RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/
-  MAX_DAYS_OUT), not a guessed constant that risks blocking a legitimate
-  long-horizon trade.] place_paper_order()'S NEW STALE-TARGET_DATE GUARD
+[RESOLVED 2026-08-25 (batch-60 item 1) -- originally found by the opus
+  review (effort=high) of the KXHIGHNY-26APR17-B70 stale-target_date guard
+  immediately above this entry; scoped out at the time per step 27's
+  same-payload test rather than fixed inline -- picking a correct upper
+  bound needs the same per-market-family MAX_DAYS_OUT-style research the
+  analysis layer already has (weather_markets.py's HURRICANE_MAX_DAYS_OUT/
+  RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/MAX_DAYS_OUT), not a guessed constant
+  that risks blocking a legitimate long-horizon trade. See resolution
+  below.] place_paper_order()'S NEW STALE-TARGET_DATE GUARD
   HAS NO UPPER BOUND
 Priority: Low -- no known real trigger today (hypothetical: a mis-parsed
   ticker with a garbage 2-digit year producing a far-future target_date).
@@ -160,7 +313,99 @@ What it would look like:
   bound in paper.py, which doesn't know which family a given ticker
   belongs to.
 
-[OPEN 2026-08-23 -- found by the same opus review as the entry above.]
+Resolution (2026-08-25, batch-60 item 1):
+  This entry's "what it would look like" was right and the batch-60 handoff
+  prompt's own framing was wrong: the handoff said to "grep for the real
+  max-days-out the scanner already honors (the analysis path has one)".
+  There is no one. analyze_trade's days-out gate uses FOUR ceilings --
+  MAX_DAYS_OUT=5 (daily temp, and the `else` branch every other family
+  falls through to), RAIN_MAX_DAYS_OUT=31, SNOW_MAX_DAYS_OUT=31,
+  HURRICANE_MAX_DAYS_OUT=260. Bounding everything by the obvious-looking
+  MAX_DAYS_OUT would have rejected a legitimate KXHURCTOT paper trade
+  outright: that series' confirmed-live window is ~245 days (open
+  2026-04-01, close 2026-12-02). Exactly the failure this entry warned
+  about, and exactly the shape of
+  [[feedback_validation_bound_sentinel_values]].
+
+  Shipped:
+  - weather_markets.max_days_out_for_ticker(ticker) -- the per-family
+    lookup, built from the same four constants the gate reads and placed
+    beside the family predicates it is built from. Uses the broad
+    is_hurricane_ticker() (this file's documented single source of truth)
+    rather than the three narrow count/next-event/storm-order carve-outs:
+    those are strict substring subsets of it, and the broad form also
+    covers the per-city landfall / KXHURCAT tickers a human operator can
+    type straight into cmd_order, which share the season-length horizon
+    but have no model of their own.
+  - paper.validate_target_date_freshness(ticker, target_date) -- one shared
+    guard bounding BOTH directions, replacing the inline past-only check in
+    place_paper_order. main.cmd_order's live buy calls this same function
+    (see the LIVE cmd_order entry below) rather than carrying a second
+    hand-written copy.
+  - The future bound is family_ceiling + STALE_TARGET_DATE_GRACE_DAYS
+    (8/34/263). The grace is deliberate slack, NOT timezone-skew
+    compensation -- an earlier draft of the comment claimed the latter with
+    the direction backwards, caught by opus review F4 and verified here:
+    all 21 cities in weather_markets._CITY_TZ are west of UTC, so
+    local_today <= utc_today() always and a date measured against
+    utc_today() can only ever read CLOSER than the gate's own figure. A
+    trade that cleared the gate could never trip this bound even at zero
+    grace. The slack is kept for the paths where the date never went
+    through that gate -- cmd_order and the dashboard both accept a raw
+    operator-typed ticker, and the guard's own close_time fallback reads a
+    UTC instant rather than a city-local date.
+  - Fails OPEN to the most permissive ceiling on any lookup failure
+    (import error, or a None ticker whose .upper() raises -- opus review
+    F8). This is a sanity backstop against a mis-parsed date, not a safety
+    gate, so refusing an otherwise-valid trade would be the worse outcome.
+
+  Decision surfaced to the user before implementation (three options:
+  per-family with unknown->MAX_DAYS_OUT, per-family with unknown->260, or a
+  single universal 260). Chose per-family with unknown->MAX_DAYS_OUT, i.e.
+  mirroring analyze_trade's gate exactly.
+
+  Tests: tests/test_batch60_trade_entry_guards.py::TestMaxDaysOutForTicker
+  (13 parametrized families + a not-all-equal positive control, since the
+  parametrized assertions would pass vacuously if the four constants ever
+  held the same value), ::TestValidateTargetDateFreshness (both boundaries
+  per family, the 245-day hurricane sentinel, the same date accepted for
+  hurricane and refused for temp, None/unparseable no-ops, and both
+  fail-open paths), ::TestPlacePaperOrderFutureBound (refusal happens
+  before any ledger write; a normal near-future date still books).
+
+  Drift protection, after opus review F16: the first version of the pin
+  asserted max_days_out_for_ticker == getattr(utils, <name from a map in
+  the test>), which does NOT cover the drift it claimed to -- repointing
+  analyze_trade's own `elif _is_monthly_snow:` branch at a different
+  constant left all 13 parametrized tests green (confirmed by mutation).
+  Replaced with test_gate_branch_wiring_is_exactly_what_the_helper_mirrors,
+  which reads the gate's branch->constant wiring out of the source via AST
+  and requires the helper to agree family by family, plus a positive
+  control proving the reader parses the real source rather than echoing the
+  test's own map. That mutation now fails.
+
+  Verification covering all four batch-60 items (counted fresh at the
+  moment of writing this sentence): 480 tests pass across the 8 files that
+  actually exercise the changed code -- test_batch60_trade_entry_guards,
+  test_trading_gates, test_p1_remaining, test_paper, test_debug_fixes,
+  test_side_aware_entry_price, test_execution_log, test_config. 2:52.
+  ruff/ruff-format/mypy clean via the real pre-commit hook.
+
+  Scoping note, because the first attempt got this wrong: an earlier run
+  used 43 files / 2742 tests, assembled by taking every file that so much
+  as mentions place_paper_order. That is 54% of the entire 5048-test suite
+  and took 35 minutes -- a "scoped" list only in name, against this repo's
+  standing never-run-the-full-suite rule. It found nothing the 8-file set
+  does not (2736 passed, and its only 2 failures were the pre-existing
+  date-dependent HRRR ones filed separately above). The one cross-cutting
+  risk that motivated the breadth -- place_paper_order's new future-side
+  refusal breaking some distant test -- is settled statically instead:
+  every target_date literal any test passes to place_paper_order is in the
+  PAST (2025-04-10 through 2026-07-20), and no test passes a
+  timedelta-based future offset large enough to reach any family's bound.
+
+[RESOLVED 2026-08-25 (batch-60 item 2) -- originally found by the same
+  opus review as the entry above. See resolution below.]
   LIVE cmd_order BUY NEVER VALIDATES target_date FRESHNESS BEFORE PLACING
   A REAL ORDER
 Priority: Low today (LIVE_TRADING_ENABLED unset, this path is dormant),
@@ -181,6 +426,83 @@ Problem:
   call this change touches) needing its own design decision: should the
   live path gain the identical guard, a different one, or rely on
   upstream market-existence checks instead?
+
+Resolution (2026-08-25, batch-60 item 2):
+  Answered "the identical guard" -- one shared
+  paper.validate_target_date_freshness() (see the entry above), called from
+  cmd_order's `if _is_live and action == "buy":` block, not a second
+  hand-written copy. A duplicated guard is how batch-57's exclusion-tuple
+  drift happened. Re-verified before starting that
+  `grep STALE_TARGET_DATE_GRACE_DAYS main.py order_executor.py` still
+  returned nothing, i.e. the gap was real at b67fe864.
+
+  Buy only, deliberately: a sell REDUCES exposure, and blocking an exit on
+  a stale date would be backwards in exactly the way check_position_limits'
+  own buy-only comment already documents for the sibling gate three blocks
+  down.
+
+  The order's target_date derivation is now hoisted to a single
+  _target_date_ord/_target_date_str_ord pair computed once after the
+  analysis block, so the value the guard VALIDATES is provably the value
+  the trade is BOOKED with -- two copies could have drifted into checking
+  one date and recording another. Three sources in priority order:
+  _enriched["_date"], then _analysis["target_date"] (the KXRAIN*M fallback,
+  whose _date is None by design), then the date of _market["close_time"].
+
+  That third fallback exists because of opus review F7, which found the
+  guard blind on exactly the families the new per-family ceiling was built
+  for: both upper sources go dark for monthly rain/snow when analyze_trade
+  gates the market OUT -- which is precisely what it does to a far-future
+  one -- so `order buy KXRAINNYCM-27JUN-5.0 ...`, ~300 days out and far
+  past RAIN_MAX_DAYS_OUT+3, reached the guard as a bare None and would have
+  placed a REAL order unchecked. The daily-temp families the tests exercise
+  hide this: their _enriched["_date"] survives a gated analysis.
+
+  Two bugs the hoist itself caused or exposed, both fixed here:
+  - The hoist initially broke cmd_order's Brier/prediction block, which
+    still referenced the removed `_target_date` local. NameError, silently
+    swallowed by that block's own `except Exception -> _log.warning`, so
+    accuracy tracking for every manual order would have stopped recording
+    with nothing but a log line. Found by a mutation run, not by the suite
+    -- nothing covered that path. Fixed and now covered by
+    test_brier_tracking_receives_the_same_date_the_guard_validated, which
+    asserts the real date OBJECT (not the ISO string) reaches both
+    log_analysis_attempt and log_prediction.
+  - The position-limit check three blocks down re-derived its own date from
+    _enriched["_date"] ALONE, without the rain fallback -- so
+    check_position_limits received None for monthly-rain orders and its
+    city/date, directional, and correlated-group caps were all silently
+    skipped. That contradicted both the fallback's own stated purpose ("so
+    a manual live order gets the same real exposure-cap/correlation
+    grouping key the automated path already has, not a silent None") and
+    check_position_limits' docstring, which claims those caps "are no
+    longer provably skipped for this ticker family". The original fix wired
+    the fallback to the place_paper_order call only and missed the
+    exposure-cap consumer it was written for. Now both read the one hoisted
+    value.
+
+    BEHAVIOUR CHANGE, not a pure bug fix: a manual buy on a family where
+    _enriched["_date"] is None but the analysis/close_time date is real
+    (monthly rain, monthly snow) can now be BLOCKED by caps it previously
+    sailed past. Dormant today -- cmd_order refuses every KXRAIN*M ticker
+    outright while _rain_gates_active() is false, and check_position_limits
+    refuses again behind that -- so it starts biting only when
+    RAIN_TRADING_ENABLED=1. That is the
+    [[feedback_pooled_gate_new_member_blind_spot]] pattern: the day a
+    family graduates it would otherwise inherit an all-clear on caps that
+    had never once been applied to it.
+
+  Tests: tests/test_batch60_trade_entry_guards.py::
+  TestCmdOrderLiveBuyTargetDateGuard (expired and far-future both refused
+  before client.place_order, with a sane-date positive control proving the
+  harness reaches placement at all, so the two assert_not_called checks are
+  measuring the guard rather than a harness that never gets that far; plus
+  the close_time backstop and its in-horizon positive control) and
+  ::TestCmdOrderPositionLimitTargetDate (a KXRAINNYCM buy whose _date is
+  None must still hand the caps a real grouping key; positive control
+  asserts _enriched["_date"] is None so the analysis fallback is provably
+  the only possible source). Every one mutation-tested by reverting the
+  specific line under test.
 
 [RESOLVED 2026-08-24 -- see resolution below.] HURRICANE-NEXT-EVENT TICKERS GET THE WRONG _date FROM
   enrich_with_forecast (SHARED SEASON-REFERENCE SEGMENT, NOT THE REAL
@@ -23308,7 +23630,7 @@ Resolution 2026-08-21: Deliberate no-op, explicit reasoned decision (not a
   actually crosses 0.80, so this dormancy fact stops being something that
   has to be manually re-verified session to session.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Live cmd_order sell only closes the oldest of multiple tracked live positions sharing the same ticker+side (operator-warned, not auto-fixed)
+[RESOLVED 2026-08-25 (batch-60 item 4) -- originally found by max-depth forensic audit and filed for tracking. Its own recommendation was "no independent action recommended", pending the root-cause prerequisite below; that prerequisite is now [RESOLVED 2026-08-18], so the entry was re-decided rather than left to inherit the old call. See resolution below.] Live cmd_order sell only closes the oldest of multiple tracked live positions sharing the same ticker+side (operator-warned, not auto-fixed)
 Priority: LOW (audit id AUD-0036, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py, order_executor.py, execution_log.py
 
@@ -23318,6 +23640,95 @@ Problem:
   Financial risk: Low-to-moderate: if duplicate live positions accumulate (enabled by Finding 1), an operator may believe a full exit occurred when others remain open, though the warning surfaces this if read.
   Recommendation: Already correctly deferred by its own authors pending the exposure-cap fix (Finding 1), which is the real root cause preventing duplicate live entries from accumulating. No independent action recommended.
   Full record: audit/AUDIT_REPORT.json (id AUD-0036), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-25, batch-60 item 4):
+  Re-decided via AskUserQuestion rather than inheriting "no independent
+  action recommended" -- that recommendation was explicitly conditional on
+  the exposure-cap root cause being open, and it closed 2026-08-18. Options
+  put to the user: (a) operator selects which position, (b) FIFO cascade,
+  (c) keep oldest-only and downgrade to a documented accepted risk. Chose
+  (b).
+
+  Re-deriving the entry from source first turned up a sharper defect than
+  it describes. The entry frames this as "closes the oldest and warns" --
+  an incompleteness. But record_live_exit_fill CLAMPS its fill_count to the
+  named position's own quantity, so a sell spanning two positions (10 sold,
+  oldest holds 4) fully closed the 4 and left the other 6 marked OPEN in
+  execution_log with no contracts behind them on the exchange. That
+  overstates open exposure and invites the protective-exit scanner to try
+  selling them again. It is a corruption, not just a gap.
+
+  Shipped: the filled count is consumed oldest-first across every match,
+  each settled against its own entry price. closes_position_id still names
+  only the first match (the schema supports one referenced row per exit),
+  so the operator warning stays -- reworded, since "only closes the oldest
+  one" is no longer true; it now says the sell is applied oldest-first and
+  that only the oldest is recorded as the linkage. An over-sell beyond
+  every tracked position is now reported rather than silently clamped away.
+
+  Two defects the cascade itself introduced, both caught by opus review and
+  fixed here:
+  - F2: with a trailing PARTIAL leg, the sell row's closes_position_id
+    still named the OLDEST match (it is resolved before placement, as it
+    must be -- log_order writes the row up front so a crash mid-flight
+    leaves a reconcilable record), but the leg whose P&L lands on that row
+    is the LAST one touched. export_live_tax_csv self-joins on that column
+    for the entry price and reads COALESCE(fill_quantity, quantity) for the
+    amount, so a 4+6 cascade exported 4 contracts at 0.40 and 10 contracts
+    at 0.40 -- 14 disposed for a 10-contract sale, the second leg against
+    the wrong cost basis. Rolled-up P&L (get_live_pnl_summary) was correct
+    throughout; this was a quantity-and-basis defect, which on a tax export
+    is its own kind of wrong. Fixed by a new
+    execution_log.set_exit_row_attribution(order_id, position_id,
+    fill_quantity), called immediately before record_live_early_exit in the
+    partial branch. A no-op in the single-match case both the pre-cascade
+    code and order_executor._exit_live_position produce, so it is called
+    unconditionally rather than only when the cascade spanned. The first
+    version of the test for this branch had PINNED the bug
+    (asserting closes_position_id == older_id); corrected, and the export
+    is now asserted at the CSV level.
+  - F11: record_live_exit_fill raises RuntimeError for exactly one cause --
+    a concurrent writer (cron / `watch --auto --live`) settled the position
+    between the pre-placement snapshot and now. Lumping that in with the
+    generic handler meant a benign race on the FIRST match aborted the
+    whole cascade, leaving 100% of a real sale unattributed and a later
+    position marked open with contracts that no longer exist: exactly the
+    state this item exists to prevent, in the one scenario the guard was
+    written for. RuntimeError now skips to the next match WITHOUT
+    decrementing the remaining fill (those contracts were never ours to
+    attribute); every other exception still stops the cascade, since an
+    unknown-cause failure must not silently re-attribute one position's
+    contracts to another.
+
+  Tests (tests/test_batch60_trade_entry_guards.py has its own; these are in
+  tests/test_trading_gates.py::TestCmdOrderLiveRecording): a fill that fits
+  inside the oldest match still behaves exactly as before (regression lock,
+  newer position still open via a _get_live_open_positions positive
+  control); a fill spanning two positions settles both against their own
+  distinct entry prices (0.40/0.45, chosen so crediting the wrong one shows
+  up as wrong P&L rather than a coincidental match) and leaves nothing
+  claiming phantom contracts; a fill landing partway into the second leaves
+  it open at the reduced size with the partial P&L on the sell row,
+  attributed to the position it actually came from; the tax export reports
+  each leg exactly once totalling the real 10; an over-sell warns with a
+  positive control that both positions genuinely settled; an unknown-cause
+  failure (sqlite3.OperationalError, deliberately not a RuntimeError) stops
+  the cascade and reports the unattributed remainder; and a mid-flight
+  concurrent settle is skipped with the full fill moving to the surviving
+  match. The pre-existing
+  test_live_sell_with_multiple_tracked_positions_closes_only_oldest was
+  renamed and rewritten -- its name and its "only closes the oldest"
+  assertion both described the old behaviour.
+
+  Not fixed here, filed as its own entry at the top of this file:
+  order_executor._settle_recovered_exit_order still does the old
+  oldest-only thing on the ASYNC route (cmd_order re-raises on
+  OrderStatusUnknownError before the cascade block is ever reached, and
+  _recover_pending_orders settles that row later from the single stored
+  pointer). Different function, different trigger, and it needs a
+  retry-semantics decision the synchronous path does not have -- step 27's
+  same-payload test puts it in a separate entry rather than stretching this
+  change to cover it.
 
 [RESOLVED 2026-08-21 -- batch-08] METAR-calibrated T-ticker settlement force-close gate's 'currently dormant' status is a coefficient-snapshot fact, not a durable invariant, given weekly auto-retrain
 Priority: LOW (audit id AUD-0038, status CONFIRMED, confidence HIGH, evidence E2)
@@ -27471,7 +27882,7 @@ Resolution (2026-08-22):
   spread that widens between analysis and placement no longer shrinks the
   dollar stake, only the resulting contract count via the fresh entry_price.
 
-[OPEN 2026-08-22 -- found investigating an opus-review finding (batch-26 item 3's own "cmd_market" sibling) while fixing batch-26; genuinely separate defect class (mid-vs-ask pricing, not the side-inversion bug batch-26 targets) and needs its own live-quote-refresh design decision, so filed separately rather than folded into that fix] cmd_today's interactive "[P] Place" flow books the actual paper trade at the bid-ask MID, not the realistic ask/no_ask price
+[RESOLVED 2026-08-25 (batch-60 item 3) -- originally found investigating an opus-review finding (batch-26 item 3's own "cmd_market" sibling) while fixing batch-26; genuinely separate defect class (mid-vs-ask pricing, not the side-inversion bug batch-26 targets) and needed its own live-quote-refresh design decision, so filed separately rather than folded into that fix. See resolution below.] cmd_today's interactive "[P] Place" flow books the actual paper trade at the bid-ask MID, not the realistic ask/no_ask price
 Priority: MEDIUM -- affects a REAL placed paper trade's recorded price/cost/quantity, not just a display value (distinct from and more severe than the display-only mid-vs-ask divergence an opus reviewer initially flagged here as LOW without checking this)
 Files: main.py (~3099 _entry_price1 = _market_prob1 if _side1=="yes" else 1-_market_prob1; ~3277-3298, the actual place_paper_order call using it; ~3010/~3064, the sibling _pick_display's own display-only _entry_price computation, same pattern)
 
@@ -27507,6 +27918,93 @@ Problem:
   typically are by the time a user presses [P] in practice before picking
   an approach, then real tests (mutation-tested) and independent review
   given this touches an actual paper-order-placement path.
+
+Resolution (2026-08-25, batch-60 item 3):
+  Both (a) AND (b) -- the recommendation framed them as alternatives, but
+  they fix two independent defects and the entry's own text describes both.
+  Surfaced to the user as an explicit decision before implementation; they
+  chose the re-fetch.
+
+  (a) Mid -> side-aware ask. Three sites now route through the existing
+  main._side_aware_entry_price (main.py:1481, previously used at exactly
+  one call site): the booking price, the sibling _pick_display detail block
+  whose "If correct: win $X" projection was computed from the same
+  understated price, and -- opus review F3 -- the compact "Also consider"
+  runner-up lines, which are rendered by their own inline block rather than
+  through _pick_display and so had kept the mid after the #1 pick moved.
+  That last one mattered on screen: an ask and a mid printed side by side
+  with nothing marking them as different measures, so an operator comparing
+  "#1 BUY YES @ 44%" against "#2 BUY YES @ 42%" was comparing a price they
+  could pay against one they could not.
+
+  (b) Fresh quote at placement. The #1 pick's book is re-fetched via
+  client.get_market once, BEFORE the detail block prints, and that one
+  price feeds the projection, the Kelly contract count, and the booking.
+  Mirrors order_executor's own "L1-B: Re-fetch live price before placement"
+  convention. Resolved ahead of _pick_display rather than inside it because
+  a mid-block re-fetch would have shown the scan-time ask in the
+  recommendation and the fresh one in the confirmation two lines later --
+  two prices for one contract on one screen. _pick_display's `prices`
+  parameter is required rather than defaulted for the same reason: a
+  default would be dead code today and would silently reintroduce that
+  split the moment a second caller forgot to pass one. The runner-ups are
+  deliberately NOT re-fetched -- they are not placeable from this screen,
+  and three extra API calls per run would not be worth it.
+
+  The re-fetch is best-effort, falling back to the scan-time book on a
+  failed call, a malformed payload (parse_market_price float()-coerces, so
+  it must fall back the same way), or a payload with no real quote.
+
+  That last case is opus review F1, a live-money-shaped bug the first draft
+  introduced in the NO direction only: the emptiness test was "the derived
+  entry price is > 0", which is safe for YES (an all-zero book yields 0.0)
+  but not for NO, where _side_aware_entry_price falls through to
+  max(0.01, 1 - mid) = 1.0 and passes any `> 0` test. A quote-less
+  re-fetch therefore REPLACED a good scan-time book and booked at $1.00 --
+  the maximum possible entry price, a structurally unwinnable position, and
+  a worse corruption of the graduation-gate corpus than the mid-pricing
+  this entry is about. Now gated on parse_market_price's own has_quote
+  (mid > 0), which is exactly the "no real quote" predicate.
+
+  Backfill decision (surfaced to the user, chose fix-forward + marker):
+  NOT backfilled, because there is nothing to backfill. Read-only
+  inspection of the live data/paper_trades.json on 2026-08-25 found 248
+  trades and ZERO attributable to this path -- no row has a method set with
+  close_time, days_out and thesis all absent, which is the shape
+  _ppo_today's call produces. The 43 rows that come closest all have
+  method=None and timestamp=None (early seed rows). So the optimistic bias
+  this entry describes never actually entered the corpus the graduation
+  gate reads. Recorded here rather than left implicit, since "fix forward"
+  otherwise leaves a date boundary nothing documents.
+
+  To make that statement checkable in future, placements through this path
+  now carry thesis="cmd_today interactive [P] place", mirroring web_app's
+  own "manual approval via dashboard" marker. Before this a cmd_today row
+  was indistinguishable from a cron-placed one, which is precisely why the
+  0-row finding needed a read-only heuristic to establish at all.
+
+  Tests: tests/test_batch60_trade_entry_guards.py::TestCmdTodayEntryPrice
+  -- YES books at the ask (0.44) not the mid (0.42) or market_prob (0.35),
+  all three deliberately distinct; NO books at 1-yes_bid (0.60) not
+  1-market_prob (0.65) or 1-mid (0.58); the fresh quote wins over the
+  scan-time one; a raising get_market falls back to the scan-time ask; a
+  quote-less payload falls back on BOTH sides (the YES case is the positive
+  control -- it was already safe via the `> 0` test, so an inverted
+  has_quote would break it while the NO case still passed); the detail
+  block and the booking agree on one price with the stale 44% appearing
+  nowhere; the runner-up line quotes the ask with both wrong sources
+  absent; and the thesis marker. kelly_quantity is left REAL throughout so
+  the contract count reacts to price as it does in production.
+
+  Not covered, stated rather than skipped: how stale `prices`/`best_a`
+  typically ARE by the time a user presses [P] was never measured -- the
+  entry asked for that investigation before picking an approach. The
+  re-fetch makes the question moot for correctness (the booked price is
+  always current regardless of the answer), so it was not run. The one
+  behavioural cost is an unconditional extra REST call per cmd_today
+  invocation, including runs where the operator never presses [P]
+  (opus review F12); cmd_today is interactive-only, so rate-limit impact is
+  negligible.
 
 [CLOSED 2026-08-24 -- see resolution below.] weather app site V_3 (3)/src/tabs/SignalsTab.jsx carries the same wrong-side-price bugs batch-26 item 1 just fixed in the real frontend, unfixed
 Priority: LOW -- this tree has no package.json/vite.config.js and nothing in this repo builds it into the git-tracked static/dist/ actually served by web_app.py, so there is no live impact today

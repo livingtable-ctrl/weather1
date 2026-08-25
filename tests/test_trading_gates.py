@@ -1,7 +1,9 @@
 """P0-2: LiveTradingGate must block live orders when graduation/safety gates fail."""
 
 import os
+import sqlite3
 from contextlib import contextmanager
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -569,10 +571,34 @@ class TestCmdOrderLiveRecording:
         positive-control paper test and the fully-analyzed live test);
         tests focused purely on live-position bookkeeping use
         get_market.return_value = None instead, since that block is
-        independent of _is_live's own recording branch."""
+        independent of _is_live's own recording branch.
+
+        Batch-60 item 2: the ticker/close_time/target_date are derived from
+        TOMORROW rather than the old hardcoded 2026-04-17 literal. cmd_order's
+        live BUY path now runs paper.validate_target_date_freshness() before
+        placing, so a fixture frozen months in the past no longer represents
+        an order that can reach the exchange at all -- and patching the
+        staleness grace to swallow it would have masked exactly the guard
+        these tests sit downstream of. All three fields move together so the
+        triple stays internally consistent (a real KXHIGH-NYC-<date> market's
+        target_date always matches its own ticker's embedded date); call
+        sites read fake_market["ticker"] instead of a literal."""
+        import paper
+
+        _target = paper.utc_today() + timedelta(days=1)
+        # Month abbreviation from a fixed table, not strftime("%b") --
+        # opus-review-caught (F15): %b is locale-dependent, so on a
+        # non-English runner the ticker's month segment would silently
+        # change shape. Nothing asserts on it today, but Kalshi's own
+        # tickers are always these three ASCII letters.
+        _mon = "JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split()
+        _ticker = (
+            f"KXHIGH-NYC-{_target.year % 100:02d}"
+            f"{_mon[_target.month - 1]}{_target.day:02d}-T70"
+        )
         fake_market = {
-            "ticker": "KXHIGH-NYC-26APR17-T70",
-            "close_time": "2026-04-17T20:00:00Z",
+            "ticker": _ticker,
+            "close_time": f"{_target.isoformat()}T20:00:00Z",
         }
         fake_enriched = dict(fake_market, _city="NYC", _date=None)
         fake_analysis = {
@@ -582,7 +608,7 @@ class TestCmdOrderLiveRecording:
             "kelly": 0.05,
             "method": "ensemble",
             "days_out": 1,
-            "target_date": "2026-04-17",
+            "target_date": _target.isoformat(),
             "condition": {"type": "high_temp", "threshold": 70},
             "model_forecast_means": {},
             "forecast_temp": 71.0,
@@ -626,7 +652,7 @@ class TestCmdOrderLiveRecording:
             self._passing_gate_patches(),
         ):
             main.cmd_order(
-                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+                mock_client, "buy", [fake_market["ticker"], "yes", "5", "0.40"]
             )
 
         mock_client.place_order.assert_called_once()
@@ -686,7 +712,7 @@ class TestCmdOrderLiveRecording:
         ):
             # Must not raise -- the order genuinely landed on the exchange.
             main.cmd_order(
-                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+                mock_client, "buy", [fake_market["ticker"], "yes", "5", "0.40"]
             )
 
         mock_client.place_order.assert_called_once()
@@ -730,7 +756,7 @@ class TestCmdOrderLiveRecording:
             patch.object(main, "analyze_trade", return_value=fake_analysis),
         ):
             main.cmd_order(
-                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+                mock_client, "buy", [fake_market["ticker"], "yes", "5", "0.40"]
             )
 
         with execution_log._conn() as con:
@@ -740,7 +766,7 @@ class TestCmdOrderLiveRecording:
         assert row["live"] == 0
         trades = paper.get_all_trades()
         assert len(trades) == 1
-        assert trades[0]["ticker"] == "KXHIGH-NYC-26APR17-T70"
+        assert trades[0]["ticker"] == fake_market["ticker"]
         assert trades[0]["quantity"] == 5
 
     def test_live_buy_partial_fill_records_correct_fill_quantity(self, monkeypatch):
@@ -851,43 +877,42 @@ class TestCmdOrderLiveRecording:
         # -- the exact bug class this fix resolves.
         assert paper.get_all_trades() == []
 
-    def test_live_sell_with_multiple_tracked_positions_closes_only_oldest(
-        self, monkeypatch, capsys
-    ):
-        """AUD-0055: e5331a8d's cmd_order live-sell matching explicitly
-        handles (and warns about) more than one tracked open live position
-        sharing the same ticker+side -- a deliberately-scoped partial fix
-        (closes_position_id can only reference one row) that was never
-        exercised by any test. Two tracked positions here, oldest placed
-        first: the sell must close ONLY the oldest (by placed_at ascending,
-        matching get_filled_unsettled_live_orders()'s ORDER BY), warn the
-        operator about the untouched one, and leave the newer position open
-        and unmodified."""
+    def _two_tracked_live_positions(self, ticker, older_qty, newer_qty):
+        """Two filled-unsettled live positions on the same ticker+side,
+        oldest first (placed_at ascending, matching
+        get_filled_unsettled_live_orders()'s own ORDER BY). Entry prices are
+        deliberately DIFFERENT (0.40 / 0.45) so a cascade that credited the
+        wrong position's entry price would produce visibly wrong P&L rather
+        than silently matching."""
         import execution_log
-        import main
-        import paper
-        from kalshi_client import PROD_BASE
-        from order_executor import _get_live_open_positions
 
         older_id = execution_log.log_order(
-            ticker="KXHIGH-NYC-26APR17-T70",
+            ticker=ticker,
             side="yes",
-            quantity=10,
+            quantity=older_qty,
             price=0.40,
             status="filled",
             live=True,
         )
-        execution_log.log_order_result(older_id, status="filled", fill_quantity=10)
+        execution_log.log_order_result(
+            older_id, status="filled", fill_quantity=older_qty
+        )
         newer_id = execution_log.log_order(
-            ticker="KXHIGH-NYC-26APR17-T70",
+            ticker=ticker,
             side="yes",
-            quantity=5,
+            quantity=newer_qty,
             price=0.45,
             status="filled",
             live=True,
         )
-        execution_log.log_order_result(newer_id, status="filled", fill_quantity=5)
+        execution_log.log_order_result(
+            newer_id, status="filled", fill_quantity=newer_qty
+        )
         assert older_id != newer_id
+        return older_id, newer_id
+
+    def _sell_client(self, fill_count):
+        from kalshi_client import PROD_BASE
 
         mock_client = MagicMock()
         mock_client.base_url = PROD_BASE
@@ -895,8 +920,12 @@ class TestCmdOrderLiveRecording:
         mock_client.place_order.return_value = {
             "order_id": "ord_exit",
             "status": "executed",
-            "fill_count_fp": "10.00",
+            "fill_count_fp": f"{fill_count}.00",
         }
+        return mock_client
+
+    def _sell_patches(self, monkeypatch):
+        import main
 
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(
@@ -904,14 +933,34 @@ class TestCmdOrderLiveRecording:
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
 
+    def test_live_sell_smaller_than_oldest_position_leaves_newer_untouched(
+        self, monkeypatch, capsys
+    ):
+        """AUD-0055: more than one tracked open live position can legally
+        share a ticker+side. When the fill fits entirely inside the OLDEST
+        one, the cascade added in batch-60 must still behave exactly as
+        before -- close that position, leave the newer one open and
+        unmodified -- and still warn the operator that this order's
+        closes_position_id names only the first of the matches."""
+        import execution_log
+        import main
+        import paper
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 10, 5
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
         with self._passing_gate_patches():
             main.cmd_order(
                 mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
             )
 
         captured = capsys.readouterr()
-        # (a) the operator warning prints, naming the untouched position.
-        assert "only closes the oldest" in captured.out
+        # (a) the operator warning prints, naming the linked position.
+        assert "oldest-first" in captured.out
         assert f"#{older_id}" in captured.out
 
         with execution_log._conn() as con:
@@ -940,6 +989,502 @@ class TestCmdOrderLiveRecording:
         assert len(remaining) == 1
         assert remaining[0]["id"] == newer_id
         assert paper.get_all_trades() == []
+
+    def test_live_sell_spanning_two_positions_settles_both(self, monkeypatch):
+        """Batch-60 item 4, the bug this replaces oldest-only with: a sell
+        whose fill SPANS more than one tracked position. Before the FIFO
+        cascade, the whole count went to the oldest match alone and
+        record_live_exit_fill clamped it to that position's own quantity --
+        so selling 10 against positions of 4 and 6 fully closed the 4 and
+        left the 6 marked open in execution_log with no contracts behind it
+        on the exchange, overstating open exposure and inviting the
+        protective-exit scanner to try selling them again.
+
+        Both positions must now settle, each against its OWN entry price
+        (0.40 and 0.45 -- deliberately different, so crediting the wrong one
+        would show up as wrong P&L rather than a coincidental match)."""
+        import execution_log
+        import main
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 6
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            older_row = con.execute(
+                "SELECT settled_at, pnl FROM orders WHERE id = ?", (older_id,)
+            ).fetchone()
+            newer_row = con.execute(
+                "SELECT settled_at, pnl FROM orders WHERE id = ?", (newer_id,)
+            ).fetchone()
+        # Hand-computed (utils.kalshi_taker_fee = ceil(0.07*C*P*(1-P)*100)/100
+        # at the 0.60 exit price):
+        #   older: gross 4*(0.60-0.40)=0.80, fee ceil(6.72)/100=0.07 -> 0.73
+        #   newer: gross 6*(0.60-0.45)=0.90, fee ceil(10.08)/100=0.11 -> 0.79
+        assert older_row["settled_at"] is not None
+        assert older_row["pnl"] == pytest.approx(0.73)
+        assert newer_row["settled_at"] is not None
+        assert newer_row["pnl"] == pytest.approx(0.79)
+        # Nothing is left claiming to hold contracts that no longer exist.
+        assert _get_live_open_positions() == []
+
+    def test_live_sell_spanning_positions_partially_reduces_the_last_one(
+        self, monkeypatch
+    ):
+        """Batch-60 item 4, the mixed case: the fill closes the oldest match
+        outright and lands PARTWAY into the next one. The second position
+        must stay open at its reduced size (not be closed, and not be left
+        at its original size), and that partial leg's P&L must land on the
+        SELL order's own row -- AUD-0028's rule, which the cascade has to
+        preserve for the one position it partially reduces."""
+        import execution_log
+        import main
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 6
+        )
+        mock_client = self._sell_client(7)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "7", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            older_row = con.execute(
+                "SELECT settled_at, pnl FROM orders WHERE id = ?", (older_id,)
+            ).fetchone()
+            newer_row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (newer_id,)
+            ).fetchone()
+            exit_row = con.execute(
+                "SELECT id, settled_at, pnl, closes_position_id, fill_quantity "
+                "FROM orders WHERE id NOT IN (?, ?) ORDER BY id DESC LIMIT 1",
+                (older_id, newer_id),
+            ).fetchone()
+        # older: 4 of 4 -> full close, pnl 0.73 (same math as the test above).
+        assert older_row["settled_at"] is not None
+        assert older_row["pnl"] == pytest.approx(0.73)
+        # newer: 3 of 6 -> stays open, reduced to 3.
+        assert newer_row["settled_at"] is None
+        remaining = _get_live_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == newer_id
+        assert remaining[0]["quantity"] == 3
+        # The partial leg's P&L lands on the sell order's own row:
+        #   gross 3*(0.60-0.45)=0.45, fee ceil(0.07*3*0.24*100)/100=0.06 -> 0.39
+        assert exit_row["settled_at"] is not None
+        assert exit_row["pnl"] == pytest.approx(0.39)
+        # ...and that row must be attributed to the position the leg was
+        # actually taken from -- the NEWER one -- not to the oldest match
+        # closes_position_id was pre-set to before placement. An earlier
+        # version of this test asserted `== older_id`, pinning the bug:
+        # export_live_tax_csv self-joins on closes_position_id for the entry
+        # price, so it reported this 0.39 (earned against a 0.45 entry)
+        # against the older position's 0.40, and counted the whole 7-contract
+        # fill as this leg's quantity. See test_tax_export_after_a_spanning_
+        # cascade_reports_each_leg_once for the export-level assertion.
+        assert exit_row["closes_position_id"] == newer_id
+        assert exit_row["fill_quantity"] == 3
+
+    def test_tax_export_after_a_spanning_cascade_reports_each_leg_once(
+        self, monkeypatch, tmp_path
+    ):
+        """Opus review, F2 -- the defect the cascade introduced, measured at
+        the artifact that matters. Positions of 4 @0.40 and 20 @0.45, sell 10:
+        the export must show 4 contracts at a 0.40 basis and 6 at a 0.45
+        basis, totalling exactly the 10 that were sold. Before the
+        attribution fix it showed 4 @0.40 and 10 @0.40 -- 14 contracts
+        disposed for a 10-contract sale, the second leg against the wrong
+        position's cost basis."""
+        import csv
+
+        import execution_log
+        import main
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 20
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+        assert newer_id  # the partially-reduced leg is the one under test
+
+        _csv = tmp_path / "tax.csv"
+        assert execution_log.export_live_tax_csv(str(_csv)) == 2
+        with open(_csv, newline="") as _fh:
+            rows = list(csv.DictReader(_fh))
+
+        assert sum(int(r["quantity"]) for r in rows) == 10
+        by_qty = {int(r["quantity"]): r for r in rows}
+        assert set(by_qty) == {4, 6}
+        assert float(by_qty[4]["entry_price"]) == pytest.approx(0.40)
+        assert float(by_qty[6]["entry_price"]) == pytest.approx(0.45)
+        # Positive control: the two legs really are distinct dispositions
+        # with their own P&L, not one row double-counted.
+        #   4 @0.40 -> 4*(0.60-0.40) - 0.07 = 0.73
+        #   6 @0.45 -> 6*(0.60-0.45) - 0.11 = 0.79
+        assert float(by_qty[4]["pnl"]) == pytest.approx(0.73)
+        assert float(by_qty[6]["pnl"]) == pytest.approx(0.79)
+
+    def test_a_position_settled_mid_flight_is_skipped_not_fatal(
+        self, monkeypatch, capsys
+    ):
+        """Opus review, F11. _live_open_matches is snapshotted before
+        client.place_order, so cron or `watch --auto --live` can settle the
+        oldest match in that window. record_live_exit_fill signals exactly
+        that with RuntimeError -- meaning those contracts were never ours to
+        attribute, so the fill belongs to the NEXT match undiminished.
+        Treating it like an unknown failure aborted the whole cascade and
+        left 100% of a real sale unattributed, reintroducing the very
+        phantom-open-position state item 4 exists to prevent."""
+        import execution_log
+        import main
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 20
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
+        _real_fill = execution_log.record_live_exit_fill
+        _calls = []
+
+        def _race_the_oldest(position, fill_count, exit_price, reason=None):
+            _calls.append((position["id"], fill_count))
+            if position["id"] == older_id:
+                # Genuinely settle the row before raising, so the post-state
+                # matches a REAL concurrent close rather than only simulating
+                # the exception. Without this the older position stays open
+                # and the assertions below would be measuring a half-applied
+                # scenario that cannot occur in production.
+                execution_log.record_live_early_exit(
+                    older_id, 0.58, "raced_by_cron", 0.65
+                )
+                raise RuntimeError(
+                    "position was already settled by a concurrent writer"
+                )
+            return _real_fill(position, fill_count, exit_price, reason)
+
+        with (
+            self._passing_gate_patches(),
+            patch("execution_log.record_live_exit_fill", _race_the_oldest),
+        ):
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        out = capsys.readouterr().out
+        # The whole fill moves to the surviving match, undiminished -- 10,
+        # not 10 minus the raced position's 4.
+        assert _calls == [(older_id, 4), (newer_id, 10)]
+        assert "not attributed" not in out
+        remaining = _get_live_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == newer_id
+        assert remaining[0]["quantity"] == 10  # 20 - 10
+        # Positive control that the surviving leg genuinely settled rather
+        # than the cascade silently doing nothing: its P&L is on the books.
+        #   10 @0.45 -> 10*(0.60-0.45) - 0.17 = 1.33
+        with execution_log._conn() as con:
+            exit_row = con.execute(
+                "SELECT pnl, closes_position_id FROM orders "
+                "WHERE id NOT IN (?, ?) ORDER BY id DESC LIMIT 1",
+                (older_id, newer_id),
+            ).fetchone()
+        assert exit_row["pnl"] == pytest.approx(1.33)
+        assert exit_row["closes_position_id"] == newer_id
+
+    def test_live_sell_exceeding_all_tracked_positions_warns(self, monkeypatch, capsys):
+        """Batch-60 item 4: a sell larger than everything this bot tracks
+        for the ticker+side. Every match settles, and the leftover is
+        reported rather than silently absorbed -- the old oldest-only code
+        clamped to one position's quantity and said nothing at all, so an
+        operator had no signal that most of the sale was unaccounted for."""
+        import execution_log
+        import main
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 6
+        )
+        mock_client = self._sell_client(12)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "12", "0.60"]
+            )
+
+        out = capsys.readouterr().out
+        assert "2 of 12 sold contracts exceeded" in out
+        # Positive control: the warning is about a genuine leftover, not a
+        # cascade that failed to run -- both tracked positions did settle.
+        with execution_log._conn() as con:
+            settled = con.execute(
+                "SELECT COUNT(*) AS n FROM orders WHERE id IN (?, ?) "
+                "AND settled_at IS NOT NULL",
+                (older_id, newer_id),
+            ).fetchone()
+        assert settled["n"] == 2
+        assert _get_live_open_positions() == []
+
+    def test_live_sell_cascade_stops_and_warns_when_a_settle_fails(
+        self, monkeypatch, capsys
+    ):
+        """Batch-60 item 4: if settling one match raises (e.g.
+        record_live_exit_fill's concurrent-writer RuntimeError), the cascade
+        must STOP rather than re-attribute that position's contracts to the
+        next match -- silently settling someone else's row with them would
+        corrupt attribution worse than leaving the remainder for manual
+        reconciliation. The operator must be told how much is unattributed."""
+        import execution_log
+        import main
+        from order_executor import _get_live_open_positions
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 6
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
+        _real_fill = execution_log.record_live_exit_fill
+        _calls = []
+
+        def _fail_on_second(position, fill_count, exit_price, reason=None):
+            _calls.append(position["id"])
+            if len(_calls) > 1:
+                # Deliberately NOT a RuntimeError: that type means one
+                # specific, benign thing (a concurrent writer got there
+                # first) and is handled by skipping to the next match --
+                # see test_a_position_settled_mid_flight_is_skipped_not_fatal.
+                # This is the unknown-cause path, where stopping is correct.
+                raise sqlite3.OperationalError("database is locked")
+            return _real_fill(position, fill_count, exit_price, reason)
+
+        with (
+            self._passing_gate_patches(),
+            patch("execution_log.record_live_exit_fill", _fail_on_second),
+        ):
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        out = capsys.readouterr().out
+        assert "6 of 10 sold contracts are not attributed" in out
+        # Positive control for the "stopped early" claim: the cascade really
+        # did reach the second match (so the stop is the raise, not a loop
+        # that never iterated), and the FIRST match still settled normally.
+        assert _calls == [older_id, newer_id]
+        with execution_log._conn() as con:
+            older_row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (older_id,)
+            ).fetchone()
+        assert older_row["settled_at"] is not None
+        remaining = _get_live_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == newer_id
+        assert remaining[0]["quantity"] == 6
+
+    def test_a_position_merely_reduced_mid_flight_keeps_its_own_share(
+        self, monkeypatch, capsys
+    ):
+        """Opus round-2 review, MEDIUM-1 -- a bug the F11 fix introduced.
+        record_live_exit_fill does NOT raise RuntimeError for one cause: its
+        partial branch also fires when record_live_partial_exit finds
+        COALESCE(fill_quantity, quantity) < filled_count, i.e. the position
+        is STILL OPEN with real contracts, just smaller than our snapshot.
+        F11's blanket `continue` then shifted that position's entire share
+        onto the next match at the WRONG cost basis -- worse than the abort
+        it replaced, which at least left the discrepancy visible.
+
+        Here cron reduces the oldest (20 @0.40) to 2 mid-flight while the
+        operator sells 10. Correct FIFO attribution is 2 @0.40 + 8 @0.45,
+        not 10 @0.45."""
+        import execution_log
+        import main
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 20, 10
+        )
+        mock_client = self._sell_client(10)
+        self._sell_patches(monkeypatch)
+
+        _real_fill = execution_log.record_live_exit_fill
+        _reduced = []
+
+        def _reduce_the_oldest(position, fill_count, exit_price, reason=None):
+            if position["id"] == older_id and not _reduced:
+                # Genuinely shrink the row (settled_at stays NULL), exactly
+                # as a concurrent protective exit would, then raise the way
+                # record_live_partial_exit's guard makes the real function
+                # raise for this case.
+                _reduced.append(True)
+                execution_log.record_live_partial_exit(older_id, 18)
+                raise RuntimeError(
+                    f"position {older_id} was settled or reduced below "
+                    f"{fill_count} by a concurrent writer -- not applying "
+                    "this partial exit"
+                )
+            return _real_fill(position, fill_count, exit_price, reason)
+
+        with (
+            self._passing_gate_patches(),
+            patch("execution_log.record_live_exit_fill", _reduce_the_oldest),
+        ):
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            older_row = con.execute(
+                "SELECT settled_at, pnl FROM orders WHERE id = ?", (older_id,)
+            ).fetchone()
+            exit_row = con.execute(
+                "SELECT pnl, closes_position_id FROM orders "
+                "WHERE id NOT IN (?, ?) ORDER BY id DESC LIMIT 1",
+                (older_id, newer_id),
+            ).fetchone()
+        from order_executor import _get_live_open_positions
+
+        # The retry took the oldest's real remaining 2 at ITS OWN 0.40 basis:
+        #   2*(0.60-0.40) - ceil(0.07*2*0.24*100)/100 = 0.40 - 0.04 = 0.36
+        assert older_row["settled_at"] is not None
+        assert older_row["pnl"] == pytest.approx(0.36)
+        # ...leaving 8 for the newer at 0.45. That leg is a PARTIAL (8 of
+        # 10), so per AUD-0028 its P&L lands on the sell order's own row,
+        # attributed to the newer position:
+        #   8*(0.60-0.45) - ceil(0.07*8*0.24*100)/100 = 1.20 - 0.14 = 1.06
+        # Positive control against the bug this test exists for: crediting
+        # all 10 to the newer would give 10*(0.60-0.45) - 0.17 = 1.33, and
+        # would have FULLY closed it instead of leaving 2 open.
+        assert exit_row["pnl"] == pytest.approx(1.06)
+        assert exit_row["pnl"] != pytest.approx(1.33)
+        assert exit_row["closes_position_id"] == newer_id
+        remaining = _get_live_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == newer_id
+        assert remaining[0]["quantity"] == 2
+
+    def test_oversell_leftover_is_actually_recorded_on_the_sell_row(
+        self, monkeypatch, capsys
+    ):
+        """Opus round-2 review, MEDIUM-2 -- also introduced by this batch.
+        The over-sell warning said the leftover was "recorded on this
+        order's row only", which was categorically false: reaching that
+        branch requires no leg to have been partial, and the sell row is
+        settled ONLY inside the partial branch. So row_id sat at
+        settled_at=NULL/pnl=NULL, excluded from export_live_tax_csv,
+        get_live_pnl_summary, get_live_settlement_streak and (via its
+        non-NULL closes_position_id) get_filled_unsettled_live_orders -- the
+        contracts were recorded precisely nowhere, on the one screen an
+        operator uses to reconcile a real sale."""
+        import execution_log
+        import main
+
+        older_id, newer_id = self._two_tracked_live_positions(
+            "KXHIGH-NYC-26APR17-T70", 4, 6
+        )
+        mock_client = self._sell_client(12)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "12", "0.60"]
+            )
+
+        out = capsys.readouterr().out
+        assert "2 of 12 sold contracts exceeded" in out
+        assert "recorded nowhere" not in out
+
+        with execution_log._conn() as con:
+            exit_row = con.execute(
+                "SELECT settled_at, pnl, exit_reason, closes_position_id, "
+                "fill_quantity FROM orders WHERE id NOT IN (?, ?) "
+                "ORDER BY id DESC LIMIT 1",
+                (older_id, newer_id),
+            ).fetchone()
+        # Settled with the same unmatched-sell placeholder shape the
+        # no-match-at-all branch already uses, so export_live_tax_csv labels
+        # it "unmatched_sell_unknown_pnl" with an empty pnl cell rather than
+        # dropping it or asserting a fabricated $0.00 profit.
+        assert exit_row["settled_at"] is not None
+        assert exit_row["exit_reason"] == "unmatched_sell"
+        # ...and byte-identical in SHAPE to that branch, which is what the
+        # export actually reads (opus round-3 review). An earlier version of
+        # this test stopped at the two assertions above while
+        # closes_position_id still named the oldest match and fill_quantity
+        # was the WHOLE fill -- so the export reported the 2-contract
+        # remainder as 12 contracts against that position's cost basis.
+        assert exit_row["closes_position_id"] is None
+        assert exit_row["fill_quantity"] == 2
+        # Positive control: the two real legs still settled normally, so
+        # this is measuring the leftover and not a cascade that failed.
+        with execution_log._conn() as con:
+            settled = con.execute(
+                "SELECT COUNT(*) AS n FROM orders WHERE id IN (?, ?) "
+                "AND settled_at IS NOT NULL",
+                (older_id, newer_id),
+            ).fetchone()
+        assert settled["n"] == 2
+
+    def test_tax_export_after_an_oversell_counts_the_remainder_once(
+        self, monkeypatch, tmp_path
+    ):
+        """Opus round-3 review: the round-2 leftover fix measured where it
+        actually matters. Positions 4 @0.40 and 6 @0.45, sell 12 -> the
+        export must total exactly the 12 contracts sold: 4 + 6 real legs
+        plus a 2-contract unmatched remainder carrying NO cost basis.
+        Before this it totalled 22, with the 0.40 basis reported twice."""
+        import csv
+
+        import execution_log
+        import main
+
+        self._two_tracked_live_positions("KXHIGH-NYC-26APR17-T70", 4, 6)
+        mock_client = self._sell_client(12)
+        self._sell_patches(monkeypatch)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "12", "0.60"]
+            )
+
+        _csv = tmp_path / "tax.csv"
+        assert execution_log.export_live_tax_csv(str(_csv)) == 3
+        with open(_csv, newline="") as _fh:
+            rows = list(csv.DictReader(_fh))
+
+        assert sum(int(r["quantity"]) for r in rows) == 12
+        _unmatched = [r for r in rows if r["outcome"] == "unmatched_sell_unknown_pnl"]
+        assert len(_unmatched) == 1
+        assert int(_unmatched[0]["quantity"]) == 2
+        # Empty pnl cell, not a fabricated 0.00 -- "needs manual entry".
+        assert _unmatched[0]["pnl"] == ""
+        # Positive control: the two real legs are still each reported once,
+        # against their OWN distinct bases, so the total isn't right by way
+        # of two errors cancelling.
+        _real = sorted(
+            (int(r["quantity"]), float(r["entry_price"]))
+            for r in rows
+            if r["outcome"] != "unmatched_sell_unknown_pnl"
+        )
+        assert _real == [(4, 0.40), (6, 0.45)]
 
     def test_live_sell_partial_fill_settles_own_exit_row_pnl(self, monkeypatch):
         """AUD-0028: a PARTIAL matched-sell fill must settle the sell
@@ -1279,7 +1824,7 @@ class TestCmdOrderLiveRecording:
             self._passing_gate_patches(),
         ):
             main.cmd_order(
-                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+                mock_client, "buy", [fake_market["ticker"], "yes", "5", "0.40"]
             )
 
         with execution_log._conn() as con:

@@ -6469,6 +6469,56 @@ def is_holiday_temp_ticker(ticker: str) -> bool:
     return ticker.upper().split("-")[0] in _KXHOLIDAY_TEMP_SUFFIX_SERIES
 
 
+def max_days_out_for_ticker(ticker: str) -> int:
+    """The days-out ceiling `ticker`'s market family is scanned under --
+    the same per-family constants analyze_trade()'s own days-out gate
+    applies, exposed as a lookup so a consumer holding only a ticker string
+    can reuse them instead of inventing its own bound.
+
+    backlog.txt "place_paper_order()'S NEW STALE-TARGET_DATE GUARD HAS NO
+    UPPER BOUND" (batch-60 item 1): that entry explicitly asks for each
+    family's already-existing ceiling to be cross-referenced rather than a
+    new generic constant added in paper.py, "which doesn't know which
+    family a given ticker belongs to" -- this function is that knowledge,
+    kept here beside the family predicates it's built from.
+
+    Mirrors analyze_trade()'s gate branch-for-branch (hurricane families ->
+    HURRICANE_MAX_DAYS_OUT, monthly rain/snow ladders -> RAIN/SNOW_MAX_
+    DAYS_OUT, everything else -> MAX_DAYS_OUT); the gate itself still
+    computes days_out per family (target_date for the daily/hurricane
+    shapes, close_time for the monthly ladders whose target_date is None by
+    design), which is why it isn't rewritten to call this -- only the
+    CEILING is shared.
+
+    Drift protection lives in tests/test_batch60_trade_entry_guards.py::
+    TestMaxDaysOutForTicker, which drives analyze_trade() itself with one
+    representative market per family and asserts the horizon it actually
+    enforces matches this lookup. An earlier version of this docstring
+    named a tests/test_target_date_bounds.py that was never written
+    (opus-review-caught, F5), and the first real test only pinned this
+    function against the constants -- which would still have passed if a
+    gate branch were repointed at a different constant, i.e. it did not
+    cover the drift it claimed to (F16).
+
+    Uses is_hurricane_ticker() (the broad substring predicate, already this
+    file's documented "single source of truth so analyze_trade(), cmd_order,
+    and check_position_limits can't drift out of sync") rather than the
+    three narrow count/next-event/storm-order carve-outs: those are strict
+    subsets of it, and the broad form additionally covers the per-city
+    landfall / KXHURCAT-style tickers a human operator can type straight
+    into cmd_order, which share the same season-length horizon but have no
+    probability model of their own.
+    """
+    ticker_up = ticker.upper()
+    if is_hurricane_ticker(ticker_up):
+        return HURRICANE_MAX_DAYS_OUT
+    if any(ticker_up.startswith(_p) for _p in _KXRAIN_MONTHLY_CITY):
+        return RAIN_MAX_DAYS_OUT
+    if any(ticker_up.startswith(_p) for _p in _KXSNOW_MONTHLY_CITY):
+        return SNOW_MAX_DAYS_OUT
+    return MAX_DAYS_OUT
+
+
 def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
     R24: Single source of truth for city detection from a market ticker + title.

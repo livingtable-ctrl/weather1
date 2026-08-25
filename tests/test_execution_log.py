@@ -1165,11 +1165,17 @@ class TestRecordLiveExitFill:
 
     def test_concurrent_settle_race_on_partial_exit_also_raises(self):
         """Mirrors the full-exit race test above for the partial-exit
-        branch -- record_live_partial_exit must be guarded the same way."""
+        branch -- record_live_partial_exit must be guarded the same way.
+
+        The match string was "already settled" until batch-60. That wording
+        was wrong as a general claim about this branch (see the sibling test
+        below) even though it happened to be accurate for THIS scenario, and
+        main.cmd_order's exit cascade believed it -- so the message now names
+        both causes it can actually have."""
         position = self._open_position(quantity=10, entry_price=0.40)
         execution_log.record_live_early_exit(position["id"], 0.35, "stop_loss", -0.50)
 
-        with pytest.raises(RuntimeError, match="already settled"):
+        with pytest.raises(RuntimeError, match="settled or reduced below"):
             execution_log.record_live_exit_fill(position, 4, 0.60)
 
         with execution_log._conn() as con:
@@ -1178,6 +1184,34 @@ class TestRecordLiveExitFill:
             ).fetchone()
         # fill_quantity must be untouched by the losing writer.
         assert row["fill_quantity"] == 10
+
+    def test_partial_exit_raises_for_a_merely_REDUCED_position_too(self):
+        """batch-60 / opus round-2 MEDIUM-1: the partial branch raises for a
+        SECOND cause the old message denied. record_live_partial_exit also
+        returns False when COALESCE(fill_quantity, quantity) < filled_count
+        -- the position is STILL OPEN with real contracts, just smaller than
+        the caller's snapshot. Nothing covered this, so a caller reading
+        "already settled" off the exception and skipping the position had no
+        test telling it otherwise; main.cmd_order's cascade did exactly that
+        and re-attributed the position's contracts to the next match at the
+        wrong cost basis."""
+        position = self._open_position(quantity=10, entry_price=0.40)
+        # A concurrent protective exit sells 8, leaving 2 genuinely open.
+        assert execution_log.record_live_partial_exit(position["id"], 8) is True
+
+        with pytest.raises(RuntimeError, match="settled or reduced below"):
+            execution_log.record_live_exit_fill(position, 4, 0.60)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity, settled_at FROM orders WHERE id = ?",
+                (position["id"],),
+            ).fetchone()
+        # Positive control for "merely reduced, NOT settled" -- this is the
+        # whole distinction the old message erased, so assert both halves:
+        # the row is still open, and it still holds its reduced 2 contracts.
+        assert row["settled_at"] is None
+        assert row["fill_quantity"] == 2
 
     def test_stale_snapshot_full_close_after_concurrent_partial_raises(self):
         """Opus review (2026-08-17), NEW-M2: the settled_at guard alone does

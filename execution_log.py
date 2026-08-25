@@ -1535,6 +1535,65 @@ def record_live_partial_exit(order_id: int, filled_count: int) -> bool:
     return cur.rowcount > 0
 
 
+def set_exit_row_attribution(
+    order_id: int, position_id: int | None, fill_quantity: int
+) -> bool:
+    """Point an EXIT order's row at the position whose partial leg it is
+    about to be settled with, and record how many contracts that leg sold.
+
+    position_id=None clears the linkage instead, which is what an
+    UNMATCHED remainder needs: contracts that belong to no tracked position
+    at all. export_live_tax_csv keys entirely off this column -- a NULL says
+    "this row's own price/quantity are the disposition", a non-NULL says
+    "join to the referenced position for the true entry price". Leaving a
+    stale non-NULL there for an unmatched remainder makes the export report
+    that remainder against an unrelated position's cost basis.
+
+    Needed because main.cmd_order's live sell resolves closes_position_id
+    BEFORE placement (it must -- log_order writes the row up front so a
+    crash mid-flight leaves a reconcilable record), naming the OLDEST
+    matching position. Once batch-60 made that sell cascade its fill across
+    several positions oldest-first, the leg whose P&L lands on this row via
+    record_live_early_exit is the LAST one touched, not necessarily the
+    first -- so the pre-placement guess can be wrong by the time the fill
+    is known.
+
+    export_live_tax_csv's self-join treats a row with closes_position_id
+    set as "a partial exit's own row" and reads the referenced position for
+    the true entry price, plus COALESCE(fill_quantity, quantity) for the
+    amount sold. Leaving the stale pointer in place therefore reported that
+    leg's P&L against the WRONG position's entry price, and counted the
+    whole multi-position fill as this one leg's quantity -- a 4+6 cascade
+    exported 4 + 10 = 14 contracts disposed for a 10-contract sale (opus
+    review, F2). Rolled-up P&L (get_live_pnl_summary) was unaffected; this
+    is a cost-basis and quantity defect, which on a tax export is its own
+    kind of wrong.
+
+    A no-op in the single-match case order_executor._exit_live_position and
+    the pre-cascade code both produce -- there the pointer already names
+    the right position and fill_quantity already equals the leg -- so this
+    is safe to call unconditionally rather than only when the cascade
+    actually spanned more than one position.
+
+    Deliberately does NOT touch settled_at/pnl: the caller settles the row
+    itself immediately afterwards via record_live_early_exit, which keeps
+    that function the single writer of settlement state. Guarded on
+    settled_at IS NULL for the same reason every other writer here is --
+    if a concurrent writer already settled this row, its attribution
+    belongs to whatever it recorded, not to us.
+
+    Returns True if the row was updated.
+    """
+    init_log()
+    with _conn() as con:
+        cur = con.execute(
+            "UPDATE orders SET closes_position_id = ?, fill_quantity = ? "
+            "WHERE id = ? AND settled_at IS NULL",
+            (position_id, fill_quantity, order_id),
+        )
+    return cur.rowcount > 0
+
+
 def record_live_exit_fill(
     position: dict, fill_count: int, exit_price: float, reason: str | None = None
 ) -> tuple[float, bool]:
@@ -1622,9 +1681,16 @@ def record_live_exit_fill(
     call add_live_loss(-pnl) so the day's aggregate live total reflects
     this fill immediately.
 
-    Raises RuntimeError if the position was already settled by a concurrent
-    writer before this call's UPDATE landed -- add_live_loss is deliberately
-    NOT called in that case, so the same exit's P&L is never double-counted.
+    Raises RuntimeError if a concurrent writer moved this position between
+    the caller's snapshot and this call's UPDATE -- add_live_loss is
+    deliberately NOT called in that case, so the same exit's P&L is never
+    double-counted. NOTE the raise does NOT imply "already settled": both
+    branches also raise when the position was merely REDUCED and is still
+    open (the full-close branch's expected_quantity guard, and the partial
+    branch's own `COALESCE(fill_quantity, quantity) >= filled_count`
+    condition). A caller that reacts differently to settled-vs-reduced --
+    main.cmd_order's exit cascade does -- must re-read the row rather than
+    infer it from this exception.
     """
     from utils import kalshi_maker_fee, kalshi_taker_fee
 
@@ -1653,9 +1719,21 @@ def record_live_exit_fill(
     if clamped_fill_count < qty:
         applied = record_live_partial_exit(position["id"], clamped_fill_count)
         if not applied:
+            # Two distinct causes, and this message must not claim to know
+            # which (opus round-2 review, MEDIUM-1): record_live_partial_exit
+            # returns False when settled_at IS NOT NULL *or* when
+            # COALESCE(fill_quantity, quantity) < filled_count -- the latter
+            # meaning the position is STILL OPEN with real contracts, just
+            # smaller than this call's snapshot. An earlier version said
+            # "was already settled by a concurrent writer" unconditionally,
+            # and main.cmd_order's exit cascade believed it, skipping a
+            # still-open position and re-attributing its contracts to the
+            # next match at the wrong cost basis. Callers that need to tell
+            # the two apart must re-read the row.
             raise RuntimeError(
-                f"position {position['id']} was already settled by a concurrent "
-                "writer -- not applying this partial exit"
+                f"position {position['id']} was settled or reduced below "
+                f"{clamped_fill_count} by a concurrent writer -- not applying "
+                "this partial exit"
             )
         add_live_loss(-pnl)
         return pnl, False

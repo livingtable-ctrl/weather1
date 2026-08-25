@@ -3495,9 +3495,20 @@ def cmd_today(client: KalshiClient) -> None:
     best_m, best_a = top_picks[0]
 
     def _pick_display(
-        enriched: dict, analysis: dict, balance: float, label: str
+        enriched: dict, analysis: dict, balance: float, label: str, prices: dict
     ) -> None:
-        """Print full detail block for one pick."""
+        """Print full detail block for one pick.
+
+        prices: the already-parsed price book to render from. Required, not
+        defaulted to parse_market_price(enriched) -- this has exactly one
+        caller (the #1 pick, passing its freshly re-fetched quote), so a
+        default would be dead code, and the whole point of threading the
+        book in is that the detail block and the placement prompt directly
+        beneath it must quote the SAME number. A default would silently
+        reintroduce the two-prices-on-one-screen split the moment a second
+        caller forgot to pass one. The compact runner-up lines further down
+        do not come through here at all.
+        """
         _ticker = enriched.get("ticker", "")
         _title = enriched.get("title") or _ticker
         _net_edge = analysis.get("net_edge", analysis["edge"])
@@ -3512,7 +3523,13 @@ def cmd_today(client: KalshiClient) -> None:
         _ci_kelly = analysis.get(
             "ci_adjusted_kelly", analysis.get("fee_adjusted_kelly", 0.0)
         )
-        _entry_price = _market_prob if _side == "yes" else 1 - _market_prob
+        # Batch-60 item 3 (backlog.txt "cmd_today's interactive '[P] Place'
+        # flow books the actual paper trade at the bid-ask MID"): this was
+        # the mid, correctly side-flipped but never ask-based, so the
+        # "If correct: win $X" figure below understated entry cost by half
+        # the spread -- the same defect the booking price below had, in the
+        # display the operator reads before deciding.
+        _entry_price = _side_aware_entry_price(_side, prices)
 
         _bet_dollars = kelly_bet_dollars(
             _ci_kelly, client=client, fraction_cap=consensus_fraction_cap(analysis)
@@ -3568,6 +3585,25 @@ def cmd_today(client: KalshiClient) -> None:
         print(
             f"  Recommendation: BUY {bold(_side.upper())} at {bold(f'{_entry_price:.0%}')} per contract"
         )
+        # Opus round-2 review (L4): the price above now comes from a quote
+        # re-fetched at prompt time, while "Market says", "Your edge" and
+        # the ROI figure all still come from the scan-time analysis. Before
+        # the re-fetch all four moved together. If the book has moved since
+        # the scan, say so rather than letting the operator read an edge
+        # that no longer exists next to the price they will actually pay.
+        # Deliberately NOT recomputing the edge here: net_edge is
+        # fee-adjusted by the analysis pipeline, and hand-rolling a
+        # replacement in a display function is how the mid-vs-ask defect
+        # this batch is fixing got introduced in the first place.
+        _fresh_mid = prices.get("implied_prob")
+        if _fresh_mid is not None and abs(_fresh_mid - _market_prob) >= 0.02:
+            print(
+                yellow(
+                    f"  [Note] The book moved to {_fresh_mid:.0%} since this scan "
+                    f"(analysis used {_market_prob:.0%}) — the price above is "
+                    "current, the edge and ROI above are not."
+                )
+            )
         print()
         print(f"  Why: {_why}")
         print()
@@ -3591,17 +3627,85 @@ def cmd_today(client: KalshiClient) -> None:
 
     balance = get_balance()
 
-    # ── #1 Primary pick — full detail + placement prompt ─────────────────────
-    _pick_display(best_m, best_a, balance, "#1 Best Pick")
-
     from paper import kelly_quantity
     from paper import place_paper_order as _ppo_today  # noqa: F811
     from utils import MAX_DAILY_SPEND
 
     _ticker1 = best_m.get("ticker", "")
     _side1 = best_a["recommended_side"]
-    _market_prob1 = best_a["market_prob"]
-    _entry_price1 = _market_prob1 if _side1 == "yes" else 1 - _market_prob1
+
+    # Batch-60 item 3: the price the #1 pick is DISPLAYED and BOOKED at.
+    # Two separate defects fixed here:
+    #   1. it was the bid-ask mid (best_a["market_prob"], side-flipped but
+    #      never ask-based), so a placed paper trade recorded a price the
+    #      operator could not have gotten -- optimistically biasing the very
+    #      paper corpus the live-trading graduation gate reads. Now routed
+    #      through _side_aware_entry_price, the same helper cmd_market uses
+    #      and the CLI counterpart of the frontend's sideAwareEntryPrice.
+    #   2. the quote came from the scan loop above, which can be minutes old
+    #      by the time this prompt is answered. Re-fetched once here, BEFORE
+    #      the detail block is printed, so the projection, the suggested
+    #      contract count, and the booked price are all the same number --
+    #      mirrors order_executor.py's own "L1-B: Re-fetch live price before
+    #      placement" convention. Deliberately resolved ahead of
+    #      _pick_display rather than inside it: only the #1 pick is worth an
+    #      extra API call, and splitting the re-fetch across the two would
+    #      show two different prices for one contract on the same screen.
+    # The re-fetch is best-effort: a failed call, or one returning a market
+    # with no real quote, falls back to the scan-time book rather than
+    # blocking the placement entirely.
+    #
+    # The emptiness test is parse_market_price's own has_quote (mid > 0),
+    # NOT "the derived entry price is > 0" -- opus-review-caught (F1), and
+    # the difference is a live-money-shaped bug in the NO direction. On an
+    # all-zero book _side_aware_entry_price returns 0.0 for YES (so a
+    # price-based test would correctly reject it) but for NO it falls
+    # through to max(0.01, 1.0 - implied_prob) = 1.0, which passes any
+    # `> 0` test. That would let a quote-less payload REPLACE a good
+    # scan-time book and book the trade at $1.00 -- the maximum possible
+    # entry price, a structurally-unwinnable position, and a worse
+    # corruption of the graduation-gate corpus than the mid-pricing this
+    # item exists to fix.
+    _prices1 = parse_market_price(best_m)
+    try:
+        _fresh_m1 = client.get_market(_ticker1)
+        if _fresh_m1:
+            # Inside the try on purpose: parse_market_price coerces the
+            # quote fields with float(), so a malformed payload raises here
+            # rather than at the API call, and must fall back the same way.
+            _fresh_prices1 = parse_market_price(_fresh_m1)
+            if (
+                _fresh_prices1["has_quote"]
+                and _side_aware_entry_price(_side1, _fresh_prices1) > 0
+            ):
+                _prices1 = _fresh_prices1
+    except Exception as _quote_err1:
+        _log.warning(
+            "cmd_today: fresh quote re-fetch failed for %s (%s) -- pricing "
+            "from the scan-time book instead",
+            _ticker1,
+            _quote_err1,
+        )
+    _entry_price1 = _side_aware_entry_price(_side1, _prices1)
+
+    # Does the book actually quote an ask on the side being BOUGHT? Opus
+    # round-2 review (L5): _side_aware_entry_price is shared with
+    # cmd_market's display, so when the side's own ask is missing it falls
+    # back to a mid-derived estimate rather than refusing -- fine for a
+    # sizing hint, wrong for a booking price. A one-sided book (yes_bid == 0
+    # with a real yes_ask) therefore still booked a NO trade at
+    # max(0.01, 1 - mid) instead of the true no_ask = 1 - yes_bid, keeping
+    # exactly the mid-optimism item 3 exists to remove -- newly load-bearing
+    # now that this helper sets the recorded price and not just a display.
+    # Checked here rather than inside the helper so cmd_market's display
+    # behaviour is untouched.
+    _has_side_ask1 = (
+        _prices1["yes_ask"] > 0 if _side1 == "yes" else _prices1["yes_bid"] > 0
+    )
+
+    # ── #1 Primary pick — full detail + placement prompt ─────────────────────
+    _pick_display(best_m, best_a, balance, "#1 Best Pick", prices=_prices1)
+
     _ci_kelly1 = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
     _frac_cap1 = consensus_fraction_cap(best_a)
     _bet_dollars1 = kelly_bet_dollars(
@@ -3664,6 +3768,20 @@ def cmd_today(client: KalshiClient) -> None:
                 red(
                     "  TRADING_PAUSED is set in .env — order placement is disabled.\n"
                     "  Remove TRADING_PAUSED to resume trading."
+                )
+            )
+        elif not _has_side_ask1:
+            # See _has_side_ask1's own comment. Refusing is the only honest
+            # option: with no ask on this side there is no price the
+            # operator could actually have paid, so any number booked here
+            # would be invented -- and both available inventions are known
+            # to be wrong (the mid understates, and the 1.0 fallback is the
+            # unwinnable-position bug F1 caught).
+            print(
+                red(
+                    f"  {_ticker1}: no {'YES ask' if _side1 == 'yes' else 'NO ask'} "
+                    "quoted on this market right now, so there is no real "
+                    "price to book against — refusing to place this order."
                 )
             )
         elif (
@@ -3810,6 +3928,27 @@ def cmd_today(client: KalshiClient) -> None:
                         city=best_m.get("_city"),
                         target_date=best_a.get("target_date"),
                         method=best_a.get("method"),
+                        # Opus round-2 review (I2): without close_time,
+                        # positions._passes_exit_gates fails CLOSED, so
+                        # place_paper_order's own guard comment is literal --
+                        # the row "permanently bypasses the 24h stop-loss/
+                        # breakeven gates". Every cmd_today placement was
+                        # landing in the ledger unmanageable by the automated
+                        # protective-exit scanner. days_out likewise feeds the
+                        # multi-day slot cap. Both were already in scope at
+                        # this call site; only the thesis marker below was
+                        # being added when this was spotted.
+                        close_time=best_m.get("close_time"),
+                        days_out=best_a.get("days_out"),
+                        # Batch-60 item 3: makes this path's rows
+                        # attributable in the paper corpus. Before this,
+                        # a cmd_today placement was indistinguishable from
+                        # a cron-placed one, so the mid-vs-ask fix above
+                        # left a date boundary nothing recorded -- an audit
+                        # could not tell which rows predated it. Mirrors
+                        # web_app's own "manual approval via dashboard"
+                        # thesis marker on its manual-placement path.
+                        thesis="cmd_today interactive [P] place",
                     )
                     cost = round(_entry_price1 * _qty1, 2)
                     print(
@@ -3866,8 +4005,17 @@ def cmd_today(client: KalshiClient) -> None:
         for rank, (rm, ra) in enumerate(top_picks[1:], start=2):
             _rt = rm.get("ticker", "")
             _rs = ra["recommended_side"]
-            _rmp = ra["market_prob"]
-            _rep = _rmp if _rs == "yes" else 1 - _rmp
+            # Batch-60 item 3, opus-review-caught (F3): the runner-ups are
+            # rendered here, NOT through _pick_display, so they kept the
+            # mid-based line after the #1 pick moved to the side-aware ask.
+            # That put an ask and a mid side by side on one screen with
+            # nothing marking them as different measures -- an operator
+            # comparing "#1 BUY YES @ 44%" against "#2 BUY YES @ 42%" would
+            # be comparing a price they can pay against one they can't.
+            # No re-fetch here: unlike the #1 pick these are not placeable
+            # from this screen, so the scan-time book is the right source
+            # and three extra API calls per run would not be.
+            _rep = _side_aware_entry_price(_rs, parse_market_price(rm))
             _rpe = ra.get("edge", 0)
             _rdisp = _rpe if _rs == "yes" else -_rpe
             _redge_s = green(f"+{_rdisp:.0%}") if _rdisp > 0 else red(f"{_rdisp:.0%}")
@@ -5557,6 +5705,62 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             )
         )
 
+    # Single derivation of this order's target_date, hoisted here (batch-60
+    # item 2) so the live-buy freshness guard below and the paper-mirror
+    # place_paper_order() call further down read the SAME value instead of
+    # computing it twice from the same two sources. Prefers
+    # _enriched["_date"] and falls back to _analysis["target_date"] for
+    # KXRAIN*M tickers, whose _date is always None by design -- see
+    # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2, whose
+    # review-caught fallback this preserves verbatim.
+    _date_raw_ord = _enriched.get("_date") if _enriched else None
+    _target_date_ord: date | None = (
+        _date_raw_ord if isinstance(_date_raw_ord, date) else None
+    )
+    if _target_date_ord is None and _analysis and _analysis.get("target_date"):
+        try:
+            _target_date_ord = date.fromisoformat(_analysis["target_date"])
+        except (ValueError, TypeError):
+            pass
+    _target_date_str_ord = _target_date_ord.isoformat() if _target_date_ord else None
+
+    # A LAST-RESORT date for the freshness guard ONLY -- deliberately not
+    # folded into _target_date_str_ord above (opus round-2 review, L6).
+    #
+    # Why it exists (F7): the two sources above both go dark exactly where
+    # the new future-side bound matters most. KXRAIN*M/KXDENSNOWM tickers
+    # have _date=None by design, and when analyze_trade gates a market OUT
+    # -- precisely what it does to a far-future one -- _analysis is None
+    # too. So `order buy KXRAINNYCM-27JUN-5.0 ...`, ~300 days out and far
+    # beyond RAIN_MAX_DAYS_OUT+3, reached validate_target_date_freshness as
+    # a bare None and placed a REAL order unchecked. The daily-temp
+    # families the tests exercise hide this: their _enriched["_date"]
+    # survives a gated analysis.
+    #
+    # Why it is scoped to the guard: this is close_time's raw UTC date,
+    # while every other consumer of _target_date_str_ord (the trade record,
+    # check_position_limits' city/date grouping key, Brier logging) expects
+    # the CITY-LOCAL convention -- order_executor._get_live_open_positions
+    # explicitly rejected the raw-UTC form for that reason, and
+    # weather_markets._days_out_from_close_time documents it as
+    # systematically the following day for an ET-calendar-date market.
+    # Feeding it to those consumers would trade a missing value for a
+    # subtly wrong one. The guard is the one consumer that only needs an
+    # order-of-magnitude sanity check, and its 3-day grace absorbs the
+    # one-day skew outright.
+    _guard_date_str_ord = _target_date_str_ord
+    if _guard_date_str_ord is None and _market and _market.get("close_time"):
+        try:
+            _guard_date_str_ord = (
+                datetime.fromisoformat(
+                    str(_market["close_time"]).replace("Z", "+00:00")
+                )
+                .date()
+                .isoformat()
+            )
+        except (ValueError, TypeError):
+            pass
+
     if _analysis:
         _fp = _analysis.get("forecast_prob", 0)
         _mp = _analysis.get("market_prob", 0)
@@ -5643,6 +5847,22 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # would open a new short position rather than reduce an existing one,
     # so this can only ever reduce/close real exposure, never add it.
     if _is_live and action == "buy":
+        # Batch-60 item 2 (backlog.txt "LIVE cmd_order BUY NEVER VALIDATES
+        # target_date FRESHNESS BEFORE PLACING A REAL ORDER"): the paper-
+        # mirror branch further down gets place_paper_order()'s own
+        # target_date guard for free, so until now the manual LIVE buy --
+        # which never touches place_paper_order at all -- had strictly
+        # WEAKER date validation than the automated paper path, on the one
+        # path that spends real money. Same shared helper, not a second
+        # hand-written copy, so the two can't drift.
+        try:
+            from paper import validate_target_date_freshness as _vtdf_ord
+
+            _vtdf_ord(ticker, _guard_date_str_ord)
+        except ValueError as _stale_err:
+            print(red(f"  {_stale_err}"))
+            return
+
         import execution_log as _execution_log_ord
 
         _live_cfg_ord = _load_live_config()
@@ -5688,16 +5908,32 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             from paper import check_position_limits as _cpl_order
 
             _city_ord = _enriched.get("_city") if _enriched else None
-            _date_ord = _enriched.get("_date") if _enriched else None
-            _tdate_str_ord = (
-                _date_ord.isoformat() if isinstance(_date_ord, date) else None
-            )
+            # Batch-60 item 2 adjacency: this used to re-derive the date from
+            # _enriched["_date"] ALONE, without the KXRAIN*M fallback the
+            # hoisted _target_date_str_ord carries -- so a monthly-rain order
+            # reached check_position_limits with target_date_str=None and its
+            # city/date, directional, and correlated-group caps were all
+            # silently skipped. That contradicted both the fallback's own
+            # stated purpose ("so a manual live order gets the same real
+            # exposure-cap/correlation grouping key the automated path
+            # already has, not a silent None") and check_position_limits'
+            # own docstring, which claims those caps "are no longer provably
+            # skipped for this ticker family". The original fix added the
+            # fallback to the place_paper_order call only and missed the
+            # exposure-cap consumer it was written for.
+            #
+            # Dormant today -- check_position_limits refuses every KXRAIN*M
+            # ticker outright while _rain_gates_active() is false, so the
+            # grouping key is never reached. It starts mattering the day
+            # RAIN_TRADING_ENABLED=1, which is exactly when a newly-graduated
+            # family would otherwise inherit "all clear" on caps nothing had
+            # ever applied to it.
             _limit_check_ord = _cpl_order(
                 ticker,
                 int(count),
                 price,
                 city=_city_ord,
-                target_date_str=_tdate_str_ord,
+                target_date_str=_target_date_str_ord,
                 side=side,
                 client=client,
             )
@@ -5726,6 +5962,10 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # None) instead of being silently mislabeled or routed into the paper
     # ledger.
     _live_close_position: dict | None = None
+    # Batch-60 item 4: the full match list, not just its head -- the
+    # settlement site below cascades the filled count across it oldest-first.
+    # Initialized out here so that site can read it unconditionally.
+    _live_open_matches: list[dict] = []
     if _is_live and action == "sell":
         # Defensive: a DB read failure here must not block placing the real
         # sell order -- per _exit_live_position's own established reasoning,
@@ -5752,21 +5992,24 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             if len(_live_open_matches) > 1:
                 # Opus review (2026-08-17), NEW-M1: multiple open live
                 # positions can legally share a ticker+side (see
-                # order_executor.py's own _get_live_open_positions callers);
-                # this sell only closes the OLDEST one. A full fix needs
-                # either closes_position_id to support more than one
-                # referenced row or preventing duplicate live entries in
-                # the first place (backlog.txt "check_position_limits'
-                # EXPOSURE CAPS ARE STRUCTURALLY BLIND..." entry) -- flagged
-                # to the operator rather than silently leaving the others
-                # untouched with no signal.
+                # order_executor.py's own _get_live_open_positions callers).
+                # This used to close only the OLDEST one regardless of how
+                # many contracts actually sold -- batch-60 item 4 replaced
+                # that with a FIFO cascade at the settlement site below, so
+                # a sell spanning more than one tracked position now settles
+                # each in turn instead of leaving the remainder marked open
+                # with contracts that no longer exist on the exchange.
+                # closes_position_id still names only this first row (the
+                # schema supports exactly one referenced row per exit), so
+                # the operator warning stays: the linkage is narrower than
+                # what the cascade actually settled.
                 print(
                     yellow(
                         f"  [Warning] {len(_live_open_matches)} tracked live "
                         f"positions exist for {ticker} {side} -- this sell "
-                        "only closes the oldest one (#"
-                        f"{_live_close_position['id']}); the others are "
-                        "untouched and need their own sell."
+                        "is applied oldest-first across them, but only the "
+                        f"oldest (#{_live_close_position['id']}) is recorded "
+                        "as this order's closes_position_id."
                     )
                 )
 
@@ -5982,42 +6225,383 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         # again.
         if _live_close_position is not None:
             try:
-                from execution_log import record_live_early_exit, record_live_exit_fill
+                import execution_log as _execution_log_mod
+                from execution_log import (
+                    record_live_early_exit,
+                    record_live_exit_fill,
+                    set_exit_row_attribution,
+                )
 
-                _pnl, _fully_closed = record_live_exit_fill(
-                    _live_close_position, _record_count, price
-                )
-                if not _fully_closed:
-                    # AUD-0028: record_live_exit_fill's partial branch only
-                    # settles the POSITION row (_live_close_position["id"])
-                    # via record_live_partial_exit, correctly leaving it open
-                    # at its reduced size -- but that means THIS sell order's
-                    # own row (row_id) is never settled, so its P&L never
-                    # gets its own tax-CSV row and never counts toward
-                    # get_live_pnl_summary. Mirrors
-                    # order_executor._exit_live_position's identical
-                    # partial-fill branch, which makes this exact second
-                    # call onto its own log_id for the same reason.
-                    try:
-                        record_live_early_exit(row_id, price, "manual_close", _pnl)
-                    except Exception as _own_row_err:
-                        _log.warning(
-                            "cmd_order: partial exit of position #%d "
-                            "succeeded but settling this sell order's own "
-                            "row #%d failed: %s — its P&L will be missing "
-                            "from tax export/pnl summary until manually "
-                            "corrected",
-                            _live_close_position["id"],
-                            row_id,
-                            _own_row_err,
-                        )
-                print(
-                    green(
-                        f"  Live position #{_live_close_position['id']} "
-                        f"{'closed' if _fully_closed else 'partially closed'} "
-                        f"via manual sell — pnl=${_pnl:+.2f}"
+                # Batch-60 item 4 (backlog.txt "Live cmd_order sell only
+                # closes the oldest of multiple tracked live positions
+                # sharing the same ticker+side"): this used to hand the
+                # WHOLE filled count to the oldest match alone.
+                # record_live_exit_fill clamps to that position's own
+                # quantity, so a sell spanning two positions (e.g. 10 sold,
+                # oldest holds 4) fully closed the oldest and left the other
+                # 6 marked open in execution_log with no contracts behind
+                # them on the exchange -- overstating open exposure and
+                # inviting the protective-exit scanner to try selling them
+                # again. Now the fill is consumed oldest-first across every
+                # match, matching what actually executed.
+                #
+                # That entry deferred itself pending its root-cause
+                # prerequisite (exposure caps blind to execution_log), which
+                # is now [RESOLVED 2026-08-18] -- re-decided rather than
+                # inheriting the old "no independent action recommended".
+                _remaining_fill = _record_count
+                _cascade_pnl = 0.0
+                _settled_notes: list[str] = []
+                _cascade_err: Exception | None = None
+
+                def _reread_open_match(_pid: int) -> dict | None:
+                    """This position's CURRENT tracked state, or None if it
+                    is genuinely gone/settled. Used to tell apart the two
+                    very different things a RuntimeError from
+                    record_live_exit_fill can mean -- see the handler below.
+
+                    RAISES on a read failure rather than returning None
+                    (opus round-3 review, L1). execution_log.get_order_by_id
+                    swallows every exception and returns None itself, which
+                    would make a transient DB error indistinguishable from
+                    "row gone" -- and "row gone" is the branch that skips
+                    the position UNDIMINISHED, moving a still-open
+                    position's whole share onto the next match at the wrong
+                    cost basis. That is precisely the bug MEDIUM-1 exists to
+                    prevent, reintroduced through a different door. Reading
+                    the row directly lets a real failure propagate to the
+                    caller's stop-the-cascade path, which is the
+                    fail-visible direction the rest of this handler uses.
+                    """
+                    with _execution_log_mod._conn() as _con:
+                        _row = _con.execute(
+                            "SELECT settled_at, fill_quantity, quantity, price "
+                            "FROM orders WHERE id = ?",
+                            (_pid,),
+                        ).fetchone()
+                    if not _row or _row["settled_at"]:
+                        return None
+                    _q = int(_row["fill_quantity"] or _row["quantity"] or 0)
+                    if _q <= 0:
+                        return None
+                    return {
+                        "id": _pid,
+                        "quantity": _q,
+                        "entry_price": _row["price"],
+                    }
+
+                for _match in _live_open_matches:
+                    if _remaining_fill <= 0:
+                        break
+                    if int(_match.get("quantity") or 0) <= 0:
+                        continue
+
+                    # Settle against this match's CURRENT size, retrying once
+                    # if a concurrent writer moved it under us.
+                    #
+                    # Opus round-2 review (MEDIUM-1) killed the previous
+                    # premise here, which was that record_live_exit_fill
+                    # raises RuntimeError for "exactly one cause". It raises
+                    # from two places with two different meanings, and its
+                    # PARTIAL branch's message ("was already settled by a
+                    # concurrent writer") is misleading: that branch also
+                    # fires when record_live_partial_exit finds
+                    # COALESCE(fill_quantity, quantity) < filled_count, i.e.
+                    # the position is STILL OPEN with real contracts, just
+                    # smaller than our snapshot. Skipping it outright then
+                    # shifted its whole share onto the next match at the
+                    # WRONG cost basis -- reproduced: P1=20@0.40 reduced to 2
+                    # by cron mid-flight, P2=10@0.50, sell 10 booked all 10
+                    # against 0.50 instead of 2@0.40 + 8@0.50, and the tax
+                    # export recorded the wrong basis. That is worse than the
+                    # abort it replaced, which at least left the discrepancy
+                    # visible.
+                    _pnl_i: float | None = None
+                    _full_i = False
+                    _take = 0
+                    _cur = _match
+                    for _attempt in (0, 1):
+                        _take = min(_remaining_fill, int(_cur.get("quantity") or 0))
+                        if _take <= 0:
+                            break
+                        try:
+                            _pnl_i, _full_i = record_live_exit_fill(_cur, _take, price)
+                            break
+                        except RuntimeError as _raced_err:
+                            _pnl_i = None
+                            try:
+                                _cur_now = _reread_open_match(int(_match["id"]))
+                            except Exception as _reread_err:
+                                # Cannot tell settled-from-reduced, and
+                                # guessing either way risks mis-attribution
+                                # -- stop and say so (L1).
+                                _cascade_err = _reread_err
+                                _log.warning(
+                                    "cmd_order: could not re-read live position "
+                                    "#%s after a contended exit (%s) -- stopping "
+                                    "the cascade with %d of %d contracts "
+                                    "unattributed",
+                                    _match.get("id"),
+                                    _reread_err,
+                                    _remaining_fill,
+                                    _record_count,
+                                )
+                                break
+                            if _cur_now is None:
+                                # Genuinely settled by the other writer.
+                                # These contracts were never ours to
+                                # attribute, so the fill moves to the next
+                                # match UNDIMINISHED (do not decrement).
+                                _log.warning(
+                                    "cmd_order: live position #%s was settled "
+                                    "by a concurrent writer (%s) -- skipping "
+                                    "it and applying this fill to the next "
+                                    "match",
+                                    _match.get("id"),
+                                    _raced_err,
+                                )
+                                break
+                            if _attempt == 1:
+                                # Still contended after one retry: stop
+                                # rather than spin against a writer that is
+                                # actively moving this row.
+                                _cascade_err = _raced_err
+                                _log.warning(
+                                    "cmd_order: live position #%s kept moving "
+                                    "under this exit (%s) -- stopping the "
+                                    "cascade with %d of %d contracts "
+                                    "unattributed",
+                                    _match.get("id"),
+                                    _raced_err,
+                                    _remaining_fill,
+                                    _record_count,
+                                )
+                                break
+                            # Still open, just smaller -- retry against its
+                            # real current size so this match still absorbs
+                            # its own share at its own entry price.
+                            _log.warning(
+                                "cmd_order: live position #%s was reduced to "
+                                "%d by a concurrent writer -- retrying this "
+                                "exit against its current size",
+                                _match.get("id"),
+                                _cur_now["quantity"],
+                            )
+                            _cur = _cur_now
+                        except Exception as _match_err:
+                            # Any OTHER failure is of unknown cause, so stop
+                            # rather than re-attributing this position's
+                            # contracts to the next one: the sell DID execute
+                            # on the exchange, but silently settling someone
+                            # else's row with them would corrupt attribution
+                            # worse than leaving the remainder for manual
+                            # reconciliation.
+                            _cascade_err = _match_err
+                            _log.warning(
+                                "cmd_order: settling live position #%s failed "
+                                "(%s) -- stopping the exit cascade with %d of "
+                                "%d contracts unattributed",
+                                _match.get("id"),
+                                _match_err,
+                                _remaining_fill,
+                                _record_count,
+                            )
+                            break
+
+                    if _cascade_err is not None:
+                        break
+                    if _pnl_i is None:
+                        # Raced away entirely (or nothing left to take from
+                        # this row): move on without consuming the fill.
+                        continue
+
+                    _remaining_fill -= _take
+                    _cascade_pnl += _pnl_i
+                    _settled_notes.append(
+                        f"#{_cur['id']} {'closed' if _full_i else 'partially closed'}"
                     )
-                )
+                    if not _full_i:
+                        # AUD-0028: record_live_exit_fill's partial branch
+                        # only settles the POSITION row via
+                        # record_live_partial_exit, correctly leaving it open
+                        # at its reduced size -- but that means THIS sell
+                        # order's own row (row_id) is never settled, so its
+                        # P&L never gets its own tax-CSV row and never counts
+                        # toward get_live_pnl_summary. Mirrors
+                        # order_executor._exit_live_position's identical
+                        # partial-fill branch, which makes this exact second
+                        # call onto its own log_id for the same reason.
+                        # Reachable at most once per cascade: a partial means
+                        # the fill ran out inside this position, so the loop
+                        # exits on the next iteration's _remaining_fill check.
+                        #
+                        # Repoint the row FIRST (opus review, F2):
+                        # closes_position_id was fixed to the OLDEST match
+                        # before placement, but the leg whose P&L is about
+                        # to land on this row is the LAST one touched. Left
+                        # stale, export_live_tax_csv's self-join reports
+                        # this leg against the wrong position's entry price
+                        # and counts the whole cascade's fill as this leg's
+                        # quantity (a 4+6 cascade exported 14 contracts
+                        # disposed for a 10-contract sale). A no-op in the
+                        # single-match case, where both values already
+                        # agree.
+                        try:
+                            if not set_exit_row_attribution(
+                                row_id, int(_cur["id"]), _take
+                            ):
+                                # Opus round-2 review (L3): a False return
+                                # means a concurrent writer settled this row
+                                # first, which also makes the
+                                # record_live_early_exit below a silent
+                                # no-op -- so without this the partial leg's
+                                # P&L would vanish with no log line at all
+                                # (the except only fires on a raise).
+                                _log.warning(
+                                    "cmd_order: sell row #%d was already "
+                                    "settled by a concurrent writer -- the "
+                                    "partial exit of position #%s (pnl=%.4f) "
+                                    "is not recorded on it; check "
+                                    "execution_log",
+                                    row_id,
+                                    _cur["id"],
+                                    _pnl_i,
+                                )
+                            record_live_early_exit(
+                                row_id, price, "manual_close", _pnl_i
+                            )
+                        except Exception as _own_row_err:
+                            _log.warning(
+                                "cmd_order: partial exit of position #%d "
+                                "succeeded but settling this sell order's own "
+                                "row #%d failed: %s — its P&L will be missing "
+                                "from tax export/pnl summary until manually "
+                                "corrected",
+                                _cur["id"],
+                                row_id,
+                                _own_row_err,
+                            )
+                if _settled_notes:
+                    print(
+                        green(
+                            f"  Live position{'s' if len(_settled_notes) > 1 else ''} "
+                            f"{', '.join(_settled_notes)} via manual sell — "
+                            f"pnl=${_cascade_pnl:+.2f}"
+                        )
+                    )
+                if _cascade_err is not None:
+                    print(
+                        yellow(
+                            "  [Warning] Position bookkeeping stopped early: "
+                            f"{_cascade_err} — {_remaining_fill} of "
+                            f"{_record_count} sold contracts are not attributed "
+                            "to any tracked position; check execution_log."
+                        )
+                    )
+                elif _remaining_fill > 0:
+                    # The sell exceeded everything this bot tracks for the
+                    # ticker+side (or every match raced away). The old code
+                    # clamped and said nothing at all; the cascade can
+                    # actually measure the shortfall.
+                    #
+                    # Opus round-2 review (MEDIUM-2): the first version of
+                    # this said the leftover was "recorded on this order's
+                    # row only", which was categorically false. Reaching
+                    # here requires that no leg was partial (a partial
+                    # zeroes the remainder), and row_id is settled ONLY
+                    # inside that partial branch -- so row_id was sitting at
+                    # settled_at=NULL/pnl=NULL, which excludes it from
+                    # export_live_tax_csv, get_live_pnl_summary,
+                    # get_live_settlement_streak AND (via its non-NULL
+                    # closes_position_id) get_filled_unsettled_live_orders.
+                    # The contracts were recorded precisely nowhere, on the
+                    # one screen an operator uses to reconcile a real sale.
+                    #
+                    # Now genuinely settled, reusing the unmatched-sell
+                    # shape this file already established further down for
+                    # the no-match-at-all case: pnl=0.0 is an explicit
+                    # placeholder (there is no tracked entry price for these
+                    # contracts), and export_live_tax_csv labels
+                    # exit_reason='unmatched_sell' rows
+                    # "unmatched_sell_unknown_pnl" with an empty pnl cell
+                    # rather than a misleading 0.00, while the rolled-up
+                    # summaries exclude them from their SUMs.
+                    from execution_log import record_live_early_exit_with_retry
+
+                    # Make this row byte-identical in SHAPE to the
+                    # no-match-at-all branch further down before settling it
+                    # (opus round-3 review): closes_position_id NULL, and
+                    # fill_quantity = the unmatched remainder.
+                    #
+                    # Round 2 settled the row but left both columns as they
+                    # were -- closes_position_id still naming the OLDEST
+                    # match (set pre-placement, and never rewritten on this
+                    # path since set_exit_row_attribution is only called in
+                    # the partial branch, which by construction cannot have
+                    # run here) and fill_quantity still the WHOLE fill. That
+                    # is F2's exact failure shape on the one branch F2's fix
+                    # did not cover: export_live_tax_csv joins on
+                    # closes_position_id for the entry price and reads
+                    # COALESCE(fill_quantity, quantity) for the amount, so a
+                    # 4+6 cascade with a 2-contract remainder exported
+                    # 4 + 6 + 12 = 22 contracts for a 12-contract sale, with
+                    # the oldest position's 0.40 basis reported twice.
+                    # Round 2 traded an under-report of 2 for an over-report
+                    # of 10 plus a duplicated cost basis.
+                    set_exit_row_attribution(row_id, None, _remaining_fill)
+                    _leftover_settled = record_live_early_exit_with_retry(
+                        row_id, price, "unmatched_sell", 0.0
+                    )
+                    if _leftover_settled:
+                        print(
+                            yellow(
+                                f"  [Warning] {_remaining_fill} of {_record_count} "
+                                "sold contracts exceeded every tracked live "
+                                f"position for {ticker} {side} — recorded on this "
+                                f"order's own row #{row_id} with P&L unknown (no "
+                                "tracked entry price to compute one against)."
+                            )
+                        )
+                    else:
+                        # record_live_early_exit_with_retry returns False for
+                        # TWO reasons and they need different advice (opus
+                        # round-3 review, L2): retries genuinely exhausted (a
+                        # sentinel row was written), or a concurrent writer
+                        # settled this row first (no sentinel, and the row is
+                        # in fact fine). Sending an operator to an empty
+                        # sentinel file to hand-settle an already-settled row
+                        # is worse than saying nothing. Re-read to tell them
+                        # apart rather than guessing.
+                        _row_after = None
+                        try:
+                            _row_after = _execution_log_mod.get_order_by_id(row_id)
+                        except Exception:
+                            _row_after = None
+                        if _row_after and _row_after.get("settled_at"):
+                            print(
+                                yellow(
+                                    f"  [Warning] {_remaining_fill} of "
+                                    f"{_record_count} sold contracts exceeded every "
+                                    f"tracked live position for {ticker} {side}. "
+                                    f"Row #{row_id} was settled by a concurrent "
+                                    "writer, so it is recorded — but under that "
+                                    "writer's reason, not as an unmatched "
+                                    "remainder. Worth an eyeball in execution_log."
+                                )
+                            )
+                        else:
+                            print(
+                                red(
+                                    f"  [Warning] {_remaining_fill} of "
+                                    f"{_record_count} sold contracts exceeded every "
+                                    f"tracked live position for {ticker} {side}, and "
+                                    f"row #{row_id} could NOT be self-settled after "
+                                    "retrying — those contracts are recorded "
+                                    "nowhere. See "
+                                    "execution_log_unsettled_exit_rows.json and "
+                                    "settle this row manually."
+                                )
+                            )
             except Exception as _live_rec_err:
                 _log.warning(
                     "cmd_order: record_live_exit_fill failed for %s: %s",
@@ -6093,24 +6677,22 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     if _analysis and _market and _enriched:
         try:
             _city = _enriched.get("_city")
-            _date_raw = _enriched.get("_date")
-            _target_date: date | None = (
-                _date_raw if isinstance(_date_raw, date) else None
-            )
-            if _target_date is None and _analysis.get("target_date"):
-                # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2
-                # (review-caught): _enriched["_date"] is always None for
-                # KXRAIN*M tickers by design -- fall back to the close_
-                # time-derived date _analyze_monthly_rain_trade() sets on
-                # analysis["target_date"], so a manual live order (once
-                # the shadow gate opens) gets the same real exposure-cap/
-                # correlation grouping key the automated path already has,
-                # not a silent None.
-                try:
-                    _target_date = date.fromisoformat(_analysis["target_date"])
-                except (ValueError, TypeError):
-                    pass
-            _target_date_str = _target_date.isoformat() if _target_date else None
+            # Batch-60 item 2: this block previously re-derived the target
+            # date from the same two sources the live-buy freshness guard
+            # above now reads. Hoisted to a single _target_date_str_ord (see
+            # its own comment for the KXRAIN*M fallback rationale) so two
+            # copies can't drift into validating one value and recording
+            # another.
+            #
+            # Precisely: the guard reads _guard_date_str_ord, which is this
+            # same value plus a close_time last resort the booking path
+            # deliberately does not get (see that variable's own comment).
+            # So the guard can validate a date where this records None, but
+            # never a DIFFERENT date -- the direction that matters. An
+            # earlier version of this comment claimed they were always
+            # identical, which stopped being true when the close_time
+            # fallback was scoped to the guard (opus round-3 review).
+            _target_date_str = _target_date_str_ord
             _days_out = int(_analysis.get("days_out", 1))
 
             if not _is_live:
@@ -6143,7 +6725,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                     ticker=ticker,
                     city=_city,
                     condition=_analysis.get("condition", {}).get("type", ""),
-                    target_date=_target_date,
+                    target_date=_target_date_ord,
                     forecast_prob=_analysis.get("forecast_prob", 0.0),
                     market_prob=_analysis.get("market_prob", 0.0),
                     days_out=_days_out,
@@ -6156,7 +6738,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 log_prediction(
                     ticker,
                     _city,
-                    _target_date,
+                    _target_date_ord,
                     _analysis,
                     **_prediction_kwargs_from_analysis(_analysis),
                 )

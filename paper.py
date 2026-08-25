@@ -44,6 +44,7 @@ from safe_io import project_root as _project_root
 from utils import (
     FIXED_BET_DOLLARS,
     FIXED_BET_PCT,
+    HURRICANE_MAX_DAYS_OUT,
     KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
     KELLY_CAP_CONSENSUS_MULT,
@@ -412,6 +413,117 @@ MAX_ORDER_LATENCY_MS = 5000  # #79: warn if place_paper_order exceeds this laten
 # beyond it means the market has already resolved/expired (a stale cache
 # entry, a leaked test fixture, or a genuine bug upstream), not a live trade.
 STALE_TARGET_DATE_GRACE_DAYS = 3
+
+
+def _max_days_out_for_ticker(ticker: str) -> int:
+    """weather_markets.max_days_out_for_ticker(), lazily imported.
+
+    Function-level import, matching paper.py's existing convention for
+    every other weather_markets/order_executor/tracker reach-in. Note this
+    is convention, not necessity: weather_markets' single `paper` import is
+    itself function-level (weather_markets.py, `from paper import
+    _CORRELATED_CITY_GROUPS`), so there is no module-level cycle to dodge
+    here -- an earlier version of this comment claimed there was
+    (opus-review-caught, F6), which would have invited someone to go
+    looking for the cycle, find none, and hoist a 14k-line import into
+    paper.py's module scope.
+
+    Fails OPEN to the most permissive family ceiling on ANY failure -- the
+    import itself or the lookup call: the future-side bound below is a
+    sanity backstop against a mis-parsed date, not a safety gate, and
+    refusing an otherwise-valid trade because an unrelated module failed to
+    import (or because `ticker` was None and .upper() raised, F8) would be
+    a strictly worse outcome than letting a far-future date through.
+    """
+    # The fallback ceiling is bound at MODULE import (see paper.py's own
+    # `from utils import ...` block), not fetched here. Opus round-2 review
+    # (L2) caught an earlier version importing it just above the try, so a
+    # utils failure raised instead of falling open -- and simply moving that
+    # import inside the try only relocates the problem, since the handler
+    # would then have to re-import the very thing that just failed. A
+    # module-level binding has no runtime failure mode at all, and still
+    # cannot drift from utils' own value.
+    try:
+        from weather_markets import max_days_out_for_ticker
+
+        return max_days_out_for_ticker(ticker)
+    except Exception as _lookup_err:
+        _log.warning(
+            "paper: could not resolve a days-out ceiling for %r (%s) -- "
+            "falling back to the most permissive one (%d days)",
+            ticker,
+            _lookup_err,
+            HURRICANE_MAX_DAYS_OUT,
+        )
+        return HURRICANE_MAX_DAYS_OUT
+
+
+def validate_target_date_freshness(ticker: str, target_date: str | None) -> None:
+    """Raise ValueError if `target_date` is implausible for `ticker`.
+
+    Shared by place_paper_order() (every paper/paper-mirror placement) and
+    main.cmd_order's LIVE buy path, which previously had strictly weaker
+    date validation than the automated paper path -- backlog.txt "LIVE
+    cmd_order BUY NEVER VALIDATES target_date FRESHNESS BEFORE PLACING A
+    REAL ORDER" (batch-60 item 2). Deliberately one function rather than
+    two hand-written copies: a duplicated guard is how the exclusion-tuple
+    drift in batch-57 happened.
+
+    Both directions are bounded:
+      * PAST -- more than STALE_TARGET_DATE_GRACE_DAYS behind UTC today
+        means the market has already resolved/expired (see that constant's
+        own comment for the KXHIGHNY-26APR17-B70 incident this closes).
+      * FUTURE -- more than the ticker family's own scan horizon
+        (weather_markets.max_days_out_for_ticker) ahead, plus the SAME
+        grace, i.e. 8 / 34 / 263 days.
+
+        The grace here is deliberate slack, NOT timezone-skew compensation
+        -- an earlier version of this comment claimed the latter and had
+        the direction backwards (opus-review-caught, F4). analyze_trade's
+        gate measures days_out from the CITY-LOCAL date; every city in
+        weather_markets._CITY_TZ is a US zone west of UTC (verified: 21/21
+        with a negative offset), so local_today <= utc_today() always and
+        `days_ahead` measured here can only ever read CLOSER than the
+        gate's own figure, never further. A trade that cleared the gate can
+        therefore never trip this bound even with zero grace.
+
+        The slack is kept for the paths where the date did NOT come through
+        that gate at all -- cmd_order and the dashboard both accept a raw
+        operator-typed ticker, and this function's own third fallback reads
+        a UTC-instant close_time rather than a city-local date. Erring
+        loose is the right direction for a backstop whose false-positive
+        cost is refusing a legitimate trade.
+
+    A None or unparseable target_date is a no-op, matching the pre-existing
+    guard's behaviour exactly -- an unparseable date is already logged and
+    handled by its own upstream entry, and turning it into a hard refusal
+    here would be a separate behavioural change.
+    """
+    if target_date is None:
+        return
+    try:
+        _target_date_obj = date.fromisoformat(target_date)
+    except (TypeError, ValueError):
+        return
+
+    _stale_days = (utc_today() - _target_date_obj).days
+    if _stale_days > STALE_TARGET_DATE_GRACE_DAYS:
+        raise ValueError(
+            f"target_date {target_date} for {ticker} is {_stale_days} "
+            f"days in the past (grace={STALE_TARGET_DATE_GRACE_DAYS}) "
+            "-- refusing to place a trade against an already-"
+            "resolved/expired market"
+        )
+
+    _days_ahead = -_stale_days
+    _max_ahead = _max_days_out_for_ticker(ticker) + STALE_TARGET_DATE_GRACE_DAYS
+    if _days_ahead > _max_ahead:
+        raise ValueError(
+            f"target_date {target_date} for {ticker} is {_days_ahead} "
+            f"days in the future (max={_max_ahead} for this ticker's market "
+            "family) -- refusing to place a trade against a market beyond "
+            "its scan horizon"
+        )
 
 
 _SCHEMA_VERSION = 2  # increment when adding new required fields
@@ -1083,21 +1195,11 @@ def place_paper_order(
     # 404s on every subsequent settle/quote/sync attempt and, lacking
     # close_time, permanently bypasses the 24h stop-loss/breakeven gates --
     # this check exists to fail closed before that trade record is ever
-    # written, not to clean it up after.
-    if target_date is not None:
-        try:
-            _target_date_obj = date.fromisoformat(target_date)
-        except (TypeError, ValueError):
-            _target_date_obj = None
-        if _target_date_obj is not None:
-            _stale_days = (utc_today() - _target_date_obj).days
-            if _stale_days > STALE_TARGET_DATE_GRACE_DAYS:
-                raise ValueError(
-                    f"target_date {target_date} for {ticker} is {_stale_days} "
-                    f"days in the past (grace={STALE_TARGET_DATE_GRACE_DAYS}) "
-                    "-- refusing to place a trade against an already-"
-                    "resolved/expired market"
-                )
+    # written, not to clean it up after. Batch-60 item 1: the FUTURE side is
+    # now bounded too, per each ticker family's own scan horizon -- see
+    # validate_target_date_freshness(), which main.cmd_order's live buy path
+    # shares rather than re-implementing.
+    validate_target_date_freshness(ticker, target_date)
 
     if is_daily_loss_halted():
         daily_pnl = get_daily_pnl()
