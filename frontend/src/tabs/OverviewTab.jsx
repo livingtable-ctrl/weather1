@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier } from '../shared.jsx';
+import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier, sumUnrealizedPnl, balanceDeltaPct } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // LastSettlementBatch — compact inline summary of the most recently settled
@@ -58,10 +58,8 @@ export default function OverviewTab() {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const pnlToday = s.today_pnl;
   const pnlKnown = pnlToday != null;
-  const unrealizedPnl = M.positions.reduce((sum, p) => {
-    const entryPerCt = p.cost / p.qty;
-    return sum + (p.mark - entryPerCt) * p.qty;
-  }, 0);
+  const unrealizedPnl = sumUnrealizedPnl(M.positions);
+  const balPct = balanceDeltaPct(s.balance, s.starting_balance);
 
   const [cronStale, setCronStale] = useState(false);
   useEffect(() => {
@@ -160,8 +158,8 @@ export default function OverviewTab() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 12 }}>
         <StatCard label="Paper balance" tooltip="Simulated cash balance in the paper-trading sandbox. No real money."
           value={'$' + Number(s.balance).toFixed(2)}
-          delta={(s.balance >= s.starting_balance ? '+' : '') + ((Number(s.balance) - Number(s.starting_balance)) / Number(s.starting_balance) * 100).toFixed(1) + '%'}
-          deltaTone={s.balance >= s.starting_balance ? 'pos' : 'neg'}
+          delta={balPct == null ? '—' : (balPct >= 0 ? '+' : '') + (balPct * 100).toFixed(1) + '%'}
+          deltaTone={balPct == null ? null : balPct >= 0 ? 'pos' : 'neg'}
           sub={'from $' + Number(s.starting_balance).toFixed(2) + ' start'} />
         <StatCard label="Open positions" tooltip="Active contracts that haven't expired or been closed yet."
           value={s.open_count} sub={s.settled_count + ' settled so far'} />

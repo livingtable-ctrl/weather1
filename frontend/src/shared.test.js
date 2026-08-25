@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -377,6 +377,121 @@ describe('gradGateStatus', () => {
     expect(gradGateStatus(0.25, 0.20, true).pct).toBeCloseTo(0, 10);
     // Beyond the baseline (worse than 0.25), still clamped to 0, not negative.
     expect(gradGateStatus(0.30, 0.20, true).pct).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------
+// batch-47 item 2: sumUnrealizedPnl / positionUnrealizedPnl / balanceDeltaPct
+// -- unguarded cost/qty and balance/starting_balance divisions used to render
+// NaN%/Infinity% directly into KPI cards. Also independently flagged
+// pre-port by audit/POST_MERGE_REVIEW.md's L-17 sweep ("App.jsx divide-by-qty
+// NaN") -- these tests pin the fix.
+// -----------------------------------------------------------------------
+describe('sumUnrealizedPnl', () => {
+  it('hand-computed sum across two real positions', () => {
+    const positions = [
+      { cost: 50, qty: 10, mark: 6 },  // entryPerCt=5, (6-5)*10=+10
+      { cost: 100, qty: 20, mark: 4 }, // entryPerCt=5, (4-5)*20=-20
+    ];
+    expect(sumUnrealizedPnl(positions)).toBeCloseTo(-10, 10);
+  });
+
+  it('a qty===0 position contributes 0 rather than poisoning the sum into NaN', () => {
+    const positions = [
+      { cost: 50, qty: 10, mark: 6 },   // +10, a real position
+      { cost: 30, qty: 0, mark: 5 },    // data anomaly -- would be cost/0 = NaN unguarded
+    ];
+    const result = sumUnrealizedPnl(positions);
+    expect(result).toBeCloseTo(10, 10);
+    // Positive control: prove the anomalous row was actually reached (not
+    // just absent from the array) and didn't turn the whole sum into NaN.
+    expect(Number.isFinite(result)).toBe(true);
+  });
+
+  it('empty/null/undefined positions: returns 0, not NaN', () => {
+    expect(sumUnrealizedPnl([])).toBe(0);
+    expect(sumUnrealizedPnl(null)).toBe(0);
+    expect(sumUnrealizedPnl(undefined)).toBe(0);
+  });
+
+  // opus review (batch-47, LOW): balanceDeltaPct already coerced via
+  // Number(); this guard used a bare truthy check, so a qty arriving as the
+  // string "0" (rather than the number 0) would slip past `!p.qty` and
+  // still divide. Currently unreachable in practice (mapTrades assigns qty
+  // straight from a JSON int) but the two guards should agree.
+  it('a qty arriving as the string "0" is caught the same as numeric 0', () => {
+    const positions = [
+      { cost: 50, qty: 10, mark: 6 },
+      { cost: 30, qty: '0', mark: 5 },
+    ];
+    const result = sumUnrealizedPnl(positions);
+    expect(result).toBeCloseTo(10, 10);
+    expect(Number.isFinite(result)).toBe(true);
+  });
+});
+
+describe('positionUnrealizedPnl', () => {
+  it('hand-computed P&L for a real position', () => {
+    // entryPerCt = 50/10 = 5; (mark 6 - 5) * 10 qty = +10
+    expect(positionUnrealizedPnl({ cost: 50, qty: 10, mark: 6 })).toBeCloseTo(10, 10);
+  });
+
+  it('qty===0: returns null (caller renders "—"), not NaN', () => {
+    expect(positionUnrealizedPnl({ cost: 50, qty: 0, mark: 6 })).toBe(null);
+  });
+
+  it('qty as the string "0": also returns null (matches sumUnrealizedPnl\'s coercion)', () => {
+    expect(positionUnrealizedPnl({ cost: 50, qty: '0', mark: 6 })).toBe(null);
+  });
+});
+
+describe('balanceDeltaPct', () => {
+  it('hand-computed positive and negative deltas', () => {
+    expect(balanceDeltaPct(120, 100)).toBeCloseTo(0.2, 10);
+    expect(balanceDeltaPct(80, 100)).toBeCloseTo(-0.2, 10);
+  });
+
+  it('starting_balance===0 (fresh install, no funding record yet): returns null, not Infinity/NaN', () => {
+    expect(balanceDeltaPct(50, 0)).toBe(null);
+    // Positive control: the unguarded computation really would produce
+    // Infinity here, proving this is a real division-by-zero case being caught.
+    expect(50 / 0).toBe(Infinity);
+  });
+
+  it('both balance and starting_balance 0: returns null, not NaN (0/0)', () => {
+    expect(balanceDeltaPct(0, 0)).toBe(null);
+  });
+});
+
+// -----------------------------------------------------------------------
+// batch-47 item 3: TAB_LIST / tabForHotkey -- single source of truth for tab
+// metadata, replacing four independently hand-written copies (Nav's
+// TAB_NAMES, CommandPalette's own list, the keydown handler's digit-shortcut
+// list, and the TABS routing registry) that had already drifted.
+// -----------------------------------------------------------------------
+describe('TAB_LIST / tabForHotkey', () => {
+  it('all nine tabs present, in nav order', () => {
+    expect(TAB_LIST.map(t => t.id)).toEqual([
+      'Overview', 'Positions', 'Signals', 'Forecast', 'Analytics',
+      'Activity', 'Risk', 'Trades', 'Settings',
+    ]);
+  });
+
+  it('Settings has no hotkey -- confirmed intentional with the user, not a silent drift', () => {
+    expect(TAB_LIST.find(t => t.id === 'Settings').hotkey).toBe(null);
+  });
+
+  it('digits 1-8 map to the first eight tabs in order', () => {
+    const expected = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades'];
+    expected.forEach((id, i) => {
+      expect(tabForHotkey(String(i + 1))).toBe(id);
+    });
+  });
+
+  it('"9" and other unmapped keys resolve to null (no accidental Settings hotkey)', () => {
+    expect(tabForHotkey('9')).toBe(null);
+    expect(tabForHotkey('a')).toBe(null);
+    expect(tabForHotkey('')).toBe(null);
   });
 });
 

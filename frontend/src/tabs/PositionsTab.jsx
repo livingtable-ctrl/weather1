@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned, positionUnrealizedPnl } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // WeatherAlertBanner — NWS active alerts for cities with open positions
@@ -391,9 +391,9 @@ export default function PositionsTab() {
           <tbody>
             {filtered.map((p) => {
               const hasAlert = alerts.some(a => a.ticker === p.ticker);
-              const upnl = (p.mark - p.cost / p.qty) * p.qty;
-              const upnlColor = !p.markIsLive ? 'var(--text-faint)' : upnl >= 0 ? '#16a34a' : '#ef4444';
-              const upnlLabel = (upnl >= 0 ? '+' : '-') + '$' + Math.abs(upnl).toFixed(2);
+              const upnl = positionUnrealizedPnl(p);
+              const upnlColor = upnl == null ? 'var(--text-faint)' : !p.markIsLive ? 'var(--text-faint)' : upnl >= 0 ? '#16a34a' : '#ef4444';
+              const upnlLabel = upnl == null ? '—' : (upnl >= 0 ? '+' : '-') + '$' + Math.abs(upnl).toFixed(2);
               const edgeFmt = fmtSigned(p.edge * 100, 1);
               const today = new Date().toISOString().slice(0, 10);
               const overdue = p.expiry && today > p.expiry;
@@ -519,7 +519,7 @@ export default function PositionsTab() {
               { label: 'Cost basis',     value: '$' + selectedPos.cost.toFixed(2) },
               { label: 'Quantity',       value: selectedPos.qty + ' contracts' },
               { label: 'Current mark',   value: selectedPos.mark.toFixed(2) },
-              { label: 'Unrealized P&L', value: (() => { const u = (selectedPos.mark - selectedPos.cost / selectedPos.qty) * selectedPos.qty; return (u >= 0 ? '+' : '-') + '$' + Math.abs(u).toFixed(2); })(), color: (() => { const u = (selectedPos.mark - selectedPos.cost / selectedPos.qty) * selectedPos.qty; return u >= 0 ? '#16a34a' : '#ef4444'; })() },
+              { label: 'Unrealized P&L', value: (() => { const u = positionUnrealizedPnl(selectedPos); return u == null ? '—' : (u >= 0 ? '+' : '-') + '$' + Math.abs(u).toFixed(2); })(), color: (() => { const u = positionUnrealizedPnl(selectedPos); return u == null ? 'var(--text-faint)' : u >= 0 ? '#16a34a' : '#ef4444'; })() },
             ].map((item) => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>

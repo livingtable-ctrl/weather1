@@ -607,12 +607,65 @@ export async function fetchAllSafe(endpoints, promptFn = window.prompt) {
 }
 
 // ---------------------------------------------------------------------------
+// batch-47 item 1: a background tab left open kept firing every poll loop
+// unconditionally -- a significant, entirely avoidable slice of daily
+// request volume (the 5s scan-version check alone, run continuously) with
+// nobody looking at the tab, plus the corresponding load on the 60s
+// full-data poll and the 15min weather-alerts poll. Wraps a polling loop so
+// it clears its interval while `doc.hidden`, and on regaining visibility
+// does one catch-up call (so the operator isn't looking at hours-stale data
+// for the first few seconds after switching back) before resuming the
+// interval. `doc` is injectable (defaults to the real `document`) purely so
+// this is unit-testable without a jsdom environment -- this file has none
+// today (see fetchAllSafe's promptFn for the same injection pattern).
+// Returns a single teardown function.
+//
+// The catch-up call is throttled to "only if intervalMs has actually
+// elapsed since the last run" -- opus review caught that an unconditional
+// catch-up on every visibility event turns routine alt-tabbing (an operator
+// glancing at a terminal alongside the dashboard) into a burst storm: 30
+// tab flips/hour would have driven the 15-minute weather-alerts poll (which
+// exists specifically to stay under NWS's rate limit -- see fetchWeatherAlerts'
+// own comment) to fire 30x/hour, a regression worse than the bug being fixed.
+// ---------------------------------------------------------------------------
+export function startVisibilityGatedPoll(fn, intervalMs, doc = document) {
+  let intervalId = null;
+  let lastRunMs = Date.now();
+
+  function run() {
+    lastRunMs = Date.now();
+    fn();
+  }
+  function start() {
+    if (intervalId == null) intervalId = setInterval(run, intervalMs);
+  }
+  function stop() {
+    if (intervalId != null) { clearInterval(intervalId); intervalId = null; }
+  }
+  function onVisibilityChange() {
+    if (doc.hidden) {
+      stop();
+    } else {
+      if (Date.now() - lastRunMs >= intervalMs) run();
+      start();
+    }
+  }
+
+  if (!doc.hidden) start();
+  doc.addEventListener('visibilitychange', onVisibilityChange);
+
+  return function teardown() {
+    stop();
+    doc.removeEventListener('visibilitychange', onVisibilityChange);
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main hook
 // ---------------------------------------------------------------------------
 export default function useData(setConnected) {
   const [data, setData] = useState(MOCK);
   const sseRef  = useRef(null);
-  const timerRef = useRef(null);
 
   // ── Fetch all endpoints in parallel ────────────────────────────────────
   // useCallback with an empty dep array: this only closes over refs and
@@ -779,6 +832,13 @@ export default function useData(setConnected) {
   // (open access) or when the browser has cached Basic Auth from prior login.
   // Falls back gracefully to polling-only if auth is required.
   //
+  // batch-47 item 1 deliberately does NOT visibility-gate this: it's a
+  // single push-based connection, not a repeating setInterval poll, so a
+  // backgrounded tab holding it open doesn't generate the "one request every
+  // N seconds" waste the item is about. Closing/reopening it on every
+  // visibility flip would only add reconnect churn (and a `connected`
+  // indicator flicker) for no request-volume benefit.
+  //
   // SSE payload: {balance, open_count, brier, markets, ts}
   function startSSE() {
     if (sseRef.current) sseRef.current.close();
@@ -833,14 +893,25 @@ export default function useData(setConnected) {
     fetchAll();
     fetchWeatherAlerts();
     startSSE();
-    timerRef.current = setInterval(fetchAll, 60_000); // refresh every 60 s
-    const alertsPollRef = setInterval(fetchWeatherAlerts, 900_000); // 15 minutes
+
+    // Full 60s poll — visibility-gated (batch-47 item 1): paused while the
+    // tab is backgrounded, one immediate catch-up fetch on return.
+    const stopMainPoll = startVisibilityGatedPoll(fetchAll, 60_000);
+
+    // Weather alerts — separate 15-minute poll, same visibility gating.
+    const stopAlertsPoll = startVisibilityGatedPoll(fetchWeatherAlerts, 900_000);
 
     // Fast scan-version poll: detect cron completion without waiting 60 s.
     // Checks signals_cache.json mtime every 5 s; triggers fetchAll() the
     // moment the timestamp advances (i.e. a new cron run just finished).
+    // Also visibility-gated — this is the tightest-interval loop, so it's
+    // the biggest single contributor to a backgrounded tab's avoidable
+    // request volume (note: browsers throttle background-tab timers on
+    // their own after a few minutes hidden, so the real pre-fix volume is
+    // lower than a naive 5s-forever calculation implies — but still real,
+    // ongoing, unbounded load with nobody looking at the tab).
     let lastVersion = null;
-    const scanPollRef = setInterval(() => {
+    function pollScanVersion() {
       fetch('/api/scan-version', { headers: authHeader() })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
@@ -849,12 +920,21 @@ export default function useData(setConnected) {
           lastVersion = d.version;
         })
         .catch(() => {});
-    }, 5_000);
+    }
+    const stopScanPoll = startVisibilityGatedPoll(pollScanVersion, 5_000);
+    // Accepted tradeoff (opus review, batch-47): returning from a long
+    // background stretch where a cron run completed can trigger BOTH this
+    // poll's own catch-up call AND a second fetchAll() from its
+    // lastVersion-changed branch above -- two concurrent fetchAll() batches
+    // instead of one. Harmless (fetchAll's setData updater is a pure merge
+    // of the same fields either call would produce) and only possible right
+    // after an extended background period, so not worth the complexity of
+    // coordinating state between these three independently-created pollers.
 
     return () => {
-      clearInterval(timerRef.current);
-      clearInterval(scanPollRef);
-      clearInterval(alertsPollRef);
+      stopMainPoll();
+      stopAlertsPoll();
+      stopScanPoll();
       sseRef.current?.close();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

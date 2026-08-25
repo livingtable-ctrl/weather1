@@ -30683,3 +30683,46 @@ What it would look like:
   test which candidate aggregation (instant-at-HH:00, N-minute trailing average, etc.) best
   predicts Kalshi's actual declared result. Revisit tolerance_min and the cross-check's framing
   based on the result.
+
+[OPEN -- filed 2026-08-24 by batch-47's opus review, MEDIUM] No data-freshness gate on order actions (Approve/Close) -- batch-47's visibility-gated polling made a pre-existing gap materially wider
+Priority: Medium
+Files: frontend/src/App.jsx (Nav's Override button aside, no relevant order actions there),
+  frontend/src/tabs/SignalsTab.jsx (Approve button, buildPaperOrderBody), frontend/src/tabs/
+  PositionsTab.jsx (Close Position button), frontend/src/useData.js (stats.timestamp, the only
+  freshness marker that exists today) -- no code changed by this entry, design/scope question only
+
+Problem:
+  Order flows price entirely off frontend-cached data: SignalsTab's Approve button sends
+  buildPaperOrderBody's entry_price derived from the cached opportunity's yes_bid/yes_ask;
+  PositionsTab's Close Position button sends a price derived from the cached position's mark.
+  Nothing in the frontend currently gates either action on how stale that cached data actually
+  is -- stats.timestamp (set once per successful fetchAll(), read only by App.jsx's
+  RefreshCountdown label) is the only freshness signal that exists, and it isn't checked anywhere
+  before submitting an order.
+  This gap existed before batch-47 too, but batch-47's visibility-gated polling (item 1: pause
+  every poll loop while document.hidden, one catch-up fetch + resume on return) makes the
+  possible staleness window materially larger. Before batch-47, a backgrounded tab's setInterval
+  polls kept ticking (Chrome throttles a hidden tab's timers to roughly once/minute after ~5
+  minutes hidden, but never fully stops them), so cached quotes were stale by at most roughly a
+  minute or two even after hours backgrounded. After batch-47, the poll loops are explicitly
+  stopped while hidden -- data can now be genuinely hours-stale (however long the tab sat
+  backgrounded) the moment the operator returns and clicks Approve/Close before the catch-up
+  fetch (itself a batch of ~22 concurrent requests, not instant) has resolved.
+
+Why not fixed now:
+  Confirmed with the user (2026-08-24, opus review of batch-47): a real staleness gate is a new
+  safety feature for order-placement flows, not one of batch-47's four scoped items (polling
+  visibility-gating, NaN/Infinity KPI guards, tab-registry consolidation, lazy tab loading).
+  Bolting a gate onto SignalsTab/PositionsTab in the same change as an unrelated polling
+  refactor risks under-designing it (wrong threshold, wrong set of gated actions, block-vs-warn
+  UX not actually decided) under the same review pass meant to catch bugs in the polling change
+  itself.
+
+What it would look like:
+  Add a threshold check (e.g. ~90s, informed by the 60s main-poll interval) against
+  Date.now() - stats.timestamp before allowing Approve/Close to submit -- either disable the
+  button outright with a "data is stale, refreshing…" state, or allow submission with an
+  explicit confirm-dialog warning naming how stale the quote is. Needs its own design decision on
+  which actions to cover (Approve in SignalsTab, Close in PositionsTab -- check RiskTab and any
+  other order-adjacent controls too) and whether hard-block or soft-warn is the right UX for a
+  paper-trading dashboard versus what it should be if/when live trading is enabled.

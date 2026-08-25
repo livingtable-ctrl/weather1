@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray,
   mapForecasts, normalizeForecastEntry, mapScanStats, mapAnomalyStatus, mapAlerts,
+  startVisibilityGatedPoll,
 } from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
@@ -802,5 +803,151 @@ describe('mapAlerts — M-5 schema normalization', () => {
   it('a fetch failure (raw is null, or a non-array error-shaped body) resolves to undefined', () => {
     expect(mapAlerts(null)).toBeUndefined();
     expect(mapAlerts({ error: 'db locked' })).toBeUndefined();
+  });
+});
+
+// -----------------------------------------------------------------------
+// batch-47 item 1: a backgrounded tab kept every poll loop firing
+// unconditionally with nobody looking. `doc` is a fake EventTarget standing
+// in for `document` (this repo runs vitest in the default node environment,
+// no jsdom, matching the promptFn-injection pattern fetchAllSafe already
+// uses for the same reason). vi.useFakeTimers() also fakes Date, so
+// Date.now() inside startVisibilityGatedPoll's throttle check advances
+// exactly with vi.advanceTimersByTime() below.
+// -----------------------------------------------------------------------
+describe('startVisibilityGatedPoll', () => {
+  function makeFakeDoc(initialHidden) {
+    const target = new EventTarget();
+    target.hidden = initialHidden;
+    return target;
+  }
+
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('visible tab: no call on mount, then fires every intervalMs', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    // No immediate call — matches useData's existing pattern of an explicit
+    // separate initial fetchAll() call before the interval is armed.
+    expect(fn).toHaveBeenCalledTimes(0);
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(2000);
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('tab starts hidden: the interval never starts at all', () => {
+    const doc = makeFakeDoc(true);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    vi.advanceTimersByTime(5000);
+    expect(fn).toHaveBeenCalledTimes(0);
+  });
+
+  it('backgrounding mid-run stops the interval — the actual bug being fixed', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    vi.advanceTimersByTime(3000);
+    expect(fn).toHaveBeenCalledTimes(3);
+
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(10000); // would be +10 calls if ungated
+    // Positive control: the same setInterval mechanism is still live in
+    // principle (fake timers keep advancing) — only the gating stops it,
+    // proving this isn't passing because nothing was scheduled to begin with.
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('regaining visibility AFTER intervalMs has elapsed since the last run: fires a catch-up call, then resumes the interval', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(fn).toHaveBeenCalledTimes(0);
+
+    vi.advanceTimersByTime(5000); // well past intervalMs while hidden
+    doc.hidden = false;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    // Catch-up fires — this is the "operator isn't looking at hours-stale
+    // data for the first few seconds" requirement.
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  // opus review (batch-47, HIGH): an earlier version of this fix called
+  // fn() unconditionally on every visibility-regain with no throttle --
+  // verified live that 10 rapid tab-focus flips fired 10 immediate requests
+  // in ~200ms, turning routine alt-tabbing into a burst that made the
+  // 15-minute weather-alerts poll (rate-limit-sensitive, see its own
+  // comment) fire far more often than the interval it's supposed to honor.
+  it('regaining visibility BEFORE intervalMs has elapsed since the last run: does NOT re-fire immediately (rapid-flip burst protection)', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    vi.advanceTimersByTime(1000); // one real tick — lastRunMs is now "fresh"
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // Rapid hide/show flip well inside the same interval window.
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(50);
+    doc.hidden = false;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    // No extra call — the last run was 50ms ago, nowhere near intervalMs.
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // Positive control: polling genuinely resumed (not stuck stopped) — the
+    // restarted interval ticks intervalMs after the restart point (t=1050),
+    // i.e. at t=2050, not aligned to the original t=0 schedule.
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  // opus review (batch-47, LOW): the `if (intervalId == null)` re-arm guard
+  // in start() was previously unexercised — deleting it would let two
+  // consecutive "visible" events silently double the interval's cadence.
+  it('two consecutive visibility-regain events do not double the interval (re-arm guard)', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    startVisibilityGatedPoll(fn, 1000, doc);
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // Fire "visible" twice in a row without ever going hidden in between.
+    doc.dispatchEvent(new Event('visibilitychange'));
+    doc.dispatchEvent(new Event('visibilitychange'));
+
+    vi.advanceTimersByTime(1000);
+    // If start() re-armed a second interval each time, this would be 4+
+    // (2 stray immediate calls already suppressed by the throttle above,
+    // plus 2 ticks from two overlapping 1000ms intervals). Must stay at 2.
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('teardown() stops the interval AND stops reacting to further visibility changes', () => {
+    const doc = makeFakeDoc(false);
+    const fn = vi.fn();
+    const teardown = startVisibilityGatedPoll(fn, 1000, doc);
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    teardown();
+    vi.advanceTimersByTime(5000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // A visibility flip after teardown must not resurrect polling.
+    doc.hidden = true;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    doc.hidden = false;
+    doc.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

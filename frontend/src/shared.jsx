@@ -588,6 +588,83 @@ export function gradGateStatus(current, target, invert) {
 }
 
 // ---------------------------------------------------------------------------
+// batch-47 item 2: unguarded cost/qty and balance/starting_balance divisions
+// rendered NaN%/Infinity% directly into KPI cards -- p.qty===0 (data anomaly)
+// and starting_balance===0 (plausible on a fresh install before any funding
+// record exists) are both real denominators-of-zero, not fetch failures, so
+// they can't be caught upstream in useData.js's mappers. Also independently
+// flagged pre-port by audit/POST_MERGE_REVIEW.md's L-17 sweep (App.jsx's old
+// divide-by-qty NaN) -- same bug. All three call sites now route through
+// these guarded functions (opus review caught PositionsTab's detail-panel
+// copy still computing the raw formula inline -- see positionUnrealizedPnl's
+// call sites for the full list).
+// ---------------------------------------------------------------------------
+
+// A position with qty===0 contributes nothing rather than poisoning the
+// whole aggregate into NaN -- one anomalous row shouldn't blank every other
+// position's real unrealized P&L. `Number(p.qty)` (not a bare truthy check)
+// so a qty arriving as the string "0" is caught the same way as a numeric
+// 0 -- matches balanceDeltaPct's coercion below (opus review: the two were
+// inconsistent).
+export function sumUnrealizedPnl(positions) {
+  return (positions || []).reduce((sum, p) => {
+    if (!Number(p.qty)) return sum;
+    const entryPerCt = p.cost / p.qty;
+    return sum + (p.mark - entryPerCt) * p.qty;
+  }, 0);
+}
+
+// Per-row version for PositionsTab — returns null (render "—") instead of
+// NaN for a qty===0 row, rather than silently zeroing it into the table.
+export function positionUnrealizedPnl(p) {
+  if (!Number(p.qty)) return null;
+  return (p.mark - p.cost / p.qty) * p.qty;
+}
+
+// Returns null (render "—") instead of NaN/Infinity when starting_balance
+// is 0 -- a plausible real value before any funding record exists, not a
+// fetch-failure case mapStats already guards.
+export function balanceDeltaPct(balance, startingBalance) {
+  const b = Number(balance);
+  const s = Number(startingBalance);
+  if (!s) return null;
+  return (b - s) / s;
+}
+
+// ---------------------------------------------------------------------------
+// batch-47 item 3: single source of truth for tab metadata. Previously
+// TAB_NAMES (App.jsx's Nav), CommandPalette's own tab list, the global
+// keydown handler's digit-shortcut list, and the TABS routing registry were
+// four independently hand-written copies that had already drifted -- Settings
+// was excluded from digit hotkeys by two unrelated mechanisms (Nav's `i < 8`
+// badge bound, and the keydown handler's separately-truncated array), so a
+// future edit to either one in isolation would silently reintroduce the
+// inconsistency. Confirmed with the user (2026-08-24): Settings' current
+// hotkey-less behavior is intentional, not an oversight -- kept as `hotkey:
+// null` rather than extended to a 9th digit. No component references here
+// (App.jsx maps `id` to its tab component) so this stays importable from
+// shared.jsx without pulling every tab file into a circular import.
+// ---------------------------------------------------------------------------
+export const TAB_LIST = [
+  { id: 'Overview',  hotkey: '1' },
+  { id: 'Positions', hotkey: '2' },
+  { id: 'Signals',   hotkey: '3' },
+  { id: 'Forecast',  hotkey: '4' },
+  { id: 'Analytics', hotkey: '5' },
+  { id: 'Activity',  hotkey: '6' },
+  { id: 'Risk',      hotkey: '7' },
+  { id: 'Trades',    hotkey: '8' },
+  { id: 'Settings',  hotkey: null },
+];
+
+// Pure lookup so the keydown handler's digit->tab mapping is unit-testable
+// without mounting App.jsx (this repo has no jsdom/component-render harness).
+export function tabForHotkey(key) {
+  const tab = TAB_LIST.find(t => t.hotkey === key);
+  return tab ? tab.id : null;
+}
+
+// ---------------------------------------------------------------------------
 // brierAlertTier — batch-45 M-4: OverviewTab's alert banner and RiskTab's
 // BrierAlertCard each independently computed "consecutive weeks above 0.22"
 // over the same brierHistory and then labeled the identical state with

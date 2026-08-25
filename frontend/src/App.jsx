@@ -1,5 +1,5 @@
 import React, {
-  useState, useMemo, useEffect, useRef, useContext, useCallback, Component,
+  useState, useMemo, useEffect, useRef, useContext, useCallback, Component, Suspense, lazy,
 } from 'react';
 import useData, { authHeader } from './useData.js';
 
@@ -8,20 +8,50 @@ import useData, { authHeader } from './useData.js';
 export { DataContext } from './DataContext.js';
 import { DataContext } from './DataContext.js';
 
-// Tab components — each in its own file under src/tabs/
-import OverviewTab  from './tabs/OverviewTab.jsx';
-import PositionsTab from './tabs/PositionsTab.jsx';
-import SignalsTab   from './tabs/SignalsTab.jsx';
-import ForecastTab  from './tabs/ForecastTab.jsx';
-import AnalyticsTab from './tabs/AnalyticsTab.jsx';
-import ActivityTab  from './tabs/ActivityTab.jsx';
-import RiskTab      from './tabs/RiskTab.jsx';
-import TradesTab    from './tabs/TradesTab.jsx';
-import SettingsTab  from './tabs/SettingsTab.jsx';
+// React caches a rejected lazy() import forever and never retries it on its
+// own (verified against React 18's lazyInitializer: it only re-invokes the
+// ctor while _status === Uninitialized, and a rejection sets _status =
+// Rejected permanently) -- opus review: this dashboard is meant to stay open
+// for hours (that's the whole premise of item 1's polling fix), and a fresh
+// deploy in the meantime deletes the previous build's hashed chunk files
+// (vite.config.js's emptyOutDir). Without this, an operator who has the tab
+// open across a deploy gets a permanently unrecoverable "Tab crashed" the
+// first time they click a not-yet-visited tab, with no fix short of a full
+// page reload. One retry (a short delay, catching a genuine transient
+// network blip) before falling back to reload() (recovers the stale-chunk-
+// hash case, which a same-URL retry can never fix on its own).
+function lazyRetry(importer) {
+  return lazy(() =>
+    importer().catch(() =>
+      new Promise((resolve) => setTimeout(resolve, 300)).then(() =>
+        importer().catch(() => {
+          window.location.reload();
+          return new Promise(() => {}); // navigation is already underway
+        })
+      )
+    )
+  );
+}
+
+// Tab components — each in its own file under src/tabs/, lazy-loaded so
+// visiting the dashboard and landing on Overview doesn't pay the bundle cost
+// of all nine tabs up front (batch-47 item 4 — AnalyticsTab alone is 67 KB).
+// Suspense's fallback (below, wherever <TabComponent /> renders) covers the
+// one-time per-session fetch of whichever tab is opened first.
+const OverviewTab  = lazyRetry(() => import('./tabs/OverviewTab.jsx'));
+const PositionsTab = lazyRetry(() => import('./tabs/PositionsTab.jsx'));
+const SignalsTab   = lazyRetry(() => import('./tabs/SignalsTab.jsx'));
+const ForecastTab  = lazyRetry(() => import('./tabs/ForecastTab.jsx'));
+const AnalyticsTab = lazyRetry(() => import('./tabs/AnalyticsTab.jsx'));
+const ActivityTab  = lazyRetry(() => import('./tabs/ActivityTab.jsx'));
+const RiskTab      = lazyRetry(() => import('./tabs/RiskTab.jsx'));
+const TradesTab    = lazyRetry(() => import('./tabs/TradesTab.jsx'));
+const SettingsTab  = lazyRetry(() => import('./tabs/SettingsTab.jsx'));
 
 // Shared helpers used directly in App (CommandPalette uses normCity; Nav's
-// kill switch and its DataContext-provided addToast/refresh use haltOrResume)
-import { normCity, haltOrResume } from './shared.jsx';
+// kill switch and its DataContext-provided addToast/refresh use haltOrResume;
+// TableSkeleton is the Suspense fallback for lazy-loaded tabs)
+import { normCity, haltOrResume, TAB_LIST, tabForHotkey, TableSkeleton } from './shared.jsx';
 
 // ---------------------------------------------------------------------------
 // Error boundary — catches render crashes and shows the error instead of
@@ -145,7 +175,6 @@ function RefreshCountdown() {
 // Nav
 // ---------------------------------------------------------------------------
 function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
-  const TAB_NAMES = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades', 'Settings'];
   const M = useContext(DataContext);
   const ks = M?.stats?.kill_switch;
 
@@ -180,17 +209,17 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
         </div>
         {/* Tab nav */}
         <nav style={{ display: 'flex', gap: 3, fontSize: 13 }}>
-          {TAB_NAMES.map((tab, i) => (
-            <button key={tab} onClick={() => onNavigate(tab)} style={{
+          {TAB_LIST.map((tab) => (
+            <button key={tab.id} onClick={() => onNavigate(tab.id)} style={{
               padding: '7px 13px', borderRadius: 7, border: 'none',
-              color: active === tab ? 'var(--text)' : 'var(--text-muted)',
-              background: active === tab ? 'var(--bg-muted)' : 'transparent',
-              fontWeight: active === tab ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit',
+              color: active === tab.id ? 'var(--text)' : 'var(--text-muted)',
+              background: active === tab.id ? 'var(--bg-muted)' : 'transparent',
+              fontWeight: active === tab.id ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit',
               display: 'inline-flex', alignItems: 'center', gap: 4,
             }}>
-              {tab}
-              {i < 8 && (
-                <kbd style={{ fontSize: 9, opacity: 0.5, fontFamily: 'ui-monospace, monospace', lineHeight: 1 }}>{i + 1}</kbd>
+              {tab.id}
+              {tab.hotkey && (
+                <kbd style={{ fontSize: 9, opacity: 0.5, fontFamily: 'ui-monospace, monospace', lineHeight: 1 }}>{tab.hotkey}</kbd>
               )}
             </button>
           ))}
@@ -281,8 +310,8 @@ function CommandPalette({ onClose, onNavigate, positions, signals }) {
   }, []);
 
   const allItems = useMemo(() => {
-    const tabs = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades', 'Settings'].map(t => ({
-      type: 'tab', label: t, action: () => onNavigate(t),
+    const tabs = TAB_LIST.map(t => ({
+      type: 'tab', label: t.id, action: () => onNavigate(t.id),
     }));
     const posItems = positions.slice(0, 5).map(p => ({
       type: 'position', label: `${p.ticker} · ${normCity(p.city)}`, sub: `${p.side.toUpperCase()} · ${(p.edge * 100).toFixed(1)}% edge`,
@@ -376,9 +405,11 @@ function CommandPalette({ onClose, onNavigate, positions, signals }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab registry — maps tab name to component
+// Tab registry — maps each TAB_LIST id (shared.jsx) to its component. Kept
+// separate from TAB_LIST itself so that shared, testable list has no
+// component references (see shared.jsx's batch-47 item 3 comment).
 // ---------------------------------------------------------------------------
-const TABS = {
+const TAB_COMPONENTS = {
   Overview:  OverviewTab,
   Positions: PositionsTab,
   Signals:   SignalsTab,
@@ -390,7 +421,21 @@ const TABS = {
   Settings:  SettingsTab,
 };
 
-const VALID_TABS = Object.keys(TABS);
+// opus review: TAB_LIST (shared.jsx) and TAB_COMPONENTS above are two
+// independent literals that must stay in sync by id — exactly the kind of
+// drift item 3 exists to eliminate. Without this check, an id present in
+// one but not the other resolves to `undefined`, and `TABS[activeTab] ||
+// OverviewTab` below would silently reroute that tab's name (including its
+// URL hash) to Overview instead of failing loudly. Both literals are static
+// and colocated in this same file, so this throws at module load — the
+// first time anyone runs or builds the app — never as a live production
+// surprise.
+TAB_LIST.forEach(t => {
+  if (!TAB_COMPONENTS[t.id]) throw new Error(`TAB_LIST entry "${t.id}" has no matching TAB_COMPONENTS entry`);
+});
+
+const TABS = Object.fromEntries(TAB_LIST.map(t => [t.id, TAB_COMPONENTS[t.id]]));
+const VALID_TABS = TAB_LIST.map(t => t.id);
 
 // ---------------------------------------------------------------------------
 // App — DataContext provider, theme, tab routing
@@ -421,6 +466,13 @@ export default function App() {
 
   const data = useData(setConnected);
 
+  // batch-47 item 1 deliberately does NOT visibility-gate this poll (unlike
+  // useData.js's three gated loops): it only runs while a scan the operator
+  // just triggered is actively executing (bounded, not indefinite background
+  // waste), and its completion fires a Notification API call specifically so
+  // the operator is alerted even after switching away from the tab — gating
+  // it would delay that notification until they return, defeating its
+  // purpose. Confirmed with the user (2026-08-24).
   const startCronPoll = useCallback(() => {
     if (cronPollRef.current) clearInterval(cronPollRef.current);
     cronPollRef.current = setInterval(() => {
@@ -526,9 +578,8 @@ export default function App() {
       const tag = t?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        const tabs = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades'];
-        const num = parseInt(e.key, 10);
-        if (num >= 1 && num <= tabs.length) setActiveTab(tabs[num - 1]);
+        const tabId = tabForHotkey(e.key);
+        if (tabId) setActiveTab(tabId);
       }
     }
     document.addEventListener('keydown', handleKeyDown);
@@ -572,7 +623,18 @@ export default function App() {
           />
         )}
         <ErrorBoundary key={activeTab}>
-          <TabComponent />
+          <Suspense fallback={
+            // opus review: every tab's own root <main> uses this exact
+            // margin/padding (maxWidth varies 1000-1360 across tabs; 1360 is
+            // the majority) -- without matching it here, the skeleton sat
+            // flush against Nav and ~28px wider on each side than the real
+            // content that replaces it, visibly snapping into place on load.
+            <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
+              <TableSkeleton />
+            </main>
+          }>
+            <TabComponent />
+          </Suspense>
         </ErrorBoundary>
       </div>
     </DataContext.Provider>
