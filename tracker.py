@@ -3917,11 +3917,25 @@ def brier_skill_score(city: str | None = None) -> float | None:
     BSS = 1 - (BS_model / BS_reference) where reference uses market_prob as prediction.
     Returns None if < 10 samples with both our_prob and market_prob.
     BSS > 0 means our model beats the market; BSS = 0 means equal to market.
+
+    Superseded for dashboard use by get_model_vs_market_brier(), which answers
+    the same question per lead time, splits shadow from real, and carries a
+    climatology reference. This function is a strict subset of that one: it
+    pools every horizon into a single number and, because it reads the
+    multiday_predictions view, silently excludes days_out = 0 -- the majority
+    of settled rows. Kept for its `city` filter and existing callers.
+
+    The arithmetic is delegated to _brier_series_stats() rather than repeated
+    here, so the two cannot drift apart and report different skill numbers for
+    the same data (opus-review finding M3). Row selection is deliberately NOT
+    changed: this function still lacks the condition_type exclusion its
+    siblings apply, tracked as its own open backlog entry rather than widened
+    into this change.
     """
     init_db()
     with _conn() as con:
         query = """
-            SELECT p.our_prob, p.market_prob, o.settled_yes
+            SELECT p.ticker, p.our_prob, p.market_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
@@ -3932,16 +3946,335 @@ def brier_skill_score(city: str | None = None) -> float | None:
             params.append(city)
         rows = con.execute(query, params).fetchall()
 
-    if len(rows) < 10:
+    # Same semantics as the hand-rolled version this replaced: None below 10
+    # samples, None when the market Brier is exactly 0, else the ratio rounded
+    # to 6dp. `actionable=False` because this pools every horizon -- it makes
+    # the helper skip the policy verb, whose value is discarded here anyway.
+    skill = _brier_series_stats(rows, 10, actionable=False)["skill"]
+    # The helper returns a heterogeneous dict (str policy, int n), so narrow
+    # for mypy. "skill" is float | None by construction.
+    return skill if isinstance(skill, float) else None
+
+
+# ── A14: model vs market scored with the same yardstick ──────────────────────
+
+# Floor for reporting any statistic at all. Below this every number is withheld
+# (see _brier_series_stats). There is deliberately NO separate sample floor for
+# emitting a policy verb: an absolute row count cannot encode "is this
+# difference real", because the noise floor of a Brier difference shrinks as
+# 1/sqrt(n) while any fixed threshold stays put. A first attempt used a fixed
+# n>=100 floor and an opus review measured it emitting "trade" on ~22% of
+# pure-noise samples at this bot's own disagreement level
+# (stdev(our_prob - market_prob) ~ 0.22 over the rows this query selects).
+# The verb is now gated on a paired significance test instead, which
+# self-calibrates to whatever the observed noise actually is.
+BRIER_POLICY_MIN_SAMPLES = 10
+
+# Magnitude gate applied ON TOP of significance: a difference can be real and
+# still too small to size up on.
+BRIER_POLICY_HALF_SIZE_SKILL = 0.05
+
+# One-sided 95% normal critical value. The comparison is one-sided by nature
+# ("is the model better than this benchmark"), and the paired differences are
+# means over >= BRIER_POLICY_MIN_SAMPLES rows, so the normal approximation is
+# the right shape without dragging in scipy.
+BRIER_POLICY_Z = 1.6448536269514722
+
+
+def _paired_advantage(
+    losses_a: list[float], losses_b: list[float]
+) -> tuple[float, float] | None:
+    """Mean of (b - a) and its standard error, over paired per-row losses.
+
+    Positive mean = `a` scores a LOWER (better) Brier than `b`. Pairing is what
+    makes this powerful: both forecasts are scored on the identical outcomes,
+    so the shared difficulty of each row cancels and only the disagreement
+    carries variance.
+
+    Returns None below 2 rows, where a standard error is undefined.
+    """
+    n = len(losses_a)
+    if n < 2:
         return None
+    # b - a, i.e. benchmark loss minus model loss: positive when the model's
+    # Brier is LOWER (better). Getting this zip order backwards inverts every
+    # gate that reads the result, so the sign is pinned by its own test.
+    diffs = [b - a for a, b in zip(losses_a, losses_b, strict=True)]
+    mean = sum(diffs) / n
+    var = sum((d - mean) ** 2 for d in diffs) / (n - 1)
+    return mean, (var / n) ** 0.5
 
-    bs_model = sum((r["our_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
-    bs_ref = sum((r["market_prob"] - r["settled_yes"]) ** 2 for r in rows) / len(rows)
 
-    if bs_ref == 0:
-        return None  # avoid division by zero
+def _brier_series_stats(
+    rows: list[sqlite3.Row], min_samples: int, actionable: bool = True
+) -> dict:
+    """Model/market/climatology Brier + skill + policy for one filtered group.
 
-    return round(1.0 - bs_model / bs_ref, 6)
+    Each row must carry `ticker`, `our_prob`, `market_prob` and `settled_yes`.
+    `ticker` is needed only for n_markets, but it IS required -- a caller whose
+    SELECT omits it raises IndexError here rather than silently degrading.
+
+    Below min_samples every statistic is returned as None and only `n`,
+    `n_markets` and `policy` are populated. That is structural rather than a UI
+    convention: a caller cannot render a number it was never given, so a
+    small-sample bucket cannot be mistaken for a measurement no matter what the
+    consumer does with the payload.
+
+    `policy` is display-only. Nothing in the sizing, gating or order path reads
+    it -- same convention as log_prediction()'s gated_edge. Its vocabulary:
+
+      not measured  -- fewer than min_samples rows; no statistics computed
+      no comparison -- the market's Brier is exactly 0, so the skill ratio is
+                       undefined. NOT the same as too few rows, and must never
+                       reuse that label: a bucket with hundreds of rows would
+                       otherwise report the opposite of its actual problem
+      no variance   -- every outcome in the group is identical, so there is no
+                       resolution to measure and climatology scores a perfect
+                       0 that nothing can beat
+      mixed leads   -- the group pools several horizons (D+2+, or the pooled
+                       totals); one verb cannot describe D+2 through D+11
+      inconclusive  -- measured, but the paired interval spans zero: we cannot
+                       tell this model from the benchmark either way
+      stand down    -- significantly WORSE than the market
+      half size     -- significantly better than both benchmarks, but the
+                       effect is under BRIER_POLICY_HALF_SIZE_SKILL
+      trade         -- significantly better than both, by a usable margin
+
+    An actionable verb requires the model to beat BOTH the market and
+    climatology by more than BRIER_POLICY_Z standard errors. Beating the price
+    while losing to a constant forecast means the apparent edge is a base-rate
+    artifact of the sample, not forecasting skill.
+
+    `climatology` is the in-sample base rate Brier -- what a forecaster scores
+    by ignoring every input and always predicting how often YES happened. It is
+    fitted on the very outcomes it is scored against, so it is optimistically
+    biased low by roughly p(1-p)/n and is reported for display only. The
+    climatology GATE uses a leave-one-out base rate instead, which removes that
+    bias, plus the standard-error margin above -- comparing against the
+    in-sample value with a bare `>=` vetoed genuinely skilled forecasters on
+    skewed markets (opus round-2 finding M2) and vetoed a literally perfect
+    forecast whenever climatology scored 0 (M3).
+    """
+    n = len(rows)
+    n_markets = len({r["ticker"] for r in rows})
+    # max(1, ...) is load-bearing: every statistic below divides by n, so a
+    # caller passing min_samples=0 ("show me everything") would otherwise hit
+    # ZeroDivisionError on an empty bucket -- and the D+2+ bucket is entirely
+    # empty on the production data today.
+    if n < max(1, min_samples):
+        return {
+            "n": n,
+            "n_markets": n_markets,
+            "model": None,
+            "market": None,
+            "climatology": None,
+            "skill": None,
+            "market_edge": None,
+            "market_edge_se": None,
+            "climatology_edge": None,
+            "climatology_edge_se": None,
+            "policy": "not measured",
+        }
+
+    ys = [r["settled_yes"] for r in rows]
+    model_losses = [(r["our_prob"] - r["settled_yes"]) ** 2 for r in rows]
+    market_losses = [(r["market_prob"] - r["settled_yes"]) ** 2 for r in rows]
+    bs_model = sum(model_losses) / n
+    bs_market = sum(market_losses) / n
+
+    base_rate = sum(ys) / n
+    bs_climo = sum((base_rate - y) ** 2 for y in ys) / n
+
+    # Leave-one-out climatology for the GATE: each row is scored against the
+    # base rate of the OTHER rows, so the benchmark never sees the outcome it
+    # is being graded on.
+    loo_losses = [((sum(ys) - y) / (n - 1) - y) ** 2 for y in ys] if n >= 2 else []
+
+    mkt = _paired_advantage(model_losses, market_losses)
+    clm = _paired_advantage(model_losses, loo_losses) if loo_losses else None
+
+    skill = None if bs_market == 0 else round(1.0 - bs_model / bs_market, 6)
+
+    if bs_market == 0:
+        policy = "no comparison"
+    elif len(set(ys)) < 2:
+        # Degenerate outcomes: climatology scores exactly 0 and no forecast can
+        # beat it, so neither verb nor veto carries information.
+        policy = "no variance"
+    elif not actionable:
+        policy = "mixed leads"
+    elif mkt is None or clm is None:
+        policy = "not measured"
+    else:
+        mkt_mean, mkt_se = mkt
+        clm_mean, clm_se = clm
+        beats_market = mkt_mean - BRIER_POLICY_Z * mkt_se > 0
+        loses_to_market = mkt_mean + BRIER_POLICY_Z * mkt_se < 0
+        beats_climo = clm_mean - BRIER_POLICY_Z * clm_se > 0
+        if beats_market and beats_climo:
+            # Thresholded on the UNROUNDED skill so a true 0.0499996 cannot
+            # round up into "trade".
+            raw_skill = 1.0 - bs_model / bs_market
+            policy = (
+                "half size" if raw_skill < BRIER_POLICY_HALF_SIZE_SKILL else "trade"
+            )
+        elif loses_to_market:
+            policy = "stand down"
+        else:
+            policy = "inconclusive"
+
+    return {
+        "n": n,
+        "n_markets": n_markets,
+        "model": round(bs_model, 6),
+        "market": round(bs_market, 6),
+        "climatology": round(bs_climo, 6),
+        "skill": skill,
+        # Positive = model beats the benchmark. Exposed so the panel can show
+        # the interval the policy word was derived from rather than asking the
+        # reader to trust it.
+        "market_edge": None if mkt is None else round(mkt[0], 6),
+        "market_edge_se": None if mkt is None else round(mkt[1], 6),
+        "climatology_edge": None if clm is None else round(clm[0], 6),
+        "climatology_edge_se": None if clm is None else round(clm[1], 6),
+        "policy": policy,
+    }
+
+
+def get_model_vs_market_brier(
+    min_samples: int = BRIER_POLICY_MIN_SAMPLES,
+) -> dict:
+    """Score our forecast and the market's mid-price against the same outcome.
+
+    Asks whether our forecast is better calibrated than the price across
+    everything we looked at. Note the two caveats that question carries:
+
+    - This is unconditional on the SIZE of our disagreement with the price, so
+      every market where we broadly agreed with the mid dilutes the statistic
+      toward zero. Trading edge, if any, lives in the tail where the
+      disagreement was large enough to act on; a negative pooled skill does not
+      by itself prove that tail is unprofitable.
+    - The population is self-selected. `predictions` holds only markets the
+      scanner chose to analyze, and the is_shadow=0 subset only those it chose
+      to trade.
+
+    The market's Brier is the same function applied to `market_prob` instead of
+    `our_prob`, so this needs no data that is not already persisted.
+
+    Both probabilities are YES-space and therefore directly comparable:
+    `market_prob` is the YES mid `(yes_bid + yes_ask) / 2` (weather_markets.
+    parse_market_price's "implied_prob"), `our_prob` is the blended YES
+    probability, and outcomes.settled_yes is 1 when YES won.
+
+    Reads `predictions` directly rather than the multiday_predictions view that
+    brier_skill_score() uses: that view drops days_out = 0, which is the
+    majority of settled rows here (55.6% as of 2026-08-24), and D+0 is exactly
+    the horizon where the market is most expected to beat a morning ensemble.
+    Excluding it hides the comparison this function exists to make.
+
+    Applies the same condition_type exclusion as every other Brier-quality
+    query in this module (_excluded_brier_condition_types) -- 'between' in
+    particular has a structurally different calibration profile and would
+    distort a shared aggregate meant to represent overall model quality.
+
+    Rows are split by is_shadow -- real trade decisions and cmd_market-style
+    lookups score differently and pooling them blurs both. Joins outcomes_valid,
+    not outcomes, per this module's disputed-row convention.
+
+    Returns {"min_samples", "confidence", "buckets", "pooled",
+    "n_days_out_null"}, where each bucket and the pooled entry carry a "real",
+    "shadow" and "all" series shaped by _brier_series_stats().
+    """
+    init_db()
+    excl_sql, excl_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT p.ticker, p.our_prob, p.market_prob, p.days_out, p.is_shadow,
+                   o.settled_yes
+            FROM predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL AND p.market_prob IS NOT NULL
+              -- Range guards, not paranoia: SQLite stores ±Infinity as a REAL
+              -- (only NaN is coerced to NULL), so a single poisoned row would
+              -- otherwise reach jsonify() and emit bare `Infinity`, which
+              -- RFC-8259 forbids and JSON.parse rejects -- killing the whole
+              -- panel rather than one cell. A Brier above 1 is also impossible
+              -- for a valid probability/outcome pair, so an out-of-range
+              -- settled_yes is unambiguous corruption.
+              AND p.our_prob BETWEEN 0 AND 1
+              AND p.market_prob BETWEEN 0 AND 1
+              AND o.settled_yes IN (0, 1)
+              -- Every writer clamps days_out with max(0, ...), so a negative
+              -- value means the row is malformed. Dropped in SQL rather than
+              -- in _bucket_of so it cannot inflate `pooled` either.
+              AND (p.days_out IS NULL OR p.days_out >= 0)
+              AND {excl_sql}
+        """,
+            excl_params,
+        ).fetchall()
+
+    # D+2 and beyond are pooled rather than split per-integer: the horizons this
+    # bot actually trades are D+0/D+1, and splitting the long tail produces a
+    # row of "not measured" per distinct days_out value instead of one honest
+    # aggregate. Note the D+2+ bucket can hold SEVERAL rows for one ticker (a
+    # market forecast at D-2, D-3 and D-4 lands in it three times, all scored
+    # against a single settled outcome) -- which is why every series reports
+    # n_markets beside n, and why this bucket never emits an actionable verb.
+    def _bucket_of(d: int | None) -> str | None:
+        if d is None:
+            return None
+        if d == 0:
+            return "D+0"
+        if d == 1:
+            return "D+1"
+        return "D+2+"
+
+    def _series(subset: list[sqlite3.Row], actionable: bool = True) -> dict:
+        # Split on explicit 0/1 rather than truthiness: is_shadow was added by
+        # ALTER TABLE ... DEFAULT 0 and is nullable, and the upsert combines it
+        # with SQLite's MIN(), which returns NULL if either side is NULL. A
+        # `not r["is_shadow"]` test would silently file such a row as a real
+        # trade decision.
+        return {
+            "real": _brier_series_stats(
+                [r for r in subset if r["is_shadow"] == 0], min_samples, actionable
+            ),
+            "shadow": _brier_series_stats(
+                [r for r in subset if r["is_shadow"] == 1], min_samples, actionable
+            ),
+            "all": _brier_series_stats(subset, min_samples, actionable),
+        }
+
+    buckets = []
+    for label, days_out_min in (("D+0", 0), ("D+1", 1), ("D+2+", 2)):
+        subset = [r for r in rows if _bucket_of(r["days_out"]) == label]
+        buckets.append(
+            {
+                "lead": label,
+                # days_out_min, not days_out: it is the LOWEST horizon the
+                # bucket covers, and naming it days_out would collide with the
+                # row-level column whose NULL means "no horizon at all".
+                "days_out_min": days_out_min,
+                **_series(subset, actionable=label != "D+2+"),
+            }
+        )
+
+    return {
+        # The effective floor, not the raw argument: max(1, ...) is what the
+        # helper actually applies, so echoing the argument would misdescribe
+        # a min_samples=0 call.
+        "min_samples": max(1, min_samples),
+        "confidence": 0.95,
+        "buckets": buckets,
+        "pooled": _series(rows, actionable=False),
+        # days_out is NULL for rows logged without a resolvable market_date.
+        # They carry no horizon, so they appear in `pooled` but in no bucket:
+        # sum(bucket n) + n_days_out_null == pooled n.
+        "n_days_out_null": sum(1 for r in rows if r["days_out"] is None),
+    }
 
 
 def get_history(limit: int = 50) -> list[dict]:

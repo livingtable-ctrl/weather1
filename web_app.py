@@ -524,7 +524,11 @@ def _build_app(client):
                 "get_model_calibration_buckets",
                 "get_calibration_by_season",
                 "get_brier_by_tier",
-                "brier_skill_score",
+                # Supersedes brier_skill_score, which pooled every horizon into
+                # one number and silently dropped days_out=0 (the majority of
+                # settled rows) via the multiday_predictions view. Serving both
+                # would put two different "skill vs market" figures on one page.
+                "get_model_vs_market_brier",
                 "get_model_brier_scores",
                 "get_optimal_threshold",
                 "get_analysis_bias",
