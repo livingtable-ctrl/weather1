@@ -236,21 +236,61 @@ def isolate_condition_weights(monkeypatch):
     )
 
 
-@pytest.fixture(autouse=True)
-def isolate_tracker_db(tmp_path, monkeypatch):
-    """Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.
+@pytest.fixture(scope="session")
+def _tracker_db_template(tmp_path_factory):
+    """Build tracker's schema ONCE per session, into a template file.
 
-    Prevents 'no such table: outcomes' (and related) errors when any code path
-    queries the tracker DB during tests that don't explicitly set one up.
-    The _db_initialized flag is also reset so init_db() actually runs against
-    the redirected path rather than short-circuiting on the module-level init.
+    isolate_tracker_db below copies this per test instead of re-running
+    init_db(). init_db() is a single executescript of ~30 CREATE TABLE/INDEX
+    statements plus a loop of idempotent ALTERs -- no inserts, no env
+    dependency -- so a byte copy of a fully-initialised file is semantically
+    identical to running it again, and vastly cheaper. Measured at 63-207
+    ms/test before (the exact figure moves with machine load), which made it
+    the second-largest fixture cost in the suite after the circuit-breaker
+    reset; see backlog "Autouse fixture setup is 85% of test wall time".
+
+    Saves/restores tracker.DB_PATH by hand rather than via monkeypatch: this
+    fixture is session-scoped and cannot request the function-scoped
+    monkeypatch fixture.
     """
     import tracker
 
+    template = tmp_path_factory.mktemp("tracker_db_template") / "tracker.db"
+    _orig_path = tracker.DB_PATH
+    _orig_flag = tracker._db_initialized
+    tracker.DB_PATH = template
+    tracker._db_initialized = False
+    try:
+        tracker.init_db()
+    finally:
+        tracker.DB_PATH = _orig_path
+        tracker._db_initialized = _orig_flag
+    return template
+
+
+@pytest.fixture(autouse=True)
+def isolate_tracker_db(tmp_path, monkeypatch, _tracker_db_template):
+    """Redirect tracker.DB_PATH to a per-test temp DB with the schema already
+    in place.
+
+    Prevents 'no such table: outcomes' (and related) errors when any code path
+    queries the tracker DB during tests that don't explicitly set one up.
+
+    The schema arrives by copying _tracker_db_template rather than by calling
+    init_db() per test -- see that fixture for why. _db_initialized is set to
+    True (not False) because the copied file IS initialised; that matches the
+    end state the old init_db() call left behind, so a test that wants to
+    re-run init_db() against its own path still resets the flag itself, as
+    several already do.
+    """
+    import shutil
+
+    import tracker
+
     db = tmp_path / "tracker.db"
+    shutil.copyfile(_tracker_db_template, db)
     monkeypatch.setattr(tracker, "DB_PATH", db)
-    monkeypatch.setattr(tracker, "_db_initialized", False)
-    tracker.init_db()
+    monkeypatch.setattr(tracker, "_db_initialized", True)
 
 
 @pytest.fixture(autouse=True)

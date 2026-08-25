@@ -35274,9 +35274,38 @@ Resolution (2026-08-25) -- recommendation 1 implemented; 2 and 3 still open:
   plus 845 passed across test_weather_markets/test_paper/test_trading/
   test_web_app/test_safe_io/test_forecast_cache/test_cron_integration.
 
-  RESIDUAL (what keeps this entry open): isolate_tracker_db, which runs
-  tracker.init_db() per test and is now the top fixture cost; and the Linux/CI
-  measurement, which has still not been taken.
+  RESIDUAL (what keeps this entry open): the Linux/CI measurement, which has
+  still not been taken. Both fixtures are now fixed -- see below.
+
+Resolution addendum (2026-08-25) -- recommendation 2 implemented:
+  isolate_tracker_db no longer calls tracker.init_db() per test. A new
+  session-scoped _tracker_db_template fixture builds the schema ONCE into a
+  template file; the per-test fixture copies it. Safe because init_db() is
+  pure schema -- one executescript of CREATE TABLE/INDEX plus a loop of
+  idempotent ALTERs, no inserts, no environment dependency -- so a byte copy
+  of an initialised file is semantically identical to re-running it.
+  _db_initialized is now set True rather than False, matching the end state
+  the old init_db() call left behind.
+
+  Measured (Windows, same 98-test slice, test_safe_io + test_forecast_cache):
+    isolate_tracker_db        63-207 ms/test  ->  0.5 ms/test
+    _tracker_db_template      n/a             ->  139.3 ms ONCE per session
+
+  Combined with the circuit-breaker fix above, that slice's wall time went
+  35.82s -> 28.58s (CB) -> 6.18s (tracker), i.e. ~5.8x on this machine. The
+  ms/use figures are the reliable ones; wall times move with machine load.
+
+  Guarded by tests/test_conftest_tracker_db_isolation.py: the template arrives
+  schema-complete and empty, a row written by one test is NOT visible to the
+  next (deliberately ordered, with the write acting as the positive control),
+  and DB_PATH never points at the real data/predictions.db. Mutation-tested:
+  handing out the template itself instead of a copy fails the freshness test.
+
+  Regression: 1,601 passed / 4 skipped across tracker, weather_markets, paper,
+  trading, web_app, safe_io, forecast_cache, ml_bias, execution_log,
+  infrastructure, p1_remaining and both conftest-isolation files; plus 633
+  passed across cron_integration, calibration, backtest, settlement_monitor
+  and the market-family files.
 
 [OPEN 2026-08-25 -- found while benchmarking pytest-xdist; xdist was NOT adopted and is not installed, but the flake it exposed is real and probably predates it] Intermittent single-test failure (~1 in 11) when the paper/lock/isolation test files run in parallel processes
 Priority: MEDIUM -- a latent order/timing dependency between test files. Harmless today because the suite runs serially, but it is the kind of hidden coupling that makes any future parallelisation unsafe.
@@ -35867,4 +35896,28 @@ When to revisit:
   Before any further work aimed at proving or improving edge. Every such
   measurement is currently running on the biased tail at 3.5 rows/day, and
   this is the single change that fixes both properties at once.
+
+[OPEN 2026-08-25 -- reproduced on unmodified master while regression-testing the isolate_tracker_db change] tests/test_kelly_property.py has a hypothesis DeadlineExceeded flake under machine load
+Priority: LOW -- a timing-sensitive test, not a logic defect. Fails intermittently in local runs; would also fail intermittently in CI.
+Files: tests/test_kelly_property.py (test_kelly_quantity_cost_never_exceeds_balance, test_kelly_bet_dollars_never_exceeds_balance)
+
+Problem:
+  hypothesis enforces a default 200ms per-example deadline. Under load a single
+  example takes longer and the test fails with
+  "DeadlineExceeded: Test took 301.66ms, which exceeds the deadline of
+  200.00ms" -- nothing to do with the property being tested.
+  Confirmed pre-existing and NOT caused by the batch of fixture-performance
+  changes landed the same day: on unmodified master the file failed 1 run in 3;
+  with the faster fixtures it passed 3 of 3 (the change makes the flake LESS
+  likely, not more). test_kelly_bet_dollars_never_exceeds_balance also appears
+  in a stale .pytest_cache/v/cache/lastfailed from an earlier session, so this
+  has been recurring for a while.
+
+Recommendation:
+  Add @settings(deadline=None) to the affected property tests, or raise the
+  deadline well above the observed worst case. The deadline is not protecting
+  anything here -- these are pure-arithmetic Kelly-sizing properties with no
+  I/O, so a slow example means a busy machine, not a slow implementation.
+  While there, check the other hypothesis-based tests in the suite for the
+  same default-deadline exposure.
 

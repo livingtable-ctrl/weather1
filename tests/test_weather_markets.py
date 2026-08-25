@@ -2217,11 +2217,25 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     assert means["gfs_seamless"] == pytest.approx(74.5)
 
 
-def _hrrr_wiring_test_enriched(target_date):
+def _hrrr_wiring_test_enriched(target_date, yes_bid=0.62, yes_ask=0.72):
     """Shared enriched-dict builder for the HRRR same-day-wiring tests below
     -- mirrors test_analyze_trade_captures_gem_ukmo_forecast_means's fixture
     shape, parameterized on target_date so both the same-day and multi-day
-    cases share one builder."""
+    cases share one builder.
+
+    yes_bid/yes_ask are parameterized because the two SAME-DAY tests have to
+    quote a market that roughly agrees with the model. analyze_trade's
+    model-market gap gate (weather_markets.py, section 7d) returns None when
+    |model - market| > 0.25, on the empirical finding that the market's
+    real-time intraday observations beat our forecast at that disagreement
+    (74% win rate at a 10-20% gap, 50% at 20-30%, 20% at 30%+). With the
+    default 0.62/0.72 quote the same-day path lands at model 0.402 vs market
+    0.670 -- a 0.27 gap -- so analyze_trade correctly skipped the market and
+    both tests died on `result is not None` long before reaching the HRRR
+    assertion they exist to make. The gate postdates these tests. The
+    multi-day test keeps the original quote (it does not trip the gate), so
+    its behaviour is unchanged.
+    """
     return {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": target_date,
@@ -2230,8 +2244,8 @@ def _hrrr_wiring_test_enriched(target_date):
         "ticker": "KXHIGHNY-26APR09-T72",
         "title": "Will NYC high temperature be above 72°F?",
         "series_ticker": "KXHIGH-23-NYC",
-        "yes_ask": 0.72,
-        "yes_bid": 0.62,
+        "yes_ask": yes_ask,
+        "yes_bid": yes_bid,
         "volume": 500,
         "open_interest": 200,
         "close_time": (
@@ -2300,7 +2314,12 @@ def test_analyze_trade_captures_hrrr_forecast_mean_same_day(monkeypatch):
     # anchoring rationale as test_metar_locked_trade_has_ecmwf_forecast_mean_
     # keys above (days_out is computed off the market's CITY-LOCAL today).
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    result = analyze_trade(_hrrr_wiring_test_enriched(today))
+    # Market mid ~0.255 against a model ~0.40: a real edge, inside the 0.25
+    # model-market gap gate, and a ~12% spread so the liquidity/spread gate
+    # passes too. See _hrrr_wiring_test_enriched's docstring.
+    result = analyze_trade(
+        _hrrr_wiring_test_enriched(today, yes_bid=0.24, yes_ask=0.27)
+    )
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     means = result["model_forecast_means"]
     assert means["ncep_hrrr_conus"] == pytest.approx(91.75), (
@@ -2376,7 +2395,12 @@ def test_analyze_trade_survives_hrrr_fetch_exception(monkeypatch):
     monkeypatch.setattr(wm, "_fetch_hrrr_temp", _raise_hrrr)
 
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    result = analyze_trade(_hrrr_wiring_test_enriched(today))
+    # Market mid ~0.255 against a model ~0.40: a real edge, inside the 0.25
+    # model-market gap gate, and a ~12% spread so the liquidity/spread gate
+    # passes too. See _hrrr_wiring_test_enriched's docstring.
+    result = analyze_trade(
+        _hrrr_wiring_test_enriched(today, yes_bid=0.24, yes_ask=0.27)
+    )
     assert result is not None, "a HRRR fetch exception must not abort the trade"
     means = result["model_forecast_means"]
     assert means["ncep_hrrr_conus"] is None
