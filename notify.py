@@ -287,6 +287,31 @@ def _send_pushover(title: str, message: str) -> bool:
         return False
 
 
+def _ascii_header_value(value: str) -> str:
+    """Reduce a string to something safe to put in an HTTP header.
+
+    HTTP headers are latin-1 in urllib, so ANY character outside that range
+    raises UnicodeEncodeError at request-build time. Found 2026-08-25
+    (batch-69): `_send_ntfy` puts the alert title straight into the `Title`
+    header, and its bare `except Exception: return False` swallowed that
+    exception whole -- so ntfy silently failed, and reported failure, for
+    every alert whose title contained a non-latin-1 character. That is not
+    hypothetical: `activate_black_swan_halt`'s "⚠ BLACK SWAN HALT
+    ACTIVATED" and cron.py's "⚠️ Brier Score Alert" both contain
+    U+26A0, which is outside latin-1. Both have been unable to reach ntfy
+    for as long as they have existed.
+
+    Non-encodable characters become "?" rather than being dropped, so the
+    degradation is visible instead of silently changing the wording. Callers
+    keep the ORIGINAL title in the message body so nothing is actually lost.
+    """
+    try:
+        value.encode("latin-1")
+        return value
+    except (UnicodeEncodeError, AttributeError):
+        return str(value).encode("ascii", "replace").decode("ascii")
+
+
 def _send_ntfy(topic: str, title: str, message: str) -> bool:
     """
     Send via ntfy.sh.
@@ -299,16 +324,29 @@ def _send_ntfy(topic: str, title: str, message: str) -> bool:
         import urllib.request
 
         url = f"https://ntfy.sh/{topic}"
-        body = message.encode()
+        # Header must be latin-1-safe (see _ascii_header_value). When the
+        # title had to be degraded, prepend the real one to the body so the
+        # operator still receives the exact wording -- the body is sent as
+        # UTF-8 bytes and has no such restriction.
+        safe_title = _ascii_header_value(title)
+        body_text = message if safe_title == title else f"{title}\n\n{message}"
+        body = body_text.encode("utf-8")
         req = urllib.request.Request(
             url,
             data=body,
-            headers={"Title": title, "Content-Type": "text/plain"},
+            headers={
+                "Title": safe_title,
+                "Content-Type": "text/plain; charset=utf-8",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status == 200
-    except Exception:
+    except Exception as exc:
+        # Was a bare `except Exception: return False` with no logging, which
+        # is how the latin-1 header bug above stayed invisible. A delivery
+        # failure on a configured channel is worth a line in bot.log.
+        _log.warning("_send_ntfy: delivery failed: %s", exc)
         return False
 
 
@@ -510,52 +548,76 @@ def alert_strong_signal(
         )
 
 
-def send_system_alert(
+SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts, per cooldown_key
+
+
+def send_system_alert_detailed(
     title: str,
     message: str,
     cooldown_key: str = "__system__",
     discord_color: int = 0xE3B341,
-) -> bool:
-    """
-    Send a system-level alert (not trade-specific) through all configured backends.
-    Used for operational events like the dead-man's-switch 48h cron gap.
+    cooldown_secs: float | None = None,
+) -> tuple[str, int, int]:
+    """send_system_alert()'s body, reporting WHICH of its two success cases
+    actually happened.
 
-    Uses a 6-hour cooldown keyed by `cooldown_key` (default "__system__", used
-    by callers that predate this parameter) so back-to-back cron runs don't
-    spam — separate from the per-ticker trade cooldown. A caller for a
-    distinct kind of system alert should pass its own `cooldown_key` (opus-
-    review-caught: two unrelated alert types sharing the default key would
-    otherwise silently suppress each other for 6h, not just repeats of the
-    same alert) so unrelated alert types don't interfere with each other.
-    Unlike the per-ticker trade-signal cooldown, this one is persisted to
-    disk (paths.NOTIFY_COOLDOWN_STATE_PATH via _system_cooldown_reserve())
-    so it survives across separate process invocations -- manual `py main.py
-    cron` runs today, or a future scheduled task post-VM-migration -- not
-    just within one long-lived process (main.py's `loop`/`watch --auto`
-    modes). Fixed 2026-07-31; previously in-process-memory only, which meant
-    every fresh invocation reset the cooldown and never actually suppressed
-    a repeat alert across separate runs.
+    Returns ``(status, n_succeeded, n_attempted)`` where status is one of:
+      "delivered"  -- at least one configured channel accepted the message
+      "suppressed" -- the persisted cooldown for `cooldown_key` was still
+                      active, so nothing was sent (and nothing needed to be)
+      "failed"     -- delivery was attempted and every configured channel
+                      failed, or no channel was configured at all
 
-    `discord_color` defaults to orange (0xE3B341, this function's original
-    fixed color). Callers migrated from their own direct _send_discord()
-    call (batch-24 item 2: activate_black_swan_halt, the circuit-open
-    alert) can pass their prior severity color instead -- opus-review-caught
-    (F13): routing everything through this function's old fixed orange lost
-    black-swan's/circuit-open's red (0xF85149), which was real signal for
-    an operator visually scanning Discord for severity.
+    batch-69 needs this split because send_system_alert() deliberately
+    collapses "delivered" and "suppressed" into a single True -- correct for
+    its callers, which only ever ask "is there anything to roll back", but
+    useless for a delivery LOG, which exists precisely to tell an operator
+    whether a message reached them or was swallowed by a cooldown. Rather
+    than change that return type across its existing call sites -- an AST
+    count on 2026-08-25 found 24 of them across 7 modules (cron.py x13,
+    order_executor.py x5, main.py x2, and one each in alerts.py,
+    kalshi_weather_index.py, tracker.py, trade_cycle.py) -- the body moved
+    here and send_system_alert() became a thin bool-returning wrapper, so
+    its documented contract is reproduced exactly, by construction, instead
+    of by a second implementation that could drift.
 
-    Returns True if the alert was either delivered on >=1 channel or
-    suppressed by an already-elapsed-and-successful cooldown (nothing new
-    needed sending this call); False only when delivery was actually
-    attempted and every configured channel failed (batch-33 M-1: a caller
-    tracking its own edge-triggered state, e.g.
-    alerts.check_halt_transition, can use a False return to know THIS
-    alert never actually reached anyone and roll that state back so the
-    next cycle retries instead of silently treating a failed delivery as
-    done).
+    `cooldown_secs` overrides the default 6h window for this call.
+    _system_cooldown_reserve() has always taken the window as a parameter;
+    only send_system_alert() hardcoded what it passed. Threading an override
+    through is reuse of the existing disk-persisted cooldown, NOT a second
+    per-rule throttle sitting beside it.
+
     Never raises.
     """
-    _SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts
+    # opus-review-caught (L-6): a bare float() here made the documented
+    # "Never raises" contract conditional on the caller having validated
+    # cooldown_secs first. This function is on the alerting path -- the one
+    # place a surprise TypeError is least acceptable -- so coerce
+    # defensively and fall back to the default rather than trusting callers.
+    if cooldown_secs is None:
+        _SYSTEM_COOLDOWN_SECS: float = SYSTEM_COOLDOWN_SECS
+    else:
+        try:
+            _SYSTEM_COOLDOWN_SECS = float(cooldown_secs)
+            # round-2 opus review (L-11): float("nan") passes the try, and
+            # `now - last < nan` is always False -- which DISABLES the cooldown
+            # and makes the alert fire on every call. bool is an int subclass,
+            # so True became a 1-second window. Both must fall back.
+            import math as _math
+
+            if isinstance(cooldown_secs, bool) or not _math.isfinite(
+                _SYSTEM_COOLDOWN_SECS
+            ):
+                raise ValueError("non-finite or boolean cooldown_secs")
+        except (TypeError, ValueError):
+            _log.warning(
+                "send_system_alert_detailed: ignoring non-numeric cooldown_secs "
+                "%r for key %r — using the %ds default",
+                cooldown_secs,
+                cooldown_key,
+                SYSTEM_COOLDOWN_SECS,
+            )
+            _SYSTEM_COOLDOWN_SECS = SYSTEM_COOLDOWN_SECS
     now = time.time()
     reserved, previous_value = _system_cooldown_reserve(
         cooldown_key, now, _SYSTEM_COOLDOWN_SECS
@@ -566,7 +628,7 @@ def send_system_alert(
         # rarer) a concurrent thread is mid-delivery right now. Either way
         # nothing was left undelivered BY THIS CALL, so this isn't a
         # failure any caller should roll anything back over.
-        return True
+        return "suppressed", 0, 0
 
     successes: list[bool] = []
 
@@ -607,6 +669,7 @@ def send_system_alert(
     if "email" in _CHANNELS:
         successes.append(_send_email(title, message))
 
+    n_ok = sum(1 for s in successes if s)
     if not any(successes):
         # opus-review-caught (F8): the rollback must fire whenever nothing
         # was actually delivered -- including when `successes` stayed fully
@@ -627,5 +690,67 @@ def send_system_alert(
         # roll the reservation back so the next call (e.g. the following
         # cron cycle) can retry instead of waiting out the full 6h window.
         _system_cooldown_rollback(cooldown_key, now, previous_value)
-        return False
-    return True
+        return "failed", 0, len(successes)
+    return "delivered", n_ok, len(successes)
+
+
+def send_system_alert(
+    title: str,
+    message: str,
+    cooldown_key: str = "__system__",
+    discord_color: int = 0xE3B341,
+    cooldown_secs: float | None = None,
+) -> bool:
+    """
+    Send a system-level alert (not trade-specific) through all configured backends.
+    Used for operational events like the dead-man's-switch 48h cron gap.
+
+    Uses a 6-hour cooldown keyed by `cooldown_key` (default "__system__", used
+    by callers that predate this parameter) so back-to-back cron runs don't
+    spam — separate from the per-ticker trade cooldown. A caller for a
+    distinct kind of system alert should pass its own `cooldown_key` (opus-
+    review-caught: two unrelated alert types sharing the default key would
+    otherwise silently suppress each other for 6h, not just repeats of the
+    same alert) so unrelated alert types don't interfere with each other.
+    Unlike the per-ticker trade-signal cooldown, this one is persisted to
+    disk (paths.NOTIFY_COOLDOWN_STATE_PATH via _system_cooldown_reserve())
+    so it survives across separate process invocations -- manual `py main.py
+    cron` runs today, or a future scheduled task post-VM-migration -- not
+    just within one long-lived process (main.py's `loop`/`watch --auto`
+    modes). Fixed 2026-07-31; previously in-process-memory only, which meant
+    every fresh invocation reset the cooldown and never actually suppressed
+    a repeat alert across separate runs.
+
+    `discord_color` defaults to orange (0xE3B341, this function's original
+    fixed color). Callers migrated from their own direct _send_discord()
+    call (batch-24 item 2: activate_black_swan_halt, the circuit-open
+    alert) can pass their prior severity color instead -- opus-review-caught
+    (F13): routing everything through this function's old fixed orange lost
+    black-swan's/circuit-open's red (0xF85149), which was real signal for
+    an operator visually scanning Discord for severity.
+
+    Returns True if the alert was either delivered on >=1 channel or
+    suppressed by an already-elapsed-and-successful cooldown (nothing new
+    needed sending this call); False only when delivery was actually
+    attempted and every configured channel failed (batch-33 M-1: a caller
+    tracking its own edge-triggered state, e.g.
+    alerts.check_halt_transition, can use a False return to know THIS
+    alert never actually reached anyone and roll that state back so the
+    next cycle retries instead of silently treating a failed delivery as
+    done).
+    Never raises.
+
+    batch-69: the body now lives in send_system_alert_detailed(), which
+    reports "delivered" and "suppressed" separately for the alert-delivery
+    log. This wrapper reproduces the exact bool contract documented above --
+    True for both of those, False only for "failed" -- so no existing caller
+    changes and the two can't drift apart.
+    """
+    status, _n_ok, _n_attempted = send_system_alert_detailed(
+        title,
+        message,
+        cooldown_key=cooldown_key,
+        discord_color=discord_color,
+        cooldown_secs=cooldown_secs,
+    )
+    return status != "failed"

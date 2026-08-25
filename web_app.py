@@ -690,6 +690,307 @@ def _build_app(client):
             return jsonify({"error": str(e)}), 500
         return jsonify(result)
 
+    # ── batch-69: A6 alert rules / delivery log, A5 correlated exposure ──────
+
+    @app.route("/api/alert-rules")
+    def api_alert_rules():
+        """Panel A6: every alert rule, its toggle row, and its last delivery.
+
+        Joins the DB toggle rows to alerts.py's in-code registry so the panel
+        gets the human-readable description and the notify cooldown key
+        alongside the enable/threshold state. A rule present in the registry
+        but not yet seeded in the DB still appears (with its declared
+        defaults), so a freshly-deployed rule is never invisible.
+        """
+        try:
+            import alerts as _alerts
+            from tracker import get_alert_deliveries, get_alert_rules
+
+            # NOTE (opus-review-noted, L8): this GET writes -- seed_alert_rules
+            # runs INSERT OR IGNORE so a rule added in a later release appears
+            # in the panel without waiting for the next evaluation pass. It is
+            # idempotent and never overwrites an operator toggle. Because it
+            # runs BEFORE get_alert_rules() below, `seeded` is always True in
+            # practice; the field is kept for the case where seeding itself
+            # fails partway.
+            _alerts.seed_alert_rules()
+            rows = {r["rule_id"]: r for r in get_alert_rules()}
+            out = []
+            for definition in _alerts.get_alert_rule_definitions():
+                row = rows.get(definition.rule_id, {})
+                last = get_alert_deliveries(limit=1, rule_id=definition.rule_id)
+                out.append(
+                    {
+                        "rule_id": definition.rule_id,
+                        "description": definition.description,
+                        "cooldown_key": definition.cooldown_key,
+                        "triggers": sorted(definition.triggers),
+                        "enabled": bool(row.get("enabled", definition.default_enabled)),
+                        # round-2 opus review (L-3): `row.get(k, default)`
+                        # returns None when the COLUMN is NULL (the key is
+                        # present), so brier_two_weeks -- which seeds with no
+                        # threshold and falls back to utils.BRIER_ALERT_THRESHOLD
+                        # inside its predicate -- rendered as `threshold: null`
+                        # for a rule that has a real, non-obvious threshold.
+                        # Show what the predicate will actually use.
+                        "threshold": (
+                            row.get("threshold")
+                            if row.get("threshold") is not None
+                            else definition.effective_threshold()
+                        ),
+                        "cooldown_secs": row.get(
+                            "cooldown_secs", definition.default_cooldown_secs
+                        ),
+                        "state": row.get("state"),
+                        "updated_at": row.get("updated_at"),
+                        "seeded": definition.rule_id in rows,
+                        "last_delivery": last[0] if last else None,
+                    }
+                )
+            return jsonify(
+                {
+                    "rules": out,
+                    # The master switch. Every rule below reads as enabled or
+                    # not, but NOTHING is evaluated for real while this is
+                    # False -- surfacing it here so the panel can't show six
+                    # green toggles on a layer that is entirely dormant.
+                    "engine_enabled": _alerts.alert_rules_enabled(),
+                    "engine_env_var": _alerts.ALERT_RULES_ENABLED_ENV,
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/alert-rules/<rule_id>", methods=["POST"])
+    def api_set_alert_rule(rule_id: str):
+        """Panel A6: toggle a rule or change its threshold / cooldown.
+
+        Accepts any subset of {"enabled", "threshold", "cooldown_secs"}; an
+        omitted field is left alone rather than blanked, matching
+        tracker.set_alert_rule's keyword-only contract. `state` is
+        deliberately NOT settable from here -- it is the evaluator's
+        edge-tracking bookkeeping, and letting the panel write it would let a
+        UI action silently swallow a real transition.
+        """
+        from flask import request as _req
+
+        try:
+            import alerts as _alerts
+            from tracker import set_alert_rule
+
+            known = {d.rule_id for d in _alerts.get_alert_rule_definitions()}
+            if rule_id not in known:
+                return jsonify({"error": f"unknown rule_id {rule_id!r}"}), 404
+
+            body = _req.get_json(silent=True) or {}
+            enabled = body.get("enabled")
+            threshold = body.get("threshold")
+            cooldown_secs = body.get("cooldown_secs")
+            if enabled is not None and not isinstance(enabled, bool):
+                return jsonify({"error": "enabled must be a boolean"}), 400
+            for name, val in (
+                ("threshold", threshold),
+                ("cooldown_secs", cooldown_secs),
+            ):
+                if val is not None and (
+                    isinstance(val, bool) or not isinstance(val, int | float)
+                ):
+                    return jsonify({"error": f"{name} must be a number"}), 400
+            if cooldown_secs is not None:
+                # round-2 opus review (L-1): json.loads accepts bare NaN and
+                # Infinity, and `NaN < 0` is False -- so a NaN slipped past the
+                # range check below and blew up in int() as an unhandled 500
+                # instead of a clean 400.
+                import math as _math
+
+                if not _math.isfinite(cooldown_secs):
+                    return jsonify({"error": "cooldown_secs must be finite"}), 400
+                if cooldown_secs < 0:
+                    return jsonify({"error": "cooldown_secs must be >= 0"}), 400
+            # opus-review-caught (M-4): kill_switch_engaged and
+            # brier_two_weeks deliberately SHARE their notify cooldown key
+            # with a pre-existing cron.py call site so the operator gets one
+            # message instead of two. Letting the panel set cooldown_secs=0
+            # on those would reserve the shared key every cycle and stomp
+            # that site's timestamp -- turning the dedup layer into a spam
+            # source. _record_and_send ignores the override for these rules;
+            # reject it here too so the UI says why instead of silently
+            # storing a value that does nothing.
+            _definition = next(
+                d for d in _alerts.get_alert_rule_definitions() if d.rule_id == rule_id
+            )
+            if cooldown_secs is not None and _definition.shares_cooldown_key:
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                f"{rule_id} shares notify cooldown key "
+                                f"'{_definition.cooldown_key}' with a built-in "
+                                "alert; its cooldown is not separately settable"
+                            )
+                        }
+                    ),
+                    400,
+                )
+            # L9: threshold is a per-rule quantity (cron_gap hours, a Brier
+            # score, a net_edge fraction) -- a negative one makes cron_gap
+            # fire every pass, and json.loads accepts bare NaN/Infinity,
+            # which reach the REAL column (NaN stores as NULL and silently
+            # reverts the rule to its default).
+            if threshold is not None:
+                import math as _math
+
+                if not _math.isfinite(threshold):
+                    return jsonify({"error": "threshold must be finite"}), 400
+                if threshold < 0:
+                    return jsonify({"error": "threshold must be >= 0"}), 400
+
+            # Seed first so toggling a rule that has never been evaluated
+            # updates a real row instead of 404ing on an absent one.
+            _alerts.seed_alert_rules()
+            ok = set_alert_rule(
+                rule_id,
+                enabled=enabled,
+                threshold=threshold,
+                cooldown_secs=(
+                    int(cooldown_secs) if cooldown_secs is not None else None
+                ),
+            )
+            if not ok:
+                return jsonify({"error": f"rule {rule_id!r} not found"}), 404
+            from tracker import get_alert_rule
+
+            return jsonify({"updated": True, "rule": get_alert_rule(rule_id)})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/alert-deliveries")
+    def api_alert_deliveries():
+        """Panel A6: the delivery log — what fired, when, and whether it
+        actually reached anyone.
+
+        `failures` is surfaced separately from the main list because a failed
+        delivery is the one row an operator must not have to scroll for: the
+        underlying condition is still unreported, and the alert about it
+        didn't arrive either.
+        """
+        from flask import request as _req
+
+        try:
+            from tracker import get_alert_deliveries, get_alert_delivery_failures
+
+            try:
+                limit = int(_req.args.get("limit", 100))
+            except (TypeError, ValueError):
+                limit = 100
+            limit = max(1, min(limit, 1000))
+            rule_id = _req.args.get("rule_id") or None
+            return jsonify(
+                {
+                    "deliveries": get_alert_deliveries(limit=limit, rule_id=rule_id),
+                    "failures": get_alert_delivery_failures(limit=25),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/correlated-exposure")
+    def api_correlated_exposure():
+        """Panel A5: exposure by settlement date, the worst correlated pair
+        currently open, and how many independent bets the book really holds.
+
+        Measurement only. Nothing here feeds Kelly sizing — see
+        tracker.get_correlated_exposure_summary's docstring.
+        """
+        try:
+            from tracker import get_correlated_exposure_summary
+
+            # opus-review-caught (M1): calling this with no client left the
+            # DENOMINATOR paper-only (max(STARTING_BALANCE, paper balance))
+            # while the NUMERATOR already included live positions -- the exact
+            # bug web_app.py's /api/risk block carries a fix comment for on
+            # get_total_exposure ("2nd-round-opus-review-caught (M-B)"). A
+            # $5,000 live account with one $300 live position rendered 30%
+            # instead of 5%, and at $400 it rendered over_cap, which is this
+            # panel's whole purpose.
+            return jsonify(get_correlated_exposure_summary(client))
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/city-correlations")
+    def api_city_correlations():
+        """Panel A5: the stored offline correlation matrix.
+
+        `?window=m07` narrows to one seasonal window; omitted returns every
+        (pair, month) row. Each row carries n_obs and computed_at so the panel
+        can show how much history a coefficient rests on and how stale it is
+        -- correlations move seasonally, so a table last computed six months
+        ago is describing a different season than the one being traded.
+        """
+        from flask import request as _req
+
+        try:
+            from tracker import get_city_correlations
+
+            window = _req.args.get("window") or None
+            rows = get_city_correlations(window_key=window)
+            return jsonify(
+                {
+                    "window": window,
+                    "n_rows": len(rows),
+                    "correlations": rows,
+                    # opus-review-caught (M7): max() alone let a table where
+                    # only 10 of 190 pairs refreshed advertise the freshest
+                    # timestamp as the whole table's. Report both ends so a
+                    # partial recompute is visible.
+                    "computed_at": max((r["computed_at"] for r in rows), default=None),
+                    "oldest_computed_at": min(
+                        (r["computed_at"] for r in rows), default=None
+                    ),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    _corr_recompute_lock = threading.Lock()
+
+    @app.route("/api/city-correlations/recompute", methods=["POST"])
+    def api_recompute_city_correlations():
+        """Panel A5: rebuild the offline correlation table from ACIS history.
+
+        Explicitly operator-triggered — there is no scheduler entry and no
+        automatic refresh, because this reads 30 years of station history for
+        every traded city and the answer moves seasonally, not daily (monthly
+        at most, per the handoff). Takes roughly 10s cold, ~1s against the
+        30-day ACIS disk cache. `{"force": true}` bypasses that cache.
+        """
+        from flask import request as _req
+
+        # opus-review-caught (M8): Flask runs threaded, so a double-click
+        # previously started two full recomputes -- 7s of pure CPU each plus
+        # up to 20 serial ACIS POSTs at timeout=30 (a hanging endpoint means
+        # ~160s before the circuit breaker short-circuits the rest), and two
+        # concurrent upserts racing on a single write transaction spanning
+        # 2280 statements, blocking every other tracker write meanwhile.
+        # Same lock + 409 shape api_run_cron already uses, and for the same
+        # reason. `force` makes it worse by bypassing the 30-day disk cache
+        # against a public unauthenticated NOAA endpoint.
+        if not _corr_recompute_lock.acquire(blocking=False):
+            return (
+                jsonify({"error": "a correlation recompute is already running"}),
+                409,
+            )
+        try:
+            import acis_temps as _acis_temps
+
+            body = _req.get_json(silent=True) or {}
+            force = bool(body.get("force"))
+            return jsonify(_acis_temps.recompute_city_correlations(force=force))
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+        finally:
+            _corr_recompute_lock.release()
+
     @app.route("/api/sameday-calibration")
     def api_sameday_calibration():
         """Same-day METAR-locked trade calibration — completely separate from multi-day.
@@ -2253,6 +2554,17 @@ setInterval(() => {{
             )
         except AtomicWriteError as exc:
             return jsonify({"error": str(exc)}), 500
+        # batch-69: a kill-switch TRANSITION must not wait for the next cron
+        # cycle to be reported. An operator halting from the dashboard at
+        # 03:00 is exactly the between-cycles case the handoff calls out.
+        # Inert unless ALERT_RULES_ENABLED is set; never raises (so a halt is
+        # never broken by its own notification).
+        try:
+            import alerts as _alerts
+
+            _alerts.evaluate_on_transition("dashboard halt")
+        except Exception as _alert_exc:
+            _log.warning("api_halt: alert evaluation failed: %s", _alert_exc)
         return jsonify({"halted": True, "reason": reason})
 
     @app.route("/api/resume", methods=["POST"])

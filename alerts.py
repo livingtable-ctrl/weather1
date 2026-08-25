@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -762,6 +763,32 @@ def activate_black_swan_halt(reason: str) -> None:
     except Exception as _n_exc:
         _log.warning("activate_black_swan_halt: notification failed: %s", _n_exc)
 
+    # batch-69: this function just engaged the kill switch, which is a
+    # kill-switch TRANSITION the handoff asks be evaluated immediately rather
+    # than at the next cycle end -- run_black_swan_check() is reachable from
+    # `watch --auto` and trade_cycle, not only from cron, so "the next cron
+    # cycle" can be hours away or never.
+    #
+    # This deliberately CAN produce a second message alongside the black-swan
+    # alert above: they are different facts under different cooldown keys
+    # ("black_swan_halt" = a black swan tripped; "kill_switch" = trading is
+    # now halted), and the kill_switch key is shared with cron.py's own check,
+    # which would have said the same thing next cycle anyway. Inert unless
+    # ALERT_RULES_ENABLED is set.
+    # round-2 opus review (L-7): unlike the cycle-END hook, this one runs
+    # INSIDE the cron lock -- run_black_swan_check is called at cycle start
+    # from _cmd_cron_body. Accepted rather than deferred: a black-swan halt is
+    # the single most time-critical alert this system sends, and delaying it to
+    # the end of a cycle that may still take minutes (or that a watchdog may
+    # kill) to save lock-hold time is the wrong trade. Every channel has its
+    # own timeout, so the hold is bounded.
+    try:
+        evaluate_on_transition("black swan halt")
+    except Exception as _t_exc:
+        _log.warning(
+            "activate_black_swan_halt: transition evaluation failed: %s", _t_exc
+        )
+
 
 def get_black_swan_status() -> dict | None:
     """P10.2: Return active black swan state if any, else None."""
@@ -857,3 +884,1016 @@ def run_black_swan_check(
         )
         activate_black_swan_halt(f"black swan check error: {exc}")
         return [f"black swan check error: {exc}"]
+
+
+# ── batch-69 item 1 (panel A6): declarative alert rules + delivery log ────────
+#
+# THE PROBLEM THIS EXISTS FOR. frontend/src/tabs/PositionsTab.jsx keeps its
+# position alerts in localStorage and says so out loud: "Alerts are stored
+# locally in your browser. The bot does not act on them." They are never
+# evaluated when the tab is closed, which is every hour that matters. Meanwhile
+# the real operational alerts (kill switch, cron gap, Brier drift, slippage,
+# circuit-breaker) are each an ad-hoc `send_system_alert()` call buried at its
+# own site in cron.py, with no shared record of what fired, when, or whether
+# anyone actually received it.
+#
+# What this adds is the LAYER, not the channels: notify.py already has five
+# delivery channels plus a disk-persisted cooldown with reserve/rollback, and
+# nothing here duplicates any of that (the panel-backend index records that the
+# design handoff overstated this item -- only rules/eval/deliveries were
+# genuinely missing, and re-verification against master on 2026-08-25 confirmed
+# it).
+#
+# TWO DESIGN CONSTRAINTS WORTH READING BEFORE CHANGING ANYTHING HERE:
+#
+# 1. `cron_gap` is deliberately NOT evaluated by the cron cycle. A rule that
+#    watches whether cron is alive cannot be driven by cron -- today's 48h
+#    dead-man's-switch in cmd_cron runs at cycle START, so it only ever reports
+#    a gap once cron has already come BACK, and stays silent for the entire
+#    outage it exists to announce. Its `triggers` is {"external"} so the only
+#    thing that evaluates it is cron.cmd_alert_check(), which is meant to run
+#    from its own scheduler entry, out of band. Moving it to {"cycle"} would
+#    ship a rule that structurally cannot fire when it is needed.
+#
+# 2. Throttling is notify.py's existing per-cooldown_key disk-persisted window,
+#    not a second mechanism here. Rules that mirror an event cron.py ALREADY
+#    alerts on (kill_switch_engaged, brier_two_weeks) deliberately SHARE that
+#    site's cooldown key, so the operator gets exactly one message and this
+#    layer records the event with status="suppressed" rather than sending a
+#    duplicate.
+
+ALERT_RULES_ENABLED_ENV = "ALERT_RULES_ENABLED"
+
+# Second threshold for `signal_edge_fillable`. The rules table carries one
+# `threshold` column per rule (which that rule spends on net_edge), so the
+# size half lives here. Named "kelly dollars" rather than "fillable
+# contracts" on purpose: real order-book DEPTH does not exist in this repo
+# yet -- kalshi_ws stores `orderbook_delta` without ever applying it to a
+# depth structure, which is batch 72's work -- so the honest stand-in for
+# "how much of this could we actually get on" is what the sizer would deploy.
+ALERT_SIGNAL_MIN_KELLY_DOLLARS_ENV = "ALERT_SIGNAL_MIN_KELLY_DOLLARS"
+
+# Reject a signals_cache.json older than this when evaluating
+# `signal_edge_fillable`. Same 4h figure web_app.py's own
+# MAX_SIGNALS_CACHE_AGE_SECS uses ("one full cron cycle") -- without it the
+# rule would happily alert on an edge that stopped existing days ago.
+ALERT_SIGNALS_MAX_AGE_SECS = 4 * 60 * 60
+
+# rule_id used for the meta-alert raised when a real rule's delivery failed on
+# every channel. Not a member of _ALERT_RULES: it has no predicate and no
+# toggle row, because an alerting system that lets you switch off the alarm
+# about its own alarms failing is worse than not having one.
+DELIVERY_FAILURE_RULE_ID = "_delivery_failure"
+DELIVERY_FAILURE_COOLDOWN_KEY = "alert_delivery_failed"
+
+# A rule whose PREDICATE raised is a different fault from a rule whose message
+# could not be delivered, and round-2 opus review (M-B) caught the first fix
+# for it routing both through the same escalation. That sent the operator a
+# message reading "Every configured channel failed ... check NOTIFY_CHANNELS
+# and each channel's credentials" for what is actually a Python bug, and --
+# worse -- a permanently broken predicate fires every cycle, so it kept the
+# single shared 6h window continuously reserved and could suppress a genuine
+# all-channel outage alert. Separate id, separate cooldown key, separate text.
+PREDICATE_FAILURE_RULE_ID = "_predicate_failure"
+PREDICATE_FAILURE_COOLDOWN_KEY = "alert_predicate_failed"
+
+# Collects rule ids whose alert_deliveries row could not be written, so
+# evaluate_alert_rules can report the count (round-2 opus review, L-4).
+# Drained at the start of each pass; module-level only because
+# _record_and_send is a free function rather than a method on the pass.
+_RECORD_ERROR_SINK: list[str] = []
+
+
+def alert_rules_enabled() -> bool:
+    """Master switch for the whole evaluation layer, read FRESH from the
+    environment on every call rather than cached at import.
+
+    A module-level constant would be unreachable from monkeypatch.setenv in
+    tests (the value is bound before the fixture runs), and would also mean an
+    operator flipping the switch had to restart every long-lived process.
+    """
+    return os.getenv(ALERT_RULES_ENABLED_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+class AlertEval:
+    """One rule's verdict for one evaluation pass.
+
+    `fired`      -- send an alert for this
+    `title`/`body` -- the message, only meaningful when fired
+    `new_state`  -- the observation to persist in alert_rules.state for an
+                    edge-triggered rule. Set it WITHOUT firing to seed state
+                    silently (the first-ever observation of a tier must not
+                    alert -- there is no transition yet, only a baseline).
+    """
+
+    __slots__ = ("fired", "title", "body", "new_state")
+
+    def __init__(
+        self,
+        fired: bool = False,
+        title: str = "",
+        body: str = "",
+        new_state: str | None = None,
+    ) -> None:
+        self.fired = fired
+        self.title = title
+        self.body = body
+        self.new_state = new_state
+
+
+class AlertRule:
+    """A code-declared alert rule. Confirmed via AskUserQuestion (2026-08-25):
+    predicates are Python, the DB stores only enable/threshold/cooldown/state.
+
+    `cooldown_key` is notify.py's key, and may be SHARED with a pre-existing
+    cron.py call site on purpose (see the module comment). One invariant
+    though: a rule that returns a `new_state` must own its cooldown key
+    outright. State advances on "suppressed" as well as "delivered" -- correct
+    when the suppression came from this same real-world event -- but if an
+    unrelated alert shared the key, its suppression would silently advance
+    this rule's edge and swallow a transition nobody was told about.
+    """
+
+    __slots__ = (
+        "rule_id",
+        "description",
+        "cooldown_key",
+        "triggers",
+        "default_enabled",
+        "default_threshold",
+        "default_cooldown_secs",
+        "discord_color",
+        "evaluate",
+        "shares_cooldown_key",
+        "state_bearing",
+        "threshold_fallback",
+    )
+
+    def __init__(
+        self,
+        rule_id: str,
+        description: str,
+        cooldown_key: str,
+        evaluate,
+        triggers: frozenset[str] = frozenset({"cycle", "external"}),
+        default_enabled: bool = False,
+        default_threshold: float | None = None,
+        default_cooldown_secs: int | None = None,
+        discord_color: int = 0xE3B341,
+        shares_cooldown_key: bool = False,
+        state_bearing: bool = False,
+        threshold_fallback: Callable[[], float | None] | None = None,
+    ) -> None:
+        self.rule_id = rule_id
+        self.description = description
+        self.cooldown_key = cooldown_key
+        self.evaluate = evaluate
+        self.triggers = triggers
+        self.default_enabled = default_enabled
+        self.default_threshold = default_threshold
+        self.default_cooldown_secs = default_cooldown_secs
+        self.discord_color = discord_color
+        # True when `cooldown_key` is deliberately shared with a pre-existing
+        # cron.py call site for the same real-world event. Such a rule must
+        # never honour a per-rule cooldown override -- see _record_and_send's
+        # M-4 comment for what that would destroy.
+        self.shares_cooldown_key = shares_cooldown_key
+        # round-2 opus review (L-6): H-1 makes a state-bearing rule's cooldown
+        # key composite, which silently UN-shares it -- destroying exactly the
+        # "one message, not two" dedup `shares_cooldown_key` exists to protect.
+        # The two properties are mutually exclusive by construction, so enforce
+        # it here rather than relying on a test that pins today's registry by
+        # hardcoded key name.
+        if shares_cooldown_key and state_bearing:
+            raise ValueError(
+                f"{rule_id}: a rule cannot both share a cooldown key and carry "
+                "edge state -- the composite key would un-share it"
+            )
+        self.state_bearing = state_bearing
+        # What the PREDICATE falls back to when both the DB column and
+        # default_threshold are NULL. Declared per-rule so the panel can show
+        # the value that will actually be used rather than `null`
+        # (round-2 opus review, L-3). A callable, not a value, so a threshold
+        # sourced from a live env-backed constant is read fresh rather than
+        # frozen at import.
+        self.threshold_fallback = threshold_fallback
+
+    def effective_threshold(self) -> float | None:
+        """The threshold this rule's predicate will actually use."""
+        if self.default_threshold is not None:
+            return self.default_threshold
+        if self.threshold_fallback is not None:
+            try:
+                return self.threshold_fallback()
+            except Exception as exc:  # pragma: no cover - defensive
+                _log.warning(
+                    "effective_threshold: %s fallback failed: %s", self.rule_id, exc
+                )
+        return None
+
+
+def _threshold(row: dict, fallback: float) -> float:
+    """Read a rule row's threshold, falling back when it is NULL or unusable.
+
+    A hand-edited non-numeric threshold must not take the whole evaluation
+    pass down with a TypeError -- same fail-toward-working reasoning
+    notify._system_cooldown_reserve applies to its own persisted value.
+    """
+    raw = row.get("threshold")
+    if isinstance(raw, bool) or not isinstance(raw, int | float):
+        return fallback
+    return float(raw)
+
+
+# ── the six baseline rules ────────────────────────────────────────────────────
+
+
+def _eval_kill_switch(row: dict) -> AlertEval:
+    """Fires while data/.kill_switch is present.
+
+    Shares cooldown_key="kill_switch" with cron.py's own pre-existing check
+    and trade_cycle.py's, so a cycle that already alerted records this as
+    "suppressed" here instead of sending the operator a second copy.
+    """
+    if not _KILL_SWITCH_PATH.exists():
+        return AlertEval(False)
+    return AlertEval(
+        True,
+        "Kalshi kill switch engaged",
+        "data/.kill_switch is present — trading is halted. Remove the file to resume.",
+    )
+
+
+def _eval_cron_gap(row: dict) -> AlertEval:
+    """Fires when the last completed cron run is older than `threshold` hours.
+
+    Evaluated ONLY out of band (triggers={"external"}) -- see the module
+    comment for why driving this from the cron cycle ships a rule that can
+    never fire during the outage it reports.
+
+    A missing .cron_last_run is NOT a fire: it means cron has never completed
+    a cycle on this machine, which is a fresh-install state, not a bot that
+    went quiet. Alerting on it would make every new deployment's first
+    evaluation a false alarm.
+    """
+    import time as _time
+
+    from paths import CRON_LAST_RUN_PATH
+
+    threshold_h = _threshold(row, 12.0)
+    if not CRON_LAST_RUN_PATH.exists():
+        return AlertEval(False)
+    try:
+        gap_h = (_time.time() - CRON_LAST_RUN_PATH.stat().st_mtime) / 3600
+    except OSError as exc:
+        _log.warning("_eval_cron_gap: could not stat .cron_last_run: %s", exc)
+        return AlertEval(False)
+    if gap_h <= threshold_h:
+        return AlertEval(False)
+    # opus-review-caught (L-5): cmd_cron deliberately FREEZES this file's
+    # mtime while the kill switch is engaged (batch-24, so the gap can grow
+    # instead of resetting every aborted cycle). So a >threshold halt makes
+    # this rule read "cron has gone quiet" while cron is running perfectly.
+    # Name the likely cause rather than sending the operator to debug a
+    # scheduler that is fine.
+    halted = _KILL_SWITCH_PATH.exists()
+    cause = (
+        "\n\nNOTE: the kill switch is currently engaged, which deliberately "
+        "freezes this timestamp — cron may be running normally and simply "
+        "aborting each cycle."
+        if halted
+        else ""
+    )
+    return AlertEval(
+        True,
+        "Kalshi cron has gone quiet",
+        f"Last completed cron run was {gap_h:.1f}h ago "
+        f"(threshold {threshold_h:.0f}h) — check the bot.{cause}",
+    )
+
+
+def _brier_threshold_default() -> float:
+    """utils.BRIER_ALERT_THRESHOLD, read fresh -- _eval_brier_two_weeks reads
+    it per call, so the panel must too or the two would disagree."""
+    from utils import BRIER_ALERT_THRESHOLD
+
+    return float(BRIER_ALERT_THRESHOLD)
+
+
+def _eval_brier_two_weeks(row: dict) -> AlertEval:
+    """Fires when the last two complete ISO weeks both have Brier above
+    `threshold`. Mirrors cron.py's own P10.3 check (same 3-week fetch, same
+    last-two test) and shares its cooldown_key="brier_alert"."""
+    from utils import BRIER_ALERT_THRESHOLD as _default_thresh
+
+    threshold = _threshold(row, float(_default_thresh))
+    from tracker import get_brier_over_time
+
+    weeks = get_brier_over_time(weeks=3)
+    if len(weeks) < 2:
+        return AlertEval(False)
+    recent_two = [w["brier"] for w in weeks[-2:]]
+    if not all(b > threshold for b in recent_two):
+        return AlertEval(False)
+    return AlertEval(
+        True,
+        "Kalshi Brier score alert",
+        f"Brier exceeded {threshold} for two consecutive weeks "
+        f"({recent_two[0]:.4f}, {recent_two[1]:.4f}). "
+        "Review model quality before continuing live trades.",
+    )
+
+
+def _eval_signal_edge_fillable(row: dict) -> AlertEval:
+    """Fires when the current scan holds at least one signal with net_edge >=
+    `threshold` AND kelly_dollars >= ALERT_SIGNAL_MIN_KELLY_DOLLARS.
+
+    Reads data/signals_cache.json, the artifact cron already writes each
+    cycle, and refuses a cache older than ALERT_SIGNALS_MAX_AGE_SECS -- an
+    edge that existed two days ago is not something to wake anyone for.
+    """
+    from paths import SIGNALS_CACHE_PATH
+
+    min_edge = _threshold(row, 0.10)
+    try:
+        min_dollars = float(os.getenv(ALERT_SIGNAL_MIN_KELLY_DOLLARS_ENV, "5"))
+    except (TypeError, ValueError):
+        min_dollars = 5.0
+
+    if not SIGNALS_CACHE_PATH.exists():
+        return AlertEval(False)
+    try:
+        import time as _time
+
+        age = _time.time() - SIGNALS_CACHE_PATH.stat().st_mtime
+        if age > ALERT_SIGNALS_MAX_AGE_SECS:
+            _log.debug(
+                "_eval_signal_edge_fillable: signals cache is %.0f min old — skipping",
+                age / 60,
+            )
+            return AlertEval(False)
+        payload = json.loads(SIGNALS_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _log.warning("_eval_signal_edge_fillable: signals cache unusable: %s", exc)
+        return AlertEval(False)
+
+    signals = payload.get("signals") if isinstance(payload, dict) else None
+    if not isinstance(signals, list):
+        return AlertEval(False)
+
+    hits = []
+    for s in signals:
+        if not isinstance(s, dict):
+            continue
+        edge = s.get("net_edge")
+        dollars = s.get("kelly_dollars")
+        if not isinstance(edge, int | float) or isinstance(edge, bool):
+            continue
+        if not isinstance(dollars, int | float) or isinstance(dollars, bool):
+            continue
+        if edge >= min_edge and dollars >= min_dollars:
+            hits.append(s)
+    if not hits:
+        return AlertEval(False)
+
+    hits.sort(key=lambda s: s.get("net_edge", 0.0), reverse=True)
+    lines = [
+        f"  {s.get('ticker', '?')}  {s.get('signal', '')}  "
+        f"edge {float(s.get('net_edge', 0.0)):+.1%}  ${float(s.get('kelly_dollars', 0.0)):.2f}"
+        for s in hits[:5]
+    ]
+    more = f"\n  … and {len(hits) - 5} more" if len(hits) > 5 else ""
+    return AlertEval(
+        True,
+        f"Kalshi: {len(hits)} tradeable signal(s)",
+        f"net_edge >= {min_edge:.0%} with >= ${min_dollars:.2f} sizing:\n"
+        + "\n".join(lines)
+        + more,
+    )
+
+
+def _drawdown_tier_label() -> str | None:
+    """Current drawdown tier label, or None when it cannot be computed.
+
+    The TIER_1..TIER_4/HALTED labels and their boundaries are lifted verbatim
+    from web_app.py's /api/status block so the alert and the dashboard can
+    never disagree about which tier the bot is in. Note the naming is
+    counter-intuitive and matches the dashboard rather than paper.py's own
+    _DRAWDOWN_TIER_1..4 constants: here TIER_1 is FULL sizing and HALTED is
+    the floor, whereas paper._DRAWDOWN_TIER_1 (0.80) is the halt threshold.
+    Deliberately not "fixed" -- renaming would change what the dashboard
+    displays, which is outside this batch.
+    """
+    try:
+        from paper import drawdown_scaling_factor as _dsf
+
+        kf = round(_dsf(), 2)
+    except Exception as exc:
+        _log.warning("_drawdown_tier_label: could not compute tier: %s", exc)
+        return None
+    if kf >= 1.0:
+        return "TIER_1"
+    if kf >= 0.70:
+        return "TIER_2"
+    if kf >= 0.30:
+        return "TIER_3"
+    if kf > 0.0:
+        return "TIER_4"
+    return "HALTED"
+
+
+def _eval_drawdown_tier_change(row: dict) -> AlertEval:
+    """Fires on any change to the drawdown tier, in either direction.
+
+    Edge-triggered against alert_rules.state. The FIRST observation seeds the
+    state without alerting -- there is no transition to report yet, and an
+    alert saying "the tier is now TIER_1" on a healthy bot's first evaluation
+    would be pure noise.
+
+    Recovery transitions (TIER_3 -> TIER_1) alert too, deliberately: the
+    handoff says "drawdown tier changes", and an operator who was told sizing
+    got cut needs to be told when it comes back.
+    """
+    tier = _drawdown_tier_label()
+    if tier is None:
+        return AlertEval(False)
+    previous = row.get("state")
+    if not previous:
+        return AlertEval(False, new_state=tier)
+    if previous == tier:
+        return AlertEval(False)
+    return AlertEval(
+        True,
+        # ASCII "->" deliberately, not "→": ntfy's Title HTTP header is
+        # latin-1 only (see notify._ascii_header_value). That is fixed now,
+        # but a title that needs no degradation reaches every channel with
+        # its exact wording, so there is no reason to spend the fix here.
+        f"Kalshi drawdown tier {previous} -> {tier}",
+        f"Drawdown sizing tier moved from {previous} to {tier}. "
+        + (
+            "Trading is halted by the drawdown gate."
+            if tier == "HALTED"
+            else "Kelly sizing has been rescaled accordingly."
+        ),
+        new_state=tier,
+    )
+
+
+def _eval_unsettled_past_close(row: dict) -> AlertEval:
+    """Fires when any open position is still open more than `threshold` hours
+    past its market close. Ships DISABLED (handoff)."""
+    hours = _threshold(row, 2.0)
+    try:
+        from paper import get_all_open_positions
+
+        positions = get_all_open_positions()
+    except Exception as exc:
+        _log.warning("_eval_unsettled_past_close: could not load positions: %s", exc)
+        return AlertEval(False)
+
+    now = datetime.now(UTC)
+    late: list[tuple[str, float]] = []
+    for t in positions:
+        raw = t.get("close_time") or t.get("expires_at")
+        if not raw:
+            continue
+        try:
+            closed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue
+        if closed.tzinfo is None:
+            closed = closed.replace(tzinfo=UTC)
+        overdue_h = (now - closed).total_seconds() / 3600
+        if overdue_h > hours:
+            late.append((str(t.get("ticker") or "?"), overdue_h))
+    if not late:
+        return AlertEval(False)
+
+    late.sort(key=lambda p: p[1], reverse=True)
+    lines = [f"  {tk}  {hrs:.1f}h past close" for tk, hrs in late[:5]]
+    more = f"\n  … and {len(late) - 5} more" if len(late) > 5 else ""
+    return AlertEval(
+        True,
+        f"Kalshi: {len(late)} position(s) unsettled past close",
+        f"Open more than {hours:.0f}h past market close:\n" + "\n".join(lines) + more,
+    )
+
+
+# Registry order is the evaluation order. `enabled` defaults were confirmed via
+# AskUserQuestion (2026-08-25): every rule on except unsettled_past_close (the
+# handoff's own call) and cron_gap, whose out-of-band scheduler entry is
+# deliberately NOT registered yet -- shipping it enabled would put a row on the
+# panel that reads as active while nothing ever reaches it.
+_ALERT_RULES: list[AlertRule] = [
+    AlertRule(
+        rule_id="kill_switch_engaged",
+        description=(
+            "The kill switch is engaged and trading is halted. "
+            "NOTE: cron.py alerts on this independently — disabling this rule "
+            "stops the panel's delivery row, not the message itself."
+        ),
+        cooldown_key="kill_switch",  # shared with cron.py / trade_cycle.py
+        shares_cooldown_key=True,
+        evaluate=_eval_kill_switch,
+        default_enabled=True,
+        discord_color=0xF85149,
+    ),
+    AlertRule(
+        rule_id="cron_gap",
+        description="No cron cycle has completed within the threshold window.",
+        cooldown_key="cron_gap",  # shared with cmd_cron's 48h dead-man's-switch
+        evaluate=_eval_cron_gap,
+        triggers=frozenset({"external"}),
+        default_enabled=False,
+        default_threshold=12.0,
+    ),
+    AlertRule(
+        rule_id="brier_two_weeks",
+        description=(
+            "Brier score above threshold for two consecutive weeks. "
+            "NOTE: cron.py alerts on this independently at BRIER_ALERT_THRESHOLD — "
+            "disabling this rule or raising its threshold does not stop that."
+        ),
+        cooldown_key="brier_alert",  # shared with cron.py's P10.3 check
+        shares_cooldown_key=True,
+        evaluate=_eval_brier_two_weeks,
+        threshold_fallback=_brier_threshold_default,
+        default_enabled=True,
+    ),
+    AlertRule(
+        rule_id="signal_edge_fillable",
+        description="A current signal clears both the edge and the sizing floor.",
+        cooldown_key="alert_rule_signal_edge",
+        evaluate=_eval_signal_edge_fillable,
+        default_enabled=True,
+        default_threshold=0.10,
+        discord_color=0x3FB950,
+    ),
+    AlertRule(
+        rule_id="drawdown_tier_change",
+        description="The drawdown sizing tier changed since the last evaluation.",
+        # Rule-private key, REQUIRED: this rule persists `new_state`, and state
+        # advances on "suppressed" too -- a shared key would let an unrelated
+        # alert's suppression silently swallow a tier transition.
+        cooldown_key="alert_rule_drawdown_tier",
+        state_bearing=True,
+        evaluate=_eval_drawdown_tier_change,
+        default_enabled=True,
+    ),
+    AlertRule(
+        rule_id="unsettled_past_close",
+        description="A position is still open past its market close.",
+        cooldown_key="alert_rule_unsettled",
+        evaluate=_eval_unsettled_past_close,
+        default_enabled=False,
+        default_threshold=2.0,
+    ),
+]
+
+
+def get_alert_rule_definitions() -> list[AlertRule]:
+    """The in-code rule registry. Exposed so web_app can join a toggle row to
+    its human-readable description without importing the private list."""
+    return list(_ALERT_RULES)
+
+
+def seed_alert_rules() -> None:
+    """Create any missing alert_rules row from the registry's declared
+    defaults, never touching one that already exists."""
+    from tracker import ensure_alert_rule_defaults
+
+    ensure_alert_rule_defaults(
+        [
+            {
+                "rule_id": r.rule_id,
+                "enabled": r.default_enabled,
+                "threshold": r.default_threshold,
+                "cooldown_secs": r.default_cooldown_secs,
+            }
+            for r in _ALERT_RULES
+        ]
+    )
+
+
+def _record_and_send(
+    rule: AlertRule, result: AlertEval, row: dict, dry_run: bool
+) -> str:
+    """Deliver one fired rule and write its alert_deliveries row. Returns the
+    recorded status.
+
+    Delivery goes through notify.send_system_alert_detailed(), NOT a bare
+    fire-and-forget send: batch-45 consolidated five halt/resume call sites
+    that each called fetch with no .then/.catch, so a real server failure was
+    silent, and the same mistake in an alerting path is strictly worse. The
+    return status is inspected, persisted, and (on failure) escalated by the
+    caller.
+    """
+
+    _record_errors: list[str] = []
+
+    def _record(status: str, detail: str | None = None) -> None:
+        """Write the delivery row, never letting a DB problem escape.
+
+        opus-review-caught (M-2): tracker._conn() uses sqlite3's default 5s
+        busy timeout, and this hook deliberately runs AFTER the cron lock is
+        released -- so the dashboard or the next cron process can hold a
+        write lock and raise "database is locked" here. Unguarded, that
+        exception left the loop with a message already DELIVERED but no row
+        recorded, skipped every remaining rule that cycle, and skipped the
+        delivery-failure escalation too.
+        """
+        try:
+            from tracker import log_alert_delivery
+
+            log_alert_delivery(rule.rule_id, result.title, result.body, status, detail)
+        except Exception as exc:
+            _log.error(
+                "_record_and_send: could not record %s row for %s: %s",
+                status,
+                rule.rule_id,
+                exc,
+            )
+            # round-2 opus review (L-4): without a counter, a systematically
+            # failing log_alert_delivery (locked DB every cycle, schema drift)
+            # meant messages kept being delivered while the A6 panel stayed
+            # permanently empty, with nothing in the summary or cron's log
+            # line saying so.
+            _record_errors.append(rule.rule_id)
+
+    if dry_run:
+        _record("dry_run", "evaluation only — no channel was contacted")
+        if _record_errors:
+            _RECORD_ERROR_SINK.extend(_record_errors)
+        return "dry_run"
+
+    # opus-review-caught (M-4): the per-rule cooldown override must NOT apply
+    # to a rule whose key is deliberately SHARED with a pre-existing cron.py
+    # call site. Setting cooldown_secs=0 on kill_switch_engaged would
+    # otherwise reserve "kill_switch" every single cycle and stomp the shared
+    # timestamp -- destroying the "one message, not two" dedup this design
+    # exists for, and spamming the operator from the layer meant to prevent
+    # exactly that.
+    cooldown_secs = None
+    if not rule.shares_cooldown_key:
+        raw = row.get("cooldown_secs")
+        if not isinstance(raw, bool) and isinstance(raw, int | float):
+            cooldown_secs = raw
+
+    # opus-review-caught (H-1, reproduced): a state-bearing rule must key its
+    # cooldown on the EDGE, not just the rule. With a rule-wide key, a
+    # TIER_1->TIER_2 alert delivered at 09:00 suppresses the TIER_2->HALTED
+    # alert at 10:00 -- and because state advances on "suppressed", the edge
+    # is consumed and no later pass ever retries. The operator is told sizing
+    # was reduced and is NEVER told trading halted. Making the key carry the
+    # destination state means a repeat of the SAME transition still
+    # suppresses, while a genuinely NEW transition gets its own window.
+    cooldown_key = rule.cooldown_key
+    if result.new_state is not None:
+        cooldown_key = f"{rule.cooldown_key}:{result.new_state}"
+
+    try:
+        import notify as _notify
+
+        status, n_ok, n_attempted = _notify.send_system_alert_detailed(
+            result.title,
+            result.body,
+            cooldown_key=cooldown_key,
+            discord_color=rule.discord_color,
+            cooldown_secs=cooldown_secs,
+        )
+    except Exception as exc:
+        # send_system_alert_detailed documents "never raises", but this is the
+        # alerting path -- if that contract is ever broken, the failure must
+        # become a recorded delivery row rather than an exception that takes
+        # down the cron cycle this is hooked into.
+        _log.error("_record_and_send: delivery raised for %s: %s", rule.rule_id, exc)
+        _record("failed", f"exception: {exc}")
+        if _record_errors:
+            _RECORD_ERROR_SINK.extend(_record_errors)
+        return "failed"
+
+    detail = (
+        f"cooldown_key={cooldown_key}"
+        if status == "suppressed"
+        else f"{n_ok}/{n_attempted} channel(s) succeeded"
+    )
+    _record(status, detail)
+    if _record_errors:
+        _RECORD_ERROR_SINK.extend(_record_errors)
+    return status
+
+
+def evaluate_alert_rules(trigger_source: str = "cycle", dry_run: bool = False) -> dict:
+    """Run every enabled rule whose `triggers` includes `trigger_source`.
+
+    `trigger_source` is "cycle" (the hook at the end of each cron cycle) or
+    "external" (cron.cmd_alert_check, the out-of-band entry point that is the
+    only thing able to evaluate cron_gap honestly).
+
+    `dry_run=True` evaluates and records rows with status="dry_run" but
+    contacts no channel, and deliberately does NOT advance any rule's
+    persisted `state` -- consuming an edge-triggered transition on a dry run
+    would mean the real run afterwards had nothing left to report.
+
+    Gated on ALERT_RULES_ENABLED (default OFF) for anything that could send.
+    A dry run works regardless, which is the point: the evaluation output can
+    be read before a single real message is ever delivered.
+
+    Never raises: one rule whose predicate blows up is logged and skipped so
+    it cannot take the other five, or the cron cycle hosting them, down with
+    it. Returns a summary dict.
+    """
+    # opus-review-caught (L-11): read the gate ONCE. Reading it twice let a
+    # mid-pass env flip report the contradictory enabled=True/skipped=True.
+    _RECORD_ERROR_SINK.clear()
+    engine_on = alert_rules_enabled()
+    summary: dict = {
+        "trigger_source": trigger_source,
+        "dry_run": dry_run,
+        "enabled": engine_on,
+        "skipped_disabled": False,
+        "evaluated": 0,
+        "fired": [],
+        "delivered": 0,
+        "suppressed": 0,
+        "failed": 0,
+        # Counted separately from `failed` (M-B): a raising predicate never
+        # attempted a delivery, so folding it into the delivery-failure count
+        # both mislabels it and lets it monopolise that escalation's cooldown.
+        "predicate_failed": 0,
+        "record_errors": 0,
+        "errors": [],
+    }
+
+    if not dry_run and not engine_on:
+        summary["skipped_disabled"] = True
+        _log.debug(
+            "evaluate_alert_rules: %s is not set — skipping evaluation",
+            ALERT_RULES_ENABLED_ENV,
+        )
+        return summary
+
+    try:
+        seed_alert_rules()
+        from tracker import get_alert_rules, set_alert_rule
+
+        rows = {r["rule_id"]: r for r in get_alert_rules()}
+    except Exception as exc:
+        _log.error("evaluate_alert_rules: could not load rule rows: %s", exc)
+        summary["errors"].append(f"rule load failed: {exc}")
+        return summary
+
+    failures: list[str] = []
+    predicate_failures: list[str] = []
+
+    for rule in _ALERT_RULES:
+        if trigger_source not in rule.triggers:
+            continue
+        row = rows.get(rule.rule_id)
+        if not row or not row.get("enabled"):
+            continue
+        summary["evaluated"] += 1
+        try:
+            result = rule.evaluate(row)
+        except Exception as exc:
+            # opus-review-caught (M-7): logging alone made a permanently
+            # broken predicate invisible. The A6 panel would show the rule
+            # enabled with a stale "last delivery" and nothing anywhere would
+            # say it had stopped working -- the layer escalated channel
+            # failures but not its own. Record a row so the panel surfaces
+            # it, and count it as a failure so the delivery-failure
+            # escalation fires for it too.
+            _log.error(
+                "evaluate_alert_rules: rule %s raised during evaluation: %s",
+                rule.rule_id,
+                exc,
+            )
+            summary["errors"].append(f"{rule.rule_id}: {exc}")
+            summary["predicate_failed"] += 1
+            predicate_failures.append(rule.rule_id)
+            if not dry_run:
+                try:
+                    from tracker import log_alert_delivery
+
+                    log_alert_delivery(
+                        rule.rule_id,
+                        f"Alert rule {rule.rule_id} is broken",
+                        f"Its predicate raised during evaluation: {exc}",
+                        "failed",
+                        detail=f"predicate raised: {type(exc).__name__}",
+                    )
+                except Exception as rec_exc:
+                    _log.error(
+                        "evaluate_alert_rules: could not record %s's failure: %s",
+                        rule.rule_id,
+                        rec_exc,
+                    )
+            continue
+
+        if not result.fired:
+            # Silent state seed (first observation of an edge-triggered rule).
+            if result.new_state is not None and result.new_state != row.get("state"):
+                if dry_run:
+                    _log.debug(
+                        "evaluate_alert_rules: dry run — not seeding %s state to %r",
+                        rule.rule_id,
+                        result.new_state,
+                    )
+                else:
+                    try:
+                        set_alert_rule(rule.rule_id, state=result.new_state)
+                    except Exception as exc:
+                        _log.warning(
+                            "evaluate_alert_rules: could not seed %s state: %s",
+                            rule.rule_id,
+                            exc,
+                        )
+            continue
+
+        status = _record_and_send(rule, result, row, dry_run)
+        summary["fired"].append({"rule_id": rule.rule_id, "status": status})
+        if status == "delivered":
+            summary["delivered"] += 1
+        elif status == "suppressed":
+            summary["suppressed"] += 1
+        elif status == "failed":
+            summary["failed"] += 1
+            failures.append(rule.rule_id)
+
+        # Advance the edge ONLY once the message actually got somewhere.
+        # A failed delivery leaves `state` untouched so the next pass sees the
+        # same transition and retries -- the identical trap
+        # rollback_halt_transition() exists for, where batch-24 persisted the
+        # edge before delivery and a total failure ate that engagement's alert
+        # forever. "suppressed" counts as somewhere: it means this exact
+        # cooldown key already delivered inside the window.
+        # ROUND-2 opus review (M-D), a residual of the H-1 fix: advancing on
+        # "suppressed" is still unsafe even with a destination-keyed cooldown,
+        # because the key dedups on WHERE YOU ARRIVED, not on the edge. A flap
+        # inside one window --
+        #     09:00 TIER_4 -> HALTED   delivered under ...:HALTED
+        #     09:20 HALTED -> TIER_4   delivered under ...:TIER_4
+        #     09:40 TIER_4 -> HALTED   ...:HALTED still warm -> SUPPRESSED
+        # -- would advance the edge to HALTED while the operator's last
+        # message said "recovered to TIER_4". Keying on the full edge does not
+        # help either: an exact repeat of A->B collides the same way.
+        #
+        # So a state-bearing rule advances ONLY on a real delivery. A
+        # suppressed pass leaves the edge alone, the rule re-fires next cycle,
+        # and once the window elapses the operator is told -- late, but told,
+        # and with a message recomputed from the still-correct previous state.
+        # Fail toward retrying, never toward silently consuming a transition.
+        # (This is why nothing is lost by NOT special-casing shared keys here:
+        # a state-bearing rule owns its key outright -- see AlertRule.)
+        if (
+            result.new_state is not None
+            and not dry_run
+            and status == "delivered"
+            and result.new_state != row.get("state")
+        ):
+            try:
+                set_alert_rule(rule.rule_id, state=result.new_state)
+            except Exception as exc:
+                _log.warning(
+                    "evaluate_alert_rules: could not persist %s state: %s",
+                    rule.rule_id,
+                    exc,
+                )
+
+    # "A failed delivery must itself be alertable" -- the difference between an
+    # alerting system and a decoration. Sent under its own cooldown key so a
+    # flapping channel outage doesn't spam, and its own outcome is only
+    # RECORDED, never escalated again: a meta-alert about the meta-alert
+    # failing would recurse without ever reaching anyone.
+    try:
+        if failures and not dry_run:
+            _raise_delivery_failure_alert(failures)
+        if predicate_failures and not dry_run:
+            _raise_predicate_failure_alert(predicate_failures)
+    except Exception as exc:
+        # round-2 opus review (L-5): both escalations sat outside any try, so
+        # `evaluate_alert_rules`' documented "Never raises" was not
+        # structurally guaranteed -- and main.py's alert-check dispatch does
+        # not wrap the call, so it would traceback.
+        _log.error("evaluate_alert_rules: escalation raised: %s", exc)
+        summary["errors"].append(f"escalation: {exc}")
+
+    summary["record_errors"] = len(_RECORD_ERROR_SINK)
+    return summary
+
+
+def _raise_predicate_failure_alert(broken_rule_ids: list[str]) -> None:
+    """Escalate "one or more alert rules are broken and are not being
+    evaluated at all".
+
+    Distinct from _raise_delivery_failure_alert in id, cooldown key and
+    wording (round-2 opus review, M-B). Terminal in the same way: whatever
+    happens to THIS send is recorded and goes no further.
+    """
+    from tracker import log_alert_delivery
+
+    title = "Kalshi alert rule BROKEN"
+    body = (
+        "These alert rules raised during evaluation and are not being checked "
+        "at all: " + ", ".join(sorted(set(broken_rule_ids))) + ".\n"
+        "This is a code/data fault, not a delivery problem -- the conditions "
+        "they watch are currently unmonitored."
+    )
+    try:
+        import notify as _notify
+
+        status, n_ok, n_attempted = _notify.send_system_alert_detailed(
+            title,
+            body,
+            cooldown_key=PREDICATE_FAILURE_COOLDOWN_KEY,
+            discord_color=0xF85149,
+        )
+        detail = (
+            f"cooldown_key={PREDICATE_FAILURE_COOLDOWN_KEY}"
+            if status == "suppressed"
+            else f"{n_ok}/{n_attempted} channel(s) succeeded"
+        )
+    except Exception as exc:
+        _log.error("_raise_predicate_failure_alert: escalation raised: %s", exc)
+        status, detail = "failed", f"exception: {exc}"
+    try:
+        log_alert_delivery(
+            PREDICATE_FAILURE_RULE_ID, title, body, status, detail=detail
+        )
+    except Exception as exc:
+        _log.error(
+            "_raise_predicate_failure_alert: could not record escalation: %s", exc
+        )
+
+
+def _raise_delivery_failure_alert(failed_rule_ids: list[str]) -> None:
+    """Escalate "one or more alerts could not be delivered on any channel".
+
+    Deliberately terminal: whatever happens to THIS send is written to
+    alert_deliveries and goes no further. There is no third level.
+    """
+    from tracker import log_alert_delivery
+
+    title = "Kalshi alert delivery FAILED"
+    body = (
+        "Every configured channel failed for: "
+        + ", ".join(sorted(set(failed_rule_ids)))
+        + ".\nCheck NOTIFY_CHANNELS and each channel's credentials — "
+        "the underlying conditions are still unreported."
+    )
+    try:
+        import notify as _notify
+
+        status, n_ok, n_attempted = _notify.send_system_alert_detailed(
+            title,
+            body,
+            cooldown_key=DELIVERY_FAILURE_COOLDOWN_KEY,
+            discord_color=0xF85149,
+        )
+        detail = (
+            f"cooldown_key={DELIVERY_FAILURE_COOLDOWN_KEY}"
+            if status == "suppressed"
+            else f"{n_ok}/{n_attempted} channel(s) succeeded"
+        )
+    except Exception as exc:
+        _log.error("_raise_delivery_failure_alert: escalation raised: %s", exc)
+        status, detail = "failed", f"exception: {exc}"
+    try:
+        log_alert_delivery(DELIVERY_FAILURE_RULE_ID, title, body, status, detail=detail)
+    except Exception as exc:
+        _log.error(
+            "_raise_delivery_failure_alert: could not record escalation: %s", exc
+        )
+
+
+def evaluate_on_transition(reason: str) -> dict:
+    """Run the evaluation pass immediately, outside the normal cycle-end hook.
+
+    The batch-69 handoff asks for evaluation "at the end of each cron cycle
+    **plus** on kill-switch and drawdown-tier transitions (a tier change
+    between cycles must not wait for the next cycle)". The cycle-end hook
+    alone would make an operator halting from the dashboard at 03:00 wait
+    until the next scheduled cycle to hear anything about it.
+
+    Uses trigger_source="cycle" so exactly the same rule set the cycle hook
+    evaluates is evaluated here -- `cron_gap` stays excluded, since a rule
+    about cron being absent is no more answerable at a transition than it is
+    inside a cycle.
+
+    Gated on ALERT_RULES_ENABLED like every other path, so this stays inert
+    until the operator turns the engine on. Never raises: a transition site
+    (a halt being engaged) must not be broken by its own notification.
+    """
+    try:
+        _log.info("evaluate_on_transition: evaluating after %s", reason)
+        return evaluate_alert_rules(trigger_source="cycle")
+    except Exception as exc:
+        _log.warning(
+            "evaluate_on_transition: evaluation after %s failed: %s", reason, exc
+        )
+        return {"errors": [str(exc)], "trigger_source": "cycle", "fired": []}

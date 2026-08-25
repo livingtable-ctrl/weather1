@@ -101,6 +101,8 @@ All commands: `py main.py <command> [args]`
 | `override unpause` | Cancel the active pause override early |
 | `override status` | Show current override status and time remaining |
 | `unlock` | Remove stale cron lock file (if cron crashed mid-run) |
+| `alert-check` | Evaluate the alert rules out of band (`--dry-run` shows what would fire without contacting any channel). The only trigger that can evaluate the "cron has gone quiet" rule, since the cron cycle cannot report its own absence. Needs no API credentials. Inert unless `ALERT_RULES_ENABLED` is set |
+| `correlations` | Rebuild the offline city-correlation table from 30 years of NOAA ACIS daily-high history (`--force` bypasses the 30-day cache). Correlations move seasonally — run monthly at most. Measurement only: Kelly sizing is unaffected. Needs no API credentials |
 | `readiness` | Full system readiness check (API, DB, kill switch, graduation gates) |
 | `sync` | Force-sync market data from Kalshi API |
 | `restore` | Restore data from cloud backup (OneDrive/Drive) |

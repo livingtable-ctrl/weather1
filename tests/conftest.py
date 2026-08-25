@@ -372,6 +372,7 @@ def reset_open_meteo_circuit_breaker():
     """
     import acis_precip
     import acis_snow
+    import acis_temps
     import climatology
     import hurricane_climatology
     import kalshi_client
@@ -393,6 +394,12 @@ def reset_open_meteo_circuit_breaker():
         *(reg.breaker for reg in weather_markets.CIRCUIT_BREAKERS),
         acis_precip._acis_cb,
         acis_precip._om_seasonal_cb,
+        # batch-69: acis_temps._acis_cb, an import-time singleton that loads
+        # the real main-clone .cb_state.json at construction. Added
+        # proactively (opus-review-caught, M9) rather than waiting for the
+        # same missed-until-added pattern this docstring already records for
+        # acis_precip, acis_snow, climatology, kalshi_client and nws.
+        acis_temps._acis_cb,
         acis_snow._acis_snow_cb,
         acis_snow._om_seasonal_snow_cb,
         climatology._clim_cb,
@@ -529,6 +536,29 @@ def isolate_dynamic_sigma(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(weather_markets, "_dynamic_sigma", {})
     monkeypatch.setattr(weather_markets, "_load_dynamic_sigma", lambda: {})
+
+
+@pytest.fixture(autouse=True)
+def isolate_acis_temps_mem_cache(monkeypatch, tmp_path):
+    """Reset acis_temps._MEM_CACHE and redirect its disk cache per test.
+
+    batch-69, opus-review-caught (M9). _MEM_CACHE has NO TTL and is checked
+    before the disk-staleness gate, so the first test to exercise the real
+    fetch_historical_daily_maxt() would memoize 30 years of one station's
+    data for every later test in the same pytest process. DATA_DIR is
+    redirected too so a cache MISS in a test can never write
+    data/acis_maxt_*.json into the real data/ directory -- same reasoning as
+    isolate_climatology_data_dir below.
+
+    Latent today (every correlation test feeds a synthetic history dict
+    rather than fetching), which is exactly the state acis_precip's own
+    caches were in before their gap bit.
+    """
+    import acis_temps
+
+    monkeypatch.setattr(acis_temps, "_MEM_CACHE", {})
+    monkeypatch.setattr(acis_temps, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(acis_temps, "_last_skipped_cities", [])
 
 
 @pytest.fixture(autouse=True)
@@ -977,6 +1007,7 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     import consistency
     import cron
     import main
+    import paths
     import watchdog
     import weather_markets as wm
     import web_app
@@ -993,6 +1024,19 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     monkeypatch.setattr(cron, "CRON_LAST_RUN_PATH", fake_last_run)
     monkeypatch.setattr(main, "CRON_LAST_RUN_PATH", fake_last_run)
     monkeypatch.setattr(web_app, "CRON_LAST_RUN_PATH", fake_last_run)
+
+    # batch-69, opus-review-caught (M-5): patch the SOURCE module too, not
+    # just each importer's own binding. alerts.py's rule predicates do
+    # `from paths import SIGNALS_CACHE_PATH` at CALL time, so they resolve
+    # paths.<CONST> live and were reading the operator's real
+    # data/signals_cache.json and data/.cron_last_run straight through this
+    # fixture. Read-only, so nothing was corrupted -- but
+    # `signal_edge_fillable` ships enabled, so the alerting suite would have
+    # started failing the moment the bot found a genuinely tradeable signal.
+    # Verified 2026-08-25: the real cache was 1.0h old with 16 signals, 0 of
+    # them qualifying, which is the only reason those tests passed.
+    monkeypatch.setattr(paths, "SIGNALS_CACHE_PATH", fake_signals_cache)
+    monkeypatch.setattr(paths, "CRON_LAST_RUN_PATH", fake_last_run)
 
     fake_heartbeat = tmp_path / "cron_heartbeat.json"
     monkeypatch.setattr(cron, "CRON_HEARTBEAT_PATH", fake_heartbeat)

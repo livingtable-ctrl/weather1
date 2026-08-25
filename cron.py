@@ -1571,6 +1571,16 @@ def _cmd_cron_body(
 
                 _prune_attempts(days=30)
 
+                # batch-69, opus-review-caught (M10/L-3): alert_deliveries had
+                # no pruner wired in, so it grew without bound -- and while
+                # the kill switch is engaged, kill_switch_engaged writes a
+                # "suppressed" row every single cycle.
+                from tracker import (
+                    prune_old_alert_deliveries as _prune_alert_deliveries,
+                )
+
+                _prune_alert_deliveries(days=90)
+
                 # Compact the SQLite DB after pruning removes rows.
                 from tracker import vacuum_database as _vacuum_db
 
@@ -3869,7 +3879,135 @@ def cmd_cron(
             except Exception:
                 pass
             ctx.release_cron_lock()
+            # batch-69 item 1: the one alert-rule evaluation pass per cycle.
+            #
+            # Placed in this `finally`, not at the end of _cmd_cron_body, on
+            # purpose: the body has several `return None` early exits (kill
+            # switch, black swan, engine kill) and can raise, and those are
+            # exactly the cycles an operator most needs an alert out of. Put
+            # here it runs on every path.
+            #
+            # Placed AFTER ctx.release_cron_lock() equally deliberately:
+            # evaluation does DB reads and up to five channels' worth of
+            # network sends, and none of that needs the cron lock. Holding it
+            # across the sends would extend every cycle's lock window by the
+            # channels' combined timeouts for no benefit.
+            #
+            # Fully no-ops unless ALERT_RULES_ENABLED is set (default off) --
+            # see alerts.evaluate_alert_rules. cron_gap is not evaluated from
+            # here by design; only cmd_alert_check() can honestly evaluate it.
+            #
+            # TWO EXPOSURES THIS ADDS, both opus-review-raised and accepted:
+            #
+            # (M-3) `_cron_done_event` is set in the OUTER finally, so this
+            # runs while the hard-kill watchdog is still armed. Worst case
+            # with all five channels configured is roughly 30-60s per
+            # delivery, and the rollback guarantees a retry every cycle
+            # during a network outage. `CRON_WATCHDOG_SECS` defaults to 720
+            # here, and the cycle is already finished (lock released, every
+            # state file written) by this point, so a watchdog kill costs a
+            # duplicate exit rather than corrupt state. Bounded further by
+            # ALERT_RULES_ENABLED defaulting off.
+            #
+            # (L-12) Every pre-existing cron alert fired while holding the
+            # cron lock; this one deliberately does not. Two cron processes
+            # can therefore interleave here. notify's cooldown lock is
+            # thread-level only and explicitly does not span processes, and
+            # the drawdown edge is a read-then-write on the DB, so a
+            # duplicate delivery or a lost state update is possible. Sub-
+            # millisecond window for the cooldown, wider for the state write;
+            # this project's operating model runs one cron cycle at a time.
+            #
+            # KNOWN, ACCEPTED GAP: main.cmd_cron has a SECOND kill-switch
+            # branch of its own, the interactive `not _called_from_loop`
+            # override prompt, which returns before this function is ever
+            # called -- so declining that prompt evaluates nothing and writes
+            # no delivery row. Left alone deliberately: that branch already
+            # fires its own kill-switch alert under this same "kill_switch"
+            # cooldown key (batch-24 item 1), and it is by construction a
+            # session with an operator reading the halt off the screen. Every
+            # unattended path -- scheduled cron, `loop`, and every early
+            # return inside _cmd_cron_body -- reaches this hook. Covered by
+            # tests/test_cron_integration.py::TestBatch69AlertRuleHook.
+            try:
+                from alerts import evaluate_alert_rules as _eval_alert_rules
+
+                _alert_summary = _eval_alert_rules(trigger_source="cycle")
+                # opus-review-caught (M-7): the summary used to be discarded,
+                # so a rule whose predicate raises every cycle was invisible
+                # here -- only cmd_alert_check printed errors, and it is not
+                # scheduled. Log it at the same level of detail
+                # cmd_alert_check does.
+                if _alert_summary and not _alert_summary.get("skipped_disabled"):
+                    _log.info(
+                        "cmd_cron: alert rules evaluated=%d fired=%d delivered=%d "
+                        "suppressed=%d failed=%d",
+                        _alert_summary.get("evaluated", 0),
+                        len(_alert_summary.get("fired", [])),
+                        _alert_summary.get("delivered", 0),
+                        _alert_summary.get("suppressed", 0),
+                        _alert_summary.get("failed", 0),
+                    )
+                    for _rule_err in _alert_summary.get("errors", []):
+                        _log.warning("cmd_cron: alert rule error: %s", _rule_err)
+            except Exception as _alert_rules_exc:
+                _log.warning(
+                    "cmd_cron: alert rule evaluation failed: %s", _alert_rules_exc
+                )
         if _full_scan and not getattr(cmd_cron, "_called_from_loop", False):
             _sys.exit(0)
     finally:
         _cron_done_event.set()
+
+
+def cmd_alert_check(dry_run: bool = False) -> dict:
+    """batch-69 item 1: the OUT-OF-BAND alert evaluation pass.
+
+    This is the entry point that exists so `cron_gap` can be evaluated by
+    something other than the cron cycle it watches. cmd_cron's own 48h
+    dead-man's-switch runs at cycle START, which means it only ever reports a
+    gap once cron has already come back and says nothing at all for the whole
+    outage — the rule that most needs to fire while the bot is down is the one
+    structurally guaranteed not to. Driving THIS from its own scheduler entry,
+    independent of the cron task, is what fixes that.
+
+    Deliberately NOT registered with any scheduler by this batch (confirmed
+    with the user, 2026-08-25: nothing auto-runs until the design has been
+    reviewed), and `cron_gap` correspondingly ships with enabled=0. Register
+    it the same way cmd_schedule_cycles() prints the cron entries, then flip
+    the rule on.
+
+    `dry_run=True` evaluates every enabled rule and records what WOULD have
+    been sent (status="dry_run") without contacting a single channel, and
+    without consuming any edge-triggered rule's state. That works even while
+    ALERT_RULES_ENABLED is unset, which is the intended way to read real
+    evaluation output before the first real message is ever delivered.
+
+    Returns evaluate_alert_rules()'s summary dict.
+    """
+    from alerts import ALERT_RULES_ENABLED_ENV, alert_rules_enabled
+    from alerts import evaluate_alert_rules as _eval_alert_rules
+
+    summary = _eval_alert_rules(trigger_source="external", dry_run=dry_run)
+
+    if summary.get("skipped_disabled"):
+        _log.info(
+            "cmd_alert_check: %s is not set — nothing evaluated. "
+            "Use --dry-run to see what would fire.",
+            ALERT_RULES_ENABLED_ENV,
+        )
+    else:
+        _log.info(
+            "cmd_alert_check: evaluated=%d fired=%d delivered=%d suppressed=%d "
+            "failed=%d dry_run=%s enabled=%s",
+            summary.get("evaluated", 0),
+            len(summary.get("fired", [])),
+            summary.get("delivered", 0),
+            summary.get("suppressed", 0),
+            summary.get("failed", 0),
+            dry_run,
+            alert_rules_enabled(),
+        )
+    for err in summary.get("errors", []):
+        _log.warning("cmd_alert_check: %s", err)
+    return summary

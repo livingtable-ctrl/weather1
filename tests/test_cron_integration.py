@@ -2971,3 +2971,129 @@ class TestSamedayOnlyFullScanStaleness:
         assert not any(key == "cron_full_scan_gap" for _title, key in alert_calls), (
             f"unexpected full-scan-gap alert with a recent last_full_scan: {alert_calls}"
         )
+
+
+class TestBatch69AlertRuleHook:
+    """batch-69 item 1: cmd_cron's end-of-cycle alert-rule evaluation pass."""
+
+    @pytest.mark.cron_integration
+    def test_evaluation_runs_at_the_end_of_a_normal_cycle(self, cron_env, monkeypatch):
+        tmp_path, client, main, paper = cron_env
+        import alerts as _alerts
+
+        calls: list = []
+        monkeypatch.setattr(
+            _alerts,
+            "evaluate_alert_rules",
+            lambda **kw: calls.append(kw) or {},
+        )
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+        assert calls, "cmd_cron did not evaluate alert rules"
+        assert calls[0]["trigger_source"] == "cycle"
+
+    @pytest.mark.cron_integration
+    def test_evaluation_still_runs_when_the_kill_switch_aborts_the_cycle(
+        self, cron_env, monkeypatch
+    ):
+        """The reason the hook lives in cron.cmd_cron's `finally` rather than
+        at the end of _cmd_cron_body: the body has several `return None` early
+        exits (kill switch, black swan, engine kill), and those are precisely
+        the cycles an operator most needs an alert out of. Placed in the body,
+        this assertion would fail.
+
+        Runs with `_called_from_loop = True`, the AUTOMATED path -- scheduled
+        cron and `py main.py loop`, i.e. how this bot actually runs unattended.
+
+        KNOWN AND ACCEPTED GAP, verified while writing this test: the OTHER
+        kill-switch branch, main.cmd_cron's interactive `not _called_from_loop`
+        prompt, returns before cron.cmd_cron is ever called, so declining that
+        prompt evaluates no rules and writes no delivery row. Deliberately not
+        fixed here — that branch already fires the kill-switch alert itself
+        under the same "kill_switch" cooldown key (batch-24 item 1), and it is
+        by construction a session where the operator is looking at the halt on
+        screen. The unattended path, the one this layer exists for, is covered.
+        """
+        tmp_path, client, main, paper = cron_env
+        import alerts as _alerts
+        import cron as _cron
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason": "test"}')
+        monkeypatch.setattr(_cron, "KILL_SWITCH_PATH", ks_path, raising=False)
+        monkeypatch.setattr(main.cmd_cron, "_called_from_loop", True, raising=False)
+        monkeypatch.setattr(_cron.cmd_cron, "_called_from_loop", True, raising=False)
+
+        sync_calls: list = []
+        monkeypatch.setattr(
+            main, "sync_outcomes", lambda client: sync_calls.append(1) or 0
+        )
+        calls: list = []
+        monkeypatch.setattr(
+            _alerts,
+            "evaluate_alert_rules",
+            lambda **kw: calls.append(kw) or {},
+        )
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+        # Positive control that the cycle really WAS aborted early -- without
+        # it, "evaluation ran" would be indistinguishable from a cycle that
+        # simply ignored the kill switch and ran to completion normally.
+        assert not sync_calls, "the kill switch did not abort the cycle"
+        assert calls, "a kill-switch-aborted cycle skipped alert evaluation"
+
+    @pytest.mark.cron_integration
+    def test_a_raising_evaluation_does_not_break_the_cycle(self, cron_env, monkeypatch):
+        """An alerting bug must never take down the cron cycle it observes."""
+        tmp_path, client, main, paper = cron_env
+        import alerts as _alerts
+
+        calls: list = []
+
+        def _boom(**kw):
+            calls.append(kw)
+            raise RuntimeError("deliberate")
+
+        monkeypatch.setattr(_alerts, "evaluate_alert_rules", _boom)
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass  # the normal completion path
+        # Positive control (opus-review-caught, M-6): without this the test
+        # was vacuous -- a raising mock proves nothing about whether it was
+        # ever reached, so deleting the hook from cron.py entirely left this
+        # green. Assert the hook actually ran and then that its exception was
+        # swallowed.
+        assert calls, "the hook was never reached — the swallow assertion is vacuous"
+
+    @pytest.mark.cron_integration
+    def test_cron_gap_is_never_evaluated_from_the_cycle_hook(
+        self, cron_env, monkeypatch
+    ):
+        """End-to-end version of the trigger split: whatever cmd_cron passes,
+        it must not be a trigger_source that reaches cron_gap."""
+        tmp_path, client, main, paper = cron_env
+        import alerts as _alerts
+
+        calls: list = []
+        monkeypatch.setattr(
+            _alerts,
+            "evaluate_alert_rules",
+            lambda **kw: calls.append(kw) or {},
+        )
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+        assert calls
+        gap_rule = next(
+            r for r in _alerts.get_alert_rule_definitions() if r.rule_id == "cron_gap"
+        )
+        assert calls[0]["trigger_source"] not in gap_rule.triggers

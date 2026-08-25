@@ -12,6 +12,7 @@ import contextlib
 import itertools
 import logging
 import math
+import os
 import sqlite3
 from collections import defaultdict
 from collections.abc import Iterator
@@ -29,7 +30,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 61  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 65  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -375,6 +376,62 @@ _MIGRATIONS = [
     # feeding the quarantine mechanism's planned MAE->Brier swap.
     "ALTER TABLE ensemble_member_scores ADD COLUMN implied_prob REAL",
     "ALTER TABLE ensemble_member_scores ADD COLUMN brier REAL",
+    # v61 -> v64 (batch-69): the three tables behind the A6 alert-rules panel
+    # and the A5 correlated-exposure panel. Declared here only -- NOT also in
+    # init_db()'s executescript -- mirroring price_history/trade_history
+    # above rather than api_requests/near_settlement_log, which are declared
+    # in both. One declaration site means the migration cursor is the single
+    # authority for when these tables appear, so an existing pre-batch-69
+    # database and a fresh one converge through the same code path.
+    #
+    # alert_rules holds only the per-rule TOGGLE state (enabled / threshold /
+    # cooldown override / an opaque per-rule `state` string). Every rule's
+    # predicate is Python, in alerts.py's _ALERT_RULES registry -- this table
+    # is deliberately not a rule DSL (confirmed via AskUserQuestion,
+    # 2026-08-25). `state` carries edge-triggered rules' last observation
+    # (e.g. drawdown_tier_change's last seen tier) and is only advanced after
+    # a delivery actually succeeds, so a failed delivery re-fires next pass
+    # -- the same lesson alerts.rollback_halt_transition already encodes.
+    """CREATE TABLE IF NOT EXISTS alert_rules (
+        rule_id       TEXT    PRIMARY KEY,
+        enabled       INTEGER NOT NULL DEFAULT 0,
+        threshold     REAL,
+        cooldown_secs INTEGER,
+        state         TEXT,
+        updated_at    TEXT    NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS alert_deliveries (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id   TEXT    NOT NULL,
+        fired_at  TEXT    NOT NULL,
+        title     TEXT    NOT NULL,
+        body      TEXT    NOT NULL,
+        status    TEXT    NOT NULL,
+        detail    TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS city_correlations (
+        city_a         TEXT    NOT NULL,
+        city_b         TEXT    NOT NULL,
+        window_key     TEXT    NOT NULL,
+        corr           REAL    NOT NULL,
+        n_obs          INTEGER NOT NULL,
+        lookback_years INTEGER NOT NULL,
+        computed_at    TEXT    NOT NULL,
+        PRIMARY KEY (city_a, city_b, window_key)
+    )""",
+    # v65 (batch-69). APPENDED, not inserted mid-list -- round-2 opus review
+    # caught that placing this before city_correlations changed the ordering
+    # relative to the round-1 build, so any DB that had already reached
+    # user_version 64 under that build would skip this migration forever
+    # (the runner only replays entries PAST the stored cursor, then stamps
+    # 65). _MIGRATIONS is append-only for exactly this reason.
+    #
+    # alert_deliveries had no index at all, so every `WHERE rule_id = ?
+    # ORDER BY fired_at DESC` was a full scan plus sort -- and
+    # GET /api/alert-rules issues one such query PER RULE for each rule's
+    # last delivery. Compounds with the pruner as the table grows.
+    """CREATE INDEX IF NOT EXISTS idx_alert_deliveries_rule_fired
+        ON alert_deliveries(rule_id, fired_at DESC)""",
 ]
 
 
@@ -9972,3 +10029,736 @@ def prune_old_analysis_attempts(days: int = 30) -> int:
         n = cur.rowcount
     _log.info("pruned %d old analysis_attempts (older than %d days)", n, days)
     return n
+
+
+# ── batch-69 item 1 (panel A6): alert rules + delivery log ────────────────────
+# The rules table stores ONLY toggle state; every predicate lives in alerts.py's
+# _ALERT_RULES registry. See the alert_rules migration comment for why.
+
+
+def ensure_alert_rule_defaults(defaults: list[dict]) -> None:
+    """Seed a row for any rule in `defaults` that has none yet, without ever
+    overwriting one that already exists.
+
+    INSERT OR IGNORE, not upsert: an operator's toggle is the authority once
+    the row exists. A new rule added to alerts.py in a later release appears
+    with its declared default on the next call; an existing rule the operator
+    has since disabled stays disabled through every subsequent deploy.
+
+    Each dict needs "rule_id" and may carry "enabled", "threshold",
+    "cooldown_secs".
+    """
+    if not defaults:
+        return
+    init_db()
+    with _conn() as con:
+        for d in defaults:
+            rule_id = d.get("rule_id")
+            if not rule_id:
+                continue
+            con.execute(
+                """
+                INSERT OR IGNORE INTO alert_rules
+                  (rule_id, enabled, threshold, cooldown_secs, state, updated_at)
+                VALUES (?, ?, ?, ?, NULL, ?)
+                """,
+                (
+                    rule_id,
+                    1 if d.get("enabled") else 0,
+                    d.get("threshold"),
+                    d.get("cooldown_secs"),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+
+
+def get_alert_rules() -> list[dict]:
+    """Return every alert_rules row, ordered by rule_id."""
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT rule_id, enabled, threshold, cooldown_secs, state, updated_at
+            FROM alert_rules ORDER BY rule_id
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_alert_rule(rule_id: str) -> dict | None:
+    """Return one alert_rules row, or None when the rule has never been seeded."""
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT rule_id, enabled, threshold, cooldown_secs, state, updated_at
+            FROM alert_rules WHERE rule_id = ?
+            """,
+            (rule_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def set_alert_rule(
+    rule_id: str,
+    *,
+    enabled: bool | None = None,
+    threshold: float | None = None,
+    cooldown_secs: int | None = None,
+    state: str | None = None,
+) -> bool:
+    """Update the named fields of one existing alert rule. Returns False when
+    the rule row does not exist.
+
+    Every parameter is keyword-only and defaults to None meaning "leave
+    alone", so a caller updating one field can never blank the others by
+    omission -- `state` in particular is written by the evaluator on a
+    different cadence than the operator writes `enabled`, and the two must
+    not clobber each other.
+
+    Consequence, deliberate (opus-review-noted, L10): there is no way to
+    clear a field back to NULL through this function. That is fine for every
+    current rule -- drawdown_tier_change always writes a non-empty tier label,
+    and an empty string is already treated as "unseeded" by its predicate --
+    and adding a sentinel for a case nothing needs would be unused API
+    surface. Reset an edge with `set_alert_rule(rule_id, state="")`.
+    """
+    fields: list[str] = []
+    params: list[object] = []
+    if enabled is not None:
+        fields.append("enabled = ?")
+        params.append(1 if enabled else 0)
+    if threshold is not None:
+        fields.append("threshold = ?")
+        params.append(threshold)
+    if cooldown_secs is not None:
+        fields.append("cooldown_secs = ?")
+        params.append(cooldown_secs)
+    if state is not None:
+        fields.append("state = ?")
+        params.append(state)
+    if not fields:
+        return get_alert_rule(rule_id) is not None
+    fields.append("updated_at = ?")
+    params.append(datetime.now(UTC).isoformat())
+    params.append(rule_id)
+    init_db()
+    with _conn() as con:
+        cur = con.execute(
+            f"UPDATE alert_rules SET {', '.join(fields)} WHERE rule_id = ?",
+            params,
+        )
+        return cur.rowcount > 0
+
+
+# Every value alert_deliveries.status is allowed to take. "suppressed" means
+# notify.py's own disk-persisted cooldown swallowed the send (which for
+# kill_switch/brier_alert is the NORMAL outcome -- cron.py's pre-existing call
+# sites share those cooldown keys and usually win the race, so the operator
+# gets exactly one message and the panel still records the event). "dry_run"
+# means evaluation ran and the rule fired but delivery was deliberately never
+# attempted.
+ALERT_DELIVERY_STATUSES = ("delivered", "failed", "suppressed", "dry_run")
+
+
+def log_alert_delivery(
+    rule_id: str,
+    title: str,
+    body: str,
+    status: str,
+    detail: str | None = None,
+) -> int:
+    """Record one alert firing and what became of its delivery. Returns the row id.
+
+    An unrecognized `status` is stored as-is and logged loudly rather than
+    rejected -- losing the delivery record is strictly worse than storing an
+    unexpected label, and this function is on the path that runs when
+    something has already gone wrong.
+    """
+    if status not in ALERT_DELIVERY_STATUSES:
+        _log.warning(
+            "log_alert_delivery: unrecognized status %r for rule %r "
+            "(recording anyway) -- known statuses are %s",
+            status,
+            rule_id,
+            list(ALERT_DELIVERY_STATUSES),
+        )
+    init_db()
+    with _conn() as con:
+        cur = con.execute(
+            """
+            INSERT INTO alert_deliveries (rule_id, fired_at, title, body, status, detail)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (rule_id, datetime.now(UTC).isoformat(), title, body, status, detail),
+        )
+        return int(cur.lastrowid or 0)
+
+
+def get_alert_deliveries(limit: int = 100, rule_id: str | None = None) -> list[dict]:
+    """Return the most recent delivery rows, newest first."""
+    init_db()
+    sql = (
+        "SELECT id, rule_id, fired_at, title, body, status, detail "
+        "FROM alert_deliveries"
+    )
+    params: list[object] = []
+    if rule_id:
+        sql += " WHERE rule_id = ?"
+        params.append(rule_id)
+    sql += " ORDER BY fired_at DESC, id DESC LIMIT ?"
+    params.append(max(1, int(limit)))
+    with _conn() as con:
+        return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+def get_alert_delivery_failures(limit: int = 50) -> list[dict]:
+    """Return the most recent FAILED deliveries, newest first.
+
+    Feeds the "a failed delivery must itself be alertable" rule -- an alerting
+    system whose own delivery silently fails is a decoration, so the failure
+    is both persisted here and re-raised as its own alert by
+    alerts.evaluate_alert_rules().
+    """
+    init_db()
+    with _conn() as con:
+        return [
+            dict(r)
+            for r in con.execute(
+                """
+                SELECT id, rule_id, fired_at, title, body, status, detail
+                FROM alert_deliveries WHERE status = 'failed'
+                ORDER BY fired_at DESC, id DESC LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        ]
+
+
+def prune_old_alert_deliveries(days: int = 90) -> int:
+    """Drop delivery rows older than `days`. Mirrors prune_old_analysis_attempts."""
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        cur = con.execute("DELETE FROM alert_deliveries WHERE fired_at < ?", (cutoff,))
+        n = cur.rowcount
+    _log.info("pruned %d old alert_deliveries (older than %d days)", n, days)
+    return n
+
+
+# ── batch-69 item 2 (panel A5): offline city correlations ─────────────────────
+
+
+def _canonical_city_pair(city_a: str, city_b: str) -> tuple[str, str]:
+    """Order a city pair so it has exactly one row in city_correlations.
+
+    Without this, (NYC, Boston) and (Boston, NYC) are two PRIMARY KEY rows
+    holding the same fact, and a lookup that guessed the wrong order would
+    silently miss a pair that IS in the table -- reading as "not measured".
+    """
+    return (city_a, city_b) if city_a <= city_b else (city_b, city_a)
+
+
+def upsert_city_correlations(rows: list[dict]) -> int:
+    """Replace the stored correlation for each (pair, window) in `rows`.
+
+    Returns the number of rows written. Each dict needs "city_a", "city_b",
+    "window_key", "corr", "n_obs" and may carry "lookback_years".
+
+    Upsert rather than delete-then-insert: a recompute where some cities'
+    ACIS fetches failed writes only the pairs it could measure, and the
+    previous month's value for an unmeasured pair is better than a hole.
+    computed_at makes the staleness visible either way.
+    """
+    if not rows:
+        return 0
+    init_db()
+    now_iso = datetime.now(UTC).isoformat()
+    written = 0
+    with _conn() as con:
+        for r in rows:
+            # opus-review-caught (L7): validate in the WRITER, not as a table
+            # CHECK constraint. The three batch-69 tables already exist in the
+            # live database, so a constraint added to the CREATE TABLE would
+            # be a no-op there (CREATE TABLE IF NOT EXISTS) and would apply
+            # only to freshly-created DBs -- a silent schema divergence that
+            # is worse than no constraint at all. Validating here applies
+            # uniformly regardless of when the database was created.
+            corr = float(r["corr"])
+            if not -1.0001 <= corr <= 1.0001:
+                _log.warning(
+                    "upsert_city_correlations: refusing out-of-range corr %r for "
+                    "%s/%s %s -- a correlation cannot lie outside [-1, 1]",
+                    corr,
+                    r["city_a"],
+                    r["city_b"],
+                    r["window_key"],
+                )
+                continue
+            corr = max(-1.0, min(1.0, corr))  # absorb float epsilon
+            n_obs = int(r["n_obs"])
+            if n_obs < 0:
+                _log.warning(
+                    "upsert_city_correlations: refusing negative n_obs %r for %s/%s",
+                    n_obs,
+                    r["city_a"],
+                    r["city_b"],
+                )
+                continue
+            city_a, city_b = _canonical_city_pair(str(r["city_a"]), str(r["city_b"]))
+            con.execute(
+                """
+                INSERT INTO city_correlations
+                  (city_a, city_b, window_key, corr, n_obs, lookback_years, computed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(city_a, city_b, window_key) DO UPDATE SET
+                  corr = excluded.corr,
+                  n_obs = excluded.n_obs,
+                  -- Keep the stored lookback when the caller omitted it
+                  -- rather than overwriting a real 30 with the `or 0`
+                  -- fallback below: a row claiming lookback_years=0 reads as
+                  -- "computed from no history at all", which is a worse lie
+                  -- than a slightly stale-but-true provenance figure.
+                  lookback_years = CASE
+                      WHEN excluded.lookback_years > 0 THEN excluded.lookback_years
+                      ELSE city_correlations.lookback_years
+                  END,
+                  computed_at = excluded.computed_at
+                """,
+                (
+                    city_a,
+                    city_b,
+                    str(r["window_key"]),
+                    corr,
+                    n_obs,
+                    # opus-review-caught (L-6): `or 0` on a FIRST insert stored
+                    # exactly the lookback_years=0 lie the ON CONFLICT CASE
+                    # below exists to prevent -- that CASE only runs on
+                    # conflict. Default to the real 30-year convention.
+                    int(r.get("lookback_years") or _DEFAULT_LOOKBACK_YEARS),
+                    now_iso,
+                ),
+            )
+            written += 1
+    return written
+
+
+def get_city_correlations(window_key: str | None = None) -> list[dict]:
+    """Return stored correlation rows, optionally for one window only."""
+    init_db()
+    sql = (
+        "SELECT city_a, city_b, window_key, corr, n_obs, lookback_years, computed_at "
+        "FROM city_correlations"
+    )
+    params: list[object] = []
+    if window_key:
+        sql += " WHERE window_key = ?"
+        params.append(window_key)
+    sql += " ORDER BY city_a, city_b, window_key"
+    with _conn() as con:
+        return [dict(r) for r in con.execute(sql, params).fetchall()]
+
+
+def get_city_correlation(city_a: str, city_b: str, window_key: str) -> dict | None:
+    """Return one stored correlation row regardless of the order the caller
+    names the two cities in, or None when that pair/window was never stored."""
+    a, b = _canonical_city_pair(city_a, city_b)
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT city_a, city_b, window_key, corr, n_obs, lookback_years, computed_at
+            FROM city_correlations
+            WHERE city_a = ? AND city_b = ? AND window_key = ?
+            """,
+            (a, b, window_key),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# batch-69 item 2: how many INDEPENDENT bets are actually open.
+#
+# Default cap for exposure aggregated across ALL cities settling on one date.
+#
+# opus-review-corrected (L-14): paper.get_expiry_date_clustering() ALREADY
+# sums open cost per settlement date, so "nothing sums this axis" would be
+# wrong. What does not exist is a CAP on it -- paper.py caps city+date
+# (MAX_CITY_DATE_EXPOSURE 0.15), city+date+side (MAX_DIRECTIONAL_EXPOSURE),
+# correlated-group+date (MAX_CORRELATED_EXPOSURE 0.35), single ticker
+# (MAX_SINGLE_TICKER_EXPOSURE 0.10) and the portfolio total
+# (MAX_TOTAL_OPEN_EXPOSURE 0.50), but nothing that sums every city landing on
+# the same settlement date. 0.40 sits between the correlated-group cap and the
+# portfolio total, which is where a single-date concentration belongs.
+#
+# **OBSERVATION ONLY.** Nothing reads this to block, scale, or size anything.
+# It exists so the panel can say "this date is over the line"; enforcing it is
+# a separate, deliberate decision.
+def _env_float(name: str, default: float) -> float:
+    """Parse a float env var, falling back with a warning instead of raising.
+
+    round-2 opus review (M-A): a bare `float(os.getenv(...))` at module scope
+    meant one typo in .env (`0.4x`) raised ValueError out of `import tracker`
+    -- and tracker is imported on essentially every path in this repo, so it
+    would take down cron, the dashboard and the CLI at once, for a constant
+    that is explicitly observation-only and blocks nothing. Mirrors the
+    guarded pattern paper._env_float/config._env_float already use, which
+    exists for exactly this reason.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        _log.warning(
+            "tracker: %s=%r is not a valid number -- using the %s default",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
+MAX_SETTLEMENT_DATE_EXPOSURE = _env_float("MAX_SETTLEMENT_DATE_EXPOSURE", 0.40)
+
+# What live sizing assumes for a city pair absent from paper._CITY_PAIR_CORR
+# (paper.position_correlation_matrix's own `.get(pair, 0.10)` default). Named
+# once here because opus review (M-5) found the two halves of this feature
+# using different defaults for the same lookup -- the pair table used None and
+# the effective-N calculation used 0.10, so an unlisted pair vanished from
+# worst_pair while still counting toward N_eff.
+_UNLISTED_PAIR_CORR = 0.10
+
+# Mirrors acis_temps.HISTORY_YEARS. Duplicated rather than imported so
+# tracker.py keeps no import dependency on the ACIS fetch module; a guard test
+# in tests/test_batch69_alerting_correlation.py pins the two equal.
+_DEFAULT_LOOKBACK_YEARS = 30
+
+
+def _correlation_window_for_date(target_date_str: str | None) -> str | None:
+    """Map a settlement date to the seasonal window its correlation lives in.
+
+    Correlations move seasonally, so a July pair and a January pair are
+    different numbers; looking one up without the date would silently average
+    them.
+    """
+    if not target_date_str:
+        return None
+    try:
+        month = int(str(target_date_str)[5:7])
+    except (ValueError, TypeError):
+        return None
+    if not 1 <= month <= 12:
+        return None
+    return f"m{month:02d}"
+
+
+def get_correlated_exposure_summary(client=None) -> dict:
+    """batch-69 item 2 / panel A5: exposure by settlement date, the worst
+    correlated pair currently open, and an effective-independent-bets count.
+
+    **This function changes no sizing.** paper.covariance_kelly_scale(),
+    corr_kelly_scale(), position_correlation_matrix() and their
+    `_CITY_PAIR_CORR` input are untouched by batch-69 and keep reading exactly
+    what they read before it. The empirical numbers surfaced here are for
+    measurement and display; wiring them into Kelly is a separate decision
+    that A1 (batch 66) is meant to inform (confirmed via AskUserQuestion,
+    2026-08-25).
+
+    Reports BOTH correlation sources per pair on purpose. `_CITY_PAIR_CORR` is
+    32 hand-typed approximations that default to 0.10 for any unlisted pair
+    and 0.0 inside covariance_kelly_scale; `city_correlations` holds the
+    30-year ACIS anomaly measurement. The delta between them is the whole
+    argument for or against ever swapping, and without it a future swap would
+    be as much of a guess as the table it replaced.
+
+    Returns a dict with:
+      by_settlement_date  -- per-date cost, fraction of the exposure
+                             denominator, city list, and over_cap flag
+      cap                 -- MAX_SETTLEMENT_DATE_EXPOSURE (observation only)
+      worst_pair          -- highest-correlation open city pair, named
+      pairs               -- every open city pair, empirical vs hardcoded
+      effective_positions -- variance-based independent-bet count
+      n_positions / total_cost / denominator
+    """
+    from paper import _CITY_PAIR_CORR, _exposure_denom, get_all_open_positions
+
+    positions = get_all_open_positions()
+    # opus-review-caught (L-2): the divide-by-zero guard doubled as the
+    # exception fallback, so a failed denominator produced denom=1.0 and
+    # rendered every date at 10,000% and over-cap. Distinguish the two:
+    # unknown denominator -> null percentages, not fabricated ones.
+    denom: float | None
+    try:
+        denom = float(_exposure_denom(client))
+    except Exception as exc:
+        _log.warning("get_correlated_exposure_summary: denominator failed: %s", exc)
+        denom = None
+    if denom is not None and denom <= 0:
+        denom = None
+
+    def _safe_cost(t: dict) -> float | None:
+        """One cost parser for the whole function.
+
+        opus-review-caught (L-1): `combined_cost` below built its own
+        unguarded `float(t.get("cost"))` generator, so a single non-numeric
+        cost 500'd the whole endpoint even though the loop here already
+        skipped it. One helper, used by both.
+        """
+        try:
+            return float(t.get("cost") or 0.0)
+        except (TypeError, ValueError):
+            return None
+
+    total_cost = 0.0
+    n_skipped = 0
+    by_date: dict[str, dict] = {}
+    for t in positions:
+        cost = _safe_cost(t)
+        if cost is None:
+            # opus-review-caught (L-3): counted in n_positions but absent from
+            # every dollar total, so the totals silently disagreed with the
+            # count. Report the discrepancy instead of hiding it.
+            n_skipped += 1
+            continue
+        total_cost += cost
+        date_key = str(t.get("target_date") or "unknown")
+        entry = by_date.setdefault(
+            date_key,
+            {"target_date": date_key, "cost": 0.0, "n_positions": 0, "cities": set()},
+        )
+        entry["cost"] += cost
+        entry["n_positions"] += 1
+        city = t.get("city")
+        if city:
+            entry["cities"].add(str(city))
+
+    by_settlement_date = []
+    for entry in by_date.values():
+        pct = entry["cost"] / denom if denom else None
+        by_settlement_date.append(
+            {
+                "target_date": entry["target_date"],
+                "cost": round(entry["cost"], 2),
+                "pct_of_denom": round(pct, 4) if pct is not None else None,
+                "n_positions": entry["n_positions"],
+                "n_cities": len(entry["cities"]),
+                "cities": sorted(entry["cities"]),
+                "over_cap": (
+                    pct >= MAX_SETTLEMENT_DATE_EXPOSURE if pct is not None else None
+                ),
+            }
+        )
+    by_settlement_date.sort(key=lambda d: d["cost"], reverse=True)
+
+    # Pairwise view over the DISTINCT cities currently held, per settlement
+    # date -- two positions in the same city on different dates are a
+    # different question (position_correlation_matrix's same-city rules
+    # already cover that) than two cities settling together, which is the one
+    # this panel is about.
+    # NOTE (round-2 opus review, L-2): with the M-2 fix the dedup key is
+    # (city_a, city_b, target_date) while the loop iterates by_date -- whose
+    # keys ARE target_date -- so the key is unique by construction and this set
+    # can never hit. Kept deliberately: it is the guard that makes the
+    # uniqueness explicit rather than an accident of the loop's shape, and it
+    # costs nothing.
+    pair_rows: list[dict] = []
+    seen_pairs: set[tuple[str, str, str]] = set()
+    for entry in by_date.values():
+        window = _correlation_window_for_date(entry["target_date"])
+        cities = sorted(entry["cities"])
+        for i, city_a in enumerate(cities):
+            for city_b in cities[i + 1 :]:
+                # opus-review-caught (M-2): keying on the month WINDOW meant
+                # two settlement dates in the same month collapsed to one pair
+                # row -- the larger concentration vanished and worst_pair
+                # reported the smaller date's combined_cost. Key on the date.
+                key = (city_a, city_b, entry["target_date"])
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                # opus-review-caught (M-5): no default meant an unlisted AND
+                # unmeasured pair scored None and vanished from worst_pair --
+                # $800 on one date with no worst pair reported. Live sizing
+                # reads 0.10 for an unlisted pair (position_correlation_matrix),
+                # and _effective_position_count._hardcoded below already used
+                # that default, so the two halves of this same feature
+                # disagreed about the same table.
+                hardcoded = _CITY_PAIR_CORR.get(
+                    frozenset({city_a, city_b}), _UNLISTED_PAIR_CORR
+                )
+                empirical_row = (
+                    get_city_correlation(city_a, city_b, window) if window else None
+                )
+                empirical = empirical_row["corr"] if empirical_row else None
+                pair_rows.append(
+                    {
+                        "city_a": city_a,
+                        "city_b": city_b,
+                        "target_date": entry["target_date"],
+                        "window_key": window,
+                        "empirical_corr": empirical,
+                        "hardcoded_corr": hardcoded,
+                        "delta": (
+                            round(empirical - hardcoded, 4)
+                            if empirical is not None and hardcoded is not None
+                            else None
+                        ),
+                        "n_obs": empirical_row["n_obs"] if empirical_row else None,
+                        "combined_cost": round(
+                            sum(
+                                _safe_cost(t) or 0.0
+                                for t in positions
+                                if t.get("city") in (city_a, city_b)
+                                and str(t.get("target_date") or "unknown")
+                                == entry["target_date"]
+                            ),
+                            2,
+                        ),
+                    }
+                )
+
+    def _best_corr(row: dict) -> float | None:
+        """Prefer the measured value; fall back to the hardcoded guess so a
+        pair ACIS could not measure still ranks rather than vanishing."""
+        if row["empirical_corr"] is not None:
+            return row["empirical_corr"]
+        return row["hardcoded_corr"]
+
+    ranked = [r for r in pair_rows if _best_corr(r) is not None]
+    ranked.sort(key=lambda r: (_best_corr(r) or 0.0, r["combined_cost"]), reverse=True)
+    worst_pair = ranked[0] if ranked else None
+
+    return {
+        "n_positions": len(positions),
+        "n_positions_skipped": n_skipped,
+        "total_cost": round(total_cost, 2),
+        "denominator": round(denom, 2) if denom is not None else None,
+        "cap": MAX_SETTLEMENT_DATE_EXPOSURE,
+        "cap_is_enforced": False,  # observation only -- see the constant's comment
+        "by_settlement_date": by_settlement_date,
+        "pairs": pair_rows,
+        "worst_pair": worst_pair,
+        "effective_positions": _effective_position_count(positions, denom or 1.0),
+        "correlation_source_note": (
+            "empirical_corr is the 30-year ACIS daily-high anomaly correlation "
+            "for the settlement month; hardcoded_corr is paper._CITY_PAIR_CORR, "
+            "which is what live Kelly sizing actually reads. Sizing is unchanged "
+            "by this panel."
+        ),
+    }
+
+
+def _effective_position_count(positions: list[dict], denom: float) -> dict:
+    """Estimate how many INDEPENDENT bets a book of correlated positions is
+    really running, under each correlation source.
+
+    N_eff = (sum w)^2 / (w^T R w), the standard variance-based effective-N.
+    With R = identity it returns the raw position count; with every pair
+    perfectly correlated it returns 1. Five positions that a regional heat
+    event moves together land near 1, which is the number the handoff says
+    nobody currently has.
+
+    Returned per source so the empirical and hardcoded matrices can be
+    compared directly. `nominal` is the plain position count for reference.
+    """
+    from paper import _CITY_PAIR_CORR
+
+    weights: list[float] = []
+    cities: list[str] = []
+    windows: list[str | None] = []
+    for t in positions:
+        try:
+            cost = float(t.get("cost") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if cost <= 0:
+            continue
+        weights.append(cost / denom if denom > 0 else 0.0)
+        cities.append(str(t.get("city") or ""))
+        windows.append(_correlation_window_for_date(t.get("target_date")))
+
+    n = len(weights)
+    # round-2 opus review (L-8): the clamp turns a non-PSD blow-up into
+    # exactly `n` -- the most reassuring possible reading ("perfectly
+    # diversified") -- with no signal. Report when it fired.
+    result: dict = {
+        "nominal": n,
+        "empirical": None,
+        "hardcoded": None,
+        "clamped": False,
+    }
+    if n == 0:
+        return result
+
+    def _neff(lookup) -> float | None:
+        num = sum(weights) ** 2
+        denom_sum = 0.0
+        for i in range(n):
+            for j in range(n):
+                rho = 1.0 if i == j else lookup(i, j)
+                if rho is None:
+                    return None
+                denom_sum += weights[i] * weights[j] * rho
+        if denom_sum <= 0:
+            return None
+        raw = num / denom_sum
+        if not 1.0 <= raw <= float(n):
+            result["clamped"] = True
+        # opus-review-caught (M-3), reproduced: with any NEGATIVE pair
+        # correlation this exceeds `n` -- two positions at corr -0.99 returned
+        # 200.0 "effective independent positions". Negative summer anomaly
+        # correlations (e.g. LA vs NYC) are real and WILL appear in the table
+        # once recompute runs. The matrix is also not guaranteed positive
+        # semi-definite (per-pair sample sets differ, values are rounded,
+        # same-city entries are injected constants), so a near-zero
+        # denominator can blow the ratio up. Clamp to the only range the
+        # quantity can meaningfully take: at least one bet, at most n.
+        return round(max(1.0, min(raw, float(n))), 3)
+
+    def _hardcoded(i: int, j: int) -> float:
+        ci, cj = cities[i], cities[j]
+        if not ci or not cj:
+            return 0.0
+        if ci == cj:
+            # Mirrors position_correlation_matrix()'s same-city rules rather
+            # than inventing a second convention: same date 0.85, otherwise
+            # 0.30 (the adjacent-date 0.50 case is deliberately not
+            # reproduced here -- this view groups by settlement date, so
+            # "same city, different date" is the only distinction it makes).
+            return 0.85 if windows[i] == windows[j] else 0.30
+        return _CITY_PAIR_CORR.get(frozenset({ci, cj}), _UNLISTED_PAIR_CORR)
+
+    measured_any = {"seen": False}
+
+    def _empirical(i: int, j: int) -> float | None:
+        ci, cj = cities[i], cities[j]
+        if not ci or not cj:
+            return None
+        if ci == cj:
+            # Same-city pairs have no ACIS coefficient -- these are paper.py's
+            # own conventions (position_correlation_matrix's 0.85/0.30), not a
+            # measurement, so they must not by themselves make the result
+            # count as "empirical" (opus-review-caught, M-4).
+            return 0.85 if windows[i] == windows[j] else 0.30
+        window = windows[i] if windows[i] == windows[j] else None
+        if not window:
+            return None
+        row = get_city_correlation(ci, cj, window)
+        if not row:
+            return None
+        measured_any["seen"] = True
+        return row["corr"]
+
+    result["hardcoded"] = _neff(_hardcoded)
+    # Returns None unless EVERY cross-city pair was measured -- a
+    # partially-filled correlation table would otherwise silently substitute
+    # the hardcoded guess for its gaps and report the mix as if it were the
+    # measurement. opus-review-caught (M-4): `_neff` alone was not enough,
+    # because a book of SAME-city positions never consults the table at all
+    # and still produced a number labelled "empirical". Require that at least
+    # one real measurement was actually read.
+    empirical = _neff(_empirical)
+    result["empirical"] = empirical if measured_any["seen"] else None
+    result["empirical_pairs_measured"] = measured_any["seen"]
+    return result

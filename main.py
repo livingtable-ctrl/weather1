@@ -12590,6 +12590,35 @@ def main():
         cmd_schedule_cycles()
         return
 
+    # batch-69, opus-review-caught (L-1): alert-check and correlations touch
+    # ONLY local files and the local DB, yet sat after validate_env() and the
+    # unconditional build_client(), so both exited 1 on a rotated key or an
+    # unreadable .pem. For alert-check that is the same structural mistake the
+    # batch correctly diagnoses for the cron_gap rule itself: the out-of-band
+    # checker failing during exactly the incident it exists to report. Same
+    # reasoning as kill/resume and emos-deactivate above.
+    if args and args[0].lower() == "alert-check":
+        from cron import cmd_alert_check as _cmd_alert_check
+
+        print(
+            json.dumps(
+                _cmd_alert_check(dry_run="--dry-run" in args), indent=2, default=str
+            )
+        )
+        return
+    if args and args[0].lower() == "correlations":
+        import acis_temps as _acis_temps
+
+        print(dim("  Recomputing city correlations from ACIS history..."))
+        print(
+            json.dumps(
+                _acis_temps.recompute_city_correlations(force="--force" in args),
+                indent=2,
+                default=str,
+            )
+        )
+        return
+
     # emos-status/emos-deactivate only touch the local DB and data/ files --
     # no API credentials required. This matters most for emos-deactivate:
     # it's the emergency revert for a bad EMOS activation, and a revert must
