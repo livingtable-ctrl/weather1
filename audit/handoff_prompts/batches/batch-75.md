@@ -63,11 +63,45 @@ Verified at `5202e2d6a6c9`:
 
 **A second consumer, on a trade-entry safety gate:** `weather_markets.py:13766` uses the same `comp_temp_f`-then-`current_temp_f` fallback to compute `_yes_clearance`, the between-bucket station-gap margin. Trace it before deciding scope — a running extreme is arguably the *correct* input for a clearance check (it is the value that decided the lock), so this site may be fine as-is. Decide it explicitly rather than changing it by reflex.
 
-## What is NOT established — do not assume it
+## The magnitude, now measured — REWRITTEN 2026-08-25 after the batch-68 repair
 
-**The magnitude of contamination actually sitting in `ensemble_member_scores` is unknown**, and the first attempt to measure it failed. That table has no `ticker` column — its schema is `id, city, model, predicted_temp, actual_temp, target_date, logged_at, var, implied_prob, brier` — so the only join key back to `predictions` is `(city, target_date, var)`, and it is unreliable: of 148 `model='blended'` rows matched that way, `actual_temp` equals `outcomes.settled_temp_f` **exactly on only 38**, with a max absolute difference of 30.8°F.
+**This section previously said the magnitude was unmeasurable.** That was true when written and is no longer. Both the reason and the numbers changed, so read this rather than remembering the old version.
 
-A first pass over that join suggested ~40% of blended rows trace to `metar_lockout` at +3.4°F bias — but the same join showed near-identical bias on supposedly-clean rows (max/lockout +3.836 vs max/no-lockout +3.635), which is evidence the join is mismatching rather than evidence of contamination. **Do not quote the 40% or the +3.4°F figure as a finding.** Establishing the real magnitude is part of this batch's work, not an input to it.
+The original claim was that `ensemble_member_scores` has no `ticker` column — its schema is `id, city, model, predicted_temp, actual_temp, target_date, logged_at, var, implied_prob, brier` — so the only join back to `predictions` is `(city, target_date, var)`, and that join looked unreliable: `actual_temp` matched `outcomes.settled_temp_f` on only 41 of 151 `model='blended'` rows, max difference 30.8°F.
+
+**The join was never the problem.** `actual_temp` held an IEM ASOS proxy reading, not Kalshi's settled value. Batch-68's in-place repair (2026-08-25 ~04:34, 228 `actual_temp` values rewritten, `predicted_temp` untouched, zero row-count change) fixed that. Re-derived against the repaired data:
+
+| | before repair | after repair |
+|---|---|---|
+| blended rows matched via (city, target_date, var) | 151 | 151 |
+| `actual_temp` == `settled_temp_f` exactly | 41 (27.2%) | **151 (100.0%)** |
+| mean \|difference\| | 7.745 | **0.000** |
+
+So the contamination split IS now measurable, on `predicted_temp − actual_temp`:
+
+| group | n | bias | rmse |
+|---|---|---|---|
+| **metar_lockout only** | 69 | **−2.759** | **10.620** |
+| mixed (incl lockout) | 1 | +4.060 | 4.060 |
+| no lockout | 81 | −1.370 | 3.008 |
+| ALL | 151 | −1.969 | 7.517 |
+
+Per var, which is how `get_dynamic_station_bias` actually queries it:
+
+| | n | bias |
+|---|---|---|
+| **metar_lockout / max** | 48 | **−8.213** |
+| **metar_lockout / min** | 21 | **+9.706** |
+| no lockout / max | 48 | −1.194 |
+| no lockout / min | 33 | −1.626 |
+
+**69 of 151 blended rows (46%) are contaminated, at ±8–10°F with opposite signs by var** — the running-extreme signature. Clean rows sit at −1.2 to −1.6°F with RMSE 3.0 against the contaminated 10.6. The pooled −2.76 figure is misleading because max and min cancel; the per-var query never sees that cancellation.
+
+Superseded and not to be quoted: the earlier "~40% at +3.4°F" figure. It was computed on the broken join — right on share, wrong on magnitude and sign.
+
+**Consequence for item 3 below (add a `ticker` column): it is no longer a blocker** and must be re-scoped. It was filed as required to make this measurable; it is not. The existing join is exact. Keep it only if you judge it worth having for robustness — a `(city, target_date, var)` key is still weaker than a ticker — but do not treat it as gating items 1 and 2.
+
+**What batch-68 did NOT fix, and item 1 still must:** `predicted_temp` was untouched (0 of 176 rows changed). On lockout rows it is still the running extreme. So `get_dynamic_station_bias` now computes a clean-actual-minus-dirty-predicted error — the repair fixed the observed half and left the predicted half contaminated. Measured live effect: OklahomaCity/max is the only city currently over the 10-sample floor, and its bias went from +7.27°F to −7.06°F across the repair, a 14.33°F swing in a correction that is subtracted from live forecasts.
 
 ## Items
 
@@ -93,9 +127,13 @@ Check whether `trade` carries `method` at that point; if not, that plumbing is p
 
 Whichever is chosen, decide separately what to do with the **103 existing contaminated rows** — leave, NULL, or migrate. State the choice.
 
-### 3. Make this measurable: add `ticker` to `ensemble_member_scores`
+### 3. OPTIONAL — add `ticker` to `ensemble_member_scores`  [RE-SCOPED 2026-08-25, no longer a blocker]
 
-Without it, item 1's fix cannot be verified and the "how bad was it" question stays unanswerable. Follow the existing `ALTER TABLE` migration style in `tracker.py` (see the `predictions` column migrations around `tracker.py:106-353` for the established shape). Backfill where a unique `(city, target_date, var)` match exists; leave NULL where ambiguous rather than guessing.
+**This item was originally justified as "without it, item 1's fix cannot be verified and the 'how bad was it' question stays unanswerable". That justification is dead** — see the measured section above. After batch-68's repair the `(city, target_date, var)` join matches `actual_temp` to `settled_temp_f` on 151/151 rows exactly, so the contamination is already quantified (46% of blended rows, ±8–10°F per var) and item 1's fix is verifiable without any schema change.
+
+What remains is a genuine but *optional* robustness argument: `(city, target_date, var)` is a weaker key than a ticker, it cannot distinguish two markets on the same city/date/var, and it silently excludes the 49 rows where `var IS NULL`. If you take it, follow the existing `ALTER TABLE` migration style in `tracker.py` (the `predictions` column migrations around `tracker.py:106-353` are the established shape), backfill where a unique `(city, target_date, var)` match exists, and leave NULL where ambiguous rather than guessing.
+
+**Do not let this gate items 1 and 2.** If you are short on time, skip it and say so in the resolution.
 
 ### 4. Two places in the repo disagree about the cross-city-pooling correlation, and the stale optimistic one is in the registry
 

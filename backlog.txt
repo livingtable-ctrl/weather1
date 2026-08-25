@@ -35555,18 +35555,46 @@ Live impact (traced, not assumed):
     weather_markets.py:401 loads it into _DYNAMIC_BIAS_CACHE and applies it
     to live forecasts. So the chain is complete: lock value -> blended score
     -> per-city station bias -> live forecast adjustment.
-  - NOT QUANTIFIED, and deliberately not asserted: how much contamination
-    actually sits in ensemble_member_scores today. That table has no ticker
-    column, so the only available join key is (city, target_date, var), and
-    it is not reliable -- of 148 blended rows matched that way, actual_temp
-    equals outcomes.settled_temp_f exactly on only 38, with a max absolute
-    difference of 30.8F. A first pass using that join suggested ~40% of
-    blended rows trace to metar_lockout predictions carrying a +3.4F bias,
-    but the same join showed near-identical bias on supposedly-clean rows,
-    which is itself evidence the join is mismatching. Establishing the real
-    magnitude needs a reliable link between a score row and its source
-    prediction -- adding a ticker column to ensemble_member_scores would be
-    the obvious way, and is arguably part of this fix.
+  - NOW QUANTIFIED -- REPLACES the "NOT QUANTIFIED" note filed here on
+    2026-08-25 (which said the join was unreliable and the magnitude
+    unmeasurable). Both statements were true when written and are now
+    obsolete. The join was never the problem: ensemble_member_scores.
+    actual_temp held an IEM ASOS proxy reading rather than Kalshi's settled
+    value, which is why it matched outcomes.settled_temp_f on only 41 of 151
+    blended rows. Batch-68's in-place repair (2026-08-25 ~04:34; 228
+    actual_temp values rewritten, predicted_temp untouched, zero row-count
+    change) fixed that -- the same join now matches 151/151 exactly, mean
+    |difference| 0.000.
+    Re-derived on the repaired data, bias = predicted_temp - actual_temp:
+      metar_lockout only    n= 69   -2.759F   rmse 10.620
+      no lockout            n= 81   -1.370F   rmse  3.008
+      ALL                   n=151   -1.969F   rmse  7.517
+    and per var, which is how get_dynamic_station_bias actually queries it:
+      metar_lockout / max   n= 48   -8.213F
+      metar_lockout / min   n= 21   +9.706F
+      no lockout    / max   n= 48   -1.194F
+      no lockout    / min   n= 33   -1.626F
+    So 69 of 151 blended rows (46%) are contaminated at +/-8-10F with
+    OPPOSITE SIGNS BY VAR -- the running-extreme signature. The pooled
+    -2.759F understates it badly because max and min cancel; the per-var
+    query never sees that cancellation. The superseded "~40% at +3.4F"
+    figure was computed on the broken join: right on share, wrong on
+    magnitude and sign. Do not quote it.
+    Consequence: adding a ticker column to ensemble_member_scores is NO
+    LONGER needed to measure this and must not gate the fix. It remains a
+    defensible robustness improvement (a (city, target_date, var) key cannot
+    separate two markets on the same city/date/var, and silently excludes
+    the 49 rows where var IS NULL), but it is optional.
+  - WHAT BATCH-68 DID NOT FIX: predicted_temp was untouched (0 of 176 rows
+    changed). On lockout rows it is still the running extreme, so
+    get_dynamic_station_bias now computes a clean-actual-minus-dirty-
+    predicted error -- the repair fixed the observed half and left the
+    predicted half contaminated. Live effect measured across the repair:
+    OklahomaCity/max is the only city currently over the 10-sample floor,
+    and its bias moved from +7.27F to -7.06F, a 14.33F swing in a value the
+    caller SUBTRACTS from the raw forecast. Sub-floor cities are larger
+    still (Phoenix/max -17.1F, Seattle/max -12.7F, Denver/max -12.7F) and
+    will land as they accumulate samples.
   - get_regional_recent_bias() IS affected: it selects
     predictions.forecast_temp_f joined to outcomes_valid.settled_temp_f with
     no method filter. It has NO production call site (tests only; see
