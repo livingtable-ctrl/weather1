@@ -34468,3 +34468,108 @@ Declined deliberately, not deferred for capacity: the option to extend
   plus scoped tests.
   Source: audit/handoff_prompts/batches/batch-55.md.
 
+[OPEN 2026-08-25 -- measured while benchmarking test-suite speed after the four repo-root guard scans were pruned in bf409e6b] Autouse fixture setup is 85% of test wall time; two fixtures account for 99.6% of it
+Priority: MEDIUM -- pure test-suite latency, no production behaviour involved. Affects every local run and every developer iteration.
+Files: tests/conftest.py (reset_open_meteo_circuit_breaker, isolate_tracker_db), circuit_breaker.py (_save_state, record_success)
+
+Problem:
+  Measured on Windows, main clone, idle machine, `pytest tests/test_safe_io.py
+  tests/test_forecast_cache.py` (98 tests), summing pytest's own --durations=0
+  output by phase:
+
+    wall            35.82s
+    setup           30.52s   (85.2% of wall)   98 uses, mean 311.4 ms/test
+    call             5.00s   (14.0% of wall)   55 uses, mean  90.9 ms
+    teardown         0.00s
+
+  The test bodies are not the cost. Per-fixture attribution (pytest_fixture_setup
+  hook wrapper, same run):
+
+    reset_open_meteo_circuit_breaker   18.24s   186.1 ms/test   (74% of setup)
+    isolate_tracker_db                  6.18s    63.1 ms/test   (25% of setup)
+    all 25+ other autouse fixtures      ~0.17s    negligible
+
+  Those two are 99.6% of all fixture setup.
+
+  Root cause (reset_open_meteo_circuit_breaker): the fixture resets 20 breaker
+  singletons per test by calling `cb.record_success()`. record_success()
+  (circuit_breaker.py:240-251) ends with `self._save_state()`, and _save_state
+  (circuit_breaker.py:122+) is a full read-modify-write of the SHARED
+  .cb_state.json: read the file, json.loads it, merge one key, mkdir the parent,
+  then safe_io.atomic_write_json -- temp file + fsync + os.replace. So resetting
+  in-memory counters costs 20 fsync'd read-modify-write cycles per test: 1,960
+  of them for these 98 tests alone. Windows makes this worse (Defender scanning
+  data/, and _replace_with_retry's sharing-violation retries), which is why
+  186 ms/test.
+
+  Root cause (isolate_tracker_db): calls tracker.init_db() per test, rebuilding
+  the entire schema in a fresh temp sqlite DB every time.
+
+  Scale: 5,399 tests are collected suite-wide. If the 311 ms/test setup holds
+  (it is a conftest-global autouse stack, so it plausibly does), that is roughly
+  28 minutes of pure fixture setup on this machine.
+  NOT VERIFIED for CI: CI runs ubuntu-latest, where fsync and AV scanning are far
+  cheaper, so the Linux figure is likely much smaller. Do not quote the 28 min
+  against CI's ~23 min total without measuring there first.
+
+Recommendation:
+  1. reset_open_meteo_circuit_breaker should reset the in-memory fields WITHOUT
+     triggering persistence -- e.g. set `cb._persist = False` for the duration,
+     or assign _failure_count/_opened_at/_wall_opened_at/_half_open/
+     _last_failure_at directly instead of going through record_success(). The
+     fixture only wants in-memory state clean; it never needs the write. Check
+     first whether any test asserts on .cb_state.json contents after a reset.
+  2. isolate_tracker_db could build the schema ONCE per session into a template
+     file and copy it per test, rather than running init_db() 5,399 times.
+     Verify tests that mutate schema-adjacent state still get a clean DB.
+  3. Re-measure with the same method (--durations=0 summed by phase, plus the
+     per-fixture hook) to confirm, and measure on Linux before claiming any CI
+     benefit.
+
+[OPEN 2026-08-25 -- found while benchmarking pytest-xdist; xdist was NOT adopted and is not installed, but the flake it exposed is real and probably predates it] Intermittent single-test failure (~1 in 11) when the paper/lock/isolation test files run in parallel processes
+Priority: MEDIUM -- a latent order/timing dependency between test files. Harmless today because the suite runs serially, but it is the kind of hidden coupling that makes any future parallelisation unsafe.
+Files: unknown -- somewhere in the 11-file slice below
+
+Problem:
+  Benchmarking pytest-xdist, this slice was run repeatedly with
+  `-n auto --dist loadfile` (one file's tests stay on one worker, but different
+  files run concurrently in separate processes):
+
+    tests/test_paper.py, tests/test_starting_balance.py,
+    tests/test_state_consistency.py, tests/test_drawdown_tiers.py,
+    tests/test_p1_remaining.py, tests/test_trade_improvements.py,
+    tests/test_cron_lock.py, tests/test_paper_cross_process_lock.py,
+    tests/test_safe_io.py, tests/test_circuit_breaker_registry.py,
+    tests/test_conftest_paper_isolation.py
+
+  Result: 359 passed on 10 of 11 runs; ONE run reported "1 failed, 358 passed".
+  The failing test's identity was not captured (the run was grepped for its
+  summary line only -- a mistake), and 12 subsequent runs did not reproduce it.
+
+  What was ruled out:
+  - NOT the timing-sensitive lock files in isolation: test_safe_io.py,
+    test_paper_cross_process_lock.py and test_cron_lock.py were run 12 times at
+    `-n 16` together with zero failures. Both lock test files isolate their lock
+    paths to tmp_path.
+  - NOT production-state corruption: across every parallel run,
+    data/paper_trades.json, data/.cb_state.json and data/seasonal_weights.json
+    were byte-identical before and after (md5), and predictions.db / tracker.db /
+    execution_log.db kept mtimes predating the runs. No worker wrote to real
+    state -- which is a positive result for batch-62's isolation sweep.
+  - It requires the full 11-file slice to appear, so it is an interaction
+    between files running on different workers, not one intrinsically bad test.
+
+  Serial runs of the same slice have not been observed to fail, but the serial
+  case was not run enough times to rule out a pre-existing flake that
+  parallelism merely makes more likely.
+
+Recommendation:
+  Reproduce with full output captured (`--tb=long -rf`, tee each run to its own
+  file) rather than grepping summary lines, looping until it recurs -- budget
+  ~20 runs at ~80s each. Once the test is named, the likely suspects are shared
+  OS-level resources that tmp_path does not cover: the .cb_state.json file lock
+  (_CB_STATE_FILE_LOCK is in-process only, so separate worker processes do not
+  serialise against each other), system-temp files keyed by PID, and any
+  subprocess spawned by test_paper_cross_process_lock.
+  Worth fixing on its own merits even though xdist was declined: a hidden
+  cross-file coupling is a latent flake in serial runs too.
