@@ -191,6 +191,24 @@ def clear_nws_mos_climate_indices_caches():
     mos._NBP_CACHE.clear()
     climate_indices._indices_cache.clear()
 
+    # batch-64's two model-run-init caches, added here for the same reason as
+    # the seven above and found the same way: a test that drives a real
+    # analyze_trade end-to-end (tests/test_batch51_holiday_rain.py's
+    # TestAnalyzeTradeHolidayTempEndToEnd) populates both, and
+    # tests/test_batch64_forward_writers.py's
+    # test_observed_run_inits_never_touch_the_network then sees a warm cache
+    # where it asserts an empty one. Both files pass alone and fail together,
+    # in file order -- exactly the order-dependent masking this fixture's own
+    # docstring exists to describe.
+    #
+    # _model_run_init_observed is mutated under _model_run_observed_lock in
+    # production; cleared without it here because fixtures run single-threaded
+    # between tests, when no analyze_trade pool is alive to race.
+    import weather_markets as _wm
+
+    _wm._model_run_init_cache.clear()
+    _wm._model_run_init_observed.clear()
+
 
 @pytest.fixture(autouse=True)
 def neutral_temperature_scaling(monkeypatch):
