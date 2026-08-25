@@ -34468,7 +34468,7 @@ Declined deliberately, not deferred for capacity: the option to extend
   plus scoped tests.
   Source: audit/handoff_prompts/batches/batch-55.md.
 
-[OPEN 2026-08-25 -- measured while benchmarking test-suite speed after the four repo-root guard scans were pruned in bf409e6b] Autouse fixture setup is 85% of test wall time; two fixtures account for 99.6% of it
+[PARTIALLY RESOLVED 2026-08-25 -- the circuit-breaker half (74% of setup) is fixed; isolate_tracker_db remains. See resolution below.] Autouse fixture setup is 85% of test wall time; two fixtures account for 99.6% of it
 Priority: MEDIUM -- pure test-suite latency, no production behaviour involved. Affects every local run and every developer iteration.
 Files: tests/conftest.py (reset_open_meteo_circuit_breaker, isolate_tracker_db), circuit_breaker.py (_save_state, record_success)
 
@@ -34525,6 +34525,53 @@ Recommendation:
   3. Re-measure with the same method (--durations=0 summed by phase, plus the
      per-fixture hook) to confirm, and measure on Linux before claiming any CI
      benefit.
+
+Resolution (2026-08-25) -- recommendation 1 implemented; 2 and 3 still open:
+  tests/conftest.py's reset_open_meteo_circuit_breaker now sets cb._persist =
+  False around the record_success() call and restores it in a finally, so the
+  reset clears the in-memory counters without triggering _save_state()'s
+  fsync'd read-modify-write of .cb_state.json.
+
+  Chose the _persist toggle over assigning the cleared fields directly, so
+  record_success() stays the SINGLE definition of "what a reset clears" -- a
+  hand-copied field list would silently stop covering any field added there
+  later, which is exactly the drift this repo keeps getting bitten by.
+
+  Verified safe first: the only tests that exercise breaker persistence
+  (test_p1_remaining.py, TestCircuitBreakerPersistence and neighbours) build
+  their OWN CircuitBreaker instances and redirect _CB_STATE_PATH themselves --
+  they never touch the module-level singletons this fixture resets, so the
+  temporary flag cannot reach them. Nothing else in tests/ reads the state
+  file's contents after a reset.
+
+  Measured, same machine, same session, 98 tests (test_safe_io +
+  test_forecast_cache):
+    reset_open_meteo_circuit_breaker   186.1 ms/test  ->  0.0 ms/test
+    wall (two runs each)               85.40s/84.80s  ->  28.58s/29.06s
+  The ms/use figure is the reliable one; the wall figures were taken on a
+  contended machine, but both before and after within the same window, so the
+  ~2.9x ratio holds for that slice.
+
+  Guarded by two new tests in tests/test_circuit_breaker_registry.py:
+  test_reset_fixture_leaves_breakers_clean_and_restores_persist (behavioural --
+  every registered breaker enters each test clean AND with _persist back True,
+  so dropping the finally fails loudly) and
+  test_reset_fixture_does_not_persist_during_reset (source-level guard on the
+  optimisation itself, which would otherwise be silently revertible without
+  failing anything). The second was mutation-tested: restoring the bare
+  cb.record_success() fails it.
+
+  Regression: 667 passed / 4 skipped across every breaker-touching file
+  (test_circuit_breaker, test_circuit_breaker_registry, test_flash_crash_cb,
+  test_p1_remaining, test_infrastructure, test_nws, test_rain_markets,
+  test_snow_markets, test_ecmwf, test_forecasting, test_kalshi_client,
+  test_nearby_station_obs, test_kalshi_weather_index, test_hourly_markets),
+  plus 845 passed across test_weather_markets/test_paper/test_trading/
+  test_web_app/test_safe_io/test_forecast_cache/test_cron_integration.
+
+  RESIDUAL (what keeps this entry open): isolate_tracker_db, which runs
+  tracker.init_db() per test and is now the top fixture cost; and the Linux/CI
+  measurement, which has still not been taken.
 
 [OPEN 2026-08-25 -- found while benchmarking pytest-xdist; xdist was NOT adopted and is not installed, but the flake it exposed is real and probably predates it] Intermittent single-test failure (~1 in 11) when the paper/lock/isolation test files run in parallel processes
 Priority: MEDIUM -- a latent order/timing dependency between test files. Harmless today because the suite runs serially, but it is the kind of hidden coupling that makes any future parallelisation unsafe.

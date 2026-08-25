@@ -370,7 +370,30 @@ def reset_open_meteo_circuit_breaker():
         # history above.
         *hurricane_climatology._hurdat2_cb.values(),
     ):
-        cb.record_success()  # clears _failure_count and _opened_at
+        # _persist=False for the duration of the reset. record_success() ends
+        # in _save_state(), which is a read-modify-write of the SHARED
+        # .cb_state.json: read it, json.loads it, merge one key, mkdir the
+        # parent, then safe_io.atomic_write_json -- temp file + fsync +
+        # os.replace. With 20 breakers in this loop that was 20 fsync'd
+        # read-modify-write cycles on EVERY test in the suite, purely to clear
+        # in-memory counters. Measured before this change (Windows, main
+        # clone, 98 tests): 186.1 ms/test, 74% of all fixture setup and ~51%
+        # of wall clock -- see backlog "Autouse fixture setup is 85% of test
+        # wall time".
+        #
+        # Toggling _persist rather than assigning the cleared fields directly
+        # keeps record_success() as the single definition of "what a reset
+        # clears", so a field added there in future is still covered here --
+        # a hand-copied field list would silently miss it. Restored in a
+        # finally, so no test can observe the flag off; the persistence tests
+        # in test_p1_remaining.py build their own CircuitBreaker instances and
+        # are unaffected either way.
+        _prev_persist = cb._persist
+        cb._persist = False
+        try:
+            cb.record_success()  # clears _failure_count and _opened_at
+        finally:
+            cb._persist = _prev_persist
         # batch-13 (AUD-0022 test, round-1 opus review): record_success()
         # deliberately does NOT clear _last_failure_at (only _trip_count/
         # _current_timeout are preserved across successes, per that

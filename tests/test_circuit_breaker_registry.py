@@ -203,3 +203,48 @@ def test_cron_phase9_snapshot_uses_a_non_mutating_read():
         "test_monitors_never_consume_the_half_open_recovery_probe)"
     )
     assert "seconds_open() > 0" in block
+
+
+def test_reset_fixture_leaves_breakers_clean_and_restores_persist():
+    """The autouse reset fixture must still do its job after the _persist
+    optimisation, and must not leak the flag.
+
+    ``_persist is True`` is the load-bearing half: the fixture sets it False
+    around ``record_success()`` so the reset does not trigger a fsync'd
+    read-modify-write of .cb_state.json (186ms/test before this change). If
+    someone drops the ``finally`` that restores it, every breaker would
+    silently stop persisting for the rest of the session and this fails.
+    """
+    for reg in weather_markets.CIRCUIT_BREAKERS:
+        cb = reg.breaker
+        assert cb.failure_count == 0, f"{reg.name} entered the test tripped"
+        assert cb.seconds_open() == 0.0, f"{reg.name} entered the test open"
+        assert cb._half_open is False, f"{reg.name} entered the test half-open"
+        assert cb._last_failure_at is None, f"{reg.name} kept a prior failure"
+        assert cb._persist is True, (
+            f"{reg.name}._persist was left False -- the reset fixture's "
+            "finally: no longer restores it"
+        )
+
+
+def test_reset_fixture_does_not_persist_during_reset():
+    """Source-level guard on the optimisation itself.
+
+    Reverting the fixture to a bare ``cb.record_success()`` would put ~186ms
+    back on every test in the suite (74% of all fixture setup) without failing
+    anything else, so it needs its own guard. Reads conftest's real source
+    rather than reimplementing the loop -- an inline reimplementation would be
+    a tautology.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+    start = src.index("def reset_open_meteo_circuit_breaker(")
+    block = src[start : src.index("\n@pytest.fixture", start)]
+
+    assert "_persist = False" in block, (
+        "the reset loop no longer disables persistence -- this re-adds a "
+        "fsync'd read-modify-write of .cb_state.json per breaker per test"
+    )
+    assert "finally:" in block, "the _persist toggle is not restored in a finally"
+    assert "cb._persist = _prev_persist" in block
