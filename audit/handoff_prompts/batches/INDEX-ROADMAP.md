@@ -1,5 +1,7 @@
 # Expansion-roadmap batches — batches 49-56
 
+> **See also [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md) — batches 57-63.** Those cover the remaining open `backlog.txt` entries (priority 1 in the standing order, which comes *before* the DEMO_BASE smoke test and the host move). The two sets do not overlap: 57-63 fix existing code, 49-56 add new market families. Batch 54/55 do inherit the residual scope of backlog entry L7204.
+
 Source: the **weather1 Expansion Dossier** (deep-research roadmap, Rev 4, 2026-08-24) — https://claude.ai/code/artifact/6c88ff4c-4822-4044-9ea0-3766d2cfe5ac — plus its graduation section A. Written against `master @ c5fd1259` + the assumption that **audit batches 31-48 have all landed** (each batch below names the specific prior fixes it depends on; verify they actually landed before starting, don't trust this assumption blindly).
 
 These batches are the "new expansion work" bucket (priority 5 in the project's standing order). They do NOT replace the `DEMO_BASE` smoke test or the host move — those remain separate, already-planned items. Batches 49-51 are deliberately safe to do BEFORE the host move (all additive shadow/logging work, zero live-trading risk, and each has a sample clock or market window that only starts when it ships — batch 51's Labor Day item expires Sep 7).
