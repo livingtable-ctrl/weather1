@@ -30,6 +30,7 @@ Verify-only, against an existing copy:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shutil
 import sqlite3
 import sys
@@ -137,6 +138,29 @@ def resolve_private_key(env: Path) -> tuple[Path | None, str]:
     return None, "not configured"
 
 
+def claude_memory_dir() -> Path | None:
+    """Claude Code's per-project memory directory, or None.
+
+    Derived from the project path the same way Claude Code slugifies it
+    (drive-letter colon and every separator become '-'), rather than
+    hardcoded, so this still resolves after the project moves. Falls back to
+    a glob when the slug does not match -- a wrong guess here silently drops
+    the one item in the bundle that cannot be regenerated.
+    """
+    root = Path.home() / ".claude" / "projects"
+    if not root.is_dir():
+        return None
+    slug = str(SRC_ROOT).replace(":", "-").replace("\\", "-").replace("/", "-")
+    direct = root / slug / "memory"
+    if direct.is_dir():
+        return direct
+    tail = SRC_ROOT.name.replace(" ", "-")
+    for cand in sorted(root.glob(f"*{tail}*")):
+        if (cand / "memory").is_dir():
+            return cand / "memory"
+    return None
+
+
 def table_counts(db: Path) -> dict[str, int]:
     out: dict[str, int] = {}
     try:
@@ -148,6 +172,51 @@ def table_counts(db: Path) -> dict[str, int]:
                     out[t] = c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
                 except Exception:
                     out[t] = -1
+    except Exception:
+        pass
+    return out
+
+
+def table_digests(db: Path) -> dict[str, str]:
+    """Per-table CONTENT hash, not just a row count.
+
+    A row count cannot see an in-place VALUE repair, and this project does
+    those: on 2026-08-25 a repair rewrote 228
+    ensemble_member_scores.actual_temp values (an IEM ASOS proxy reading
+    replaced by Kalshi's own settled figure) with ZERO row-count change. A
+    backup taken six minutes earlier verified as "all tables match" and was
+    silently a content generation behind -- and the count-only check could
+    not have told you. This is that check.
+
+    Hashes the full ordered row text per table, which is fine at this
+    database's size (~47 MB). If it ever grows enough to matter, sample
+    rather than drop the check.
+    """
+    out: dict[str, str] = {}
+    try:
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as c:
+            tables = [
+                t
+                for (t,) in c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                )
+            ]
+            for t in tables:
+                h = hashlib.sha256()
+                try:
+                    cols = [
+                        r[1] for r in c.execute(f'PRAGMA table_info("{t}")').fetchall()
+                    ]
+                    # Deterministic order: without it SQLite's natural order
+                    # can differ between two byte-identical databases and the
+                    # digest would report a false mismatch.
+                    order = ", ".join(f'"{x}"' for x in cols) or "1"
+                    for row in c.execute(f'SELECT * FROM "{t}" ORDER BY {order}'):
+                        h.update(repr(row).encode("utf-8", "replace"))
+                    out[t] = h.hexdigest()[:16]
+                except Exception as exc:
+                    out[t] = f"ERR:{type(exc).__name__}"
     except Exception:
         pass
     return out
@@ -175,7 +244,7 @@ def main() -> int:
         return 1
 
     if args.verify_only:
-        print("VERIFY: source vs destination predictions.db row counts\n")
+        print("VERIFY: source vs destination predictions.db — counts AND content\n")
         a, b = (
             table_counts(SRC_DATA / "predictions.db"),
             table_counts(dest_data / "predictions.db"),
@@ -183,16 +252,42 @@ def main() -> int:
         if not b:
             print("  destination predictions.db unreadable or missing")
             return 1
+        da, db_ = (
+            table_digests(SRC_DATA / "predictions.db"),
+            table_digests(dest_data / "predictions.db"),
+        )
         bad = 0
+        print(f"  {'table':28s} {'src':>8} {'dst':>8}  {'content':>9}")
         for t in sorted(set(a) | set(b)):
             ca, cb = a.get(t, "-"), b.get(t, "-")
-            flag = "" if ca == cb else "   <-- MISMATCH"
-            if ca != cb:
+            ha, hb = da.get(t), db_.get(t)
+            count_ok = ca == cb
+            # A missing digest (sqlite_* internals) is not a mismatch.
+            content_ok = ha is None or hb is None or ha == hb
+            if not count_ok or not content_ok:
                 bad += 1
-            print(f"  {t:28s} src={ca:>8} dst={cb:>8}{flag}")
-        print(
-            f"\n{'OK - all tables match' if not bad else f'{bad} MISMATCHED TABLE(S)'}"
-        )
+            flag = (
+                ""
+                if count_ok and content_ok
+                else (
+                    "   <-- COUNT MISMATCH"
+                    if not count_ok
+                    else "   <-- CONTENT DIFFERS"
+                )
+            )
+            print(
+                f"  {t:28s} {ca:>8} {cb:>8}  "
+                f"{'same' if content_ok else 'DIFFER':>9}{flag}"
+            )
+        if bad:
+            print(f"\n{bad} MISMATCHED TABLE(S)")
+            print(
+                "  A CONTENT-only mismatch means the row counts agree but values\n"
+                "  do not -- the destination is a generation behind an in-place\n"
+                "  repair. Re-run the copy; a count-only check cannot see this."
+            )
+        else:
+            print("\nOK - all tables match on both row count and content")
         return 1 if bad else 0
 
     dbs: list[Path] = []
@@ -240,6 +335,12 @@ def main() -> int:
         print(
             f"private key : MISSING -- .env points at {key_path}, which does not exist"
         )
+    _mem = claude_memory_dir()
+    print(
+        f"claude memory: {len(list(_mem.glob('*.md')))} files  ({_mem})"
+        if _mem
+        else "claude memory: NOT FOUND"
+    )
     print(f"approx size : {total_mb:.0f} MB")
     if not args.include_backups:
         print(
@@ -317,6 +418,28 @@ def main() -> int:
         except Exception as exc:
             print(f"  [FAIL] {key_path.name}: {exc}")
             failures.append(key_path.name)
+
+    # Claude Code's per-project memory. Lives OUTSIDE the repo entirely
+    # (~/.claude/projects/<slug>/memory/), so neither git nor a copy of the
+    # project directory carries it -- and unlike everything else here it
+    # cannot be regenerated or re-downloaded. It is the accumulated
+    # project knowledge: conventions, prior incidents, and the reasoning
+    # behind decisions that the code and git history do not record.
+    mem_src = claude_memory_dir()
+    if mem_src is None:
+        print("  [warn] no Claude memory directory found -- nothing to copy")
+    else:
+        try:
+            n = len(list(mem_src.glob("*.md")))
+            shutil.copytree(mem_src, dest_root / "claude_memory", dirs_exist_ok=True)
+            print(f"  [ok ] claude_memory/  ({n} memory files)")
+            print(
+                "         restore to "
+                "~/.claude/projects/<project-slug>/memory/ on the new machine"
+            )
+        except Exception as exc:
+            print(f"  [FAIL] claude memory: {exc}")
+            failures.append("claude_memory")
 
     print(f"\nloose files + dirs copied: {len(files)} files, {len(dirs)} dirs")
     if failures:
