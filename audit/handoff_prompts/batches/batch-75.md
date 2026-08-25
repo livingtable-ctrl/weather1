@@ -2,7 +2,9 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-25 against master `5202e2d6a6c9` — **re-verify current before starting**; every line number below was checked at that commit and this repo's files move constantly.
+Repo: weather1. Written 2026-08-25 against master `5202e2d6a6c9`; **re-verified and re-anchored 2026-08-25 against `24561dfa`** after 20 commits landed in between.
+
+**Every one of the 11 line numbers in the first version had gone stale within hours** — batch-54/64/66/67/69 and the analysis_attempts work all moved `tracker.py`, `main.py` and `weather_markets.py` underneath it. Citations are now anchored on **grep patterns**, with the line number kept only as a hint. Grep the pattern; do not trust the number. This is the same trap `INDEX.md` warns about for backlog `L`-numbers, and it applies just as hard to source lines in this repo.
 
 Source: `backlog.txt`, cited **by title, not line number** (`L`-numbers are line offsets and drifted twice during this batch's own authoring). Grep this title:
 
@@ -16,18 +18,18 @@ Found by batch-53's replay experiment (which the contamination silently destroye
 
 The earlier framing ("an instantaneous METAR reading is stored as a forecast") is *nearly* right and **the mechanism it names is wrong**, which matters because it points at the wrong fix.
 
-`metar_lockout["comp_temp_f"]` is the **running daily extreme at lock time** — the day's max-so-far for a HIGH market, min-so-far for a LOW market. The code says so itself at `weather_markets.py:12620`:
+`metar_lockout["comp_temp_f"]` is the **running daily extreme at lock time** — the day's max-so-far for a HIGH market, min-so-far for a LOW market. The code says so itself at `weather_markets.py` — grep `running max {_comp_temp` (was :12620, now ~:14367):
 
 ```
 f"HIGH market: running max {_comp_temp:.1f}°F not yet confirmed above
  threshold+margin — day's peak may still be ahead"
 ```
 
-It is set at `weather_markets.py:12630` (above/below) and `:12906` (between), with `:12917`'s `setdefault` falling back to the instantaneous reading **only** when neither branch ran, and `:12443` setting both keys on a `locked=False` early return that no caller reads.
+It is set in two places — grep `_lockout["comp_temp_f"] = _comp_temp`, which hits the above/below branch (~:14377) and the between branch (~:14653). The `setdefault` just below them falls back to the instantaneous reading **only** when neither branch ran, and the `locked=False` early return sets both keys on a path no caller reads.
 
 So the running extreme is **exactly right for the lock decision** — it is a hard lower bound on the daily high, which is the whole basis for locking — and **exactly wrong as a forecast of the daily extreme**, because it is a bound, not an estimate. It is systematically below the eventual high and above the eventual low.
 
-The repo already measured how far: the comment at `weather_markets.py:12599-12613` reports, over 22,799 real station-days, `P(running max still rises >= 3F after the stated local hour)` = **26.9% at 14:00, 4.4% at 16:00**, never below ~2.8% even at 21:00; the LOW side's mirror is **12.8% at 14:00, still 7.3% at 21:00**.
+The repo already measured how far: the comment at `weather_markets.py` — grep `22,799 real station-days` (was :12599, now ~:14347) reports, over 22,799 real station-days, `P(running max still rises >= 3F after the stated local hour)` = **26.9% at 14:00, 4.4% at 16:00**, never below ~2.8% even at 21:00; the LOW side's mirror is **12.8% at 14:00, still 7.3% at 21:00**.
 
 **Nothing in the lock logic is broken. The bug is entirely in what gets persisted and who reads it.** Do not "fix" `_metar_lock_in` or the margin logic.
 
@@ -48,20 +50,20 @@ It is **not** self-correcting. Lockout bias by half-month (max markets): +8.60, 
 
 ## The live path (this is why it is HIGH, not Medium)
 
-Verified at `5202e2d6a6c9`:
+Verified at `5202e2d6a6c9`, re-anchored at `24561dfa`:
 
-1. `weather_markets.py:14721` — `_metar_ct = metar_lockout.get("comp_temp_f", metar_lockout.get("current_temp_f"))`
-2. `weather_markets.py:14723` — `forecast_temp = _metar_ct if _metar_ct is not None else (_fallback_temp or 0.0)`
-3. `weather_markets.py:15219` — returned as `"forecast_temp"`
-4. `trade_cycle.py:920` — persisted as `"forecast_temp_f": analysis.get("forecast_temp")`
-5. `paper.py:1464` — `_score_ensemble_members(t, outcome_yes)` on every settled paper trade
-6. `paper.py:1569` — `model_means["blended"] = trade.get("forecast_temp")` → `ensemble_member_scores` as `model='blended'`
-7. `tracker.py:7377-7382` — `get_dynamic_station_bias` **prefers** `WHERE model = 'blended'`
-8. `weather_markets.py:401` — `from tracker import get_dynamic_station_bias as _gdbs` → `_DYNAMIC_BIAS_CACHE` → applied to live forecasts
+1. `weather_markets.py` — grep `comp_temp_f", metar_lockout.get` — `_metar_ct = metar_lockout.get("comp_temp_f", metar_lockout.get("current_temp_f"))` (was :14721, now ~:16714)
+2. `weather_markets.py` — grep `forecast_temp = _metar_ct if` (was :14723, now ~:16716)
+3. `weather_markets.py` — the analyze_trade return's `"forecast_temp": forecast_temp` (was :15219, now ~:17226)
+4. `trade_cycle.py` — grep `"forecast_temp_f": analysis.get` (was :920, now ~:927)
+5. `paper.py` — grep `_score_ensemble_members(t, outcome_yes)` (was :1464, now ~:1465)
+6. `paper.py` — grep `model_means["blended"]` (was :1569, now ~:1570) → `ensemble_member_scores` as `model='blended'`
+7. `tracker.py` — `get_dynamic_station_bias` **prefers** `WHERE model = 'blended' AND var = ?` (was :7382, now ~:10776)
+8. `weather_markets.py` — grep `from tracker import get_dynamic_station_bias` (was :401, now ~:799) → `_DYNAMIC_BIAS_CACHE` → applied to live forecasts
 
-`paper.py`'s own comment at :1569 already states that `"blended"` is "preferred by `get_dynamic_station_bias()` over the per-model means". The original backlog entry read the right table (`ensemble_member_scores`, which is indeed not `predictions`) and drew the wrong conclusion — the contaminated value flows *into* that table.
+`paper.py`'s own comment at that line already states that `"blended"` is "preferred by `get_dynamic_station_bias()` over the per-model means". The original backlog entry read the right table (`ensemble_member_scores`, which is indeed not `predictions`) and drew the wrong conclusion — the contaminated value flows *into* that table.
 
-**A second consumer, on a trade-entry safety gate:** `weather_markets.py:13766` uses the same `comp_temp_f`-then-`current_temp_f` fallback to compute `_yes_clearance`, the between-bucket station-gap margin. Trace it before deciding scope — a running extreme is arguably the *correct* input for a clearance check (it is the value that decided the lock), so this site may be fine as-is. Decide it explicitly rather than changing it by reflex.
+**A second consumer, on a trade-entry safety gate:** `weather_markets.py` — grep the OTHER `comp_temp_f", metar_lockout.get` hit (was :13766, now ~:15673) uses the same `comp_temp_f`-then-`current_temp_f` fallback to compute `_yes_clearance`, the between-bucket station-gap margin. Trace it before deciding scope — a running extreme is arguably the *correct* input for a clearance check (it is the value that decided the lock), so this site may be fine as-is. Decide it explicitly rather than changing it by reflex.
 
 ## The magnitude, now measured — REWRITTEN 2026-08-25 after the batch-68 repair
 
@@ -131,7 +133,7 @@ Whichever is chosen, decide separately what to do with the **103 existing contam
 
 **This item was originally justified as "without it, item 1's fix cannot be verified and the 'how bad was it' question stays unanswerable". That justification is dead** — see the measured section above. After batch-68's repair the `(city, target_date, var)` join matches `actual_temp` to `settled_temp_f` on 151/151 rows exactly, so the contamination is already quantified (46% of blended rows, ±8–10°F per var) and item 1's fix is verifiable without any schema change.
 
-What remains is a genuine but *optional* robustness argument: `(city, target_date, var)` is a weaker key than a ticker, it cannot distinguish two markets on the same city/date/var, and it silently excludes the 49 rows where `var IS NULL`. If you take it, follow the existing `ALTER TABLE` migration style in `tracker.py` (the `predictions` column migrations around `tracker.py:106-353` are the established shape), backfill where a unique `(city, target_date, var)` match exists, and leave NULL where ambiguous rather than guessing.
+What remains is a genuine but *optional* robustness argument: `(city, target_date, var)` is a weaker key than a ticker, it cannot distinguish two markets on the same city/date/var, and it silently excludes the 49 rows where `var IS NULL`. If you take it, follow the existing `ALTER TABLE` migration style in `tracker.py` (the `predictions` column migrations around `tracker.py`'s `_MIGRATIONS` list (grep `ALTER TABLE predictions ADD COLUMN forecast_temp_f`, ~:108) are the established shape), backfill where a unique `(city, target_date, var)` match exists, and leave NULL where ambiguous rather than guessing.
 
 **Do not let this gate items 1 and 2.** If you are short on time, skip it and say so in the resolution.
 
@@ -139,8 +141,8 @@ What remains is a genuine but *optional* robustness argument: `(city, target_dat
 
 This item changed shape during authoring — the first draft framed it as "recompute `r` with a `method` filter". That is not the main problem. **Two in-repo sources already disagree about this number, and a future session deciding whether to wire the signal live would read the wrong one.**
 
-- `weather_markets.py:8870-8876`, `_SignalRegistryEntry(key="cross_city_pooling")`, still advertises: *"Last check (2026-07-23): Pearson r~=0.35, but thin per-estimate coverage ... too sparse to trust yet."*
-- `tests/test_dead_code_scan.py:285-305`, the allowlist entry for `tracker.get_regional_recent_bias`, records a **later and far more careful** result: the function was briefly wired into `weather_markets._get_combined_station_bias()` on 2026-08-22, an opus review caught a contamination path (a correlated city with a thin static-bias entry leaking its persistent residual into a neighbour), it was fixed at the source, and re-running the validation **against the fixed version** gave **r=0.08 (n=35, was 109), sign agreement 51% — a coin flip.** The wiring was reverted. The original r=0.38 was "substantially an artifact of that same contamination".
+- `weather_markets.py` — grep `key="cross_city_pooling"` (was :8870, now ~:10295), `_SignalRegistryEntry(key="cross_city_pooling")`, still advertises: *"Last check (2026-07-23): Pearson r~=0.35, but thin per-estimate coverage ... too sparse to trust yet."*
+- `tests/test_dead_code_scan.py` — grep `("tracker.py", "get_regional_recent_bias")` (still ~:285), the allowlist entry for `tracker.get_regional_recent_bias`, records a **later and far more careful** result: the function was briefly wired into `weather_markets._get_combined_station_bias()` on 2026-08-22, an opus review caught a contamination path (a correlated city with a thin static-bias entry leaking its persistent residual into a neighbour), it was fixed at the source, and re-running the validation **against the fixed version** gave **r=0.08 (n=35, was 109), sign agreement 51% — a coin flip.** The wiring was reverted. The original r=0.38 was "substantially an artifact of that same contamination".
 
 So the registry's `r~=0.35` is superseded by a post-fix `r=0.08` that says there is no signal. The registry is the surface a future session consults; the truth is buried in a test file's allowlist string.
 
