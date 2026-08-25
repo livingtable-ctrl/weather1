@@ -1077,6 +1077,14 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     monkeypatch.setattr(
         wm, "HURRICANE_COUNT_TO_DATE_PATH", tmp_path / "hurricane_count_to_date.json"
     )
+    # batch-65 (A12): trade_cycle.run_trade_cycle() calls
+    # weather_markets.snapshot_scan_funnel() once per scan -- the same
+    # "something it calls" leak class as RAIN_ARB_SHADOW_PATH above. Both the
+    # writer's binding (weather_markets) and the reader's (web_app) are
+    # redirected, since each imports its own binding of the constant.
+    fake_scan_funnel = tmp_path / "scan_funnel.json"
+    monkeypatch.setattr(wm, "SCAN_FUNNEL_PATH", fake_scan_funnel)
+    monkeypatch.setattr(web_app, "SCAN_FUNNEL_PATH", fake_scan_funnel)
     # scan_member_quarantine()'s daily marker, stamped by _cmd_cron_body on
     # every successful scan (same class of leak this fixture already exists
     # to prevent for the other cron-cycle-output paths above) -- without

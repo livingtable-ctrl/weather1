@@ -115,6 +115,13 @@ LAST_PARAM_SWEEP_PATH = _DATA / ".last_param_sweep"
 LAST_WALK_FORWARD_PATH = _DATA / ".last_walk_forward"
 GRADUATED_FLAG_PATH = _DATA / "graduated.flag"
 SIGNALS_CACHE_PATH = _DATA / "signals_cache.json"
+# A12 scanner funnel (batch-65): the last COMPLETED scan's ordered gate
+# funnel plus a bounded set of closest-miss candidates, written once per
+# scan by weather_markets.snapshot_scan_funnel(). Separate from
+# SIGNALS_CACHE_PATH because that file is cron's summary of what PASSED;
+# this one is the scanner's account of what did not, and is written by the
+# scan itself rather than by its caller.
+SCAN_FUNNEL_PATH = _DATA / "scan_funnel.json"
 PARAM_SWEEP_RESULTS_PATH = _DATA / "param_sweep_results.json"
 LAST_BACKTEST_PATH = _DATA / ".last_backtest.json"
 

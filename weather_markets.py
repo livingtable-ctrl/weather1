@@ -8,6 +8,7 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import math as _math
 import os
 import random
 import re
@@ -52,6 +53,7 @@ from paths import (
     METAR_CALIBRATION_PATH,
     PLATT_MODELS_PATH,
     RETIREMENT_PROBATION_PATH,
+    SCAN_FUNNEL_PATH,
     SERIES_DRIFT_PATH,
 )
 from schema_validator import is_all_null, validate_forecast
@@ -76,24 +78,410 @@ from utils import prob_threshold as _prob_threshold
 
 _log = logging.getLogger(__name__)
 
-# Thread-safe gate counter — reset by cron between scans to track why analyze_trade returns None.
+# ── Scan funnel (A12) ────────────────────────────────────────────────────────
+#
+# `_gate_counts` is a thread-safe counter, reset by run_trade_cycle() before
+# each scan's analyze loop, recording why analyze_trade() returned None.
+#
+# The counts alone cannot draw a funnel. A plain dict's key order is the order
+# in which each gate first FIRED this scan, not the order the gates run in --
+# a real scan (2026-08-25 06:36) produced
+# {extreme_price: 184, spread: 127, between_no_metar: 88, past_date: 12, ...}
+# even though past_date runs ~200 lines BEFORE extreme_price. The operator
+# sentence this exists to enable -- "the survivors were stopped at the spread
+# gate, not by the model" -- needs to know which gate ran LAST, which is a
+# property of the gate list, not of any one scan's counts.
+#
+# SCAN_GATES below declares that order once, beside the gates themselves, so
+# every consumer reads it instead of rebuilding it. test_scan_funnel.py
+# asserts SCAN_GATES covers exactly the set of _count_gate() literals in this
+# file, so a new gate cannot silently drop out of the funnel.
+#
+# SCOPE: this funnel covers analyze_trade()'s own rejections and nothing else.
+# A candidate that clears every gate here can still be dropped later, by
+# trade_cycle's edge/threshold counters (its `dbg` dict) and then by the
+# placement-time risk limits in order_executor (MAX_POSITIONS_PER_DATE and
+# friends). Those live in files this region does not own and are NOT counted
+# here -- a panel must not present this funnel as the whole story of why a
+# scan placed nothing.
+
+
+@dataclass(frozen=True)
+class ScanGate:
+    """One analyze_trade() rejection reason, in pipeline order.
+
+    `name` is the exact string passed to _count_gate() -- the key that appears
+    in get_gate_counts(). `label` is operator-facing and display-only: nothing
+    keys off it. `stage` is a coarse section for grouping several adjacent
+    gates under one funnel heading.
+    """
+
+    name: str
+    label: str
+    stage: str
+
+
+# Declared pipeline order. Positions follow analyze_trade()'s own control flow
+# top to bottom; `hourly_thin_ensemble`/`degenerate_ens` are emitted from two
+# mutually exclusive branches (_analyze_hourly_trade, dispatched from
+# analyze_trade, and analyze_trade's own non-hourly path further down) and are
+# placed at the earlier of the two, where the hourly dispatch happens.
+SCAN_GATES: tuple[ScanGate, ...] = (
+    ScanGate("hurricane_not_supported", "Hurricane family has no model", "family"),
+    ScanGate(
+        "rain_daily_track_only_no_model",
+        # Also covers KXRAINWKND (is_rain_weekend_ticker), not just dailies.
+        "Daily/weekend rain is track-only",
+        "family",
+    ),
+    ScanGate("hourly_not_target_hour", "Not this market's target hour", "family"),
+    ScanGate("no_forecast", "No forecast for this market", "inputs"),
+    ScanGate("no_date", "No resolvable target date", "inputs"),
+    ScanGate("no_city", "No city resolved from ticker", "inputs"),
+    # These three also fire when _safe_parse_close_time() returns None, i.e.
+    # the close time could not be PARSED -- "already closed" alone would send
+    # an operator looking for an expiry that is really a parse failure.
+    ScanGate("monthly_rain_past_close", "Monthly rain closed or unparseable", "timing"),
+    ScanGate("monthly_snow_past_close", "Monthly snow closed or unparseable", "timing"),
+    ScanGate(
+        "hurricane_next_event_past_close",
+        "Next-event closed or unparseable",
+        "timing",
+    ),
+    # Added by the tornado-climatology batch; same closed-or-unparseable
+    # shape as the three above (_safe_parse_close_time returning None also
+    # trips it).
+    ScanGate(
+        "tornado_count_past_close", "Tornado count closed or unparseable", "timing"
+    ),
+    ScanGate("past_date", "Target date already past", "timing"),
+    # Measures enriched["data_fetched_at"] -- the age of the MARKET snapshot.
+    # The constant it compares against is named FORECAST_MAX_AGE_SECS, which is
+    # an existing misnomer; the label describes what is actually checked.
+    ScanGate("stale_data", "Market snapshot too old", "inputs"),
+    ScanGate("condition_parse", "Condition could not be parsed", "inputs"),
+    ScanGate("no_coords", "City has no coordinates", "inputs"),
+    ScanGate("days_out", "Beyond the horizon we trade", "timing"),
+    ScanGate("liquidity", "Below the liquidity floor", "market"),
+    ScanGate("min_volume", "Below the volume floor", "market"),
+    ScanGate("no_quote", "No real two-sided quote", "market"),
+    ScanGate("spread", "Bid-ask spread too wide", "market"),
+    ScanGate("extreme_price", "Priced as near-certain", "market"),
+    ScanGate("hourly_thin_ensemble", "Too few hourly members", "model"),
+    ScanGate("degenerate_ens", "Ensemble members all identical", "model"),
+    ScanGate(
+        "hurricane_count_no_close_time", "Hurricane count has no close time", "timing"
+    ),
+    ScanGate("storm_order_no_close_time", "Storm order has no close time", "timing"),
+    ScanGate("between_no_metar", "Between bracket is not METAR-locked", "inputs"),
+    ScanGate("between_edge", "Between bracket edge too small", "edge"),
+    ScanGate("no_temp", "Forecast carries no temperature", "inputs"),
+    ScanGate("model_spread", "Models disagree too much", "model"),
+    # The daily-path twins of hourly_thin_ensemble/degenerate_ens above. They
+    # are separate literals precisely because their position differs: on the
+    # non-hourly path these run AFTER between_no_metar/between_edge/no_temp/
+    # model_spread, so reusing the hourly names would make last_gate report a
+    # gate that had already run.
+    ScanGate("daily_thin_ensemble", "Too few ensemble members", "model"),
+    ScanGate("daily_degenerate_ens", "Ensemble members all identical", "model"),
+    ScanGate("model_mkt_gap", "We disagree with the price too much", "model"),
+    # Fires on ens_prob < 0.10 OR > 0.90 -- the upper half is the ensemble
+    # ruling the outcome IN, so "rules it out" would describe only one side.
+    ScanGate("below_extreme_ens", "Ensemble is near-certain either way", "model"),
+    ScanGate("volatile_regime", "Atmosphere in a volatile regime", "model"),
+    ScanGate("retired_method", "Strategy is retired", "edge"),
+    ScanGate("between_floor", "Between YES below its confidence floor", "edge"),
+    ScanGate("analysis_diverge", "Confident market, unconfident model", "edge"),
+)
+
+# The closed vocabulary for ScanGate.stage. A typo would create a phantom
+# funnel section on the panel; test_scan_funnel.py enforces membership.
+#
+# Deliberately NOT an import-time assert. This module is imported by trading,
+# settlement, cron and the dashboard alike, so an assert here would turn a
+# DISPLAY-vocabulary typo into an ImportError that takes all four down at
+# once -- and `python -O` strips asserts, so it would not even be a reliable
+# guarantee (this repo has been bitten by exactly that; see backlog.txt's
+# "-O, where asserts are stripped" entry). A test is the right blast radius.
+SCAN_GATE_STAGES: frozenset[str] = frozenset(
+    {"family", "inputs", "timing", "market", "model", "edge"}
+)
+
+_GATE_BY_NAME: dict[str, ScanGate] = {g.name: g for g in SCAN_GATES}
+_GATE_ORDER: dict[str, int] = {g.name: i for i, g in enumerate(SCAN_GATES)}
+
+# How many closest-miss candidates the scan retains overall. This runs on
+# every rejection of every market in every scan (590 markets / 549 rejections
+# in the 2026-08-25 06:36 scan), so retention is a fixed top-K by how narrowly
+# the candidate missed -- not a log of every rejection.
+SCAN_NEAR_MISS_LIMIT = 5
+
+# ...and at most this many from any ONE gate. Without it the global top-K is
+# won outright by whichever gate fires most: extreme_price alone fires 184x and
+# spread 127x in that same scan, so five near-identical spread rows would crowd
+# out the single model_spread candidate that actually tells an operator
+# something. Retention stays bounded at SCAN_NEAR_MISS_PER_GATE x len(
+# SCAN_GATES) entries in the worst case, which is a fixed ceiling either way.
+SCAN_NEAR_MISS_PER_GATE = 2
+
 _gate_counts: dict[str, int] = {}
+# {gate name: [closest misses for that gate]}, each list capped at
+# SCAN_NEAR_MISS_PER_GATE. Keyed by gate so no single gate can evict another's
+# candidates -- see SCAN_NEAR_MISS_PER_GATE.
+_gate_near_misses: dict[str, list[dict]] = {}
+_scan_started_at: str | None = None
+# One lock covers the counter, the near-miss list and the scan-start stamp:
+# they are read together by snapshot_scan_funnel() and must not tear relative
+# to each other. analyze_trade() runs across 8 pool workers, so every mutation
+# below is genuinely concurrent.
 _gate_counts_lock = threading.Lock()
+# Unknown-gate names already warned about, so a gate missing from SCAN_GATES
+# logs once per process rather than once per rejected market.
+_unknown_gates_warned: set[str] = set()
 
 
-def _count_gate(name: str) -> None:
+def _count_gate(
+    name: str,
+    *,
+    ticker: str | None = None,
+    value: float | None = None,
+    threshold: float | None = None,
+    unit: str | None = None,
+) -> None:
+    """Record one analyze_trade() rejection.
+
+    `name` must be a SCAN_GATES entry; an unknown name is still counted (never
+    lose a rejection) but logs a warning once per process and sorts after every
+    declared gate in the funnel, so a gate added without a SCAN_GATES entry is
+    visible rather than silently mis-ordered.
+
+    The optional ticker/value/threshold/unit describe a gate with a single
+    numeric threshold and feed the bounded closest-miss list. Gates that are
+    categorical ("no city", "no forecast") pass none of them and contribute
+    only a count -- there is no meaningful margin by which a market missed
+    having a city.
+    """
+    if name not in _GATE_ORDER and name not in _unknown_gates_warned:
+        # Set membership is checked outside the lock and mutated inside it, so
+        # a race can emit the warning twice. That is deliberate: holding the
+        # lock across a logging call on every rejection is the worse trade.
+        _unknown_gates_warned.add(name)
+        _log.warning(
+            "_count_gate: %r is not in SCAN_GATES -- it will be counted but "
+            "cannot be placed in the scanner funnel. Add a ScanGate entry.",
+            name,
+        )
+    miss = _near_miss_entry(name, ticker, value, threshold, unit)
     with _gate_counts_lock:
         _gate_counts[name] = _gate_counts.get(name, 0) + 1
+        if miss is not None:
+            # Bounded PER GATE here; the global top-K is taken in
+            # get_scan_funnel(). Trimming globally at this point instead would
+            # let the loudest gate evict every other gate's only candidate
+            # before the funnel is ever assembled.
+            bucket = _gate_near_misses.setdefault(name, [])
+            bucket.append(miss)
+            if len(bucket) > SCAN_NEAR_MISS_PER_GATE:
+                # ticker in the key, not just miss_frac: a plain stable sort
+                # keeps whichever tied entry arrived first, which across 8 pool
+                # workers is arrival order, not a property of the data. The
+                # global sort in get_scan_funnel() breaks ties the same way.
+                bucket.sort(key=lambda m: (m["miss_frac"], m["ticker"]))
+                del bucket[SCAN_NEAR_MISS_PER_GATE:]
+
+
+def _near_miss_entry(
+    name: str,
+    ticker: str | None,
+    value: float | None,
+    threshold: float | None,
+    unit: str | None,
+) -> dict | None:
+    """Build one closest-miss record, or None if this gate carries no margin.
+
+    `miss_frac` is the distance from the threshold as a fraction of the
+    threshold, so gates measured in different units (contracts, seconds,
+    degrees F, probability) rank against each other: 0.02 means the candidate
+    missed by 2% of the bar, whichever bar it was. Smaller is closer.
+
+    A zero threshold has no fraction to take, so such a gate contributes a
+    count only -- reporting a raw difference beside other gates' fractions
+    would put two different quantities in one ranked column.
+    """
+    if ticker is None or value is None or threshold is None:
+        return None
+    try:
+        v = float(value)
+        t = float(threshold)
+    except (TypeError, ValueError):
+        return None
+    # Non-finite inputs would sort ahead of (or behind) every real candidate
+    # and would also emit bare Infinity/NaN through jsonify, which RFC 8259
+    # forbids and JSON.parse rejects -- killing the whole panel over one row.
+    if not _math.isfinite(v) or not _math.isfinite(t) or t == 0:
+        return None
+    # Checking the operands is not enough: float division overflows to inf
+    # rather than raising, so two finite inputs can still produce one (e.g.
+    # abs(1e308 - 1.0) / abs(1e-300)). safe_io.atomic_write_json leaves
+    # allow_nan at its True default, so an inf here would be written to disk as
+    # a bare `Infinity` -- unreachable at today's thresholds, but the artifact
+    # would stay corrupt until the next scan overwrote it.
+    miss_frac = abs(v - t) / abs(t)
+    if not _math.isfinite(miss_frac):
+        return None
+    return {
+        "gate": name,
+        "ticker": ticker,
+        "value": round(v, 6),
+        "threshold": round(t, 6),
+        "unit": unit or "",
+        "miss_frac": round(miss_frac, 6),
+    }
 
 
 def reset_gate_counts() -> None:
+    """Clear the counter, the closest-miss list and the scan-start stamp.
+
+    Called by run_trade_cycle() immediately before each scan's analyze loop.
+    Deliberately does NOT write anything to disk: this is called from ~50
+    tests, and paths.py resolves data/ to the main clone even from a worktree,
+    so a write here would put test state into production data/. The disk
+    snapshot is snapshot_scan_funnel(), called once per real scan.
+    """
+    global _scan_started_at
     with _gate_counts_lock:
         _gate_counts.clear()
+        _gate_near_misses.clear()
+        # isoformat(), not strftime: a bare "2026-08-25T06:36:00" with no
+        # offset is parsed as LOCAL time by JavaScript's Date, shifting the
+        # panel's clock by the viewer's UTC offset. The "+00:00" suffix is what
+        # makes it unambiguous.
+        _scan_started_at = datetime.now(UTC).isoformat()
 
 
 def get_gate_counts() -> dict[str, int]:
+    """Rejection counts for the current scan, in declared pipeline order.
+
+    Ordered by SCAN_GATES so `dict(...)`/`Object.entries(...)` iteration and
+    JSON key order all follow the funnel. Any name not in SCAN_GATES sorts
+    after every declared gate, alphabetically, so it is visibly out of band
+    rather than wedged into an arbitrary position.
+    """
     with _gate_counts_lock:
-        return dict(_gate_counts)
+        raw = dict(_gate_counts)
+    return {
+        name: raw[name]
+        for name in sorted(raw, key=lambda n: (_GATE_ORDER.get(n, len(SCAN_GATES)), n))
+    }
+
+
+def get_scan_funnel(complete: bool = True) -> dict:
+    """The current scan's funnel: ordered gates, the last gate, closest misses.
+
+    `gates` lists only the gates that actually rejected something, in declared
+    order, each with its count and its human label. `last_gate` is the DEEPEST
+    declared gate that rejected anything -- the one that answers "what stopped
+    the survivors", which an unordered count map cannot. It is None when no
+    gate fired at all, and None when the only gates that fired are unknown to
+    SCAN_GATES (an unknown gate has no position, so calling it "last" would be
+    a guess); those appear in `unknown_gates` instead.
+
+    `near_misses` holds at most SCAN_NEAR_MISS_LIMIT candidates, ranked closest
+    first, and at most SCAN_NEAR_MISS_PER_GATE from any one gate. It covers
+    only gates with a single numeric threshold, so an empty list means "nothing
+    numeric came close", not "nothing was rejected" -- `total_rejected` is the
+    count that answers the second question.
+
+    `complete` is the caller's assertion that the scan loop actually finished.
+    run_trade_cycle swallows both a TimeoutError and a general exception from
+    its analysis pool and continues, so a funnel covering 120 of 590 markets is
+    otherwise indistinguishable from a full one -- an operator would read a
+    truncated gate distribution as a change in the market universe. It is
+    surfaced as `complete` rather than being allowed to suppress the snapshot,
+    since a partial funnel is still better than yesterday's.
+    """
+    with _gate_counts_lock:
+        raw = dict(_gate_counts)
+        flat = [m for bucket in _gate_near_misses.values() for m in bucket]
+        started_at = _scan_started_at
+    # Global top-K across gates, each gate having already been capped at
+    # SCAN_NEAR_MISS_PER_GATE on the way in. Ties break on gate name then
+    # ticker so the list is deterministic across runs rather than dependent on
+    # which pool worker happened to record first.
+    misses = sorted(flat, key=lambda m: (m["miss_frac"], m["gate"], m["ticker"]))[
+        :SCAN_NEAR_MISS_LIMIT
+    ]
+    declared = [n for n in raw if n in _GATE_ORDER]
+    last = max(declared, key=lambda n: _GATE_ORDER[n]) if declared else None
+    return {
+        "scan_started_at": started_at,
+        "complete": complete,
+        "gates": [
+            {
+                "name": g.name,
+                "label": g.label,
+                "stage": g.stage,
+                "order": i,
+                "count": raw[g.name],
+            }
+            for i, g in enumerate(SCAN_GATES)
+            if g.name in raw
+        ],
+        "last_gate": (
+            None
+            if last is None
+            else {
+                "name": last,
+                "label": _GATE_BY_NAME[last].label,
+                "stage": _GATE_BY_NAME[last].stage,
+                "order": _GATE_ORDER[last],
+            }
+        ),
+        "unknown_gates": {n: raw[n] for n in sorted(raw) if n not in _GATE_ORDER},
+        "near_misses": misses,
+        "near_miss_limit": SCAN_NEAR_MISS_LIMIT,
+        "total_rejected": sum(raw.values()),
+    }
+
+
+def snapshot_scan_funnel(complete: bool = True) -> bool:
+    """Write the just-finished scan's funnel to SCAN_FUNNEL_PATH.
+
+    Called once per scan by run_trade_cycle(), right where it reads
+    get_gate_counts(). It is a separate, explicitly-named call rather than a
+    side effect of get_gate_counts() precisely because that getter is called
+    from ~50 tests and from main.py -- a write hidden inside it would land in
+    the main clone's production data/ on every test run.
+
+    Never raises: a dashboard artifact must not be able to fail a scan.
+    Returns True when the file was written.
+    """
+    try:
+        payload = get_scan_funnel(complete=complete)
+        # isoformat() for the same reason as _scan_started_at: a naive
+        # timestamp reads as local time in the browser.
+        payload["snapshot_at"] = datetime.now(UTC).isoformat()
+        # retries=1: safe_io retries 3x with a 1s sleep between attempts, so a
+        # contended disk (Defender, OneDrive) can spend ~5s inside this call --
+        # and this runs on the scan path, before placement. One attempt caps it
+        # at the replace deadline (~1s). A dashboard artifact does not need
+        # retries: the next scan overwrites it wholesale either way.
+        #
+        # emergency_copy=False: this artifact is a disposable, fully
+        # re-derivable snapshot of one scan. The default emergency copy would
+        # drop a file into <project_root>/data/.emergency/, which cron.py's
+        # check_emergency_copies() re-alerts the operator about every cycle
+        # until it is deleted by hand -- a cost only worth paying for state
+        # that cannot be reconstructed.
+        _safe_io.atomic_write_json(
+            payload, SCAN_FUNNEL_PATH, retries=1, emergency_copy=False
+        )
+        return True
+    except Exception as exc:
+        _log.warning(
+            "snapshot_scan_funnel: could not write %s: %s", SCAN_FUNNEL_PATH, exc
+        )
+        return False
 
 
 # Primary circuit breaker: 3-model daily forecast (FORECAST_BASE).
@@ -204,6 +592,15 @@ _MOS_BLEND_WEIGHT: float = float(os.getenv("MOS_BLEND_WEIGHT", "0.20"))
 # inflates net_edge via small denominator and almost always loses.
 # Override via MIN_MARKET_PRICE env var (e.g. MIN_MARKET_PRICE=0.03).
 MIN_MARKET_PRICE: float = float(os.getenv("MIN_MARKET_PRICE", "0.05"))
+
+# Two gate thresholds that used to be bare literals inside analyze_trade. They
+# are constants now because the A12 funnel reports each rejection's margin
+# AGAINST its threshold: with the number written twice, tuning the comparison
+# and forgetting the `threshold=` argument would make the panel measure
+# closeness against a bar that is no longer the bar, and no test would catch
+# it.
+MAX_SPREAD_FRAC_OF_MID: float = 0.30
+MAX_MODEL_MKT_GAP: float = 0.25
 
 # Maximum ensemble sigma (°F) for above/below threshold markets.
 # Raw GFS ensemble spread (5–10°F) overstates 1-day uncertainty; NWS calibrated RMSE is
@@ -14406,7 +14803,11 @@ def analyze_trade(
     city = enriched.get("_city")
     hour = enriched.get("_hour")
 
-    _tkr = enriched.get("ticker", "?")
+    # `or "?"`, not .get("ticker", "?"): the default only applies when the KEY
+    # IS ABSENT, so a key present with value None yields None -- and
+    # _near_miss_entry drops a record whose ticker is None, silently losing a
+    # perfectly good margin. Same .get() trap this file documents elsewhere.
+    _tkr = enriched.get("ticker") or "?"
     # backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2: a real
     # per-hour model now exists (_analyze_hourly_trade(), branched to further
     # below, after the universal liquidity/spread/price gates but *before*
@@ -14695,7 +15096,17 @@ def analyze_trade(
                 data_age,
                 FORECAST_MAX_AGE_SECS,
             )
-            _count_gate("stale_data")
+            _count_gate(
+                "stale_data",
+                # _tkr, not enriched.get("ticker"): _near_miss_entry drops the
+                # record entirely when ticker is None, so an enriched dict
+                # without the key would silently lose a perfectly good margin
+                # while every other gate still reported theirs.
+                ticker=_tkr,
+                value=data_age,
+                threshold=FORECAST_MAX_AGE_SECS,
+                unit="s",
+            )
             return None
 
     condition = _parse_market_condition(enriched)
@@ -14737,7 +15148,13 @@ def analyze_trade(
                 _days_out_check,
                 HURRICANE_MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=HURRICANE_MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
     elif _is_storm_order:
         # target_date parses fine for this ticker family too (same "26DEC01"
@@ -14754,7 +15171,13 @@ def analyze_trade(
                 _days_out_check,
                 HURRICANE_MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=HURRICANE_MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
     elif _is_monthly_rain:
         # _rain_close_dt was already resolved (non-None) by the past-close
@@ -14768,7 +15191,13 @@ def analyze_trade(
                 _days_out_check,
                 RAIN_MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=RAIN_MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
     elif _is_monthly_snow:
         # _snow_close_dt was already resolved (non-None) by the past-close
@@ -14782,7 +15211,13 @@ def analyze_trade(
                 _days_out_check,
                 SNOW_MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=SNOW_MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
     elif _is_hurricane_next_event:
         # _hur_next_event_close_dt was already resolved (non-None) by the
@@ -14798,7 +15233,13 @@ def analyze_trade(
                 _days_out_check,
                 HURRICANE_MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=HURRICANE_MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
     elif _is_tornado_count:
         # _tornado_close_dt was already resolved (non-None) by the past-close
@@ -14829,7 +15270,13 @@ def analyze_trade(
                 _days_out_check,
                 MAX_DAYS_OUT,
             )
-            _count_gate("days_out")
+            _count_gate(
+                "days_out",
+                ticker=_tkr,
+                value=_days_out_check,
+                threshold=MAX_DAYS_OUT,
+                unit="days",
+            )
             return None
 
     # ── Liquidity gate: skip markets with no real open interest ──────────────
@@ -14853,7 +15300,13 @@ def analyze_trade(
             enriched.get("open_interest_fp"),
             enriched.get("open_interest"),
         )
-        _count_gate("liquidity")
+        _count_gate(
+            "liquidity",
+            ticker=_tkr,
+            value=_vol,
+            threshold=MIN_LIQUIDITY,
+            unit="contracts",
+        )
         return None
 
     # ── Volume gate: price is unreliable when trade count is tiny ────────────
@@ -14865,7 +15318,13 @@ def analyze_trade(
             _raw_vol,
             MIN_SIGNAL_VOLUME,
         )
-        _count_gate("min_volume")
+        _count_gate(
+            "min_volume",
+            ticker=_tkr,
+            value=_raw_vol,
+            threshold=MIN_SIGNAL_VOLUME,
+            unit="contracts",
+        )
         return None
 
     # ── Spread gate: skip illiquid markets with wide bid-ask spreads ─────────
@@ -14893,7 +15352,7 @@ def analyze_trade(
     _yes_bid = _prices.get("yes_bid", 0) or 0
     if _yes_ask > 0 and _yes_bid > 0:
         _mid = (_yes_ask + _yes_bid) / 2
-        if _mid > 0 and (_yes_ask - _yes_bid) / _mid > 0.30:
+        if _mid > 0 and (_yes_ask - _yes_bid) / _mid > MAX_SPREAD_FRAC_OF_MID:
             _log.debug(
                 "analyze_trade[%s]: gate=spread bid=%.3f ask=%.3f spread_pct=%.1f%%",
                 _tkr,
@@ -14901,8 +15360,14 @@ def analyze_trade(
                 _yes_ask,
                 (_yes_ask - _yes_bid) / _mid * 100,
             )
-            _count_gate("spread")
-            return None  # spread > 30% of mid — not tradeable
+            _count_gate(
+                "spread",
+                ticker=_tkr,
+                value=(_yes_ask - _yes_bid) / _mid,
+                threshold=MAX_SPREAD_FRAC_OF_MID,
+                unit="frac of mid",
+            )
+            return None  # spread over the fraction-of-mid cap — not tradeable
 
     # ── Extreme-price gate: skip near-certain markets ────────────────────────
     # When yes_ask < MIN_MARKET_PRICE the market prices the outcome as near-
@@ -14919,7 +15384,21 @@ def analyze_trade(
             _yes_ask,
             MIN_MARKET_PRICE,
         )
-        _count_gate("extreme_price")
+        # Folded onto ONE scale: miss_frac divides by the threshold, so
+        # reporting the raw ask against MIN_MARKET_PRICE on the low side and
+        # 1 - MIN_MARKET_PRICE on the high side divides by 0.05 and 0.95
+        # respectively -- a factor of 19. An ask of 0.99 (4c past the bar)
+        # then scored a SMALLER miss_frac than 0.045 (0.5c from it), and every
+        # high-side rejection was structurally capped at 0.05/0.95, so the
+        # near-miss list filled with 0.95-0.99 markets ranked backwards.
+        # Distance to the nearest edge of the tradeable band is symmetric.
+        _count_gate(
+            "extreme_price",
+            ticker=_tkr,
+            value=min(_yes_ask, 1 - _yes_ask),
+            threshold=MIN_MARKET_PRICE,
+            unit="dist to price band",
+        )
         return None
 
     # ── Time-of-day risk assessment ──────────────────────────────────────────
@@ -15263,7 +15742,13 @@ def analyze_trade(
                     _spread_f,
                     MAX_MODEL_SPREAD_F,
                 )
-                _count_gate("model_spread")
+                _count_gate(
+                    "model_spread",
+                    ticker=_tkr,
+                    value=_spread_f,
+                    threshold=MAX_MODEL_SPREAD_F,
+                    unit="°F",
+                )
                 return None
 
         # Apply per-city bias correction before probability calculation (B4: pass var).
@@ -15337,7 +15822,7 @@ def analyze_trade(
                 enriched.get("ticker", "?"),
                 len(temps),
             )
-            _count_gate("hourly_thin_ensemble")
+            _count_gate("daily_thin_ensemble")
             return None
         ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
         if ens_stats and ens_stats.get("degenerate"):
@@ -15346,7 +15831,7 @@ def analyze_trade(
                 enriched.get("ticker", "?"),
                 ens_stats["n"],
             )
-            _count_gate("degenerate_ens")
+            _count_gate("daily_degenerate_ens")
             return None
         # NWS vs ensemble disagreement — only valid for daily high/low markets where
         # forecast_temp_raw (NWS daily high) and ens_stats["mean"] (ensemble daily high) are
@@ -16134,14 +16619,24 @@ def analyze_trade(
         # informational advantage consistently outweighs our model's edge.
         # Gate on the pre-anchor gap so blending doesn't hide the disagreement.
         _model_mkt_gap = abs(_prob_before_anchor - _divergence_gate_market_prob)
-        if _model_mkt_gap > 0.25 and 0.05 < _divergence_gate_market_prob < 0.95:
+        if (
+            _model_mkt_gap > MAX_MODEL_MKT_GAP
+            and 0.05 < _divergence_gate_market_prob < 0.95
+        ):
             _log.debug(
-                "analyze_trade[%s]: model-market gap %.2f > 0.25 — skipping "
+                "analyze_trade[%s]: model-market gap %.2f > %.2f — skipping "
                 "(market has real-time observational advantage at this gap size)",
                 enriched.get("ticker", "?"),
                 _model_mkt_gap,
+                MAX_MODEL_MKT_GAP,
             )
-            _count_gate("model_mkt_gap")
+            _count_gate(
+                "model_mkt_gap",
+                ticker=_tkr,
+                value=_model_mkt_gap,
+                threshold=MAX_MODEL_MKT_GAP,
+                unit="prob",
+            )
             return None
 
         # Gate: below markets with extreme ensemble confidence (3/3 wrong historically).

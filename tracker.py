@@ -6512,6 +6512,581 @@ def get_edge_capture(
     }
 
 
+# ── A2: Brier decomposition + per-city x per-horizon breakout ────────────────
+#
+# The weekly Brier halt rule (cron.py's two-consecutive-weeks alert, and
+# detect_brier_drift) evaluates ONE blended number per week, so a single city
+# or horizon already past BRIER_ALERT_THRESHOLD can sit inside a passing
+# blend. This decomposes that blend far enough to see it.
+
+# Floor for reporting any statistic in a cell. Below this every number is
+# withheld and only `n`/`n_markets`/`flag` are populated -- structural, not a
+# UI convention, exactly as _brier_series_stats() does it: a caller cannot
+# render a number it was never given.
+CALIBRATION_MIN_SAMPLES = 10
+
+# Separate, higher precondition for emitting a degradation flag. A flag is a
+# claim about a specific city or horizon, and the significance test below
+# divides by sqrt(n) -- at n=10 a lucky run of easy markets produces a small
+# standard error and a confident-looking verdict from nothing. The count alone
+# is NOT the gate (see BRIER_POLICY_MIN_SAMPLES's comment for why a fixed
+# count cannot encode "is this difference real"); it is a precondition ON TOP
+# of the significance test.
+CALIBRATION_FLAG_MIN_SAMPLES = 30
+
+# Number of decile bins in the reliability diagram. 10 matches
+# get_model_calibration_buckets()'s bin EDGES, so a forecast falls in the
+# same-labelled bucket in both. It does NOT make the two agree: that function
+# reads multiday_predictions with no condition_type filter, no range guards
+# and an n<3 cutoff, while this one reads all horizons WITH the exclusion and
+# a CALIBRATION_MIN_SAMPLES floor. Both ship in the same /api/analytics
+# response, so each payload names its own population (see the `population`
+# key) and a panel must label the two tables differently rather than assume
+# one is a refinement of the other.
+CALIBRATION_BINS = 10
+
+
+def _lead_bucket(days_out: int | None) -> str | None:
+    """D+0 / D+1 / D+2+ / None, matching get_model_vs_market_brier()'s split.
+
+    Deliberately a separate helper rather than a shared one: A14's version is
+    nested inside get_model_vs_market_brier(), and hoisting it out would edit
+    a function this batch does not own. The two must stay in agreement -- a
+    test asserts they bucket identically.
+    """
+    if days_out is None:
+        return None
+    if days_out == 0:
+        return "D+0"
+    if days_out == 1:
+        return "D+1"
+    return "D+2+"
+
+
+def _bin_index(p: float) -> int:
+    """Decile index for a probability, clamped to the last bin at exactly 1.0.
+
+    min(CALIBRATION_BINS - 1, ...) is load-bearing: int(1.0 * 10) is 10, one
+    past the end of a 10-bin list. max(0, ...) is the other half: int(-0.1*10)
+    is -1, which indexes the LAST bin from the end rather than raising, so an
+    out-of-range probability would silently join the most confident bucket.
+    get_calibration_decomposition's SQL guards `our_prob BETWEEN 0 AND 1`, but
+    _murphy_decomposition is a module-level function with no guard of its own.
+    """
+    return max(0, min(CALIBRATION_BINS - 1, int(p * CALIBRATION_BINS)))
+
+
+def _murphy_decomposition(pairs: list[tuple[float, int]]) -> dict:
+    """Reliability / resolution / uncertainty for one set of (prob, outcome).
+
+    The three terms whose combination is the Brier score already reported:
+
+      reliability -- mean squared gap between what we said and what happened,
+                     within each forecast bin. Lower is better; this is the
+                     term temperature scaling moves
+      resolution  -- how far each bin's observed rate sits from the overall
+                     base rate. HIGHER is better; it is the only term that
+                     rewards the forecast for discriminating at all
+      uncertainty -- o_bar * (1 - o_bar) of the OUTCOMES themselves (o_bar is
+                     the observed base rate; `p` denotes a forecast
+                     everywhere else in this module). Nothing
+                     the model does changes it; it is the difficulty of the
+                     sample
+
+    The textbook identity BS = reliability - resolution + uncertainty is exact
+    only when every forecast inside a bin is identical. With 10 decile bins it
+    is not, so `residual` is reported explicitly.
+
+    `residual` is derived from the ROUNDED terms and the rounded Brier, not
+    from their full-precision originals, so the four numbers a panel actually
+    displays sum to the Brier it actually displays. Deriving it from the
+    unrounded values instead left the displayed figures off by 1e-6 on the
+    live pooled cell (0.024264 - 0.012660 + 0.248231 - 0.000217 = 0.259618 vs
+    a reported 0.259619) -- small, but it is exactly the "why do these three
+    numbers not add up" question the residual exists to answer.
+
+    Returns every value as None when `pairs` is empty -- there is no base rate
+    to take.
+    """
+    n = len(pairs)
+    if n == 0:
+        return {
+            "reliability": None,
+            "resolution": None,
+            "uncertainty": None,
+            "residual": None,
+        }
+
+    base = sum(y for _, y in pairs) / n
+    bins: list[list[tuple[float, int]]] = [[] for _ in range(CALIBRATION_BINS)]
+    for p, y in pairs:
+        bins[_bin_index(p)].append((p, y))
+
+    reliability = 0.0
+    resolution = 0.0
+    for entries in bins:
+        if not entries:
+            continue
+        k = len(entries)
+        f_bar = sum(p for p, _ in entries) / k
+        o_bar = sum(y for _, y in entries) / k
+        reliability += k * (f_bar - o_bar) ** 2
+        resolution += k * (o_bar - base) ** 2
+    reliability /= n
+    resolution /= n
+    uncertainty = base * (1 - base)
+    brier = sum((p - y) ** 2 for p, y in pairs) / n
+    rel_r = round(reliability, 6)
+    res_r = round(resolution, 6)
+    unc_r = round(uncertainty, 6)
+    return {
+        "reliability": rel_r,
+        "resolution": res_r,
+        "uncertainty": unc_r,
+        # Rounded inputs, rounded output: see the docstring. _calibration_cell
+        # rounds `brier` to the same 6 places, so the payload reconciles to
+        # within float addition rather than to within display rounding.
+        "residual": round(round(brier, 6) - (rel_r - res_r + unc_r), 6),
+    }
+
+
+def _calibration_cell(
+    rows: list[sqlite3.Row],
+    min_samples: int,
+    flag_min_samples: int,
+    halt_threshold: float,
+) -> dict:
+    """Brier + decomposition + degradation flag for one city/horizon cell.
+
+    Each row must carry `ticker`, `our_prob` and `settled_yes`.
+
+    Below `min_samples` every statistic is None and only `n`, `n_markets` and
+    `flag` are populated -- same structural withholding as
+    _brier_series_stats(), for the same reason.
+
+    `flag` is display-only. Nothing in the sizing, gating, order or halt path
+    reads it; the actual halt rule is cron.py's two-consecutive-weeks check on
+    get_brier_over_time(), unchanged by this function. Its vocabulary:
+
+      not measured   -- fewer than min_samples rows; no statistics computed
+      below flag floor -- measured, but under flag_min_samples rows, so the
+                       standard error is not trusted enough to make a claim
+                       about this specific cell
+      within threshold -- the cell's Brier is at or below halt_threshold
+      inconclusive   -- above halt_threshold, but not by more than
+                       BRIER_POLICY_Z standard errors: consistent with noise
+      degraded       -- above halt_threshold by more than BRIER_POLICY_Z
+                       standard errors
+
+    "below flag floor" and "not measured" are deliberately distinct labels:
+    the first cell HAS numbers and the second does not, and collapsing them
+    would let a panel hide a rendered Brier behind a "no data" caption.
+    """
+    n = len(rows)
+    n_markets = len({r["ticker"] for r in rows})
+    if n < max(1, min_samples):
+        return {
+            "n": n,
+            "n_markets": n_markets,
+            "brier": None,
+            "brier_se": None,
+            "bias": None,
+            "reliability": None,
+            "resolution": None,
+            "uncertainty": None,
+            "residual": None,
+            "flag": "not measured",
+        }
+
+    pairs = [(r["our_prob"], r["settled_yes"]) for r in rows]
+    losses = [(p - y) ** 2 for p, y in pairs]
+    brier = sum(losses) / n
+    # Sample standard error of the MEAN loss. n >= min_samples >= 1 here, but
+    # n == 1 still has no (n-1) denominator, so the SE is withheld rather than
+    # faked -- and a cell with no SE can never be flagged.
+    se = None
+    if n >= 2:
+        var = sum((x - brier) ** 2 for x in losses) / (n - 1)
+        se = (var / n) ** 0.5
+
+    # max(1, ...) here, matching what the payload echoes: applying the raw
+    # argument while reporting the floored one made the two disagree for
+    # flag_min_samples <= 0. No behavioural difference today (the early return
+    # above guarantees n >= 1), which is exactly why it needs to be written
+    # once rather than assumed.
+    if n < max(1, flag_min_samples) or se is None:
+        flag = "below flag floor"
+    elif brier <= halt_threshold:
+        flag = "within threshold"
+    elif brier - BRIER_POLICY_Z * se > halt_threshold:
+        flag = "degraded"
+    else:
+        flag = "inconclusive"
+
+    return {
+        "n": n,
+        "n_markets": n_markets,
+        "brier": round(brier, 6),
+        "brier_se": None if se is None else round(se, 6),
+        # Positive = we forecast YES more often than it happened.
+        "bias": round(sum(p - y for p, y in pairs) / n, 6),
+        **_murphy_decomposition(pairs),
+        "flag": flag,
+    }
+
+
+def get_calibration_decomposition(
+    min_samples: int = CALIBRATION_MIN_SAMPLES,
+    flag_min_samples: int = CALIBRATION_FLAG_MIN_SAMPLES,
+    weeks: int = 6,
+) -> dict:
+    """A2: decompose the blended Brier the weekly halt rule fires on.
+
+    The halt rule (cron.py) alerts when get_brier_over_time()'s weekly value
+    exceeds utils.BRIER_ALERT_THRESHOLD two weeks running. That value is a
+    single blend across every city and every horizon >= 1, so one bad city can
+    sit inside a passing number. This returns the same population, cut three
+    ways, plus the Murphy decomposition of the pooled score.
+
+    Scores `our_prob`, not any per-trade entry price: `our_prob` is the column
+    the halt rule itself reads, which is what makes these numbers reconcilable
+    with it rather than a second, differently-blended answer on the same page.
+    Both are YES-space, and outcomes.settled_yes is 1 when YES won.
+
+    Joins outcomes_valid (never raw outcomes) and applies
+    _condition_type_not_in_sql(_excluded_brier_condition_types()), matching
+    every other Brier-quality query in this module -- 'between' in particular
+    has a structurally different calibration profile and would distort a
+    shared aggregate.
+
+    Returns:
+      halt_rule    -- what the live rule actually thresholds on, so the panel
+                      can state it rather than the reader assuming
+      bins         -- CALIBRATION_BINS reliability-diagram bins over the whole
+                      filtered population, each with its own sample count. A
+                      bin below `min_samples` reports its count and withholds
+                      its rates, for the same reason a cell does
+      pooled       -- one cell over the whole filtered population
+      by_city_lead -- one cell per (city, D+0/D+1/D+2+) that has any rows, plus
+                      `in_halt_population`, which is False for every D+0 row:
+                      the halt rule reads the multiday_predictions view, which
+                      drops days_out = 0 entirely
+      trend        -- the halt rule's OWN weekly series for the last `weeks`
+                      weeks, with the per-week sample count get_brier_over_time
+                      does not expose, plus a `thin` flag per week. On live
+                      data those counts run 2-15 rows per week, which is the
+                      context a weekly number crossing 0.22 has to be read in
+      pooled_halt_population
+                   -- the same cell over the halt rule's own population only
+                      (days_out IS NULL OR >= 1). `pooled` spans every horizon,
+                      so BRIER_ALERT_THRESHOLD does not govern it and its flag
+                      must not be read as a halt-rule verdict; this one may be.
+                      `in_halt_population` describes ROW MEMBERSHIP, not rule
+                      equivalence -- the live rule is a weekly mean over a
+                      3-week window, this is an all-time pooled Brier
+      n_no_city / n_no_lead
+                   -- rows that could not be placed in the table. They OVERLAP
+                      (a row can lack both), so they must not be summed;
+                      n_unplaceable is the deduplicated total that reconciles
+                      the table against `pooled`
+      trend_start  -- the cutoff the trend query actually used
+      trend_rows_excluded
+                   -- rows the trend's range guards dropped that
+                      get_brier_over_time would still have scored. Non-zero
+                      means the panel and the alert are scoring different rows
+
+    Small samples are the normal case here, not an edge case: as of
+    2026-08-25 the largest (city, lead) cell on live data holds 14 rows, and
+    11 inside the halt rule's own days_out >= 1 population -- so essentially
+    every cell reports "not measured" or "below flag floor" and no cell can
+    flag. That is the honest answer, and it is why the flag floor is a
+    precondition rather than the whole test.
+    """
+    from utils import BRIER_ALERT_THRESHOLD
+
+    init_db()
+    excl_sql, excl_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT p.ticker, p.city, p.our_prob, p.days_out, o.settled_yes
+            FROM predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              -- Range guards, not paranoia: SQLite stores +/-Infinity as a
+              -- REAL (only NaN is coerced to NULL), so one poisoned row would
+              -- reach jsonify() and emit bare `Infinity`, which RFC 8259
+              -- forbids and JSON.parse rejects -- killing the whole panel
+              -- rather than one cell.
+              AND p.our_prob BETWEEN 0 AND 1
+              AND o.settled_yes IN (0, 1)
+              -- Every writer clamps days_out with max(0, ...), so a negative
+              -- value means the row is malformed. Dropped in SQL so it cannot
+              -- inflate `pooled` either.
+              AND (p.days_out IS NULL OR p.days_out >= 0)
+              AND {excl_sql}
+            """,
+            excl_params,
+        ).fetchall()
+
+    threshold = float(BRIER_ALERT_THRESHOLD)
+
+    # Reliability diagram over the whole filtered population.
+    binned: list[list[tuple[float, int]]] = [[] for _ in range(CALIBRATION_BINS)]
+    for r in rows:
+        binned[_bin_index(r["our_prob"])].append((r["our_prob"], r["settled_yes"]))
+    bins = []
+    for i, entries in enumerate(binned):
+        lo = i * 100 // CALIBRATION_BINS
+        hi = (i + 1) * 100 // CALIBRATION_BINS
+        thin = len(entries) < max(1, min_samples)
+        bins.append(
+            {
+                "range": f"{lo}-{hi}%",
+                "n": len(entries),
+                "p_mean": (
+                    None
+                    if thin
+                    else round(sum(p for p, _ in entries) / len(entries), 6)
+                ),
+                "observed": (
+                    None
+                    if thin
+                    else round(sum(y for _, y in entries) / len(entries), 6)
+                ),
+            }
+        )
+
+    # Per (city, lead). Rows with no city or no horizon cannot be placed in the
+    # table; they are counted so the table's own totals are auditable against
+    # `pooled` rather than silently short. The two reasons are counted
+    # SEPARATELY because they differ where it matters: multiday_predictions is
+    # `days_out IS NULL OR days_out >= 1`, so a no-horizon row is INSIDE the
+    # halt rule's population while being invisible in this table, whereas a
+    # no-city row's membership depends only on its own days_out.
+    # A row can be unplaceable for BOTH reasons. n_no_city and n_no_lead each
+    # count every row with that defect, so they OVERLAP and must not be summed;
+    # n_unplaceable is the deduplicated total that reconciles against pooled.
+    cells: dict[tuple[str, str], list] = {}
+    no_city = 0
+    no_lead = 0
+    unplaceable = 0
+    for r in rows:
+        lead = _lead_bucket(r["days_out"])
+        city = r["city"]
+        if lead is None:
+            no_lead += 1
+        if city is None:
+            no_city += 1
+        # Tested against the two locals rather than a pair of booleans so both
+        # narrow to non-None for the setdefault below.
+        if lead is None or city is None:
+            unplaceable += 1
+            continue
+        cells.setdefault((city, lead), []).append(r)
+
+    by_city_lead = [
+        {
+            "city": city,
+            "lead": lead,
+            # The halt rule reads multiday_predictions, which is
+            # `days_out IS NULL OR days_out >= 1` -- so a D+0 cell is invisible
+            # to it no matter what it says. On live data D+0 is the majority of
+            # settled rows.
+            "in_halt_population": lead != "D+0",
+            **_calibration_cell(subset, min_samples, flag_min_samples, threshold),
+        }
+        for (city, lead), subset in sorted(cells.items())
+    ]
+
+    trend, trend_rows_excluded, trend_cutoff = _halt_rule_weekly_series(
+        weeks, excl_sql, excl_params, min_samples
+    )
+
+    # `pooled` spans every horizon, so BRIER_ALERT_THRESHOLD -- which the live
+    # rule only ever applies to days_out >= 1 -- does not govern it, and its
+    # flag must not be read as a halt-rule verdict. The multiday-only sibling
+    # beside it IS the halt rule's own population, so the two together let a
+    # panel show the whole corpus AND the comparable number without a reader
+    # having to know which is which. On live data (2026-08-25) pooled reads
+    # n=214 brier=0.259619 "degraded" while the sibling reads n=94
+    # brier=0.255538 -- same verdict, very different denominator.
+    halt_rows = [r for r in rows if r["days_out"] is None or r["days_out"] >= 1]
+
+    return {
+        "min_samples": max(1, min_samples),
+        # Floored the same way min_samples is: echoing the raw argument would
+        # misdescribe a flag_min_samples=0 call, which max(1, ...) rejects.
+        "flag_min_samples": max(1, flag_min_samples),
+        # ONE-sided: the flag asks "is this cell WORSE than the threshold",
+        # which has a direction, and BRIER_POLICY_Z is the one-sided 95%
+        # critical value. Named explicitly so a panel does not draw a
+        # two-sided band from it.
+        "confidence": 0.95,
+        "confidence_sided": "one",
+        # What THIS payload is computed over, named explicitly because
+        # /api/analytics also carries model_calibration_buckets and
+        # city_calibration, which read a different population (multiday only,
+        # no condition_type filter) and will legitimately disagree cell for
+        # cell -- on live data Miami shows a Brier there and is absent here.
+        # A panel must label the tables, not assume one refines the other.
+        "population": (
+            "predictions (all horizons), outcomes_valid, condition_type-filtered"
+        ),
+        "halt_rule": {
+            "threshold": threshold,
+            # cron.py reads get_brier_over_time(weeks=3) and tests the last TWO
+            # ENTRIES of that list. Empty weeks produce no entry, so those two
+            # need not be adjacent calendar weeks -- at 2-15 settled rows per
+            # week a gap is routine, and "consecutive" would overstate it.
+            "trigger": "the two most recent weeks that have any settled rows",
+            "alert_window_weeks": 3,
+            # detect_brier_drift() reads the SAME function at weeks=24 and
+            # compares half-averages -- a third window on the same series, not
+            # something this payload's trend represents.
+            "drift_window_weeks": 24,
+            # These are the two facts that let one bad city hide.
+            "population": "multiday_predictions (days_out >= 1), all cities pooled",
+            "grouping": "ISO-ish week of predicted_at (strftime '%Y-W%W')",
+        },
+        "bins": bins,
+        "pooled": {
+            "in_halt_population": False,
+            **_calibration_cell(rows, min_samples, flag_min_samples, threshold),
+        },
+        "pooled_halt_population": {
+            "in_halt_population": True,
+            **_calibration_cell(halt_rows, min_samples, flag_min_samples, threshold),
+        },
+        "by_city_lead": by_city_lead,
+        # These two OVERLAP (a row can have neither a city nor a horizon) --
+        # n_unplaceable is the deduplicated count that reconciles the table
+        # against pooled.
+        "n_no_city": no_city,
+        "n_no_lead": no_lead,
+        "n_unplaceable": unplaceable,
+        "trend": trend,
+        "trend_weeks": max(1, weeks),
+        # The cutoff the trend query actually used, not a second clock
+        # reading: same instant, and full 'YYYY-MM-DD HH:MM:SS' precision so
+        # the label matches the window rather than approximating it.
+        "trend_start": trend_cutoff,
+        # Rows the trend's range guards dropped that get_brier_over_time -- the
+        # halt rule's own query -- would still have scored. Non-zero means the
+        # panel and the alert are looking at different rows, which is exactly
+        # when a green trend can sit beside a firing halt.
+        "trend_rows_excluded": trend_rows_excluded,
+    }
+
+
+def _halt_rule_weekly_series(
+    weeks: int, excl_sql: str, excl_params: list[str], min_samples: int
+) -> tuple[list[dict], int, str]:
+    """The halt rule's own weekly Brier series, plus the per-week row count.
+
+    Mirrors get_brier_over_time(weeks, min_days_out=1) -- same
+    multiday_predictions view, same strftime('%Y-W%W') grouping, same
+    condition-type exclusion, same outcomes_valid join -- and adds `n`, which
+    that function does not return. The count is the point: a weekly value
+    computed from 2 settled rows crosses 0.22 for reasons that have nothing to
+    do with model quality, and the halt rule cannot see that.
+
+    Two deliberate divergences, both reported rather than hidden:
+
+    1. Range guards (`our_prob BETWEEN 0 AND 1`, `settled_yes IN (0, 1)`) that
+       get_brier_over_time does not apply. SQLite stores +/-Infinity as a REAL,
+       and this series is jsonify()'d -- one poisoned row emits a bare
+       `Infinity`, which RFC 8259 forbids and JSON.parse rejects, killing the
+       panel. But dropping such a row silently is its own failure mode: an
+       infinite our_prob makes get_brier_over_time return `inf` for that week,
+       which trips cron's `all(b > threshold)` test and FIRES the halt alert,
+       while this trend would still show a healthy series -- a green panel
+       beside a halted bot. So the number of rows the guards dropped is
+       returned as the second element and surfaced as `trend_rows_excluded`;
+       non-zero means the panel and the alert are scoring different rows.
+    2. `weeks` is floored at 1 here. get_brier_over_time does not floor it, so
+       a zero or negative argument there yields a future cutoff and an empty
+       series; the payload echoes the floored value actually used.
+
+    Weekly values carry NO sample floor, unlike every other statistic in this
+    region. That is the one deliberate exception to the module's structural-
+    withholding convention: withholding a weekly Brier would break
+    reconciliation with the halt rule, which computes it whatever the count.
+    Each week carries `thin` (n < min_samples) instead, so a panel can style it
+    without the number being unavailable. On live data four of five weeks are
+    thin.
+
+    A malformed predicted_at yields week = NULL here, exactly as it does in
+    get_brier_over_time. Deliberately NOT guarded: filtering it here alone
+    would desynchronise the two, and the shared fix belongs with
+    get_brier_over_time, which feeds the live halt rule and is outside this
+    batch's scope.
+    """
+    # SQLite-format cutoff, not Python isoformat: predicted_at is written by
+    # SQLite's datetime('now') as 'YYYY-MM-DD HH:MM:SS', and an isoformat
+    # cutoff ('...T...+00:00') compares lexicographically above every row on
+    # the boundary date (' ' < 'T'), silently dropping that whole day. Same
+    # reasoning as get_brier_over_time()'s own cutoff.
+    cutoff = (datetime.now(UTC) - timedelta(weeks=max(1, weeks))).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    guards = "p.our_prob BETWEEN 0 AND 1 AND o.settled_yes IN (0, 1)"
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT strftime('%Y-W%W', p.predicted_at) AS week,
+                   COUNT(*) AS n,
+                   AVG((p.our_prob - o.settled_yes) * (p.our_prob - o.settled_yes))
+                       AS brier
+            FROM multiday_predictions p
+            JOIN outcomes_valid o ON o.ticker = p.ticker
+            WHERE p.predicted_at >= ?
+              AND p.our_prob IS NOT NULL
+              AND {guards}
+              AND {excl_sql}
+            GROUP BY week
+            ORDER BY week
+            """,
+            (cutoff, *excl_params),
+        ).fetchall()
+        # Counted with the SAME predicate set minus the guards, so the delta is
+        # attributable to the guards alone rather than to a drifting WHERE
+        # clause that happens to differ in some other way too.
+        excluded = con.execute(
+            f"""
+            SELECT COUNT(*) AS n
+            FROM multiday_predictions p
+            JOIN outcomes_valid o ON o.ticker = p.ticker
+            WHERE p.predicted_at >= ?
+              AND p.our_prob IS NOT NULL
+              AND NOT ({guards})
+              AND {excl_sql}
+            """,
+            (cutoff, *excl_params),
+        ).fetchone()["n"]
+    floor = max(1, min_samples)
+    return (
+        [
+            {
+                "week": r["week"],
+                "n": r["n"],
+                "brier": round(r["brier"], 6),
+                "thin": r["n"] < floor,
+            }
+            for r in rows
+        ],
+        excluded,
+        # The cutoff ACTUALLY used, returned rather than recomputed by the
+        # caller: a second datetime.now(UTC) there is a different instant, and
+        # taking .date() of it also drops the time of day, so the payload would
+        # claim a window start that excludes rows earlier in that same day --
+        # and would land a day off entirely across UTC midnight.
+        cutoff,
+    )
+
+
 def get_history(limit: int = 50) -> list[dict]:
     """Return recent predictions with outcomes where available."""
     init_db()
@@ -12271,7 +12846,142 @@ def get_analysis_bias() -> float | None:
     return round(sum(bias_values) / len(bias_values), 6)
 
 
-# ── #84 per-city model attribution ────────────────────────────────────────────
+# ── A12: scanner activity baseline (batch-65) ─────────────────────────────────
+
+
+def get_scan_activity(days: int = 30) -> dict:
+    """Per-day scanner output for the last `days` days, ending today (UTC).
+
+    Exists so a quiet day can be read against its own baseline: "no signals
+    today" means something very different against a month of 25 signal-days
+    than against a month of 3.
+
+    Two counts per day, and the distinction between them is the whole point:
+
+      reached_analysis -- markets that survived EVERY analyze_trade gate and
+                          produced a real analysis, from `analysis_attempts`.
+                          NOT the number of markets scanned: trade_cycle only
+                          appends to `all_results` (which cron rebuilds this
+                          table from) inside its `if not analysis` -> continue
+                          branch's fall-through, so a market rejected by any
+                          of weather_markets.SCAN_GATES never lands here. On
+                          live data this runs 0-45/day against ~590 markets
+                          per scan
+      signals          -- markets that reached the placement loop and were
+                          logged as a prediction (placed, or shadow-logged
+                          because a halt or cap stopped them), from
+                          `predictions`
+
+    **This cannot tell an outage from a fully-gated day, and does not claim
+    to.** Neither table gets a row when the scanner runs and every market is
+    rejected at, say, `extreme_price` -- which is a routine outcome, not a
+    hypothetical: the 2026-08-25 06:36 scan rejected 549 of 590 markets at the
+    gates. A day with both counts at zero is therefore reported as
+    "no output", NOT as "no scan". Calling it an outage would be the exact
+    inversion this function exists to prevent, and nothing currently persisted
+    records per-day that a scan happened at all (backlog.txt "NOTHING RECORDS
+    PER-DAY THAT A SCAN RAN"). For the CURRENT scan, weather_markets'
+    snapshot_scan_funnel() artifact answers it directly: a non-zero
+    total_rejected proves the scanner ran.
+
+    `reached_analysis` is also NOT a superset of `signals`, so the two must
+    not be drawn as one funnel. `analysis_attempts` upserts on
+    (ticker, target_date), so re-analysing the same market on a later day
+    moves that row's `analyzed_at` forward instead of adding one -- on live
+    data `reached_analysis < signals` on 4 of the last 32 days, twice with
+    `reached_analysis == 0` while `signals > 0`.
+
+    Neither count is scanner-exclusive. `main.py`'s interactive paths write
+    to both tables -- a manual analyze logs a prediction, and cmd_order logs
+    an analysis attempt AND a prediction -- so a day on which the operator ran
+    a few CLI lookups and the cron never fired still reads as a "signals" day.
+    Neither table carries a provenance column to separate them.
+
+    Both counts are unfiltered by condition_type and unjoined to outcomes:
+    this measures scanner OUTPUT, not forecast quality, so the Brier-family
+    exclusions (which exist to keep a shared quality aggregate comparable)
+    would only hide real output. Every day in the window is present in
+    `days_series`, including days with no rows at all -- a caller must not
+    have to infer a gap from a missing key.
+    """
+    init_db()
+    # Window is [today - (days-1), today] inclusive, so days=1 means today
+    # only. Built in Python and passed as a bound parameter rather than via
+    # SQLite's DATE('now', ...) so the boundary is computed against UTC
+    # explicitly and stays monkeypatchable.
+    window = max(1, int(days))
+    today = _utc_today()
+    start = today - timedelta(days=window - 1)
+    start_s = start.isoformat()
+
+    with _conn() as con:
+        # DATE() on the raw column, not a lexicographic range on the string:
+        # predicted_at/analyzed_at are written in SQLite's
+        # 'YYYY-MM-DD HH:MM:SS' shape, and DATE() parses both that and the
+        # ISO-T shape older rows may still carry. This defeats any index and
+        # scans both tables; at a few hundred rows each that is ~0.3 ms, but a
+        # 100x-larger table on a polled dashboard endpoint would want a stored
+        # date column instead.
+        attempt_rows = con.execute(
+            "SELECT DATE(analyzed_at) AS d, COUNT(*) AS n "
+            "FROM analysis_attempts "
+            "WHERE analyzed_at IS NOT NULL AND DATE(analyzed_at) >= ? "
+            "GROUP BY d",
+            (start_s,),
+        ).fetchall()
+        pred_rows = con.execute(
+            "SELECT DATE(predicted_at) AS d, COUNT(*) AS n "
+            "FROM predictions "
+            "WHERE predicted_at IS NOT NULL AND DATE(predicted_at) >= ? "
+            "GROUP BY d",
+            (start_s,),
+        ).fetchall()
+
+    # A row whose timestamp is in the FUTURE relative to `today` (clock skew, a
+    # hand-inserted fixture) would otherwise be counted in the totals while
+    # having no slot in days_series, making the two disagree. Both are built
+    # from the same dict lookups over the same explicit date list instead.
+    attempts = {r["d"]: r["n"] for r in attempt_rows if r["d"]}
+    preds = {r["d"]: r["n"] for r in pred_rows if r["d"]}
+
+    series = []
+    for i in range(window):
+        d = (start + timedelta(days=i)).isoformat()
+        reached = attempts.get(d, 0)
+        signals = preds.get(d, 0)
+        if signals > 0:
+            state = "signals"
+        elif reached > 0:
+            state = "analysed, no signals"
+        else:
+            state = "no output"
+        series.append(
+            {
+                "date": d,
+                "reached_analysis": reached,
+                "signals": signals,
+                "state": state,
+            }
+        )
+
+    return {
+        "days": window,
+        "start_date": start_s,
+        "end_date": today.isoformat(),
+        "days_series": series,
+        "signal_days": sum(1 for d in series if d["state"] == "signals"),
+        # Markets got through the gates but none became a signal -- an
+        # edge/threshold story.
+        "analysed_no_signal_days": sum(
+            1 for d in series if d["state"] == "analysed, no signals"
+        ),
+        # Nothing was recorded at all. Ambiguous BY CONSTRUCTION between "the
+        # scanner did not run" and "it ran and gated everything"; see the
+        # docstring. Named for what was observed, not for a cause.
+        "no_output_days": sum(1 for d in series if d["state"] == "no output"),
+        "total_signals": sum(d["signals"] for d in series),
+        "total_reached_analysis": sum(d["reached_analysis"] for d in series),
+    }
 
 
 def get_model_attribution_by_city() -> dict[str, dict[str, float]]:

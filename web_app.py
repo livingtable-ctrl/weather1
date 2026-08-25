@@ -33,6 +33,7 @@ from paths import (
     LOCK_PATH,
     PAPER_TRADES_PATH,
     RUNNING_FLAG_PATH,
+    SCAN_FUNNEL_PATH,
     SIGNALS_CACHE_PATH,
     TEMPERATURE_SCALE_PATH,
 )
@@ -201,7 +202,13 @@ def _req_ledger() -> dict:
     # Deliberately not `id(request)`: an id is only unique among LIVE objects,
     # so a freed request's address can be reused by a later one and produce a
     # false hit -- the exact bug this guard exists to prevent.
-    req = request._get_current_object()
+    # The ignore below is a STUB gap, not a suppressed bug: `request` is a
+    # werkzeug LocalProxy at runtime and _get_current_object() is a real method
+    # on it, but flask's stubs annotate the name as the PROXIED Request type,
+    # which has no such attribute. Unwrapping the proxy is load-bearing here --
+    # see the comment above: the cache key must be the request object itself,
+    # and comparing proxies would compare whatever each `is` resolved to.
+    req = request._get_current_object()  # type: ignore[attr-defined]
     cached = g.get(_REQ_LEDGER_KEY)
     if cached is not None and cached[0] is req:
         return cached[1]
@@ -691,6 +698,9 @@ def _build_app(client):
                 # path reads it (batch-58's pre_live_exit_check owns when a live
                 # exit may fire, and this analysis is not one of its inputs).
                 "get_exit_timing_advantage",
+                # A2 (batch-65): the per-city x per-horizon decomposition of
+                # the blend the weekly Brier halt rule fires on.
+                "get_calibration_decomposition",
                 "get_model_brier_scores",
                 "get_optimal_threshold",
                 "get_analysis_bias",
@@ -2638,6 +2648,261 @@ setInterval(() => {{
                     "filters": stats.get("filters", {}),
                     "gate_counts": stats.get("gate_counts", {}),
                     "total_scanned": stats.get("total_scanned", 0),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    # Same 4-hour bar /api/health/data-consistency uses for signals_cache: one
+    # full cron cycle. A funnel older than that means the scanner has missed a
+    # cycle, which is exactly when a panel must not present it as current.
+    SCAN_FUNNEL_STALE_SECS = 4 * 60 * 60
+
+    @app.route("/api/scanner-funnel")
+    def api_scanner_funnel():
+        """A12: why the last completed scan produced the signals it did.
+
+        Answers "why are there no signals today", which /api/scan-stats cannot:
+        that endpoint returns the gate counts as an unordered map, and a funnel
+        without an order cannot say which gate ran LAST -- the one fact behind
+        "the survivors were stopped here, not by the model".
+
+        Six blocks:
+
+          pipeline      -- every gate in weather_markets.SCAN_GATES, in declared
+                           order, with its human label and this scan's count
+                           (0 for gates that did not fire). The full pipeline,
+                           not just what fired, so a funnel can be drawn
+          last_gate     -- the deepest declared gate that rejected anything
+          near_misses   -- at most weather_markets.SCAN_NEAR_MISS_LIMIT
+                           candidates, closest first. Only gates with a single
+                           numeric threshold contribute, so an empty list means
+                           "nothing numeric came close", not "nothing was
+                           rejected" -- read total_rejected for that
+          sources       -- live circuit-breaker state per forecast source
+          activity      -- per-day scanned/signalled counts for the last 30
+                           days, so today can be read against its own baseline
+
+        The funnel half is read from the file weather_markets.snapshot_scan_
+        funnel() writes at the end of each scan; the dashboard runs in a
+        different process from cron, so in-memory counters are not visible here.
+
+        SCOPE: `pipeline` is analyze_trade()'s own gates and nothing more. The
+        scanned total and the post-analysis edge/threshold stage (trade_cycle's
+        `dbg` counters) both live in /api/scan-stats, and the placement-time
+        risk limits (MAX_POSITIONS_PER_DATE and friends, in order_executor) are
+        counted nowhere yet. Neither is mirrored here: duplicating a number
+        across two endpoints is how they start to disagree.
+        """
+        try:
+            import math as _math
+
+            import weather_markets as _wm
+
+            def _no_bare_constant(name):
+                raise ValueError(f"bare JSON constant {name!r} in scan funnel")
+
+            snapshot: dict = {}
+            if SCAN_FUNNEL_PATH.exists():
+                try:
+                    with open(SCAN_FUNNEL_PATH, encoding="utf-8") as _f:
+                        # parse_constant rejects bare Infinity/NaN, which
+                        # Python's json ACCEPTS by default but jsonify would
+                        # then re-emit -- RFC 8259 forbids them and JSON.parse
+                        # rejects them, so one hand-edited value would kill the
+                        # whole panel. Raising here degrades to "no scan yet",
+                        # which the except below already logs.
+                        _loaded = json.load(_f, parse_constant=_no_bare_constant)
+                    # A hand-edited or truncated artifact must degrade to "no
+                    # scan yet", not to an AttributeError on the first .get().
+                    if isinstance(_loaded, dict):
+                        snapshot = _loaded
+                except Exception as _snap_exc:
+                    _log.warning(
+                        "api/scanner-funnel: could not read %s: %s",
+                        SCAN_FUNNEL_PATH,
+                        _snap_exc,
+                    )
+
+            # Every field below is defensive about the file's SHAPE, not just
+            # its syntax. atomic_write_json makes truncation unreachable, so the
+            # live routes here are a hand-edited artifact and a snapshot written
+            # by an older/newer version of this code -- and a 500 on either
+            # takes down the whole panel rather than one block of it.
+            def _int_or_zero(v) -> int:
+                # OverflowError is neither TypeError nor ValueError, and
+                # int(float("inf")) raises exactly that -- reachable from a
+                # snapshot holding 1e400, which is an ordinary JSON number.
+                try:
+                    return int(v)
+                except (TypeError, ValueError, OverflowError):
+                    return 0
+
+            def _finite(v):
+                """Drop any non-finite number on the way OUT.
+
+                parse_constant (above) only intercepts the bare tokens
+                Infinity/-Infinity/NaN. `1e400` is a syntactically ordinary
+                JSON number that json.load happily parses to float("inf"), so
+                it slips past the reader entirely -- and jsonify would then
+                re-emit a bare `Infinity`, which RFC 8259 forbids and
+                JSON.parse rejects, killing the whole panel. Guarding only the
+                input was one-legged.
+                """
+                if isinstance(v, bool):
+                    return v
+                if isinstance(v, int | float):
+                    return v if _math.isfinite(v) else None
+                if isinstance(v, dict):
+                    return {k: _finite(x) for k, x in v.items()}
+                if isinstance(v, list):
+                    return [_finite(x) for x in v]
+                return v
+
+            _raw_gates = snapshot.get("gates")
+            counts = (
+                {
+                    g.get("name"): _int_or_zero(g.get("count", 0))
+                    for g in _raw_gates
+                    # name must be a str: an unhashable one (list, dict) raises
+                    # TypeError from the dict comprehension itself and 500s the
+                    # endpoint before any other guard here can run.
+                    if isinstance(g, dict) and isinstance(g.get("name"), str)
+                }
+                if isinstance(_raw_gates, list)
+                else {}
+            )
+            pipeline = [
+                {
+                    "name": gate.name,
+                    "label": gate.label,
+                    "stage": gate.stage,
+                    "order": i,
+                    "count": counts.get(gate.name, 0),
+                }
+                for i, gate in enumerate(_wm.SCAN_GATES)
+            ]
+
+            # A gate present in the snapshot but not in the live SCAN_GATES was
+            # renamed or removed since the scan ran. It is not in the
+            # snapshot's own `unknown_gates` (which only records names unknown
+            # at WRITE time), so without this it would vanish from `pipeline`
+            # while still counting toward `total_rejected` -- the two would
+            # disagree on screen with nothing to explain the gap.
+            _known = {gate.name for gate in _wm.SCAN_GATES}
+            _snapshot_unknown = snapshot.get("unknown_gates")
+            unknown_gates: dict = {}
+            if isinstance(_snapshot_unknown, dict):
+                for _name, _count in _snapshot_unknown.items():
+                    # Skip names that are known NOW: a gate emitted before its
+                    # ScanGate entry existed is in the snapshot's unknown_gates
+                    # AND on the live pipeline, and listing it in both
+                    # double-counts it against total_rejected.
+                    if isinstance(_name, str) and _name not in _known:
+                        unknown_gates[_name] = _int_or_zero(_count)
+            for _name, _count in counts.items():
+                if _name not in _known:
+                    # max(), not assignment: the snapshot's own unknown_gates
+                    # may already carry this name, and clobbering would drop
+                    # whichever count was larger.
+                    unknown_gates[_name] = max(
+                        unknown_gates.get(_name, 0), _int_or_zero(_count)
+                    )
+
+            def _cb_dict(cb):
+                # seconds_open() > 0, NOT is_open(): is_open() is a mutator
+                # that consumes the breaker's one HALF-OPEN recovery probe, and
+                # a dashboard poll must never spend a probe the fetch path
+                # needs. Same rule as /api/circuit-status.
+                open_for = cb.seconds_open()
+                return {
+                    "state": "open" if open_for > 0 else "closed",
+                    "open_for_s": round(open_for),
+                }
+
+            sources = {reg.name: _cb_dict(reg.breaker) for reg in _wm.CIRCUIT_BREAKERS}
+
+            # Staleness is computed SERVER-side. The frontend cannot do it
+            # safely from snapshot_at alone, and a dead cron otherwise serves a
+            # week-old funnel that looks exactly like a fresh one.
+            _snapshot_at = snapshot.get("snapshot_at")
+            _age_s = None
+            if isinstance(_snapshot_at, str):
+                try:
+                    _parsed = datetime.fromisoformat(_snapshot_at)
+                    if _parsed.tzinfo is None:
+                        _parsed = _parsed.replace(tzinfo=UTC)
+                    _age_s = max(0.0, (datetime.now(UTC) - _parsed).total_seconds())
+                except ValueError:
+                    _age_s = None
+
+            _near_misses = snapshot.get("near_misses")
+
+            # last_gate's order/label/stage are re-derived from the LIVE gate
+            # list rather than forwarded: the snapshot computed them against
+            # whatever SCAN_GATES looked like when it was written, so inserting
+            # one gate mid-pipeline makes every older snapshot's order off by
+            # one and a frontend matching it against pipeline[].order
+            # highlights the wrong bar. A name that no longer exists keeps its
+            # recorded position but is flagged, rather than silently pointing
+            # at whichever gate now occupies that index.
+            _raw_last = snapshot.get("last_gate")
+            _last_gate = None
+            if isinstance(_raw_last, dict) and isinstance(_raw_last.get("name"), str):
+                _lg_name = _raw_last["name"]
+                _live = _wm._GATE_BY_NAME.get(_lg_name)
+                if _live is not None:
+                    _last_gate = {
+                        "name": _live.name,
+                        "label": _live.label,
+                        "stage": _live.stage,
+                        "order": _wm._GATE_ORDER[_live.name],
+                        "retired": False,
+                    }
+                else:
+                    _last_gate = {
+                        "name": _lg_name,
+                        "label": _raw_last.get("label") or _lg_name,
+                        "stage": _raw_last.get("stage") or "",
+                        "order": None,
+                        "retired": True,
+                    }
+
+            from tracker import get_scan_activity
+
+            return jsonify(
+                {
+                    "scan_started_at": snapshot.get("scan_started_at"),
+                    "snapshot_at": _snapshot_at,
+                    "snapshot_age_secs": (None if _age_s is None else round(_age_s)),
+                    "stale": (
+                        None if _age_s is None else _age_s > SCAN_FUNNEL_STALE_SECS
+                    ),
+                    "stale_after_secs": SCAN_FUNNEL_STALE_SECS,
+                    # False means the scan loop timed out or crashed and this
+                    # funnel covers only part of the market universe. Absent
+                    # from a pre-batch-65 snapshot, hence the None default
+                    # rather than True -- claiming completeness for a file that
+                    # never asserted it is the failure this field exists to
+                    # prevent.
+                    "complete": snapshot.get("complete"),
+                    "pipeline": pipeline,
+                    "last_gate": _last_gate,
+                    "unknown_gates": unknown_gates,
+                    "near_misses": (
+                        [_finite(m) for m in _near_misses if isinstance(m, dict)]
+                        if isinstance(_near_misses, list)
+                        else []
+                    ),
+                    # Read live while near_misses comes from the file, so a
+                    # raised limit is advertised one scan before it takes
+                    # effect. Cosmetic, and the alternative (echoing a stale
+                    # limit) is worse.
+                    "near_miss_limit": _wm.SCAN_NEAR_MISS_LIMIT,
+                    "near_miss_per_gate": _wm.SCAN_NEAR_MISS_PER_GATE,
+                    "total_rejected": _int_or_zero(snapshot.get("total_rejected", 0)),
+                    "sources": sources,
+                    "activity": get_scan_activity(30),
                 }
             )
         except Exception as exc:

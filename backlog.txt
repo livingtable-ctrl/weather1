@@ -640,6 +640,141 @@ Plan:
   3. Check actual on-disk growth first -- run the row counts after this has
      been writing for a week and size the window against measured bytes
      rather than the estimate above, which has already been wrong once.
+[OPEN 2026-08-25 -- found by the opus review of batch-65 (A12), which caught
+  the panel's own docstring claiming a distinction the data cannot make;
+  confirmed pre-existing, the funnel only makes it visible.] NOTHING RECORDS
+  PER-DAY THAT A SCAN RAN, SO AN OUTAGE AND A FULLY-GATED DAY ARE
+  INDISTINGUISHABLE
+Priority: Medium -- no trading behaviour is affected, but this is the
+  difference between "the cron job is dead" and "the model had nothing to
+  say", and the operator-facing panel cannot currently tell them apart.
+Files: tracker.py (get_scan_activity, analysis_attempts),
+  trade_cycle.py (~566, the `if not analysis` branch; ~612 all_results),
+  cron.py (~2389, batch_log_analysis_attempts)
+
+Problem:
+  Two tables could answer "did the scanner run on 2026-08-14", and neither
+  does:
+
+  - `analysis_attempts` is rebuilt by cron from result.all_results, and
+    trade_cycle only appends to all_results AFTER `if not analysis:
+    continue`. So a market rejected by any of weather_markets.SCAN_GATES
+    never lands there. It records markets that SURVIVED the gates, not
+    markets scanned -- 0-45/day on live data against ~590 markets per scan.
+  - `predictions` only gets a row for a candidate that reached the
+    placement loop.
+
+  A scan where all 590 markets are gated out therefore writes nothing to
+  either table and is indistinguishable from the cron job never running.
+  That is not a corner case: the 2026-08-25 06:36 scan rejected 549 of 590
+  at the gates, and a hot, calm, well-priced day plausibly rejects all of
+  them.
+
+  `analysis_attempts` also upserts on (ticker, target_date), so
+  re-analysing a market on a later day MOVES its analyzed_at forward rather
+  than adding a row -- on live data its per-day count is lower than the
+  prediction count on 4 of the last 32 days, twice with zero attempts
+  against non-zero predictions. The two counts are not nested and must not
+  be drawn as one funnel.
+
+  batch-65's get_scan_activity() was originally written asserting a
+  three-way "signals / scanned, no signals / no scan" split. The third
+  label was wrong and has been renamed to "no output", with the ambiguity
+  documented, rather than shipping an outage indicator that fires on a
+  quiet modelling day.
+What it would look like:
+  A per-cycle scan record cron writes unconditionally -- ticker count
+  submitted, count analyzed, started/finished timestamps, and the
+  completion flag trade_cycle now computes for the funnel snapshot. That is
+  a new table, so it belongs with the migration-owning batches (64/72), not
+  with a read-only analytics batch. Once it exists, get_scan_activity()'s
+  "no output" state can split back into a real "no scan" and a real
+  "scanned, nothing survived", and the panel can stop hedging.
+
+[OPEN 2026-08-25 -- found by batch-65 (A2) while building the calibration
+  decomposition panel; measured against the live DB, not inferred.] THE
+  WEEKLY BRIER HALT RULE CANNOT SEE A POOLED SCORE THAT IS ALREADY
+  SIGNIFICANTLY PAST ITS OWN THRESHOLD
+Priority: Medium -- LIVE_TRADING_ENABLED is unset so nothing is halted or
+  not-halted today, but the rule exists precisely to be the operator's
+  "stop, the model is degrading" signal, and on current data it is silent
+  while the pooled score is significantly over the bar it thresholds on.
+Files: cron.py (the two-consecutive-weeks Brier alert block, ~2911),
+  tracker.py (get_brier_over_time, detect_brier_drift,
+  get_calibration_decomposition), utils.py (BRIER_ALERT_THRESHOLD)
+
+Problem:
+  The halt rule reads get_brier_over_time(weeks=3) and alerts only when the
+  last TWO weekly values both exceed BRIER_ALERT_THRESHOLD (0.22). Three
+  separate properties of that query keep it quiet:
+
+  1. It reads the multiday_predictions view, which drops days_out = 0 --
+     56% of settled rows as of 2026-08-24. D+0 is invisible to the rule
+     entirely, and it is the horizon where the model does worst.
+  2. It groups by ISO-ish week. On live data the per-week sample counts run
+     2 to 15 rows (measured 2026-08-25: W29 n=7, W30 n=2, W31 n=7, W32
+     n=15, W33 n=10). A weekly mean over 2 rows crosses or clears 0.22 for
+     reasons unrelated to model quality, in both directions.
+  3. It pools every city and every horizon >= 1 into one number.
+
+  Measured on the same filtered population every other Brier-quality query
+  uses (outcomes_valid, _excluded_brier_condition_types applied), n = 214:
+  pooled Brier 0.259619, standard error 0.015112. The lower end of a
+  one-sided 95% interval is 0.2348 -- still above 0.22. The new
+  get_calibration_decomposition() reports that pooled cell as "degraded";
+  the halt rule has never fired.
+
+  This is a sensitivity question, not a bug in either piece of code: the
+  panel and the rule are both correct about their own populations. It is
+  filed because the two now visibly disagree on the console, which is worse
+  than either being quietly wrong.
+What it would look like:
+  Decide which population the rule SHOULD threshold on -- most likely the
+  same one A14/A2 use (all horizons, condition-filtered) with a sample
+  floor and a significance test rather than a bare weekly mean over
+  whatever rows happened to settle. Any change here is a change to a
+  live-trading safety signal and needs its own batch: it must not be folded
+  into a read-only analytics change. batch-65 deliberately did NOT touch
+  cron.py or get_brier_over_time.
+
+[OPEN 2026-08-25 -- found by batch-65 (A12) while giving the scanner gates
+  a declared order; the gap is pre-existing, the funnel just makes it
+  visible.] THE SCANNER FUNNEL STOPS AT analyze_trade -- PLACEMENT-TIME
+  REJECTIONS ARE COUNTED NOWHERE
+Priority: Low -- no trading behaviour is affected; this is an
+  observability gap in the answer to "why did this scan place nothing".
+Files: weather_markets.py (SCAN_GATES, _count_gate),
+  trade_cycle.py (the `dbg` counters, ~504), order_executor.py
+  (MAX_POSITIONS_PER_DATE and the sibling risk limits, ~4234 and ~4673),
+  web_app.py (/api/scanner-funnel, /api/scan-stats)
+
+Problem:
+  A candidate passes through three stages and only the first is counted in
+  one ordered place:
+
+  1. analyze_trade()'s 35 gates -- now declared in order as
+     weather_markets.SCAN_GATES and served by /api/scanner-funnel.
+  2. trade_cycle's `dbg` edge/threshold counters (no_analysis, mkt_prob,
+     divergence, net_edge, prob_edge, placement_gate) -- counted, written
+     to signals_cache.json, served by /api/scan-stats as `filters`, but
+     with no declared order and no labels.
+  3. order_executor's placement-time risk limits -- MAX_POSITIONS_PER_DATE,
+     the spend caps, already-open/traded-today dedup. These are logged as
+     skip reasons but never counted, so a scan where every survivor was
+     stopped by the per-settlement-date cap looks, in every counter the
+     dashboard can see, exactly like a scan where nothing survived the
+     model.
+
+  batch-65 deliberately covered only stage 1: trade_cycle.py and
+  order_executor.py are outside its declared file scope, and stage 3 in
+  particular sits in the live-order path.
+What it would look like:
+  Give stages 2 and 3 the same treatment stage 1 just got -- a declared
+  ordered list with human labels, defined beside the checks themselves, and
+  a bounded near-miss record for the numeric ones. Stage 3's counters must
+  be pure instrumentation with no effect on any gate's own decision, and
+  need a test proving a counter failure cannot change whether an order is
+  placed.
 
 [OPEN 2026-08-25 -- found by the round-3 opus review (effort=high) of
   batch-60's own fix rounds; confirmed pre-existing (present in the

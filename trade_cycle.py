@@ -469,6 +469,7 @@ def run_trade_cycle(
         is_liquid,
         reset_gate_counts,
         resolve_market_implied_for_analysis,
+        snapshot_scan_funnel,
     )
 
     reset_gate_counts()
@@ -486,6 +487,12 @@ def run_trade_cycle(
         else max(min_edge, get_paper_min_edge())
     )
 
+    # A12 (M4): False unless the analysis loop below runs to completion. Both
+    # of its exception handlers swallow and fall through, so without this a
+    # funnel covering 120 of 590 markets would be persisted and read as a full
+    # scan -- an operator would take a truncated gate distribution for a change
+    # in the market universe.
+    _scan_completed = False
     all_results: list[tuple[dict, dict]] = []
     no_quote_opps: list[tuple[dict, dict]] = []
     liquid_opps: list[tuple[dict, dict]] = []
@@ -928,6 +935,15 @@ def run_trade_cycle(
                             strong_opps.append(pair)
                         else:
                             med_opps.append(pair)
+                else:
+                    # for/else, not a plain statement after the loop: `else`
+                    # runs ONLY when the loop was not broken out of. The
+                    # mid-scan kill-switch check above BREAKS, and a plain
+                    # assignment here would then stamp complete=True on a scan
+                    # abandoned at market 120 of 590 -- exactly the claim this
+                    # flag exists to prevent. Inside the try for the same
+                    # reason: a caught TimeoutError must also leave it False.
+                    _scan_completed = True
             except TimeoutError:
                 _log.error(
                     "run_trade_cycle: analysis scan timed out after %ds — %d markets processed",
@@ -966,6 +982,25 @@ def run_trade_cycle(
     except Exception as exc:
         _log.warning("run_trade_cycle: get_gate_counts failed: %s", exc)
         gate_counts = {}
+
+    # A12: persist the ordered funnel + closest misses for the dashboard.
+    #
+    # This is the only per-scan call site -- get_gate_counts() and
+    # reset_gate_counts() deliberately do NOT write, because ~50 tests call
+    # them and paths.py resolves data/ to the main clone even from a worktree.
+    #
+    # Placed HERE, immediately after the scan's own counters are read, and
+    # NOT after the placement loop: a mid-scan kill-switch activation returns
+    # None from the placement branch below, which would skip the snapshot
+    # entirely and leave the panel showing the PREVIOUS scan's funnel at
+    # exactly the moment an operator is asking what just happened. The
+    # latency that motivated moving it is handled inside
+    # snapshot_scan_funnel() with retries=1 instead, which costs ~1s worst
+    # case rather than ~5s and changes no control flow.
+    # test_scan_funnel.py pins the no-return-in-between invariant.
+    #
+    # Swallows its own errors; a dashboard artifact must never fail a scan.
+    snapshot_scan_funnel(complete=_scan_completed)
 
     trading_paused = is_trading_paused()
     strong_cap: float | None = None
