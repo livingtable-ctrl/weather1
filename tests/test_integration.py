@@ -313,11 +313,21 @@ class TestAnalyzePipelineExtra:
         },
     )
     def test_analyze_trade_precip_any_condition(self, mock_precip, mock_obs):
-        """analyze_trade routes precip_any markets through _analyze_precip_trade."""
+        """analyze_trade routes precip_any markets through _analyze_precip_trade.
+
+        Uses the KXPRECIP series, not KXRAIN -- batch-51 made KXRAIN/
+        KXRAINWKND TRACK-ONLY (analyze_trade() now gates them out with a
+        hard `return None` before ever reaching this dispatch, per the
+        go/no-go's NO-GO result; see is_rain_daily_ticker() and the
+        "rain_daily_track_only_no_model" gate). KXPRECIP is a real member
+        of _parse_market_condition()'s PRECIP_SERIES set that batch-51
+        left untouched, so it still exercises the precip_any dispatch
+        branch this test targets.
+        """
         from weather_markets import analyze_trade
 
         enriched = _make_enriched(
-            ticker="KXRAIN-FUTURE",
+            ticker="KXPRECIP-FUTURE",
             city="NYC",
             target_date=_FUTURE_DATE,
             forecast={
@@ -327,7 +337,7 @@ class TestAnalyzePipelineExtra:
                 "date": _FUTURE_DATE.isoformat(),
             },
         )
-        enriched["series_ticker"] = "KXRAIN"
+        enriched["series_ticker"] = "KXPRECIP"
         enriched["title"] = "Will there be any measurable rain in NYC on Apr 15?"
 
         result = analyze_trade(enriched)
