@@ -27,6 +27,17 @@ cd weather1
 pip install -r requirements.txt
 ```
 
+If you intend to change the code (rather than just run the bot), also install
+the development tooling and arm the git hook:
+
+```
+pip install -r requirements-dev.txt
+pre-commit install
+```
+
+That gives you the lint/type hook and parallel test runs (`-n auto`). Without
+it the bot still runs fine, but `pre-commit` and `pytest -n auto` are missing.
+
 **3. Get your Kalshi API credentials**
 
 - Log in to Kalshi → Account → API

@@ -1,0 +1,27 @@
+# Development / CI tooling. NOT needed to run the bot -- `pip install -r
+# requirements.txt` alone gives a working bot. This file is what makes the
+# lint hook and the test commands in the docs actually work.
+#
+# Added 2026-08-25 after a new-PC migration audit found that a fresh machine
+# following the README got a runnable bot with no working pre-commit hook and
+# no `-n auto`, because these four were installed ad hoc on the old machine
+# and recorded nowhere.
+
+# Runs the hooks pinned in .pre-commit-config.yaml. That config is committed,
+# so the hook VERSIONS travel with the repo -- but the tool that executes them
+# did not. Install, then `pre-commit install` to arm the git hook.
+pre-commit>=4.6.0
+
+# Parallel test execution. The project's own test commands use `-n auto`,
+# which silently does nothing useful without this.
+pytest-xdist>=3.5.0
+
+# Editor / direct-invocation copies of the linters. NOTE the deliberate
+# divergence: .pre-commit-config.yaml pins ruff v0.9.9 and mypy v1.15.0 and
+# resolves them in pre-commit's OWN isolated environments, so these versions
+# are independent of what the hook runs. They will disagree -- as of
+# 2026-08-25 the venv had ruff 0.16.1 and mypy 2.3.0 against the hook's
+# 0.9.9 / 1.15.0. Treat the HOOK as authoritative before committing; these
+# are for fast local feedback only.
+ruff>=0.9.9
+mypy>=1.15.0

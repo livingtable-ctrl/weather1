@@ -336,6 +336,19 @@ def main() -> int:
         print(
             f"private key : MISSING -- .env points at {key_path}, which does not exist"
         )
+    _cfgs = [
+        x
+        for x in (
+            SRC_ROOT / ".claude" / "settings.local.json",
+            SRC_ROOT / ".claude" / "launch.json",
+        )
+        if x.is_file()
+    ]
+    print(
+        f"claude config: {', '.join(x.name for x in _cfgs)}"
+        if _cfgs
+        else "claude config: none found"
+    )
     _mem = claude_memory_dir()
     print(
         f"claude memory: {len(list(_mem.glob('*.md')))} files  ({_mem})"
@@ -420,6 +433,30 @@ def main() -> int:
             print(f"  [FAIL] {key_path.name}: {exc}")
             failures.append(key_path.name)
 
+    # .claude/ is gitignored, so neither a clone nor data/ carries it. Only
+    # the small hand-maintained config files are taken -- NOT worktrees/
+    # (dozens of full checkouts, all recreatable from git) and NOT projects/
+    # (session transcripts). settings.local.json is the permission allowlist;
+    # launch.json is the dev-server config preview_start reads.
+    claude_cfgs = [
+        p
+        for p in (
+            SRC_ROOT / ".claude" / "settings.local.json",
+            SRC_ROOT / ".claude" / "launch.json",
+        )
+        if p.is_file()
+    ]
+    if claude_cfgs:
+        try:
+            (dest_root / "claude_config").mkdir(parents=True, exist_ok=True)
+            for p in claude_cfgs:
+                shutil.copy2(p, dest_root / "claude_config" / p.name)
+            print(f"  [ok ] claude_config/  ({', '.join(p.name for p in claude_cfgs)})")
+            print("         restore to <project>/.claude/ on the new machine")
+        except Exception as exc:
+            print(f"  [FAIL] claude config: {exc}")
+            failures.append("claude_config")
+
     # Claude Code's per-project memory. Lives OUTSIDE the repo entirely
     # (~/.claude/projects/<slug>/memory/), so neither git nor a copy of the
     # project directory carries it -- and unlike everything else here it
@@ -468,6 +505,9 @@ def main() -> int:
     )
     print("     requirements.txt declares no floor -- match one of those two.")
     print("     Then: pip install -r requirements.txt")
+    print("           pip install -r requirements-dev.txt   (lint hook + -n auto)")
+    print("           pre-commit install                    (arms the git hook)")
+    print("  5. EDIT start.bat -- it hardcodes Set-Location to the OLD path.")
     print("\nThis bundle contains LIVE CREDENTIALS (.env + private key).")
     print("Transfer it directly -- not via email or cloud sync -- and delete it")
     print("once the new machine is verified.")
