@@ -34736,11 +34736,16 @@ Why this is closed rather than deferred:
   calibration.] predictions.forecast_temp_f IS WRITTEN WITH AN INSTANTANEOUS
   METAR TEMPERATURE ON method='metar_lockout' ROWS, NOT A DAILY-EXTREME
   FORECAST -- SILENTLY CORRUPTS ANY ANALYSIS KEYED ON THAT COLUMN
-Priority: Medium -- NOT a live-money bug today (no production path consumes
-  the corrupted values; see "Live impact" below), but it has already
-  produced one wrong retrospective validation number and it silently
-  destroyed the first pass of batch-53's replay. It is invisible unless you
-  split by `method`, which no existing consumer does.
+Priority: HIGH -- RAISED 2026-08-25, see the CORRECTION under "Live impact"
+  below. The first version of this entry said "NOT a live-money bug today (no
+  production path consumes the corrupted values)". That is WRONG. A live path
+  does consume them: paper._score_ensemble_members writes
+  trade["forecast_temp"] into ensemble_member_scores as model='blended', and
+  get_dynamic_station_bias() PREFERS exactly those rows, feeding
+  weather_markets._DYNAMIC_BIAS_CACHE and therefore live forecasts. It has
+  also already produced one wrong retrospective validation number and it
+  silently destroyed the first pass of batch-53's replay. It is invisible
+  unless you split by `method`, which no existing consumer does.
 Files: trade_cycle.py (~920, "forecast_temp_f": analysis.get("forecast_temp")
   -- the writer), weather_markets.py (analyze_trade's `if not metar_locked:`
   block, ~13870), tracker.py (get_regional_recent_bias ~8797, the one query
@@ -34779,10 +34784,31 @@ Problem:
   appearing in the settled sample; the writer is unchanged.
 
 Live impact (traced, not assumed):
-  - get_dynamic_station_bias() is NOT affected -- it reads
-    ensemble_member_scores.predicted_temp/actual_temp, a different table.
-    This is the bias path that actually feeds live forecasts, and it is
-    clean.
+  - CORRECTION 2026-08-25: get_dynamic_station_bias() IS reachable, and the
+    original entry got this wrong. It does read a different table
+    (ensemble_member_scores.predicted_temp/actual_temp), but the contaminated
+    value flows INTO that table: paper.py:1464 calls _score_ensemble_members
+    on every settled paper trade, and paper.py:1569 sets
+    model_means["blended"] = trade.get("forecast_temp") -- which on a
+    metar_lockout trade is the METAR lock value, not a daily-extreme
+    forecast. paper.py's own comment at that line says "blended" is
+    "preferred by get_dynamic_station_bias() over the per-model means", and
+    tracker.py:7377-7382 confirms it (WHERE model = 'blended'). From there
+    weather_markets.py:401 loads it into _DYNAMIC_BIAS_CACHE and applies it
+    to live forecasts. So the chain is complete: lock value -> blended score
+    -> per-city station bias -> live forecast adjustment.
+  - NOT QUANTIFIED, and deliberately not asserted: how much contamination
+    actually sits in ensemble_member_scores today. That table has no ticker
+    column, so the only available join key is (city, target_date, var), and
+    it is not reliable -- of 148 blended rows matched that way, actual_temp
+    equals outcomes.settled_temp_f exactly on only 38, with a max absolute
+    difference of 30.8F. A first pass using that join suggested ~40% of
+    blended rows trace to metar_lockout predictions carrying a +3.4F bias,
+    but the same join showed near-identical bias on supposedly-clean rows,
+    which is itself evidence the join is mismatching. Establishing the real
+    magnitude needs a reliable link between a score row and its source
+    prediction -- adding a ticker column to ensemble_member_scores would be
+    the obvious way, and is arguably part of this fix.
   - get_regional_recent_bias() IS affected: it selects
     predictions.forecast_temp_f joined to outcomes_valid.settled_temp_f with
     no method filter. It has NO production call site (tests only; see
