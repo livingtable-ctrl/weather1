@@ -10,6 +10,8 @@ Source: `audit/AUDIT_REPORT.md`/`.json` (2026-08-18 max-depth audit, 79 items) p
 
 Every batch instructs the recipient session to follow the 29-step `feedback-implementation-workflow` memory in full.
 
+**Later batch sets, indexed separately:** [INDEX-ROADMAP.md](INDEX-ROADMAP.md) (49-56, new market families) · [INDEX-BACKLOG-CLEANUP.md](INDEX-BACKLOG-CLEANUP.md) (57-63, remaining open `backlog.txt` entries) · [INDEX-PANEL-BACKENDS.md](INDEX-PANEL-BACKENDS.md) (64-74, backends for the eighteen proposed console panels — **start with batch 64, it has a decaying sample clock**).
+
 ## Suggested sequencing
 
 **Do first, in order, ideally by one session with continuity across them** (they share the live-position-visibility root cause -- audit's own recommendation is one coordinated fix, not five):
