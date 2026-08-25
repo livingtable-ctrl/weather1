@@ -2229,12 +2229,30 @@ def _hrrr_wiring_test_enriched(target_date, yes_bid=0.62, yes_ask=0.72):
     |model - market| > 0.25, on the empirical finding that the market's
     real-time intraday observations beat our forecast at that disagreement
     (74% win rate at a 10-20% gap, 50% at 20-30%, 20% at 30%+). With the
-    default 0.62/0.72 quote the same-day path lands at model 0.402 vs market
-    0.670 -- a 0.27 gap -- so analyze_trade correctly skipped the market and
-    both tests died on `result is not None` long before reaching the HRRR
-    assertion they exist to make. The gate postdates these tests. The
-    multi-day test keeps the original quote (it does not trip the gate), so
-    its behaviour is unchanged.
+    default 0.62/0.72 quote the same-day path trips that gate, so
+    analyze_trade correctly skipped the market and both tests died on
+    `result is not None` long before reaching the HRRR assertion they exist
+    to make. The gate postdates these tests. The multi-day test keeps the
+    original quote (it does not trip the gate), so its behaviour is
+    unchanged.
+
+    The same-day quote is 0.40/0.45 (mid 0.425), NOT the 0.24/0.27 an earlier
+    version used. That earlier pair was tuned against a measured same-day
+    model probability of 0.402 -- a number that was never reproducible,
+    because it did not come from the multi-source blend at all. Section 5's
+    obs-override branch REPLACES the blend outright when a live observation
+    is available, and _mock_hrrr_wiring_common was patching only
+    `nws.get_live_observation`, which does not rebind weather_markets' own
+    module-level import of it (see that helper's comment). So section 5 was
+    fetching NYC's real current temperature over the network and 0.402 was
+    simply what that day's weather produced; on a later day the same code
+    gave 0.525 against a 0.255 market -- a 0.27 gap -- and both tests went
+    red with no code change behind it. With the obs leak closed the blend is
+    deterministic (ens 0.400 at w=0.7 + gaussian 0.873 at w=0.3), landing at
+    0.511 for the HRRR-success test and 0.542 for the HRRR-exception one.
+    0.425 sits 0.09-0.12 from both -- a real edge and comfortable headroom
+    under the 0.25 gate -- with a ~12% relative spread so the liquidity/
+    spread gate passes, same as the pair it replaces.
     """
     return {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
@@ -2269,7 +2287,24 @@ def _mock_hrrr_wiring_common(monkeypatch, wm, mos):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    # BOTH bindings, deliberately -- get_live_observation is reached two ways
+    # and only one of them sees a patch of the source module.
+    # weather_markets.py's module header does `from nws import ...
+    # get_live_observation ...`, so analyze_trade's section-5 obs-override call
+    # site (weather_markets.get_live_observation) is a SEPARATE binding that
+    # `setattr("nws.get_live_observation", ...)` never rebinds;
+    # _compute_persistence_prob's call-time `from nws import
+    # get_live_observation as _get_live_obs` does see it. Patching only the
+    # source module left section 5 issuing a real api.weather.gov request, so
+    # the two SAME-DAY tests below blended the live NYC temperature into
+    # obs_override and their model probability moved with real weather --
+    # measured at 0.525 against a 0.255 market, a 0.27 gap that trips the
+    # >0.25 model-market gap gate and returns None. The multi-day test in the
+    # same group never saw it: section 5 is gated on days_out == 0. Same
+    # both-bindings fix as test_model_consensus_false_when_models_disagree
+    # above, whose own comment already names this exact gap-gate failure mode.
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
@@ -2314,11 +2349,12 @@ def test_analyze_trade_captures_hrrr_forecast_mean_same_day(monkeypatch):
     # anchoring rationale as test_metar_locked_trade_has_ecmwf_forecast_mean_
     # keys above (days_out is computed off the market's CITY-LOCAL today).
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    # Market mid ~0.255 against a model ~0.40: a real edge, inside the 0.25
-    # model-market gap gate, and a ~12% spread so the liquidity/spread gate
-    # passes too. See _hrrr_wiring_test_enriched's docstring.
+    # Market mid 0.425 against a model ~0.51: a real edge, well inside the
+    # 0.25 model-market gap gate, and a ~12% spread so the liquidity/spread
+    # gate passes too. See _hrrr_wiring_test_enriched's docstring for why
+    # this pair replaced the non-reproducible 0.24/0.27 one.
     result = analyze_trade(
-        _hrrr_wiring_test_enriched(today, yes_bid=0.24, yes_ask=0.27)
+        _hrrr_wiring_test_enriched(today, yes_bid=0.40, yes_ask=0.45)
     )
     assert result is not None, "analyze_trade returned None — fix the enriched dict"
     means = result["model_forecast_means"]
@@ -2395,11 +2431,12 @@ def test_analyze_trade_survives_hrrr_fetch_exception(monkeypatch):
     monkeypatch.setattr(wm, "_fetch_hrrr_temp", _raise_hrrr)
 
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    # Market mid ~0.255 against a model ~0.40: a real edge, inside the 0.25
-    # model-market gap gate, and a ~12% spread so the liquidity/spread gate
-    # passes too. See _hrrr_wiring_test_enriched's docstring.
+    # Market mid 0.425 against a model ~0.51: a real edge, well inside the
+    # 0.25 model-market gap gate, and a ~12% spread so the liquidity/spread
+    # gate passes too. See _hrrr_wiring_test_enriched's docstring for why
+    # this pair replaced the non-reproducible 0.24/0.27 one.
     result = analyze_trade(
-        _hrrr_wiring_test_enriched(today, yes_bid=0.24, yes_ask=0.27)
+        _hrrr_wiring_test_enriched(today, yes_bid=0.40, yes_ask=0.45)
     )
     assert result is not None, "a HRRR fetch exception must not abort the trade"
     means = result["model_forecast_means"]
@@ -5547,6 +5584,20 @@ class TestBatchPrewarmEnsembleRateLimitTiering:
             params = kwargs.get("params", {})
             resp = MagicMock()
             resp.raise_for_status.return_value = None
+            # batch-64 item 2 wired _persist_member_values into the combine
+            # loop that runs after BOTH tiers, and it calls get_model_run_init,
+            # which requests _MODEL_RUN_META_URL -- a models-less meta.json GET
+            # on api.open-meteo.com, a DIFFERENT host from ENSEMBLE_BASE's
+            # ensemble-api.open-meteo.com. Those requests are not part of the
+            # tiering this test pins (they spend no ensemble-api rate budget)
+            # and, being models-less, previously entered the tier sets as a
+            # bare None. Recorded separately so they can't pollute the
+            # before/after comparison, and asserted on below so this branch
+            # can't silently start swallowing a real ENSEMBLE_BASE call.
+            if not url.startswith(wm.ENSEMBLE_BASE):
+                events.append(("other_host_request", url, params.get("models")))
+                resp.json.return_value = {}
+                return resp
             daily_key = params.get("daily")
             if daily_key == "precipitation_sum":
                 events.append(("request", "precip", params.get("models")))
@@ -5601,6 +5652,22 @@ class TestBatchPrewarmEnsembleRateLimitTiering:
         assert after == ensemble_tracking_only, (
             f"tier 2 should be exactly the ensemble-api tracking-only models "
             f"(excluding ncep_hrrr_conus, fetched separately), got {after}"
+        )
+
+        # Positive control on the non-ENSEMBLE_BASE branch above: everything
+        # it absorbed must be a model-run meta.json lookup. Without this, that
+        # branch would silently swallow any future real ENSEMBLE_BASE call
+        # whose URL drifted, and the two tier assertions would keep passing
+        # while the tiering they pin quietly stopped being enforced.
+        other_urls = [e[1] for e in events if e[0] == "other_host_request"]
+        assert other_urls, (
+            "expected _persist_member_values' get_model_run_init meta.json "
+            "lookups -- none seen, so this test is no longer exercising the "
+            "path that made the tier sets ambiguous"
+        )
+        assert all(u.endswith("/static/meta.json") for u in other_urls), (
+            f"non-ENSEMBLE_BASE request that is not a model-run meta.json "
+            f"lookup: {other_urls}"
         )
 
         wm._ensemble_cache.clear()

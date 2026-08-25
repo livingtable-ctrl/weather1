@@ -159,6 +159,15 @@ _ISOFORMAT_CUTOFF_ALLOWLIST: dict[tuple[str, str], str] = {
         "this column. Re-verify if a future write path to "
         "analysis_attempts.analyzed_at ever uses datetime('now') instead."
     ),
+    ("tracker.py", "prune_old_alert_deliveries"): (
+        "Cutoff compared against alert_deliveries.fired_at, which is written "
+        "ONLY via datetime.now(UTC).isoformat() (log_alert_delivery, "
+        "tracker.py -- verified as the column's single writer repo-wide, "
+        "batch-69 A6). No datetime('now') writer touches this column. Same "
+        "shape as prune_old_analysis_attempts above, which its own docstring "
+        "says it mirrors. Re-verify if a future write path to "
+        "alert_deliveries.fired_at ever uses datetime('now') instead."
+    ),
     ("tracker.py", "get_recent_city_correlations"): (
         "Cutoff uses .date().isoformat() deliberately (see the function's "
         "own comment two lines above) to match predictions.market_date, "
@@ -386,9 +395,12 @@ def test_two_level_nested_call_args_are_caught():
 
 
 def test_current_repo_matches_exactly_the_known_allowlisted_sites():
-    """End-to-end sanity check: as of this guard's introduction, the repo
-    has exactly the 5 known-safe sites and nothing else. Not a substitute
-    for the two guard tests above (which are what actually protects against
-    regressions) -- just documents the known-good baseline directly."""
+    """End-to-end sanity check: the repo has exactly the known-safe sites in
+    _ISOFORMAT_CUTOFF_ALLOWLIST and nothing else. Not a substitute for the
+    two guard tests above (which are what actually protects against
+    regressions) -- just documents the known-good baseline directly.
+
+    5 sites at this guard's introduction; 6 since batch-69's A6 alert
+    delivery log added prune_old_alert_deliveries."""
     sites = {(rel, fname) for rel, _, fname in _iter_isoformat_cutoff_sites()}
     assert sites == set(_ISOFORMAT_CUTOFF_ALLOWLIST.keys())

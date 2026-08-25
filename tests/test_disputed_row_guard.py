@@ -188,6 +188,27 @@ _RAW_OUTCOMES_ALLOWLIST: dict[tuple[str, str], str] = {
         "is never joined into any Brier/calibration query, so there's no "
         "scoring-pollution risk the disputed-row guard exists to prevent."
     ),
+    ("tracker.py", "get_pending_attempt_tickers"): (
+        "LEFT JOIN ... WHERE o.ticker IS NULL -- an anti-join asking only "
+        "'does a settlement record exist for this ticker at all', the same "
+        "existence-check shape as sync_outcomes above, and dispute status is "
+        "orthogonal to it. Joining outcomes_valid would actively break the "
+        "query: a disputed ticker would read as having no outcome, be "
+        "re-selected as pending on every cycle, and burn a Kalshi API call "
+        "each time without ever leaving the queue, since settling it writes "
+        "an outcomes row that stays disputed."
+    ),
+    ("tracker.py", "settle_orphaned_attempt_outcomes"): (
+        "Heals analysis_attempts rows left unscored when "
+        "settle_pending_attempt_tickers died between writing the outcomes "
+        "row and updating the attempt. It must see exactly the rows that "
+        "write path produces, and that path applies no disputed filter -- "
+        "nor does sync_outcomes' own attempt-settle block, which this "
+        "mirrors. Joining outcomes_valid would leave every disputed "
+        "ticker's attempt permanently orphaned, i.e. recreate the exact trap "
+        "the function exists to close. The value it copies is Kalshi's own "
+        "recorded settled_yes, identical to what the primary path writes."
+    ),
     ("tracker.py", "backfill_daily_temp_settlement"): (
         "Data-repair utility that corrects settled_temp_f from Kalshi's own "
         "expiration_value -- like backfill_emos_data, correcting a column's "

@@ -282,6 +282,24 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "trade_history keeps accumulating, not re-derived from scratch -- "
         "re-run 2026-08-22 (n=92, r=0.036), same null finding at 2x the scale"
     ),
+    ("tracker.py", "_fetch_asos_hour_temp"): (
+        "TESTED, NO PROD CALL SITE -- the hour-resolution METAR reduction "
+        "for KXTEMPxxxH hourly settlement (backlog.txt HOURLY-DIRECTIONAL "
+        "TEMPERATURE MARKETS Step 2). Orphaned 2026-08-25 by batch-68's A13 "
+        "settlement-source audit, which found audit_settlement's hourly "
+        "branch -- its only caller -- should read Kalshi's own settled "
+        "expiration_value instead of a METAR proxy, exactly as the daily "
+        "branch already did. Not deleted, per that same audit: none of the "
+        "six hourly cities settles on METAR, so this is not a settlement "
+        "source, but it is the only hour-resolution archive reduction in the "
+        "module and is the building block the open 'other 5 hourly cities "
+        "settle on THE WEATHER COMPANY' backlog entry needs to measure how "
+        "far the METAR proxy sits from each market's real settlement source. "
+        "Same disposition, and the same audit, as its two siblings "
+        "_fetch_asos_daily_temp and _fetch_actual_daily_temp -- see this "
+        "function's own docstring. Wiring it back in would reintroduce the "
+        "proxy the audit removed."
+    ),
     ("tracker.py", "get_regional_recent_bias"): (
         "TESTED, NO PROD CALL SITE -- correlation-weighted mean forecast "
         "error of correlated cities' recent settlements (backlog.txt "
