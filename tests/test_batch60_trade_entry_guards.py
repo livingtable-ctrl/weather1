@@ -409,6 +409,33 @@ class TestCmdOrderLiveBuyTargetDateGuard:
     reaches. `grep STALE_TARGET_DATE_GRACE_DAYS main.py order_executor.py`
     returned nothing."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_live_config(self, tmp_path, monkeypatch):
+        """Redirect main._LIVE_CONFIG_PATH per test -- a CI-only failure.
+
+        cmd_order reaches main._load_live_config(), which reads
+        data/live_config.json and, on FileNotFoundError, CREATES it with safe
+        defaults. That file is untracked and gitignored, so it EXISTS on a
+        developer machine -- where the read is merely an isolation gap the
+        prod-data guard reports -- and does NOT exist on a fresh clone, so CI
+        took the create branch and wrote into the real data/ dir.
+
+        The write is blocked by tests/prod_data_guard.py, and the failure is
+        not contained: that branch's own `except OSError` cannot catch it,
+        because ProdDataWriteError derives from RuntimeError, not OSError.
+        paths.materialize_missing_seeds' docstring documents exactly that
+        distinction, for exactly this reason.
+
+        Redirecting the path is the established pattern here -- see
+        test_cron_integration.py:89 and the six sites in
+        test_live_execution.py. Autouse at class scope rather than per test:
+        all three tests that reach _load_live_config do so through _run(), and
+        a fourth added later would inherit the gap silently.
+        """
+        import main
+
+        monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", tmp_path / "live_config.json")
+
     @contextmanager
     def _passing_gate_patches(self):
         with (
