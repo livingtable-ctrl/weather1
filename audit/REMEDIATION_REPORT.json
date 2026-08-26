@@ -6,25 +6,22 @@
     "source_commit": "e8d178f1",
     "method": "Derived from the 61 open backlog.txt entries by filtering for items completable in a single session, then grouped so that no two batches share a touched file. Every entry was verified against its own body text rather than its title -- three entries in the same pass proved to be already resolved and were closed.",
     "counts": {
-      "total": 13,
+      "total": 14,
       "HIGH": 2,
       "MEDIUM": 6,
       "LOW": 5,
-      "needing_user_decision": 9
+      "needing_user_decision": 10,
+      "MEDIUM-HIGH": 1
     },
     "batches": {
       "76": "weather_markets.py, metar.py",
       "77": "kalshi_client.py, paper.py",
       "78": "tracker.py, cron.py, trade_cycle.py, kalshi_ws.py",
       "79": "web.py, web_app.py, config.py, utils.py, calibration.py, ml_bias.py, paths.py, main.py",
-      "80": "frontend/src/*, notify.py, tests/test_trade_improvements.py, tests/test_kelly_property.py, order_executor.py"
+      "80": "frontend/src/*, notify.py, tests/test_trade_improvements.py, tests/test_kelly_property.py, order_executor.py",
+      "81": "weather_markets.py, main.py, tracker.py, cron.py, order_executor.py (BLOCKED on 76-80)"
     },
     "deferred": [
-      {
-        "title": "THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27% STATISTICAL POWER",
-        "severity": "MEDIUM-HIGH",
-        "blocked_by": "needs weather_markets.py (batch 76) + main.py (batch 79)"
-      },
       {
         "title": "cron.report_anomalies READS A \"forecast_temp_raw\" KEY THAT NOTHING HAS EVER WRITTEN",
         "severity": "LOW",
@@ -321,6 +318,33 @@
       "evidence": "Reproduced on unmodified master while regression-testing the isolate_tracker_db change.",
       "financial_risk": "None.",
       "decision_required": null
+    },
+    {
+      "id": "REM-0014",
+      "batch": 81,
+      "severity": "MEDIUM-HIGH",
+      "scope": "signal graduation surface",
+      "title": "The signal registry's sample_floor=20 clears at ~27% statistical power, and the 6x accrual gain does not reach it",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E1-measured",
+      "files": [
+        "weather_markets.py",
+        "main.py",
+        "tracker.py",
+        "cron.py",
+        "order_executor.py"
+      ],
+      "symbols": [
+        "_SignalRegistryEntry",
+        "get_signal_graduation_report",
+        "_notify_feature_activation",
+        "batch_log_analysis_attempts"
+      ],
+      "root_cause": "Ten of twelve registry entries use sample_floor=20. At n=20-26 a binary-outcome signal cannot be separated from noise (~27% power), yet floor_cleared prints in green and fires an activation alert. Separately, analysis_attempts carries no signal columns, so the 5.1x scoring gain of 2026-08-26 does not reach these floors at all.",
+      "evidence": "Back-solving from n=20 -> 27% power gives effect 0.3012, hence n=86 for 80% power. Measured 2026-08-26: gated_edge 110 (clear), implied_mean 82 (2 days), ecmwf_consensus_gap 77 (4 days), run_trend_delta 40 (41 days), nbm_quantile_prob 27 (68 days). analysis_attempts columns contain no signal values; signal rows accrue at 0.87-1.13/day against the unbiased population's ~22/day.",
+      "financial_risk": "A noise signal can be wired into live pricing on the strength of a bar that cannot distinguish it from noise. nbm_quantile_prob -- the signal that cleared the floor and fired the alert -- is the furthest from measurable.",
+      "decision_required": "The replacement number and one-floor-vs-two; plus whether to log signal values onto analysis_attempts (JSON blob vs typed columns), which would cut time-to-86 from months to ~4 days and make the rows unbiased."
     }
   ]
 }
