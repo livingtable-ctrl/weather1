@@ -1,6 +1,411 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+
+[RESOLVED 2026-08-25 -- fix applied and the 30 contaminated rows removed;
+  found by the independent opus review of the prod-data-guard entry below]
+  TEST RUNS WRITE FABRICATED ROWS INTO THE REAL data/predictions.db VIA AN
+  atexit FLUSHER THAT FIRES AFTER EVERY TEST-ISOLATION TEARDOWN
+Priority: High -- it is writing right now, on every pytest run, into the
+  database the bot's own accuracy/calibration work reads. The new
+  prod-data-guard (entry below) does NOT catch it, by construction.
+Files: tests/conftest.py (pytest_sessionfinish, pytest_unconfigure),
+  weather_markets.py:3957/4002 (_member_values_pending / flush_member_values),
+  tracker.py (log_ensemble_members_bulk), data/predictions.db.
+
+Problem:
+  weather_markets registers THREE atexit flushers (weather_markets.py:1156,
+  1271, 4002). conftest's pytest_sessionfinish drains only two of them --
+  _forecast_disk_pending and _ensemble_disk_pending. The third,
+  _member_values_pending (flushed by flush_member_values, registered at
+  weather_markets.py:4002), is not drained.
+
+  Ordering is the whole bug. atexit hooks fire at true interpreter
+  shutdown, which is AFTER: (a) monkeypatch has reverted
+  isolate_tracker_db's tracker.DB_PATH redirect, and (b) conftest's
+  pytest_unconfigure has called prod_data_guard.uninstall(). So the flush
+  runs with no isolation and no guard, and
+  tracker.log_ensemble_members_bulk() does init_db() + INSERT straight into
+  the operator's real data/predictions.db.
+
+  pytest_sessionfinish's own docstring already describes this exact hazard
+  for the other two buffers ("the atexit flush fires AFTER this fixture's
+  own teardown has already reverted the redirect") -- the fix simply never
+  covered the third buffer, which was added later.
+
+Evidence (read-only query against the live DB, mode=ro):
+  ensemble_member_values: 37 rows, 7 distinct logged_at batches. Every row
+  is test fixture data, not a forecast:
+
+    (1,  'NYC','icon_seamless','2026-08-26','max','2026-08-25_00z',
+         'RUN-X', 1, '[70.0]',  '2026-08-25T07:31:46Z')
+    (888,'NYC','gem_global','2026-08-28','max','2026-08-25_18z',
+         None, 5, '[200.0, 201.0, 202.0, 203.0, 204.0]',
+         '2026-08-26T00:03:51Z')
+
+  run_init='RUN-X' is the literal string from
+  tests/test_batch64_forward_writers.py::
+  test_persist_member_values_records_the_observed_run_init (which calls
+  wm._persist_member_values() WITHOUT the `patch.object(wm,
+  "_member_values_pending", [])` its neighbouring tests use). The
+  [200.0...] array is an out-of-range sentinel from a validation test. The
+  [70.0, 71.0, ...] sequences are synthetic.
+
+  Batch sizes are 1-16 rows; a real prewarm scan writes ~300. Autoincrement
+  ids reach 888 for 37 surviving rows, so far more has passed through
+  historically. Four of the seven batches (16:24, 16:33, 16:49, 17:10 UTC
+  2026-08-25) and the 00:03:51 UTC 2026-08-26 batch line up exactly with
+  this session's own diagnostic and verification runs -- i.e. the work that
+  found this was also feeding it.
+
+Why the new guard does not catch it:
+  tests/prod_data_guard.py is installed from pytest_configure and removed
+  from pytest_unconfigure. Since the leak happens strictly after
+  unconfigure, the guard is already gone. Confirmed empirically: a probe
+  plugin reading the buffers at unconfigure time, after a single test,
+  showed `_member_values_pending len=2` with the guard already uninstalled.
+
+Fix (not yet applied):
+  1. Drain _member_values_pending in pytest_sessionfinish alongside the
+     other two -- and derive the list, or assert that every atexit-
+     registered flusher in weather_markets has a drained buffer, so the
+     NEXT flusher added does not repeat this. That generalisation is the
+     actual lesson: this is the second buffer to be missed by a hand-
+     maintained list of two.
+  2. Stop calling prod_data_guard.uninstall() in pytest_unconfigure.
+     Leaving the guard armed until process exit costs nothing and is the
+     correct default for an always-on guard. Note flush_member_values
+     swallows Exception, so the guard alone would block-but-not-report --
+     step 1 is still required.
+  3. Register an atexit hook from prod_data_guard.install() that reports any
+     violations accumulated after pytest_sessionfinish, so a post-session
+     leak is loud rather than dropped.
+  4. Delete the 37 contaminated rows from data/predictions.db.
+
+Resolution 2026-08-25:
+  1. conftest._ATEXIT_FLUSH_BUFFERS now names all three buffers and
+     pytest_sessionfinish drains each. Verified empirically: 634 rows before
+     running tests/test_batch64_forward_writers.py (the file whose
+     test_persist_member_values_records_the_observed_run_init populates the
+     buffer without patching it), 634 after.
+  2. conftest no longer defines pytest_unconfigure at all, so the guard stays
+     armed through interpreter shutdown; prod_data_guard.install() also
+     registers an atexit reporter that prints anything blocked after the
+     session ended, since no test can be failed at that point and
+     flush_member_values swallows Exception.
+  3. tests/test_prod_data_guard.py::TestAtexitFlushersAreAllDrained reads
+     weather_markets' source for its atexit.register calls and asserts each
+     flusher's buffer is one conftest drains -- so the NEXT flusher added
+     cannot repeat this. A hand-maintained list of two had already failed
+     once, which is the whole lesson.
+  4. 30 synthetic rows deleted (ids listed in the session log); 604
+     legitimate rows retained. A consistent snapshot of the DB was taken via
+     the sqlite backup API first, since production cron was mid-cycle.
+
+CORRECTION to the count above: this entry originally said 37 rows, derived
+  by grouping on logged_at and treating seven small batches as test flushes.
+  That heuristic was WRONG and would have destroyed real data.
+  tracker.py:10360 inserts with INSERT OR IGNORE against a UNIQUE index on
+  (city, model, target_date, var, cycle), so a REAL cron flush only inserts
+  combinations not already present -- which can be as few as 3 rows. Seven
+  genuine SanFrancisco rows (n_members 30-50, real run_init timestamps) were
+  sitting in the same logged_at batches as the test rows.
+
+  The rows were instead separated on CONTENT: run_init='RUN-X', or a member
+  array that is an arithmetic run of step 1.0 with integral endpoints
+  ([70.0], [70.0, 71.0], [68.0..72.0]), or an out-of-range sentinel
+  (+/-200.0F). That gives 30 synthetic (all NYC, n_members 1-5) and 604 real
+  (20 cities, n_members 17-50). Verified again inside the delete transaction
+  before committing.
+
+  Worth remembering generally: an "obviously test-shaped" small batch is not
+  evidence of a test when the writer dedups on insert.
+
+Downstream-consumption check: nothing outside tracker.py's own writer reads
+  this table today (grep for ensemble_member_values across the repo returns
+  only the CREATE/INDEX/INSERT in tracker.py and two comments in
+  weather_markets.py referring to its dedup key). So no analysis has
+  consumed the fabricated rows, and the deletion is a clean correction.
+
+[RESOLVED 2026-08-25 -- structural runtime guard + 10 isolation fixtures
+  shipped; see resolution below] A PLAIN `pytest` RUN MUTATED THE REAL
+  PRODUCTION data/ DIRECTORY -- 567 ATTEMPTS BY DAY, 1,700+ AFTER UTC
+  MIDNIGHT, INCLUDING THE LIVE-TRADING KILL SWITCH
+Priority: High -- the suite had write access to every piece of live state the
+  bot owns. One target is the operator's hard stop on live trading; 20 tests
+  DELETED the flag a running cron cycle uses to detect a concurrent run; and
+  a whole class of once-per-period gate markers was being stamped, which
+  SUPPRESSES the next real production run of whatever each one gates.
+Files: tests/prod_data_guard.py (new), tests/test_prod_data_guard.py (new),
+  tests/conftest.py (3 phase hooks + 10 new/extended autouse fixtures),
+  tests/test_bare_os_replace_guard.py (one allowlist entry).
+  NO production module changed.
+
+Problem:
+  paths.py deliberately resolves data/ to the MAIN CLONE via
+  safe_io.project_root(), so a worktree cron run hits real state rather than
+  a stale local copy. The consequence is that EVERY pytest run, from any
+  worktree, points at live production state unless the specific path
+  constant a test touches happens to be redirected in conftest.py.
+
+  conftest.py had been closing those holes one constant at a time since
+  2026-04 -- data/cron.log (467 fabricated lines), data/paper_trades.json
+  (batch-62), data/metar_lockout_calibration.json (commit 5d9b6c56),
+  data/nearby_station_shadow.json (110 phantom cycles),
+  data/signals_cache.json, data/miami_index_state.json,
+  data/.halt_transitions.json. Every one was found by accident, after the
+  fact. A redirect list can only ever describe leaks somebody already hit.
+
+  Measured with a scratch pytest plugin intercepting open / Path.open /
+  sqlite3.connect / os.replace / rename / unlink / remove / touch / mkdir /
+  shutil.*, blocking anything under the real data/ (so nothing was damaged
+  while measuring). Positive-controlled on all 8 vectors first: each attempt
+  both recorded AND prevented, two victim files verified intact afterwards.
+
+  567 real mutation attempts across 25 test files (plus 330 benign
+  mkdir(exist_ok=True) re-assertions of already-existing dirs):
+
+    6 production DBs   sqlite3.connect   74 tests each (444 total)
+      predictions/execution_log/kalshi/paper_trades/tracker/trades.db, via
+      cloud_backup._sqlite_source_is_empty() iterating the whole real
+      DATA_DIR -- which then copies every matching file into the operator's
+      cloud sync folder under today's date.
+    .notify_cooldowns.json   atomic write   28 tests
+    feature_importance.jsonl open(a)        25 tests
+    .cron_running            Path.unlink    20 tests  <-- DELETE
+    .last_calibration_count  write           6 tests
+    .watch_state.json        write           4 tests
+    cron_web.log             truncate        4 tests
+    .cron.lock.mutex         open(a+b)       2 tests
+    learned_weights.json     atomic write    1 test   <-- MODEL ARTIFACT
+    ensemble_cache/<lat>_<lon>_<date>_min.json         1 test
+    .config_hash             write           1 test
+    .kill_switch             atomic write    1 test   <-- LIVE TRADING STOP
+
+  THE KILL SWITCH is the worst of these, and the count understates it.
+  tests/test_web_auth.py's TestMutationEndpointsRequireAuth POSTs /api/halt
+  (lands a real data/.kill_switch) and POSTs /api/resume (does
+  `_KS_PATH.unlink(missing_ok=True)`). Depending only on test ORDER, a plain
+  `pytest` run could leave live trading HALTED, or silently clear a halt the
+  operator set deliberately. The resume/delete side does NOT appear in the
+  567 only because /api/resume checks `.exists()` first and the operator was
+  not halted at measurement time -- luck, not isolation. KILL_SWITCH_PATH
+  was isolated NOWHERE in conftest.py.
+
+  A SECOND, TIME-GATED CLASS was invisible to that sweep entirely.
+  cron.py/weather_markets.py's once-per-period maintenance gates read
+  utils.utc_today() and compare it to a stored date:
+
+      _today = _utc_today()
+      if last == str(_today):
+          return          # already ran this period -- skip, no write
+
+  The sweep (12:47 EDT / 16:47 UTC) and the first full verification run
+  (~13:00 EDT / 17:00 UTC) both fell on the same UTC day the markers were
+  last stamped, so every gate short-circuited on that `return` and never
+  reached its write. Re-running the identical suite at 00:13 UTC the next
+  day -- zero code changes in between -- produced 79 failures across 1,140
+  additional blocked writes: fee_change_check.json (763),
+  city_registry_report.json (150), series_drift_check.json (148),
+  last_prod_reminder.txt (79).
+
+  These do not corrupt data; they SUPPRESS. A test run stamping
+  data/fee_change_check.json with today's date makes the next real cron
+  cycle skip the $0-maker-fee guard for the rest of the day. Same shape for
+  the series-drift, catalog-drift, city-registry and retirement-probation
+  watchers, the ML-retrain / weights-refresh / param-sweep / walk-forward
+  gates, and the monthly prod reminder.
+
+  Per-test patching was not enough, and had already failed silently:
+  test_state_consistency.py and test_execution_stability.py's TestCronLock
+  both patch *main*.LOCK_PATH, but cron.py reads *cron*.LOCK_PATH, so the
+  real data/.cron.lock.mutex was still being opened. Likewise this file's
+  own notify entry states its tests are "isolated to a tmp_path file via
+  monkeypatch -- never touches the real data/.notify_cooldowns.json": true
+  of that file, false of the 28 other tests reaching the same writer by a
+  different call path.
+
+Resolution:
+  1. tests/prod_data_guard.py -- an always-on runtime guard installed from
+     conftest's pytest_configure for the whole session. Any write, delete,
+     rename, truncate, touch, non-read-only sqlite connect, or NEW-directory
+     creation resolving under the real data/ raises ProdDataWriteError at the
+     call site AND is recorded. conftest wraps all three test phases
+     (setup/call/teardown) with assert_clean(), which fails the test even
+     when the raise was swallowed -- necessary because this codebase wraps
+     nearly all persistence in `try: ... except Exception: log`.
+
+     This inverts the model: instead of enumerating paths a test must not
+     write, nothing may be written, so a state file added to paths.py
+     tomorrow is covered with no conftest change.
+
+     Reads are deliberately NOT blocked (some are legitimate -- the five
+     git-tracked data/*.json calibration files). Every read is counted and
+     printed at session end instead. See follow-up below.
+
+     No opt-out marker, by design: a test needing a real data file must copy
+     it into tmp_path first.
+
+     mkdir is checked against EXISTENCE rather than location -- paths.py,
+     backtest.py and ab_test.py all mkdir(exist_ok=True) at import, and most
+     persistence helpers do `<CONST>.parent.mkdir(exist_ok=True)` before an
+     atomic write. Failing those is 330 false positives protecting nothing,
+     since the write that follows is blocked on its own merits.
+
+     Measured overhead ~1.7us per open() call (mode is tested first, a pure
+     string check, so a read never reaches the path-normalising code).
+
+  2. Ten autouse fixtures in conftest.py covering every constant found:
+     KILL_SWITCH_PATH (six bindings -- paths, cron, main, alerts, trading_
+     gates, web_app), WATCH_STATE_PATH, CRON_WEB_LOG_PATH, NOTIFY_COOLDOWN_
+     STATE_PATH, LOCK_PATH / RUNNING_FLAG_PATH / LAST_CALIBRATION_COUNT_PATH,
+     LEARNED_WEIGHTS_PATH + FORECAST_SNAPSHOTS_DIR, FEATURE_IMPORTANCE_LOG_
+     PATH, CONFIG_HASH_PATH, cloud_backup.DATA_DIR, ENSEMBLE_CACHE_DIR, and
+     isolate_periodic_gate_sentinels covering all 13 periodic markers.
+
+     The three WEEKLY-cadence sentinels (FEE_SCHEDULE_SCRAPE_PATH,
+     CATALOG_DRIFT_PATH, LAST_MONDAY_SWEEP_PATH) had not fired even at
+     00:13 UTC, because their period had not elapsed. Isolated anyway: same
+     gate shape, same consequence, longer fuse. Waiting for each to surface
+     on its own schedule is exactly the habit the guard exists to end.
+
+  3. tests/test_prod_data_guard.py -- 85 tests. Each mutation probe attempts
+     a real mutation and asserts both halves of the contract (blocked AND
+     nothing changed on disk). The delete probe aims at a deliberately
+     NON-EXISTENT path, so it cannot destroy anything even if the guard is
+     fully broken, while still detecting a broken guard: unguarded,
+     unlink(missing_ok=True) succeeds silently and os.remove raises
+     FileNotFoundError -- neither is ProdDataWriteError.
+
+     A TestIsolationFixturesStayWired class asserts every redirected
+     (module, attribute) resolves outside the real data/, so deleting a
+     fixture names the exact binding that came loose instead of waiting for
+     an unrelated test to write through it. Its periodic-gate rows are
+     DERIVED from conftest's own _PERIODIC_GATE_SENTINELS table rather than
+     re-listed, so a constant added to the fixture cannot end up tested by
+     nothing.
+
+Three findings the guard produced that inspection had not:
+  - ENSEMBLE_CACHE_DIR was leaking despite conftest already having a fixture
+    named isolate_forecast_ensemble_disk_cache. That fixture redirects two
+    single-FILE caches; ENSEMBLE_CACHE_DIR is a third, separate per-city/date
+    DIRECTORY the name made look covered.
+  - tests/test_forecasting.py::TestLearnedWeights::
+    test_forecast_model_weights_uses_learned_per_city passed only because
+    the real production data/learned_weights.json existed and its mtime
+    matched a stale module-level cache, so the mtime-gated loader returned
+    the test's injected dict from its cache-hit branch. Isolating the path
+    alone turned it red; the fixture now resets _LEARNED_WEIGHTS /
+    _LEARNED_WEIGHTS_MTIME / _LEARNED_WEIGHTS_TTL_WARNED alongside it,
+    matching isolate_metar_calibration_path's pattern.
+  - The guard's OWN mutation battery leaked. Dropping "a" from
+    _WRITE_MODES un-blocks append, so test_append_mode_is_blocked stopped
+    being a probe and appended twice to a real data/GUARD_PROBE_append.log
+    (34 bytes, removed). The test went red correctly and still dirtied the
+    directory it guards. Fixed with an autouse _sweep_probe_residue fixture
+    that removes any GUARD_PROBE_* artefact via prod_data_guard's captured
+    ORIGINAL os.remove/shutil.rmtree (the patched ones refuse exactly those
+    paths, and the originals work when the guard was never installed at
+    all), plus a structural test asserting every probe target uses the swept
+    prefix. Re-running that mutation: still DETECTED, now zero residue.
+
+Verification:
+  Full suite green. Mutation-tested 9 ways -- guard never installs, Path.
+  unlink left unpatched, append dropped from _WRITE_MODES, assert_clean
+  never raises, mkdir existence check dropped, reads no longer recorded,
+  isolate_kill_switch disabled, isolate_cron_lifecycle_sentinels disabled,
+  ENSEMBLE_CACHE_DIR redirect removed -- all 9 DETECTED. (A 10th attempt was
+  a no-op mutation of my own making, `() if False else (...)`, which still
+  evaluates to the tuple; re-done properly and detected.) Each mutation
+  reverted by exact string replacement with a sha256 check that the file was
+  restored, never `git checkout --`, since these files hold other
+  uncommitted work. ruff/ruff-format/mypy clean via the real pre-commit hook.
+
+Follow-up (NOT done here -- reads are still allowed):
+  The same sweep recorded 1,433 READ events against 48 distinct real data/
+  files: param_sweep_results.json (281 tests), orderbook_cache.json (137),
+  temperature_scale.json (112), city_weights.json (84),
+  condition_weights.json (83), seasonal_weights.json (81),
+  live_config.json (52 -- the live-trading hard stops). None can corrupt
+  production, but each is a test whose result depends on the operator's
+  machine state -- which is precisely how
+  test_forecast_model_weights_uses_learned_per_city above came to pass for
+  the wrong reason. Tightening the guard to fail on reads needs those files
+  seeded into tmp_path per test first.
+
+Also noticed, not fixed (separate defects, out of scope):
+  - settlement_monitor.py:40 builds `_project_root() / "data" /
+    ".settlement_monitor.lock"` directly instead of importing a paths.py
+    constant. tests/test_paths_bypass_guard.py does not catch this spelling:
+    its regex covers the __file__-relative and cwd-relative forms, not a
+    project_root()-relative one.
+  - tests/test_safe_io.py::test_atomic_write_text_concurrent_writers_never_
+    expose_torn_file is PRE-EXISTING FLAKY: it fails ~2/5 runs with this
+    entry's changes stashed out (WinError 5 sharing violation under
+    concurrent writers, exhausting safe_io's 3 retries). Its traceback names
+    prod_data_guard only because the guard sits in the call stack.
+
+Independent opus review (effort:high) -- findings NOT yet applied:
+  The review confirmed the design is delivered (mutations block AND fail;
+  reads allowed and reported; no opt-out marker), re-verified the
+  Path.write_text->Path.open delegation against the running CPython 3.14.4,
+  re-verified the os.open/os.write absence, exercised the path predicate
+  against ~13 spellings (trailing space/dot, UNC, mixed case, bytes, int fd,
+  sibling-prefix `data_other/`) with no false negative that matters here,
+  confirmed the mkdir existence hole is not exploitable (every write into
+  such a dir is separately blocked), and independently reproduced the
+  pre-existing test_safe_io concurrency flake at 3/5 with the guard vs 2/6
+  without. It also confirmed all KILL_SWITCH_PATH bindings are covered,
+  including trade_cycle.py (attribute access on cron), order_executor.py
+  (call-time `from paths import`) and main.py's function-local aliases.
+
+  Still to fix, in priority order:
+  - HIGH: the atexit/predictions.db leak -- filed as its own OPEN entry
+    immediately above, since the underlying defect predates this work.
+  - MED: a violation recorded during a teardown that ALSO raises is
+    silently dropped (wrapper=True re-raises at the yield, so assert_clean
+    is skipped, and the next test's set_current_test clears it).
+    Reproduced. Fix: try/finally around the three phase hooks.
+  - MED: violations recorded during collection/import are likewise dropped
+    by the first set_current_test. Fix: a pytest_collection_finish check,
+    and make set_current_test refuse to clear a non-empty list.
+  - MED: _dst_guard checks only dst, so a production file can be RENAMED
+    OUT of data/ undetected (os.replace / os.rename / shutil.move).
+    Reproduced. A move is a delete of the source -- the one delete shape
+    not covered. No current src-in/dst-out call site, so contract hole
+    rather than live leak. Fix: two-sided check for the move primitives
+    only (copyfile/copy/copy2 stay dst-only, their src is read-only).
+  - MED: shutil.copytree is unpatched, and its `copy_function=copy2`
+    default is bound at def time, so patching shutil.copy2 never reaches
+    it. With dirs_exist_ok=True the file LANDS before the guard trips at
+    copystat->os.utime -- detected but not prevented, contradicting the
+    module docstring. Live call site: cloud_backup.py:353.
+  - MED: the sqlite3 URI form bypasses _g_connect entirely
+    (`file:...?mode=rwc` with uri=True is not blocked), which also means
+    the `mode=ro` allowance is dead code -- migrate_backup.py's four
+    read-only URI callers pass by accident, not by design.
+  - LOW: Path.copy / Path.copy_into are NEW in 3.14 and on Windows use
+    _winapi.CopyFile2, bypassing open() entirely -- exactly the "a new API
+    silently reopens the hole" shape this module exists to prevent. Worth
+    adding to the patch list or at least the disclosed limitations.
+  - LOW: no locking on _violations/_current_nodeid. Nothing corrupts (list
+    .append is GIL-atomic) but a daemon thread outliving its test can have
+    its violation dropped or attributed to an innocent test.
+  - LOW: TestConftestWiring proves the wiring by grepping conftest source
+    rather than behaviourally; it would pass if someone dropped
+    @pytest.hookimpl(wrapper=True) or moved assert_clean above the yield.
+    Fix: a pytester sub-run asserting an injected violation turns a
+    passing generated test red.
+  - LOW: the read summary counts only open()/Path.open() reads, not
+    os.scandir/listdir/stat/Path.exists, so "N files were READ" reads more
+    reassuring than it is; and it prints basenames, collapsing same-named
+    files in different subdirectories.
+  - LOW: two more hand-built production paths are un-redirected tripwires
+    -- settlement_monitor.py:40's _SETTLEMENT_LOCK_PATH and
+    climatology.py:373's _SIGMA_CACHE_PATH. Not reached by tests today; the
+    day one is, it surfaces as a ProdDataWriteError in an unrelated test.
+
+
 [OPEN 2026-08-25 -- found by batch-68's own test run: a real
   notify.send_system_alert() call raised inside its notify thread during
   tests. Filed rather than fixed: notify.py is batch-69's file.]

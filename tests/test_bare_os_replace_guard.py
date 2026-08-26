@@ -184,6 +184,19 @@ _ALLOWLIST: dict[str, tuple[int, int, str]] = {
         "not a bare call) by naming the old Path.rename()/os.replace() "
         "semantics gap it closed -- text mentions, not calls.",
     ),
+    "tests/test_prod_data_guard.py": (
+        1,
+        0,
+        "A genuine bare call, and the only entry here that is one. "
+        "test_os_replace_into_data_dir_is_blocked must invoke os.replace "
+        "directly to prove tests/prod_data_guard.py intercepts that exact "
+        "primitive -- it is a probe of the guard, not a persistent write, "
+        "so it has no payload to lose and nothing for "
+        "safe_io._replace_with_retry to retry. Routing it through "
+        "atomic_write_json instead would prove nothing: that helper is "
+        "blocked one step earlier, at the temp file's open(), and would "
+        "never reach the os.replace this asserts on.",
+    ),
 }
 
 

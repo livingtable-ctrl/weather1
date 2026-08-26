@@ -2,6 +2,7 @@
 
 import contextlib
 import copy
+import importlib
 import json
 import socket
 from datetime import date, timedelta
@@ -19,6 +20,94 @@ import requests.adapters
 # env-cleanup fixtures already ran, silently re-polluting os.environ for just
 # that one test (e.g. TRADING_PAUSED reappearing after being explicitly cleared).
 import main as _main  # noqa: F401
+from tests import prod_data_guard
+
+
+def pytest_configure(config):
+    """Arm the production-data write guard for the whole session.
+
+    Installed here rather than at conftest import so that paths.py's own
+    module-level ``_DATA.mkdir(parents=True, exist_ok=True)`` (which runs
+    during `import main` above) is not itself reported. Everything from
+    test-module collection onwards is covered.
+
+    See tests/prod_data_guard.py for why an always-on structural guard
+    replaced the growing list of per-constant isolate_* fixtures below.
+    """
+    import paths
+
+    prod_data_guard.install(paths.DATA_DIR)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_collection_finish(session):
+    """Report a production mutation attempted at import/collection time.
+
+    Collection completes before the first pytest_runtest_setup, so without
+    this any module-level write -- the `<CONST>.parent.mkdir(...)` + write
+    idiom is common in this repo -- would be recorded against the
+    "<collection/import>" pseudo-nodeid and then swept into _orphaned by
+    the first test's set_current_test(), reported only at exit.
+    """
+    try:
+        result = yield
+    finally:
+        prod_data_guard.assert_clean("collection/import")
+    return result
+
+
+# The three phase hooks below use try/finally, not a bare `yield`, on
+# purpose. `wrapper=True` re-raises at the yield point, so if a phase fails
+# for an unrelated reason the assert_clean() after it never runs -- and the
+# recorded violation is then swept into _orphaned by the next test. A
+# fixture finalizer that deletes a production file inside try/except and is
+# followed by an unrelated finalizer failure is exactly that shape, and it
+# used to be reported nowhere. Raising from the finally chains onto the
+# original exception rather than replacing it.
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item):
+    # This hook serves BOTH guards. It must stay a single definition: a
+    # module keeps only its last `def` of a given name, so when the
+    # production-data guard and the outbound-network guard each defined
+    # their own pytest_runtest_setup, whichever came first was silently
+    # dropped and its phase check stopped running entirely. That is exactly
+    # what a clean textual auto-merge produced when these two landed
+    # together, and nothing but
+    # tests/test_prod_data_guard.py::TestConftestWiring caught it -- a
+    # source-grep check could not, because the string `def
+    # pytest_runtest_setup(item` was still present, twice.
+    #
+    # Network guard: name the running test in its error, reset its block log.
+    global _CURRENT_NODEID
+    _CURRENT_NODEID = item.nodeid
+    _BLOCKED_THIS_TEST.clear()
+
+    # Production-data guard: attribute violations to this test, then fail the
+    # phase if it attempted one (see the try/finally rationale below).
+    prod_data_guard.set_current_test(item.nodeid)
+    try:
+        result = yield
+    finally:
+        prod_data_guard.assert_clean("setup")
+    return result
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    try:
+        result = yield
+    finally:
+        prod_data_guard.assert_clean("the test body")
+    return result
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item, nextitem):
+    try:
+        result = yield
+    finally:
+        prod_data_guard.assert_clean("teardown")
+    return result
 
 
 class BlockedNetworkCall(BaseException):
@@ -247,11 +336,9 @@ def expect_blocked_network():
     _BLOCKED_THIS_TEST.clear()
 
 
-def pytest_runtest_setup(item):
-    """Name the running test in the guard's error, and reset its block log."""
-    global _CURRENT_NODEID
-    _CURRENT_NODEID = item.nodeid
-    _BLOCKED_THIS_TEST.clear()
+# The network guard's own pytest_runtest_setup body has been folded into the
+# single combined hook near the top of this file -- see the comment there for
+# why there must only ever be one definition of it.
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -1322,6 +1409,7 @@ def isolate_forecast_ensemble_disk_cache(tmp_path, monkeypatch):
     alone isn't sufficient -- the atexit flush fires AFTER this fixture's
     own teardown has already reverted the redirect.
     """
+    import paths
     import weather_markets as wm
 
     monkeypatch.setattr(
@@ -1330,6 +1418,20 @@ def isolate_forecast_ensemble_disk_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(
         wm, "_ENSEMBLE_DISK_CACHE_PATH", tmp_path / "ensemble_cache.json"
     )
+    # ENSEMBLE_CACHE_DIR is a THIRD, separate cache: a directory of
+    # per-lat/lon/date member files, not the single-file
+    # _ENSEMBLE_DISK_CACHE_PATH above. Redirecting only the two file
+    # constants left it pointing at the real data/ensemble_cache/, where
+    # tests/test_integration.py's analyze_trade pipeline wrote a fabricated
+    # 40.779_-73.969_<date>_min.json. Caught by tests/prod_data_guard.py
+    # rather than by inspection, which is the entire argument for that
+    # guard: this constant looked covered by the fixture that names it.
+    ensemble_dir = tmp_path / "ensemble_cache"
+    monkeypatch.setattr(wm, "ENSEMBLE_CACHE_DIR", ensemble_dir)
+    # paths.ENSEMBLE_CACHE_DIR too: weather_markets is the only importer
+    # today, but every other redirect in this file patches the source
+    # module as well, for the call-time `from paths import X` case.
+    monkeypatch.setattr(paths, "ENSEMBLE_CACHE_DIR", ensemble_dir)
 
 
 @pytest.fixture(autouse=True)
@@ -1532,26 +1634,421 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     )
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """Clear weather_markets' forecast/ensemble disk-cache pending-write
-    buffers before the interpreter's atexit hooks fire.
+@pytest.fixture(autouse=True)
+def isolate_kill_switch(tmp_path, monkeypatch):
+    """Redirect every binding of KILL_SWITCH_PATH to a per-test temp file.
 
-    isolate_forecast_ensemble_disk_cache above redirects the disk-cache
-    path for the duration of each test, but monkeypatch reverts that
-    redirect at fixture teardown -- which happens before
-    atexit.register(flush_forecast_disk_cache)/flush_ensemble_disk_cache
-    fire at true interpreter shutdown (pytest_sessionfinish runs, then
-    pytest's own process teardown, then only THEN does the interpreter
-    begin shutdown and run atexit hooks). If any pending entry is still
-    unflushed at that point -- e.g. a test populated the in-memory cache
-    but the specific test never triggered an explicit flush -- the atexit
-    hook would flush it to the REAL, un-redirected path. Clearing the
-    pending dicts here (a plain function call, not a fixture, so nothing
-    reverts it) guarantees flush_forecast_disk_cache()/
-    flush_ensemble_disk_cache() are a no-op by the time atexit runs,
-    regardless of monkeypatch's teardown timing.
+    The kill switch is the operator's hard stop on live trading, and the
+    suite drove both sides of it completely unisolated:
+    tests/test_web_auth.py's TestMutationEndpointsRequireAuth POSTs
+    /api/halt, which lands a real data/.kill_switch via
+    safe_io.atomic_write_json, and POSTs /api/resume, which DELETES it
+    with Path.unlink(missing_ok=True). Depending only on test ORDER, a
+    plain `pytest` run could therefore leave live trading HALTED, or
+    silently clear a halt the operator had set deliberately -- and being a
+    delete, the second case leaves nothing behind to notice afterwards.
+
+    Six modules bind this constant, five of them at import time, so
+    patching paths.KILL_SWITCH_PATH alone reaches almost none of them --
+    the import-time-binding trap this project has hit repeatedly (see
+    backlog.txt's "KILL_SWITCH_PATH attribute-access fix", where
+    trade_cycle.py had copied the reference at import and had to be
+    rewritten to read cron.KILL_SWITCH_PATH live). paths.py itself still
+    has to be patched, for order_executor.py, which does `from paths
+    import KILL_SWITCH_PATH` at CALL time and so resolves the module
+    attribute live.
+
+    The basename is kept as ".kill_switch" because main.py's cmd_cron
+    override flow parks the active switch at `<name> + ".tmp"` and
+    web_app's /api/resume cleans up that exact sibling.
+    """
+    import alerts
+    import cron
+    import main
+    import paths
+    import trading_gates
+    import web_app
+
+    ks = tmp_path / ".kill_switch"
+    monkeypatch.setattr(paths, "KILL_SWITCH_PATH", ks)
+    monkeypatch.setattr(cron, "KILL_SWITCH_PATH", ks)
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", ks)
+    monkeypatch.setattr(alerts, "_KILL_SWITCH_PATH", ks)
+    monkeypatch.setattr(trading_gates, "KILL_SWITCH_PATH", ks)
+    monkeypatch.setattr(web_app, "_KS_PATH", ks)
+    # web_app.py:30 also imports the bare name. Nothing reads it after
+    # _KS_PATH is derived from it at :47, so this is a latent hole rather
+    # than a live one -- closed anyway, since it costs one line and the
+    # next reader of that import would have no way to know it was unsafe.
+    monkeypatch.setattr(web_app, "KILL_SWITCH_PATH", ks)
+
+
+@pytest.fixture(autouse=True)
+def isolate_watch_state(tmp_path, monkeypatch):
+    """Redirect main's watch-mode ticker state to a per-test temp file.
+
+    main._save_watch_state() does a bare
+    `_WATCH_STATE_PATH.write_text(json.dumps(...))` on every watch cycle.
+    Four tests in tests/test_trading.py drive cmd_watch end-to-end
+    (auto early-exit, paper stop-loss, standalone recovery, and the
+    exception-does-not-kill-the-process case) and each wrote the real
+    data/.watch_state.json with their fixture tickers.
+
+    main binds the constant twice -- the imported name and the
+    module-level _WATCH_STATE_PATH alias -- and only the alias is read at
+    runtime; both are redirected so neither spelling can drift back.
+    """
+    import main
+    import paths
+
+    watch_state = tmp_path / ".watch_state.json"
+    monkeypatch.setattr(paths, "WATCH_STATE_PATH", watch_state)
+    monkeypatch.setattr(main, "WATCH_STATE_PATH", watch_state)
+    monkeypatch.setattr(main, "_WATCH_STATE_PATH", watch_state)
+
+
+@pytest.fixture(autouse=True)
+def isolate_notify_cooldowns(tmp_path, monkeypatch):
+    """Redirect notify.py's persisted alert cooldowns to a temp file.
+
+    Many test files already patch this per-test, which is exactly why the
+    gap was easy to miss: the ones that DON'T reach
+    notify._system_cooldown_reserve() through some other call path still
+    merged their fixture's cooldown keys into the real
+    data/.notify_cooldowns.json (observed live: a "black_swan_halt" key
+    with a test-run timestamp).
+
+    That file is a suppression window, so a stale test-written entry does
+    not corrupt data -- it silences the NEXT genuine alert for that key,
+    which for a halt-class notification is the failure mode that matters.
+    """
+    import notify
+    import paths
+
+    cooldowns = tmp_path / ".notify_cooldowns.json"
+    monkeypatch.setattr(paths, "NOTIFY_COOLDOWN_STATE_PATH", cooldowns)
+    monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", cooldowns)
+
+
+@pytest.fixture(autouse=True)
+def isolate_cron_web_log(tmp_path, monkeypatch):
+    """Redirect the dashboard's cron subprocess log to a temp file.
+
+    web_app's /api/run_cron truncates CRON_WEB_LOG_PATH with
+    `write_text("")` and then hands the open handle to a spawned cron
+    process; /api/status reads it back. Tests exercising those endpoints
+    truncated the operator's real data/cron_web.log.
+
+    web_app copies the constant into a `_CRON_WEB_LOG` local inside
+    _build_app(), so the module attribute must be redirected before the
+    app under test is built -- which an autouse fixture guarantees, and a
+    per-test patch inside the test body would not.
+    """
+    import paths
+    import web_app
+
+    web_log = tmp_path / "cron_web.log"
+    monkeypatch.setattr(paths, "CRON_WEB_LOG_PATH", web_log)
+    monkeypatch.setattr(web_app, "CRON_WEB_LOG_PATH", web_log)
+
+
+@pytest.fixture(autouse=True)
+def isolate_cloud_backup_source(tmp_path, monkeypatch):
+    """Point cloud_backup's default sync source at an empty temp dir.
+
+    backup_data() with no explicit data_dir iterates the WHOLE real data
+    directory and, for each *.db, opens it through
+    _sqlite_source_is_empty() -- all six production databases
+    (predictions, execution_log, kalshi, paper_trades, tracker, trades) --
+    before copying every matching file into the operator's cloud sync
+    folder under today's date. Reached from tests/test_trade_cycle_engine.py
+    via the cron cycle, that is a test run publishing real trade history
+    to cloud storage.
+
+    Every test in tests/test_cloud_backup.py passes data_dir= explicitly,
+    so redirecting the module-level default changes nothing they assert.
+    """
+    import cloud_backup
+
+    source = tmp_path / "cloud_backup_source"
+    source.mkdir()
+    monkeypatch.setattr(cloud_backup, "DATA_DIR", source)
+
+
+@pytest.fixture(autouse=True)
+def isolate_cron_lifecycle_sentinels(tmp_path, monkeypatch):
+    """Redirect cron's lock / running-flag / calibration-gate sentinels.
+
+    Sibling of isolate_cron_generated_files above: that one covers what a
+    cron CYCLE writes, this one covers the files the cron process manages
+    around the cycle. All three are written by cron.py, re-exported by
+    main.py, and read by web_app.py's status endpoints, so all four
+    bindings need redirecting.
+
+    Several tests already patch some of these, and leaked anyway, which is
+    the point of doing it centrally: test_state_consistency.py and
+    test_execution_stability.py's TestCronLock both patch *main*.LOCK_PATH,
+    but cron.py reads *cron*.LOCK_PATH, so the real data/.cron.lock.mutex
+    was still being opened. RUNNING_FLAG_PATH is worse -- cron's
+    _clear_running_flag() does `.unlink(missing_ok=True)`, so 20 tests were
+    DELETING the real data/.cron_running, the flag a live cron run uses to
+    detect that another cycle is already in progress.
+    """
+    import cron
+    import main
+    import paths
+    import web_app
+
+    for const, name in (
+        ("LOCK_PATH", ".cron.lock"),
+        ("RUNNING_FLAG_PATH", ".cron_running"),
+        ("LAST_CALIBRATION_COUNT_PATH", ".last_calibration_count"),
+    ):
+        # The basename is preserved because cron.py derives a companion
+        # mutex path from LOCK_PATH by appending ".mutex".
+        target = tmp_path / name
+        for module in (paths, cron, main, web_app):
+            monkeypatch.setattr(module, const, target)
+
+
+@pytest.fixture(autouse=True)
+def isolate_learned_weight_artifacts(tmp_path, monkeypatch):
+    """Redirect weather_markets' learned-weight and forecast-snapshot paths.
+
+    learn_seasonal_weights() persists to LEARNED_WEIGHTS_PATH, and the
+    snapshot writer creates per-city/per-date JSON under
+    FORECAST_SNAPSHOTS_DIR. Unlike a log or a gate sentinel, these are
+    MODEL ARTIFACTS: a test's synthetic weights written here feed straight
+    into the next real scan's probability, which is the same failure the
+    metar_lockout_calibration.json incident caused (commit 5d9b6c56).
+    """
+    import paths
+    import weather_markets as wm
+
+    learned = tmp_path / "learned_weights.json"
+    monkeypatch.setattr(paths, "LEARNED_WEIGHTS_PATH", learned)
+    monkeypatch.setattr(wm, "LEARNED_WEIGHTS_PATH", learned)
+    # The path redirect alone is not enough: _load_learned_weights() is
+    # mtime-gated through two module globals that outlive a test. It only
+    # honours a test's direct `monkeypatch.setattr(wm, "_LEARNED_WEIGHTS",
+    # ...)` while _LEARNED_WEIGHTS_MTIME is still None, so once ANY earlier
+    # test in the session triggered a real load, later tests fell through
+    # to disk. That is why test_forecast_model_weights_uses_learned_per_city
+    # passed before this fixture existed: the real production
+    # data/learned_weights.json was present, its mtime matched the stale
+    # cached one, and the cache-hit branch handed back the injected dict.
+    # Same reset-the-cache-with-the-path pattern as
+    # isolate_metar_calibration_path above.
+    monkeypatch.setattr(wm, "_LEARNED_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_LEARNED_WEIGHTS_MTIME", None)
+    monkeypatch.setattr(wm, "_LEARNED_WEIGHTS_TTL_WARNED", False)
+
+    snapshots = tmp_path / "forecast_snapshots"
+    monkeypatch.setattr(paths, "FORECAST_SNAPSHOTS_DIR", snapshots)
+    monkeypatch.setattr(wm, "FORECAST_SNAPSHOTS_DIR", snapshots)
+
+
+@pytest.fixture(autouse=True)
+def isolate_feature_importance_log(tmp_path, monkeypatch):
+    """Redirect feature_importance.py's append-only JSONL log.
+
+    `open(path, "a")` on every logged decision, from 25 tests. Append is
+    the same shape as the original 467-fake-lines data/cron.log incident:
+    nothing is destroyed, so nothing looks wrong, and the fabricated rows
+    simply become part of whatever later analysis reads the file.
+    """
+    import feature_importance
+    import paths
+
+    log = tmp_path / "feature_importance.jsonl"
+    monkeypatch.setattr(paths, "FEATURE_IMPORTANCE_LOG_PATH", log)
+    monkeypatch.setattr(feature_importance, "_FEATURE_LOG_PATH", log)
+
+
+@pytest.fixture(autouse=True)
+def isolate_config_hash(tmp_path, monkeypatch):
+    """Redirect utils.py's config-drift sentinel.
+
+    check_config_drift() compares the current config hash against the
+    stored one and rewrites the file when they differ. A test run writing
+    the hash of ITS config makes the next real run either miss a genuine
+    operator config change or report one that never happened.
+    """
+    import paths
+    import utils
+
+    config_hash = tmp_path / ".config_hash"
+    monkeypatch.setattr(paths, "CONFIG_HASH_PATH", config_hash)
+    monkeypatch.setattr(utils, "_CONFIG_HASH_PATH", config_hash)
+
+
+#: Every once-per-period "has this maintenance task run yet?" sentinel, and
+#: the modules that bind it. Each local alias inside the consuming function
+#: (cron.py's _MONDAY_SWEEP_PATH, _LAST_ML_RETRAIN_PATH, _WEIGHTS_GATE_PATH,
+#: _LAST_SWEEP_PATH, _LAST_WF_PATH) reads the module global at CALL time, so
+#: patching the module attribute reaches all of them.
+_PERIODIC_GATE_SENTINELS: list[tuple[str, tuple[str, ...]]] = [
+    ("PROD_REMINDER_PATH", ("cron",)),
+    ("FEE_CHECK_PATH", ("cron",)),
+    ("FEE_SCHEDULE_SCRAPE_PATH", ("cron",)),
+    ("LAST_MONDAY_SWEEP_PATH", ("cron",)),
+    ("LAST_ML_RETRAIN_PATH", ("cron", "web_app")),
+    ("LAST_WEIGHTS_REFRESH_PATH", ("cron",)),
+    ("LAST_PARAM_SWEEP_PATH", ("cron",)),
+    ("LAST_WALK_FORWARD_PATH", ("cron",)),
+    ("SERIES_DRIFT_PATH", ("weather_markets",)),
+    ("CATALOG_DRIFT_PATH", ("weather_markets",)),
+    ("CITY_REGISTRY_REPORT_PATH", ("weather_markets",)),
+    ("RETIREMENT_PROBATION_PATH", ("weather_markets",)),
+    ("LAST_BACKTEST_PATH", ("main",)),
+]
+
+
+@pytest.fixture(autouse=True)
+def isolate_paths_py_bypassers(tmp_path, monkeypatch):
+    """Redirect the two production paths that are built without paths.py.
+
+    Neither goes through a paths.py constant, so neither was covered by any
+    isolate_* fixture, and tests/test_paths_bypass_guard.py does not catch
+    either spelling:
+
+      * settlement_monitor.py:40 -- `_project_root() / "data" /
+        ".settlement_monitor.lock"`. That guard's regex covers the
+        __file__-relative and cwd-relative forms, not a project_root()-
+        relative one.
+      * climatology.py:373 -- `_SIGMA_CACHE_PATH = DATA_DIR /
+        "forecast_sigma.json"`, bound at IMPORT from climatology.DATA_DIR.
+        isolate_climatology_data_dir above redirects DATA_DIR, but that
+        happens long after this constant copied its value -- the same
+        import-time-binding trap this file documents everywhere else.
+
+    Neither appears to be reached by the suite today. They are redirected
+    pre-emptively because the day one is, tests/prod_data_guard.py turns it
+    into a ProdDataWriteError inside whichever unrelated test happened to
+    touch it, rather than a legible missing-fixture failure.
+    """
+    import climatology
+    import settlement_monitor
+
+    monkeypatch.setattr(
+        settlement_monitor,
+        "_SETTLEMENT_LOCK_PATH",
+        tmp_path / ".settlement_monitor.lock",
+    )
+    monkeypatch.setattr(
+        climatology, "_SIGMA_CACHE_PATH", tmp_path / "forecast_sigma.json"
+    )
+
+
+@pytest.fixture(autouse=True)
+def isolate_periodic_gate_sentinels(tmp_path, monkeypatch):
+    """Redirect every once-per-day/week maintenance gate marker.
+
+    Each of these files answers "has this task already run this
+    period?". Stamping one from a test does not corrupt data -- it
+    SUPPRESSES the next real production run of whatever it gates. A test
+    run that writes data/fee_change_check.json with today's date makes the
+    real cron cycle skip the $0-maker-fee check for the rest of the day;
+    the same goes for the series-drift, catalog-drift, city-registry and
+    retirement-probation watchers, the ML retrain / weights-refresh /
+    param-sweep / walk-forward gates, and the monthly prod reminder.
+
+    These leaks are TIME-DEPENDENT, which is why neither the original
+    diagnostic sweep nor the first full verification run saw them. The
+    gate reads `utils.utc_today()` and compares it to the stored date, so
+    it fires only once the UTC day has rolled over relative to the last
+    stamp. Both of those runs happened at ~13:00 and ~17:00 UTC on the
+    same UTC day the markers were last written, so every gate short-
+    circuited on the `last == str(_today)` branch and never reached its
+    write. A run at 00:13 UTC the next day -- the same suite, unchanged --
+    produced 79 failures across 1,140 blocked writes.
+
+    The weekly-cadence members (FEE_SCHEDULE_SCRAPE_PATH,
+    CATALOG_DRIFT_PATH, LAST_MONDAY_SWEEP_PATH) had NOT yet fired even
+    then, because their period had not elapsed. They are isolated here
+    anyway: same gate shape, same consequence, just a longer fuse. Waiting
+    for each to surface on its own schedule is how this class of bug has
+    always been found in this repo, and the point of the structural guard
+    is to stop doing that.
+    """
+    import paths
+
+    for const, module_names in _PERIODIC_GATE_SENTINELS:
+        # Read the real basename BEFORE patching, so the temp file keeps
+        # the production filename (several of these are matched by name in
+        # log output and operator-facing messages).
+        target = tmp_path / getattr(paths, const).name
+        monkeypatch.setattr(paths, const, target)
+        for module_name in module_names:
+            module = importlib.import_module(module_name)
+            monkeypatch.setattr(module, const, target)
+
+
+#: Every module-level buffer in weather_markets that an atexit-registered
+#: flusher drains. MUST stay in step with weather_markets' atexit.register
+#: calls -- tests/test_prod_data_guard.py asserts that mechanically, by
+#: reading weather_markets' source, rather than trusting this comment.
+_ATEXIT_FLUSH_BUFFERS = (
+    "_forecast_disk_pending",
+    "_ensemble_disk_pending",
+    "_member_values_pending",
+)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Drain every atexit-flushed buffer before the interpreter's hooks fire.
+
+    isolate_forecast_ensemble_disk_cache and isolate_tracker_db redirect
+    their paths for the duration of each test, but monkeypatch reverts
+    those redirects at fixture teardown -- which happens before
+    atexit-registered flushers fire at true interpreter shutdown
+    (pytest_sessionfinish runs, then pytest's own process teardown, then
+    only THEN does the interpreter begin shutdown and run atexit hooks). A
+    buffer still holding entries at that point is flushed to the REAL,
+    un-redirected path.
+
+    This used to clear only the two disk-cache dicts, and the third buffer
+    -- _member_values_pending, added later with its own
+    atexit.register(flush_member_values) -- was missed. The consequence was
+    not hypothetical: flush_member_values() calls
+    tracker.log_ensemble_members_bulk(), which does init_db() + INSERT
+    against tracker.DB_PATH, by then reverted to the real
+    data/predictions.db. 37 fabricated rows across 7 sessions were found
+    in the operator's live DB (run_init='RUN-X', member arrays like
+    [200.0, 201.0, ...] -- verbatim test fixture values). See the backlog
+    entry "TEST RUNS WRITE FABRICATED ROWS INTO THE REAL
+    data/predictions.db".
+
+    The list is now a named constant and
+    tests/test_prod_data_guard.py::TestAtexitFlushersAreAllDrained checks it
+    against weather_markets' actual atexit.register calls, so the NEXT
+    flusher added cannot repeat this. That generalisation is the real fix:
+    a hand-maintained list of two had already failed once.
+
+    prod_data_guard is deliberately NOT uninstalled (there is no
+    pytest_unconfigure hook), so the guard is still armed while atexit
+    runs. It cannot fail a test at that point, and several flushers swallow
+    Exception, so it also registers its own atexit reporter that prints
+    anything it blocked after the session ended.
     """
     import weather_markets as wm
 
-    wm._forecast_disk_pending.clear()
-    wm._ensemble_disk_pending.clear()
+    for buffer_name in _ATEXIT_FLUSH_BUFFERS:
+        getattr(wm, buffer_name).clear()
+
+    # Production-data READS are allowed (see tests/prod_data_guard.py), but
+    # each one is an isolation gap that has not bitten yet -- the same file
+    # a test reads today is the one a future test writes. Surfacing them at
+    # the end of every run keeps the list visible instead of latent.
+    lines = prod_data_guard.read_summary_lines()
+    orphaned = prod_data_guard.orphaned_violations()
+    if orphaned:
+        lines.append(
+            f"[prod-data-guard] *** {len(orphaned)} production mutation(s) "
+            f"were never claimed by a test phase ***"
+        )
+        for nodeid, operation, path, thread in orphaned:
+            lines.append(f"    {operation}  {path}")
+            lines.append(f"        by {nodeid} on thread {thread}")
+    if lines:
+        print("\n" + "\n".join(lines))
