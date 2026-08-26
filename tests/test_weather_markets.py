@@ -1167,33 +1167,96 @@ class TestEdgeLabel:
 class TestAdjustedEdgeInAnalyzeTrade:
     """analyze_trade() must return both raw net_edge and adjusted_edge (#63)."""
 
-    def test_analyze_trade_returns_adjusted_edge_key(self, monkeypatch):
-        """Result dict must contain adjusted_edge and edge_confidence_factor."""
+    @pytest.mark.parametrize(
+        ("days_out", "expected_factor"),
+        [
+            (2, 1.00),  # horizon plateau: days_out <= 2 -> 1.00
+            (3, 0.96),  # first step off it: 1.00 - (3-2)/5 * 0.20
+        ],
+    )
+    def test_analyze_trade_returns_adjusted_edge_key(
+        self, monkeypatch, days_out, expected_factor
+    ):
+        """Result dict must contain adjusted_edge and edge_confidence_factor.
+
+        The original fixture targeted today+10, which exceeds MAX_DAYS_OUT on
+        every configuration this repo has -- the operator's own .env sets 3,
+        and an unset env defaults to 5 (utils.py:460) -- so analyze_trade died
+        at the days_out gate and an `if result is None: pytest.skip(...)`
+        swallowed it. This test therefore never executed a single one of its
+        assertions, locally or on CI, since it was written. It is the fourth
+        and last of the skip trapdoors removed from this file; the other three
+        went in e8d178f1, and this fixture follows that commit's shape.
+
+        TWO days_out values, not one, and MAX_DAYS_OUT pinned rather than
+        inherited. Both matter:
+
+        * edge_confidence's horizon is a flat 1.00 for days_out <= 2, and
+          _CONDITION_CONFIDENCE["above"] is also 1.00, so a single case at
+          days_out=2 asserts `factor == 1.0` -- which a hardcoded 1.0, or a
+          factor wired to nothing at all, passes just as happily. days_out=3
+          is the first value where the horizon leaves the plateau (0.96), so
+          the pair is what actually proves the field tracks days_out.
+        * pinning wm.MAX_DAYS_OUT decouples the test from the operator's .env.
+          Reading it live is precisely what made the original a permanent
+          skip, and days_out=3 would otherwise sit exactly on that .env's
+          current value.
+
+        days_out is measured against the CITY's timezone, not UTC:
+        analyze_trade builds _local_today from ZoneInfo(city) and only falls
+        back to UTC when that lookup fails (weather_markets.py:14863). The
+        old comment here claimed UTC and pinned the assertion to a bare
+        edge_confidence(10) with no condition_type; all of that is corrected.
+        """
         from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
 
         import weather_markets as wm
 
-        # analyze_trade computes days_out via datetime.now(UTC).date() -- must
-        # match here or the hardcoded edge_confidence(10) assertion below can
-        # flip to edge_confidence(9)/(11) on a local/UTC date mismatch.
-        target = datetime.now(UTC).date() + timedelta(days=10)
+        # 5 is utils.py's own default (what CI runs with); pinned so neither
+        # parametrised case depends on the operator's .env being any value.
+        monkeypatch.setattr(wm, "MAX_DAYS_OUT", 5)
+
+        # Blend weights pinned empty, exactly as this file's own
+        # _analyze_trade_base_mocks helper does: _blend_weights otherwise
+        # reads whatever data/city_weights.json and seasonal_weights.json
+        # happened to be loaded at import, so the fixture would depend on the
+        # operator's live calibration staying near today's values.
+        monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+        monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+
+        # Match analyze_trade's own clock so a run near local midnight cannot
+        # compute a days_out one off from the parametrised one. Read from the
+        # registry rather than hardcoding "America/New_York": analyze_trade
+        # builds _local_today from _CITY_TZ, so a change there must move this
+        # test with it instead of silently shifting days_out by one.
+        target = datetime.now(ZoneInfo(wm._CITY_TZ["NYC"])).date() + timedelta(
+            days=days_out
+        )
         ticker = f"KXHIGHNYC-{target.strftime('%y%b%d').upper()}-T70"
+        close_time = (
+            datetime.now(UTC) + timedelta(hours=24 * (days_out + 1))
+        ).isoformat()
 
         enriched = {
             "_city": "NYC",
             "_date": target,
             "_hour": 14,
             "_forecast": {
-                "temps": [72.0] * 50,
+                "temps": [72.0] * 10 + [68.0] * 10,
                 "source": "ensemble",
                 "high_f": 72.0,
                 "low_f": 62.0,
             },
             "yes_bid": 0.35,
             "yes_ask": 0.37,
+            "no_bid": 0.63,
+            "volume": 5000,
+            "open_interest": 1000,
             "ticker": ticker,
             "title": "NYC High above 70",
-            "close_time": "",
+            "series_ticker": "KXHIGH-23-NYC",
+            "close_time": close_time,
         }
 
         monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
@@ -1201,14 +1264,71 @@ class TestAdjustedEdgeInAnalyzeTrade:
         monkeypatch.setattr(
             "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
         )
+        # Every live fetch analyze_trade can still reach, pinned exactly as
+        # TestNoSideEntryEdgeSign does. Half the members above T70 and half
+        # below keeps ens_prob near the 0.36 market mid (inside the 0.25
+        # model_mkt_gap gate) and keeps the ensemble non-degenerate -- all
+        # 50 members identical, as the old fixture had them, trips the
+        # daily_degenerate_ens gate on its own.
+        monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        monkeypatch.setattr(
+            wm, "get_ensemble_temps", lambda *a, **kw: [72.0] * 10 + [68.0] * 10
+        )
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        # Reached through a call-time `import mos`, so no weather_markets.*
+        # patch covers it; unmocked it fetches a real NBP bulletin.
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
+        )
 
+        wm.reset_gate_counts()
         result = wm.analyze_trade(enriched)
-        if result is None:
-            pytest.skip("analyze_trade returned None for this enriched dict")
+
+        assert result is not None, (
+            f"analyze_trade returned no result; gate counts: {wm.get_gate_counts()}"
+        )
         assert "adjusted_edge" in result, "Missing adjusted_edge key"
         assert "edge_confidence_factor" in result, "Missing edge_confidence_factor key"
+        # Hand-computed above, not read back from edge_confidence(), so that a
+        # change to the horizon curve has to be acknowledged here rather than
+        # silently agreeing with itself. The edge_confidence() cross-check
+        # below is documentation of the intended derivation, not independent
+        # evidence -- both arguments are constants, so it can only fail in a
+        # world where the hand-computed assertion already failed.
+        #
+        # "above" is this ticker's real condition type, measured rather than
+        # assumed (analyze_trade resolves KXHIGHNYC-...-T70 to
+        # {'type': 'above', 'threshold': 70.0}). Note _CONDITION_CONFIDENCE
+        # ["above"] == 1.00, so this test pins the HORIZON curve only and
+        # proves nothing about the condition multiplier -- deleting that
+        # multiplier entirely leaves both cases green. tests/
+        # test_signal_quality.py covers it; this is a scope note, not a gap.
         assert result["edge_confidence_factor"] == pytest.approx(
-            wm.edge_confidence(10), abs=1e-6
+            expected_factor, abs=1e-6
+        )
+        assert result["edge_confidence_factor"] == pytest.approx(
+            wm.edge_confidence(days_out, condition_type="above"), abs=1e-6
+        )
+        # adjusted_edge is the raw edge scaled by that factor -- assert the
+        # relationship, not just the key's presence, or the whole point of
+        # #63 (that the two differ) goes unproven.
+        #
+        # The non-zero guard is not decoration: at net_edge == 0 the product
+        # is 0 for ANY factor, including one wired to nothing, so the
+        # assertion below would hold vacuously if the fixture ever drifted to
+        # a zero-edge quote. Measured today: net_edge == 0.3135.
+        assert result["net_edge"] != 0, (
+            "net_edge is zero, which makes the ratio assertion below vacuous "
+            "-- the fixture's quote no longer produces an edge"
+        )
+        # abs=1e-5, not 1e-6: adjusted_edge is round(net_edge * factor, 6)
+        # while net_edge is returned unrounded, so the discrepancy is bounded
+        # at 5e-7 -- only 2x inside a 1e-6 tolerance.
+        assert result["adjusted_edge"] == pytest.approx(
+            result["net_edge"] * result["edge_confidence_factor"], abs=1e-5
         )
 
 

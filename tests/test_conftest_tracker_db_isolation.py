@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 import tracker
 
 _MARKER_TICKER = "KXHIGHNY-26JUN15-T75"
@@ -76,3 +78,78 @@ def test_tracker_db_path_is_isolated_from_production():
 
     assert tracker.DB_PATH != project_root() / "data" / "predictions.db"
     assert "pytest" in str(tracker.DB_PATH).lower(), tracker.DB_PATH
+
+
+def test_prod_data_guard_is_armed_while_this_fixture_runs():
+    """The two protections must not be able to silently disarm each other.
+
+    ``isolate_tracker_db`` keeps the tracker DB out of the real ``data/`` by
+    REDIRECTING a path; ``prod_data_guard`` keeps everything out of it by
+    BLOCKING the primitives. They cover the same directory from opposite
+    directions, and the test above (``..._path_is_isolated_from_production``)
+    asserts an absence -- it passes just as happily against a disarmed guard
+    as against a working one.
+
+    So assert the guard is actually live at the moment this fixture has run,
+    and specifically that ``shutil.copyfile`` -- the one primitive the fixture
+    itself now depends on, since it copies the template -- is the guarded
+    wrapper rather than the stdlib original. A future rewrite of the fixture
+    that reached for an unguarded primitive would still pass every other test
+    in this file.
+    """
+    import shutil
+
+    from tests import prod_data_guard
+
+    assert prod_data_guard._installed, (
+        "the production-data guard is not armed during this test -- "
+        "isolate_tracker_db's redirect is now the ONLY thing standing between "
+        "the suite and the real data/predictions.db"
+    )
+    assert prod_data_guard._mode == prod_data_guard._MODE_BLOCK, (
+        f"guard armed in {prod_data_guard._mode!r} mode, not BLOCK -- a real "
+        "data/ write would be recorded and then allowed through"
+    )
+    assert shutil.copyfile is not prod_data_guard._o_copyfile, (
+        "shutil.copyfile is the unpatched stdlib original -- the primitive "
+        "isolate_tracker_db uses to place the tracker DB is unguarded"
+    )
+
+
+def test_a_copy_into_the_real_data_dir_is_still_blocked(tmp_path):
+    """Behavioural counterpart to the test above.
+
+    Asserting `_installed is True` proves a flag, not a behaviour. This drives
+    the actual primitive at the actual production directory and requires it to
+    raise -- so "the guard is armed" is a claim about what happens, not about
+    what a global says.
+
+    Deliberately a WEAKER claim than the identity assertion above, and the
+    difference is load-bearing. Mutation-tested by replacing install()'s
+    ``shutil.copyfile = _dst_guard(...)`` with the bare stdlib original: this
+    test still passed, because shutil.copyfile opens its destination through
+    ``open()``, which stays patched. The block is real and the file still does
+    not land -- genuine defence in depth -- but it arrives from a different
+    patch than the one being removed. That is exactly why the test above
+    asserts the copyfile identity separately; it is the one that failed under
+    that mutation, and without it the fixture's own primitive could be
+    unguarded with every test in this file green.
+    """
+    import shutil
+
+    from safe_io import project_root
+    from tests import prod_data_guard
+
+    src = tmp_path / "payload.db"
+    src.write_text("not a real db", encoding="utf-8")
+    target = project_root() / "data" / "__isolate_interaction_probe.db"
+
+    with pytest.raises(prod_data_guard.ProdDataWriteError):
+        shutil.copyfile(src, target)
+
+    assert not target.exists(), (
+        "the guard raised but the copy still landed in the real data/ dir"
+    )
+    # This block was deliberate; drop it so the phase-end assert_clean() hook
+    # does not report it as an unintended production mutation.
+    prod_data_guard._violations.clear()

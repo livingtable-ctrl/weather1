@@ -1001,3 +1001,350 @@ class TestDirFdRelativePaths:
             guarded("data", "data")
         assert len(called) == 1
         g._violations.clear()  # deliberate block, see the test above
+
+
+# ── Script-facing arming (batch-83, item 1) ──────────────────────────────────
+
+
+class TestArmForScript:
+    """arm_for_script() is the entry point for code that is NOT under pytest.
+
+    Everything here runs the guard in a SUBPROCESS. That is not ceremony:
+    install() is idempotent and conftest has already armed this process in
+    BLOCK mode against the real data/, so an in-process test of AUDIT mode
+    would be testing the early-return, not the mode. A subprocess is the only
+    place the out-of-pytest path actually exists.
+
+    None of these tests point the guard at the real data directory. They arm
+    it against a tmp_path standing in for data/, so an AUDIT-mode test -- which
+    by design lets the write THROUGH -- writes into tmp_path and nowhere else.
+    """
+
+    def _run(self, tmp_path, body: str):
+        """Execute `body` in a subprocess with the repo root importable."""
+        import subprocess
+        import sys
+        import textwrap
+
+        repo_root = Path(__file__).parent.parent
+        script = tmp_path / "arm_script.py"
+        script.write_text(textwrap.dedent(body), encoding="utf-8")
+        # PYTHONPATH, not cwd: sys.path[0] is the SCRIPT's directory, so a
+        # subprocess launched by path does not get the repo root for free even
+        # when cwd is set to it. This is the same footgun _isolate.py's
+        # _repo_root_on_sys_path() exists to absorb for the scripts under
+        # audit/reproductions/.
+        env = dict(os.environ, PYTHONPATH=str(repo_root))
+        return subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            env=env,
+            timeout=120,
+        )
+
+    def test_block_mode_raises_and_leaves_the_file_absent(self, tmp_path):
+        """The BLOCK contract, with the write-actually-prevented half asserted
+        separately from the exception -- _block() raising and the filesystem
+        being untouched are two different claims."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        target = fake_data / "should_not_exist.txt"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="block", label="probe")
+            try:
+                open(r"{target}", "w").write("x")
+            except g.ProdDataWriteError:
+                print("BLOCKED")
+            else:
+                print("NOT-BLOCKED")
+            """,
+        )
+        assert "BLOCKED" in result.stdout, result.stdout + result.stderr
+        assert not target.exists(), "BLOCK mode raised but the write still landed"
+
+    def test_audit_mode_allows_the_write_and_names_the_writer(self, tmp_path):
+        """The AUDIT contract: the write goes through (that is the point --
+        ~70 main.py subcommands legitimately write real data/) AND the guard
+        says who did it."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        target = fake_data / "written.txt"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="audit", label="operator-cmd")
+            open(r"{target}", "w").write("real work")
+            print("WROTE")
+            """,
+        )
+        assert "WROTE" in result.stdout, result.stdout + result.stderr
+        assert target.read_text(encoding="utf-8") == "real work", (
+            "AUDIT mode must let the write through, not merely not-raise"
+        )
+        assert "operator-cmd" in result.stderr, (
+            f"AUDIT mode did not attribute the write: {result.stderr!r}"
+        )
+
+    def test_audit_mode_is_not_silent_about_a_mutation_it_allowed(self, tmp_path):
+        """Positive control for the test above's stderr assertion: the SAME
+        script writing OUTSIDE the guarded dir must produce no report, so the
+        attribution line is proven to come from the guard rather than from
+        anything the script prints unconditionally."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        elsewhere = tmp_path / "elsewhere.txt"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="audit", label="operator-cmd")
+            open(r"{elsewhere}", "w").write("unguarded")
+            print("WROTE")
+            """,
+        )
+        assert "WROTE" in result.stdout, result.stdout + result.stderr
+        assert elsewhere.exists()
+        assert "operator-cmd" not in result.stderr, (
+            "a write outside the guarded dir was reported -- the guard is "
+            f"matching too broadly: {result.stderr!r}"
+        )
+
+    def test_rejects_an_unknown_mode(self, tmp_path):
+        """A typo'd mode must not silently fall through to permissive."""
+        with pytest.raises(ValueError, match="mode must be"):
+            prod_data_guard.arm_for_script(str(tmp_path), mode="warn")
+
+    def test_already_armed_block_cannot_be_loosened_to_audit(self):
+        """This process is armed in BLOCK mode by conftest. A later
+        arm_for_script(mode="audit") must NOT downgrade it -- otherwise any
+        imported helper could disarm the suite's own guard for every test
+        after it. It now raises rather than silently no-opping."""
+        assert prod_data_guard._installed, "precondition: conftest armed it"
+        assert prod_data_guard._mode == prod_data_guard._MODE_BLOCK
+        with pytest.raises(RuntimeError, match="refusing to arm AUDIT"):
+            prod_data_guard.arm_for_script(mode="audit", label="should-not-apply")
+        assert prod_data_guard._mode == prod_data_guard._MODE_BLOCK, (
+            "an armed BLOCK guard was silently downgraded to AUDIT"
+        )
+
+    def test_audit_is_refused_even_after_uninstall(self, tmp_path):
+        """The latch must survive uninstall().
+
+        uninstall() clears _installed, so without a latch the very next
+        arm_for_script(mode="audit") would satisfy `not _installed` and re-arm
+        the WHOLE process permissive. uninstall()'s own docstring invites tests
+        to use it, so the first test that did so in a try/finally would
+        silently disarm every test after it and assert_clean() would never fire
+        again for the rest of the session.
+        """
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{tmp_path}", mode="block")
+            g.uninstall()
+            assert not g._installed, "precondition: uninstall cleared the flag"
+            try:
+                g.arm_for_script(r"{tmp_path}", mode="audit")
+            except RuntimeError as exc:
+                print(f"REFUSED: {{exc}}"[:60])
+            else:
+                print("RE-ARMED-PERMISSIVE")
+            """,
+        )
+        assert "REFUSED" in result.stdout, result.stdout + result.stderr
+        assert "RE-ARMED-PERMISSIVE" not in result.stdout
+
+    def test_audit_can_be_tightened_to_block(self, tmp_path):
+        """The direction that IS allowed, and the positive control for the two
+        refusal tests above -- without it, "arming twice raises" would be
+        indistinguishable from "arming twice never does anything"."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        target = fake_data / "after_tighten.txt"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="audit", label="op")
+            assert g._mode == g._MODE_AUDIT
+            g.arm_for_script(r"{fake_data}", mode="block", label="op")
+            assert g._mode == g._MODE_BLOCK, "tighten did not take"
+            print("TIGHTENED")
+            try:
+                open(r"{target}", "w").write("x")
+            except g.ProdDataWriteError:
+                print("BLOCKED-AFTER-TIGHTEN")
+            """,
+        )
+        assert "TIGHTENED" in result.stdout, result.stdout + result.stderr
+        assert "BLOCKED-AFTER-TIGHTEN" in result.stdout, result.stdout
+        assert not target.exists()
+
+    def test_a_second_arm_cannot_repoint_the_guard(self, tmp_path):
+        """install() freezes _data_prefixes on the first call, so a second arm
+        naming a DIFFERENT directory must raise rather than be silently
+        ignored -- otherwise the caller believes it is guarded against its own
+        sandbox while the guard watches somewhere else entirely."""
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{first}", mode="block")
+            try:
+                g.arm_for_script(r"{second}", mode="block")
+            except RuntimeError as exc:
+                print("REFUSED-REPOINT")
+            else:
+                print("SILENTLY-IGNORED")
+            open(r"{second / "x.txt"}", "w").write("unguarded")
+            print("WROTE-TO-SECOND")
+            """,
+        )
+        assert "REFUSED-REPOINT" in result.stdout, result.stdout + result.stderr
+        assert "SILENTLY-IGNORED" not in result.stdout
+
+    def test_arming_twice_does_not_launder_pending_violations(self, tmp_path):
+        """set_current_test() sweeps pending _violations into _orphaned, which
+        conftest only PRINTS rather than failing on. Calling it on an
+        already-armed guard would therefore launder a swallowed real-data write
+        past assert_clean() and let a test go green."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="block")
+            try:
+                open(r"{fake_data / "swallowed.txt"}", "w")
+            except g.ProdDataWriteError:
+                pass          # the ubiquitous `except Exception: log` shape
+            assert len(g._violations) == 1, "precondition: one pending violation"
+            g.arm_for_script(r"{fake_data}", mode="block")
+            print(f"PENDING={{len(g._violations)}} ORPHANED={{len(g._orphaned)}}")
+            """,
+        )
+        assert "PENDING=1 ORPHANED=0" in result.stdout, (
+            "a second arm moved the pending violation to _orphaned, where "
+            "assert_clean() can no longer see it: " + result.stdout + result.stderr
+        )
+
+
+class TestLiveConfigIsolation:
+    """conftest's isolate_live_config fixture (batch-83).
+
+    main._load_live_config() CREATES data/live_config.json on
+    FileNotFoundError. The file is untracked and gitignored, so it is present
+    locally and ABSENT on a fresh clone -- CI took the create branch and wrote
+    into the real data/ dir. The failure was obscure twice over: the create
+    step's `except OSError` cannot catch ProdDataWriteError (a RuntimeError),
+    and cron.py's call site swallows it, so the test body passed and only the
+    phase-end assert_clean() reported anything.
+    """
+
+    def test_live_config_path_is_redirected_away_from_production(self):
+        import main
+        from safe_io import project_root
+
+        real = project_root() / "data" / "live_config.json"
+        assert main._LIVE_CONFIG_PATH != real, (
+            "main._LIVE_CONFIG_PATH still points at the real data/ dir"
+        )
+        # Positive control: an absence assertion alone would pass just as well
+        # if the attribute had been deleted, renamed, or set to None. Pin that
+        # it is a real, usable, per-test path.
+        assert isinstance(main._LIVE_CONFIG_PATH, Path)
+        assert "pytest" in str(main._LIVE_CONFIG_PATH).lower(), main._LIVE_CONFIG_PATH
+
+    def test_creating_the_default_config_lands_in_the_temp_path(self):
+        """The create branch is the one that broke CI, so drive it rather than
+        only asserting the path. Deletes any file first so FileNotFoundError
+        is genuinely taken -- otherwise this passes via the read branch and
+        proves nothing about the write."""
+        import main
+
+        main._LIVE_CONFIG_PATH.unlink(missing_ok=True)
+        assert not main._LIVE_CONFIG_PATH.exists()
+
+        cfg = main._load_live_config()
+
+        assert main._LIVE_CONFIG_PATH.exists(), (
+            "the create branch did not run -- this test is not exercising the "
+            "path that failed on CI"
+        )
+        assert cfg == main._LIVE_CONFIG_DEFAULT
+
+
+class TestAuditModeAttribution:
+    """AUDIT's de-duplication must not discard the writer it exists to name.
+
+    An earlier version keyed on (operation, path) alone. That made the guard
+    silent for any writer that touched a file some earlier writer had already
+    touched -- which is this module's motivating incident precisely: a
+    legitimate cron write to data/miami_index_state.json followed by a
+    MagicMock repr written to the same path. The second is the one worth
+    seeing, and it was the one being dropped.
+    """
+
+    _run = TestArmForScript._run
+
+    def test_a_second_writer_of_the_same_path_is_still_recorded(self, tmp_path):
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        target = fake_data / "shared.json"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="audit", label="writer-one")
+            open(r"{target}", "w").write("legitimate")
+            g.set_current_test("writer-two")
+            open(r"{target}", "w").write("a MagicMock repr")
+            print(f"RECORDED={{len(g._violations) + len(g._orphaned)}}")
+            """,
+        )
+        assert "RECORDED=2" in result.stdout, (
+            "the second writer of the same path was de-duplicated away -- the "
+            "attribution AUDIT mode exists for is gone: "
+            + result.stdout
+            + result.stderr
+        )
+        assert "writer-two" in result.stderr, (
+            f"the second writer was not named on stderr: {result.stderr!r}"
+        )
+
+    def test_a_genuine_repeat_is_counted_not_duplicated(self, tmp_path):
+        """Positive control for the test above: de-duplication must still
+        happen for a true repeat, or 'RECORDED=2' there would just mean the
+        cap never de-duplicates anything."""
+        fake_data = tmp_path / "data"
+        fake_data.mkdir()
+        target = fake_data / "hot.json"
+        result = self._run(
+            tmp_path,
+            f"""
+            from tests import prod_data_guard as g
+            g.arm_for_script(r"{fake_data}", mode="audit", label="one-writer")
+            for _ in range(5):
+                open(r"{target}", "w").write("again")
+            print(f"RECORDED={{len(g._violations)}}")
+            print(f"COUNT={{list(g._audit_counts.values())}}")
+            """,
+        )
+        assert "RECORDED=1" in result.stdout, (
+            "five identical writes were not de-duplicated: " + result.stdout
+        )
+        assert "COUNT=[5]" in result.stdout, (
+            "repeats were discarded rather than counted: " + result.stdout
+        )

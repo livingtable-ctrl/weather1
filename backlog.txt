@@ -38229,7 +38229,7 @@ Declined deliberately, not deferred for capacity: the option to extend
   plus scoped tests.
   Source: audit/handoff_prompts/batches/batch-55.md.
 
-[PARTIALLY RESOLVED 2026-08-25 -- the circuit-breaker half (74% of setup) is fixed; isolate_tracker_db remains. See resolution below.] Autouse fixture setup is 85% of test wall time; two fixtures account for 99.6% of it
+[PARTIALLY RESOLVED 2026-08-26 -- BOTH fixtures are fixed (recommendations 1 and 2, 2026-08-25) and the Windows figures were re-measured and confirmed 2026-08-26 (recommendation 3, first half). The ONLY thing still open is the Linux/CI measurement. The previous status line here said "isolate_tracker_db remains", which its own addendum below had already superseded the same day.] Autouse fixture setup is 85% of test wall time; two fixtures account for 99.6% of it
 Priority: MEDIUM -- pure test-suite latency, no production behaviour involved. Affects every local run and every developer iteration.
 Files: tests/conftest.py (reset_open_meteo_circuit_breaker, isolate_tracker_db), circuit_breaker.py (_save_state, record_success)
 
@@ -38362,6 +38362,45 @@ Resolution addendum (2026-08-25) -- recommendation 2 implemented:
   infrastructure, p1_remaining and both conftest-isolation files; plus 633
   passed across cron_integration, calibration, backtest, settlement_monitor
   and the market-family files.
+
+Resolution addendum (2026-08-26, batch-83) -- recommendation 3, Windows half:
+  Re-measured with the SAME method the original figures used (a
+  pytest_fixture_setup wrapper summing wall time per fixture name), same
+  98-test slice (tests/test_safe_io.py + tests/test_forecast_cache.py), same
+  machine. Two runs:
+
+    fixture                            ms/use run1   ms/use run2   was
+    isolate_tracker_db                     0.5           0.5       63-207
+    reset_open_meteo_circuit_breaker       0.0           0.0       186.1
+    _tracker_db_template (once/session)   29.5 ms       28.2 ms    n/a
+    ALL FIXTURES, total                   0.38 s        0.38 s     30.52 s
+
+  So both shipped optimisations are holding, and total fixture setup across
+  the slice is 0.38s where it was 30.52s -- 3.9 ms/test against the original
+  311.4 ms/test. The two fixtures that were 99.6% of setup are now jointly
+  0.5 ms/test.
+
+  The session-scoped template measured 28-30 ms here against the 139.3 ms
+  recorded on 2026-08-25. Same code; that figure moves with machine load, and
+  it is paid once per session either way. The ms/use numbers are the reliable
+  ones, as the earlier notes already said.
+
+  Incidental, not caused by this batch:
+  tests/test_safe_io.py::test_atomic_write_text_concurrent_writers_never_expose_torn_file
+  failed in both measurement runs and in 1 of 3 solo runs. It is already
+  recorded in this file as PRE-EXISTING FLAKY (~2/5 runs) and touches nothing
+  batch-83 changed.
+
+  RESIDUAL, and the ONLY reason this entry is still open: the Linux/CI
+  measurement has still not been taken. CI runs ubuntu-latest, where fsync and
+  AV scanning are far cheaper, so the Linux figures are likely much smaller
+  and the "roughly 28 minutes of pure fixture setup" projection in the problem
+  statement above must still NOT be quoted against CI's ~23 min total. Docker
+  is not installed on this machine and WSL would need a Linux venv built from
+  scratch against the repo's full dependency set -- and would resolve data/ to
+  the same real directory, carrying the exact out-of-pytest exposure the
+  audit/reproductions entry is about. Deliberately deferred rather than
+  approximated: an unrepresentative number here is worse than a blank.
 
 [OPEN 2026-08-25 -- found while benchmarking pytest-xdist; xdist was NOT adopted and is not installed, but the flake it exposed is real and probably predates it] Intermittent single-test failure (~1 in 11) when the paper/lock/isolation test files run in parallel processes
 Priority: MEDIUM -- a latent order/timing dependency between test files. Harmless today because the suite runs serially, but it is the kind of hidden coupling that makes any future parallelisation unsafe.
@@ -40652,10 +40691,9 @@ RESOLVED 2026-08-26: All six removed. weather_markets.py gained `import
 Verification: full suite against a cold data dir with no .env. ruff +
   ruff-format + mypy clean via python -m pre_commit run --files.
 
-[OPEN 2026-08-25 -- adjacency from the default-deny network guard above.
-  Pre-existing, not caused by that change; none of the four sites is inside
-  one of its hunks. Filed rather than fixed there because each needs its own
-  fixture retuning, not a shared edit.]
+[RESOLVED 2026-08-26 (batch-83) -- the fourth and last site is fixed; the file
+  now has zero pytest.skip trapdoors. See the resolution at the end of this
+  entry.]
   ONE `if result is None: pytest.skip(...)` TRAPDOOR LEFT IN
   test_weather_markets.py (was four; three closed 2026-08-26)
 Priority: Medium -- these are not flaky-and-occasionally-skipped. All four skip
@@ -40714,6 +40752,66 @@ When to revisit:
   Next time anyone touches the entry-side-edge / model_mkt_gap area, and
   before trusting "test_weather_markets.py is green" as evidence that the
   P0-14 NO-side fix still holds.
+
+Resolution (2026-08-26, batch-83) -- the fourth site is fixed:
+  TestAdjustedEdgeInAnalyzeTrade::test_analyze_trade_returns_adjusted_edge_key.
+
+  The gate was days_out, and this one was worse than its three siblings. They
+  targeted today+5, which the operator's own .env (MAX_DAYS_OUT=3) rejected
+  locally but CI's default of 5 admitted -- so they at least ran on CI. This
+  one targeted today+10, which EXCEEDS EVERY CONFIGURATION THIS REPO HAS: 10 >
+  5 (utils.py:460 default, what CI uses) and 10 > 3 (the operator's .env). Its
+  assertions had therefore never executed anywhere, on any machine, since the
+  test was written.
+
+  Three defects were behind the skip, all invisible while it skipped:
+    1. days_out=10, above every MAX_DAYS_OUT. Now parametrised over 2 and 3,
+       with wm.MAX_DAYS_OUT pinned to 5 in the test so neither case depends on
+       the operator's .env -- reading it live is what made this a permanent
+       skip in the first place.
+    2. `"temps": [72.0] * 50` -- all members identical, which trips the
+       daily_degenerate_ens gate on its own. Same defect the YES sibling had.
+       Now 10 members at 72.0 and 10 at 68.0, straddling the T70 threshold, so
+       ens_prob lands near the 0.36 market mid and stays inside the 0.25
+       model_mkt_gap gate.
+    3. The assertion called `wm.edge_confidence(10)` with NO condition_type,
+       and the comment above it claimed days_out came from datetime.now(UTC).
+       Both wrong: analyze_trade builds _local_today from ZoneInfo(city)
+       (weather_markets.py:14863), and edge_confidence takes a condition_type
+       whose real value here is "above".
+
+  WHY TWO PARAMETRISED CASES rather than one. edge_confidence's horizon is a
+  flat 1.00 for days_out <= 2, and _CONDITION_CONFIDENCE["above"] is also
+  1.00, so a single case at days_out=2 asserts `factor == 1.0` -- which a
+  hardcoded 1.0, or a factor wired to nothing, satisfies just as well. This
+  was caught by mutation-testing rather than by reasoning: the first repair
+  used only days_out=2 and a guessed condition_type of "high_temp", and both
+  the guess and the value were vacuous because every path returns 1.0.
+  days_out=3 is the first value off the plateau (0.96).
+
+  Mutation-tested, via the Edit tool, with weather_markets.py verified
+  byte-identical to HEAD (git hash-object) after each revert:
+    * horizon flattened (`elif days_out <= 7: horizon = 1.0`): the [3-0.96]
+      case fails 1.0 != 0.96; the [2-1.0] case still PASSES, which is the
+      direct evidence that one case would not have been enough.
+    * factor not applied (`adjusted_edge = net_edge`, all 10 assignment
+      sites): the adjusted_edge == net_edge * factor assertion fails on
+      [3-0.96]. A first attempt at this mutation matched only 8 of the 10
+      sites and SURVIVED -- the Edit tool's "found 8 matches" error is what
+      surfaced the discrepancy; a string-replace script would have reported
+      success and left the survivor looking like a vacuous test.
+
+  Also added: an `assert result is not None, f"gate counts: {...}"` carrying
+  get_gate_counts(), so a future gate regression names the gate instead of
+  skipping, and an assertion tying adjusted_edge to net_edge * factor -- #63's
+  actual claim, which key-presence alone never tested.
+
+  tests/test_weather_markets.py now has ZERO pytest.skip() CALL sites,
+  verified by an AST walk rather than by grep -- `grep -c pytest.skip` on that
+  file still returns 1, because the new test's own docstring names the pattern
+  it replaced. A grep would have been satisfied by that prose either way,
+  which is the same file-wide-scan trap this repo has hit before.
+  Scoped regression: see the batch-83 commit message.
 
 [RESOLVED 2026-08-26 (batch-77) -- observed live in the 00:28 UTC cron run, whose log shows
   the whole cascade end to end. Found while analysing that run line by line.]
@@ -40946,10 +41044,11 @@ RESOLUTION 2026-08-26 (batch-77) -- all four options shipped, and the entry's
     closed at $0.00. Pre-existing; this batch now leans on that function as
     the definition of "protectable", so it inherits the gap.
 
-[OPEN 2026-08-26 -- narrowed down across three parallel sessions while tracing
-  how a MagicMock repr reached a live settlement guard. Filed here by the
-  batch-75 session at the network-guard session's suggestion; neither of the
-  other two owns it.] audit/reproductions/ SCRIPTS RUN OUTSIDE PYTEST AND SO
+[RESOLVED 2026-08-26 (batch-83) -- the harness and the script-facing arming
+  entry point both shipped; see the resolution at the end of this entry. The
+  bulk migration of the 24 older scripts is deliberately NOT included and is
+  filed as its own entry below.]
+  audit/reproductions/ SCRIPTS RUN OUTSIDE PYTEST AND SO
   BYPASS EVERY TEST GUARD -- THEY NEED AN ISOLATION CONVENTION OF THEIR OWN
 Priority: Medium -- no known active damage, and the one incident that
   motivated it has self-healed and been separately fixed at its own site. This
@@ -41024,6 +41123,318 @@ Plan:
 When to revisit:
   Next time anyone adds a script to audit/reproductions/, or before running
   any existing one against the main clone.
+
+Resolution (2026-08-26, batch-83) -- plan items 1, 2 and 4 implemented:
+
+  1. tests/prod_data_guard.arm_for_script(data_dir=None, *, mode, label) is a
+     script-facing entry point. install() was reachable only from conftest, so
+     until now the guard protected the test runner -- the LEAST dangerous
+     caller -- and nothing else. data_dir defaults to the real data dir and is
+     resolved AT ARM TIME, so a caller that subsequently redirects
+     project_root() still has the guard aimed at production rather than at its
+     own sandbox.
+
+  2. audit/reproductions/_isolate.py + a README. `isolate()` is line 1 of a
+     script; it puts the repo root on sys.path, redirects
+     safe_io.project_root() to a fresh temp dir, and arms the guard in BLOCK
+     mode against the real data/. Run as
+     `python -m audit.reproductions.<name>`. audit/__init__.py and
+     audit/reproductions/__init__.py make that import work; pyproject pins
+     testpaths=["tests"], so pytest still does not collect anything here.
+
+  4. AUDIT mode, which is the half the original plan cared most about and the
+     reason this is not simply "block everything". This entry's own
+     "distinction that must survive into any fix" is honoured exactly:
+     `isolate(allow_real_data=True)` redirects NOTHING and arms the guard in
+     AUDIT mode, so the ~70 main.py operator subcommands that legitimately
+     write real data/ keep working, while every mutation is printed with the
+     script and pid that made it. Attribution was the thing three sessions
+     could not do; it is now a two-line change to any script.
+
+  MEASURED, not argued. With the guard armed in BLOCK mode against the real
+  data dir, a bare `import main` from a plain script -- no script body at all
+  -- attempts:
+      open(mode='wb')  <repo>/data/.city_weights.json.seed-<pid>.tmp
+      Path.unlink      <repo>/data/.city_weights.json.seed-<pid>.tmp
+  That is paths.py resolving DATA_DIR at import time and then calling
+  materialize_missing_seeds(). It is the same mechanism by which
+  `py main.py validate` applied schema migrations v77 and v78 to the
+  production database on 2026-08-26. Under isolate() the same import is clean.
+
+  isolate() REFUSES if paths or safe_io is already imported, rather than
+  redirecting after the constants are bound and reporting success -- a silent
+  no-op there is precisely the failure this harness exists to prevent.
+
+  Two safety properties, both tested: an already-armed BLOCK guard can never
+  be downgraded to AUDIT (otherwise any imported helper could disarm the
+  suite's own guard for every test after it), and uninstall() resets the mode.
+  install() cannot select AUDIT at all.
+
+  DISCLOSED GAP: isolate() does not block network. The default-deny guard is a
+  pytest fixture in tests/conftest.py, not a reusable module, so there is
+  nothing to arm without extracting it first. Documented in the README and in
+  _isolate.py's docstring rather than left as a silent hole.
+
+  Tests: tests/test_repro_isolate.py (5) and
+  tests/test_prod_data_guard.py::TestArmForScript (5). Both behavioural sets
+  run a real SUBPROCESS -- install() is idempotent and conftest has already
+  armed this process in BLOCK mode, so an in-process test of AUDIT mode would
+  be testing the early-return, not the mode. No test points the guard at the
+  real data dir in AUDIT mode; they arm it against a tmp_path standing in for
+  data/, so the mode that lets writes THROUGH writes only into tmp_path.
+
+  Mutation-tested: removing the arm_for_script() call from isolate() must fail
+  test_isolate_blocks_a_write_to_the_real_data_dir. The first version of that
+  test read the target directory out of the guard's own _data_prefixes and so
+  died with an IndexError when unarmed -- red, but for the wrong reason, and
+  without ever attempting the write it claims to test. It now takes the target
+  from the parent process instead, and under the same mutation the probe file
+  really does land in the real data/ (confirmed, then deleted).
+
+  OPUS REVIEW (effort high) -- 2 HIGH, 5 MEDIUM, 9 LOW, 6 INFO, all addressed:
+    * HIGH x2, and the most valuable finding in the batch: .pre-commit-config
+      .yaml sets `exclude: ^audit/` on ruff, ruff-format AND mypy, but
+      .github/workflows/ci.yml runs bare `ruff check .` and `mypy .` with NO
+      exclusion. So the new _isolate.py was unlinted locally and linted on CI.
+      Both would have turned CI red before a single test ran: an I001 import
+      sort, and "Cannot infer type of lambda" on the project_root override.
+      Fixed (a def replaces the lambda); CI's own two commands now verified
+      directly rather than via the hook that cannot see the file.
+    * MED-1: the allow_real_data branch returned _REPO_ROOT (the worktree)
+      rather than project_root() (the main clone). An operator-style script
+      would have written a throwaway worktree data/ while the guard, armed on
+      the main clone, stayed silent -- and that silence reads as "nothing was
+      written". Exactly the stale-worktree-data class paths.py exists to
+      prevent, reintroduced inside the harness meant to prevent it.
+    * MED-2/MED-3/LOW-1/LOW-2, all in arm_for_script's mode handling, fixed
+      together: a second arm can no longer silently discard a different
+      data_dir (it raises), AUDIT is refused outright once BLOCK has been
+      armed via a latch that deliberately survives uninstall(), and
+      set_current_test() is no longer called on an already-armed guard (it
+      sweeps pending violations into _orphaned, which conftest only PRINTS --
+      so the new API was a way to launder a swallowed write past
+      assert_clean()). Four new subprocess tests cover the tighten-allowed,
+      loosen-refused, cannot-re-point and no-laundering cases.
+    * MED-4: the sandbox had no seeds/, so every calibration loader fell back
+      to "uncalibrated" and a repro of any calibration-dependent bug would
+      have quietly exercised the wrong path and looked unreproducible.
+      seeds/ is now copied in.
+    * MED-5, LOW-5/6/9: docstrings that overstated what the code does --
+      _repo_root_on_sys_path cannot make the repo root importable from
+      nothing, one test's docstring claimed a positive control it did not
+      contain, and the too-late rule omitted its allow_real_data exception.
+    * LOW-3/LOW-4: AUDIT mode had unbounded memory and stderr for its stated
+      use case (an operator backfill rewrites hundreds of files), and
+      _report_at_exit chose its wording from the mode AT EXIT rather than the
+      mode each entry was recorded under. Now de-duplicated and capped, with
+      one phrasing accurate under both modes.
+    * LOW-7: fixing this one introduced a bug and the fix had to be redone.
+      The obvious cleanup -- unlink the probe after asserting -- is itself
+      blocked by the guard, so assert_clean failed the test on the CLEANUP.
+      The probe name is now unique per run instead, which neither bypasses the
+      guard nor lets one regression poison every later run.
+    * INFO-5: conftest.pytest_sessionfinish now asserts the session ended in
+      BLOCK mode, so the outcome is checked rather than the mechanisms trusted.
+    * INFO-1 was the one finding REJECTED, on evidence. The reviewer said 16
+      scripts carry the dead worktree path, "one of the 17 grep hits being
+      _isolate.py itself". _isolate.py contains zero occurrences of that
+      literal (its docstring writes `<name>`), and all 17 hits are real
+      scripts. 17 stands.
+    * INFO-2/3/4 accepted as documented no-ops: nothing in production arms the
+      guard yet (main.py is batch-82's file this cycle, and the follow-up
+      entry below scopes the rest); audit/ now importing from tests/ is real
+      coupling and worth a move if it spreads past audit/; and install()
+      capturing _o_mkdir/_o_makedirs/_o_path_mkdir without ever patching them
+      predates this change (mkdir is deliberately unguarded -- see the module
+      docstring), though it does mean a mkdir under real data/ is invisible to
+      the AUDIT attribution record.
+
+  SECOND OPUS REVIEW, of the round-1 FIXES (the workflow requires this, and it
+  earned its keep: 1 HIGH, 4 MEDIUM and 4 LOW were bugs the round-1 fixes
+  THEMSELVES introduced, none of which re-checking the round-1 findings would
+  have surfaced). All addressed:
+    * A1 HIGH -- the AUDIT de-duplication I added keyed on (operation, path)
+      alone, so once ANY writer touched a file a later writer of the same file
+      was completely silent. That is this module's own motivating incident
+      exactly: a legitimate cron write to data/miami_index_state.json followed
+      by a MagicMock repr to the same path -- the second being the one worth
+      seeing. A cap meant to stop attribution drowning in noise had instead
+      destroyed the attribution. The key now includes nodeid and thread, and
+      repeats are COUNTED ("x47") rather than discarded.
+    * A2/A4 MEDIUM, both fail-OPEN -- install() early-returned BEFORE latching
+      BLOCK and never validated its data_dir, so anything arming AUDIT before
+      pytest_configure left conftest's install() a no-op and ran the whole
+      session permissive AGAINST THE WRONG DIRECTORY with the latch still
+      False; and arm_for_script assigned _mode before install() could raise,
+      leaving mode=AUDIT with nothing patched for conftest to then inherit.
+      install() now forces BLOCK unless called from arm_for_script, validates
+      the directory on every call, and arm_for_script commits the mode only
+      after install() returns.
+    * A3 MEDIUM -- the pytest_sessionfinish assert I added as INFO-5 destroyed
+      the entire run report. Raising there propagates out of wrap_session's
+      finally, so TerminalReporter's post-yield half never runs: no pass/fail
+      line, no short summary, no traceback for whatever actually failed, and
+      on CI no coverage report and no --cov-fail-under evaluation -- at exit
+      code 1, indistinguishable from an ordinary failure. Now prints and sets
+      session.exitstatus = INTERNAL_ERROR, which wrap_session honours. (An
+      assert would also have vanished under `python -O`.)
+    * A5/A6/A7/A9/A10 -- _audit_seen was the one unbounded structure and was
+      cleared nowhere; the re-point check compared only the literal spelling
+      while install() deliberately stores the resolved one too; a drained
+      _violations list hid a non-zero suppressed count entirely; bytes paths
+      normalised to "b'/x/y'"; and a key was marked seen even when the cap
+      stopped it being retained, so it could never be recorded again.
+    * A8 -- the new fixture's NOTE claimed importing main at conftest module
+      scope would be harmful. conftest ALREADY does exactly that at line 31,
+      deliberately and load-bearingly. A reader acting on the note would have
+      deleted it and reintroduced the mid-test load_dotenv() bug.
+    * B1 MEDIUM, and a pre-existing suite-wide leak this batch happened to
+      expose: conftest's neutral_temperature_scaling patched ml_bias._TEMP_CACHE
+      but NOT _TEMP_CACHE_MTIME, and _load_temperature_scale short-circuits
+      only when both agree. So the first test per session to reach the loader
+      fell through and reloaded the operator's LIVE data/temperature_scale.json
+      (T_above~1.27, T_global~4.6) over the neutral cache for the rest of that
+      test -- meaning the two parametrised cases of the repaired test could run
+      under different calibration. Fixed structurally: _TEMP_PATH now points at
+      a per-test neutral file, so both the cached and the reload path give the
+      same answer, and the WRITE side (ml_bias.py:1208 persists retrained
+      coefficients through the same constant) is closed too. Confirmed by the
+      guard's own read report: temperature_scale.json no longer appears in a
+      450-test run of test_weather_markets.py, where it previously named this
+      one test as the file's only reader.
+      That fix then broke tests/test_ml_bias.py's
+      test_directional_bias_warning_labels_global_and_condition, which asserts
+      `not (tmp_path / "temperature_scale.json").exists()` to prove a rejected
+      fit wrote nothing -- my neutral file was landing at that exact name in
+      the shared tmp_path. Moved into a subdirectory.
+    * B2/B3/B4/B7 -- the ratio assertion was vacuous at net_edge == 0 (now
+      guarded, with the measured 0.3135 recorded); blend weights were unpinned,
+      leaving the fixture dependent on the operator's live city/seasonal
+      calibration (now pinned to {} as this file's own
+      _analyze_trade_base_mocks helper does); the timezone was hardcoded rather
+      than read from wm._CITY_TZ["NYC"]; and abs=1e-6 sat only 2x outside the
+      5e-7 bound from adjusted_edge being rounded while net_edge is not.
+    * B5/B6/B8 recorded as scope notes in the test's own comments: the
+      edge_confidence() cross-check is documentation rather than independent
+      evidence, the test pins the HORIZON curve only (deleting the condition
+      multiplier leaves it green -- tests/test_signal_quality.py covers that),
+      and it supplies prices as fractions where the sibling class uses cents.
+    * A11/A12/A13/A14/A15/A16 accepted as documented no-ops or corrections:
+      the cap counts a list shared with BLOCK entries; the mode/latch globals
+      are mutated outside _lock (single-threaded at arm time); the
+      "pytest" in basetemp assertion matches existing precedent in
+      test_conftest_tracker_db_isolation.py; _block() does NOT in fact run on
+      every open() (only on a real-data hit, so AUDIT adds no per-open cost,
+      and the BLOCK path was verified byte-for-byte unchanged); the seeds
+      copytree runs before arming and seeds/ is git-tracked at 20 KB; and
+      audit/reproductions/test_csrf_header_gap_repro.py can still be invoked
+      directly as `pytest <path>`, which overrides testpaths and loads no
+      conftest -- disclosed in the README's "Older scripts" section and scoped
+      by the follow-up entry below.
+
+[OPEN 2026-08-26 -- surfaced by a parallel session while batch-83 held
+  tests/conftest.py. The TEST-side gap is fixed (see below); the PRODUCTION
+  defect underneath it is not, and lives in main.py, which batch-82 owned this
+  cycle.] _load_live_config() WRITES data/live_config.json DURING WHAT ITS
+  CALLERS TREAT AS A READ
+Priority: MEDIUM -- the test-side exposure is closed, so CI is green. What
+  remains is a config loader that mutates the filesystem as a side effect of
+  being read, which will keep producing this shape.
+Files: main.py:2608-2630 (_load_live_config's FileNotFoundError branch),
+  cron.py:1805 (the swallowing call site)
+
+Problem:
+  _load_live_config() opens data/live_config.json and, on FileNotFoundError,
+  CREATES it with defaults. That file is untracked and gitignored, so it
+  exists on a developer machine and not on a fresh clone -- CI is the only
+  place the create branch is ever taken, and CI is where it writes the real
+  data/ dir.
+
+  Two things made it fail obscurely rather than loudly:
+    * the create step's own `except OSError` cannot catch the guard's
+      ProdDataWriteError, which derives from RuntimeError. This is the same
+      distinction paths.materialize_missing_seeds' docstring calls out, for
+      the same reason.
+    * cron.py:1805 swallows it ("cmd_cron: _poll_pending_orders failed"), so
+      the test body PASSES and only the phase-end assert_clean() reports the
+      recorded violation.
+
+  Measured 2026-08-26: 58 test files reach a caller (cmd_cron / cmd_order /
+  _poll_pending_orders / _auto_place_trades); 6 isolated _LIVE_CONFIG_PATH.
+  52 were exposed, and CI was going red one file at a time.
+
+Resolution of the TEST-side half (2026-08-26, batch-83):
+  tests/conftest.py grew an autouse isolate_live_config fixture beside the
+  other isolate_* fixtures, redirecting main._LIVE_CONFIG_PATH to tmp_path.
+  Two per-file stopgaps filed by the parallel session (109e09fa
+  test_batch60_trade_entry_guards, ab3fc018 test_cron_group_c) are now
+  redundant; left in place deliberately rather than deleted, since setting the
+  same attribute twice per test is idempotent and both files are outside
+  batch-83's ownership. They can go whenever someone is editing those files
+  anyway.
+
+  Verified with a 2x2 rather than a single green run, because both those files
+  carry a stopgap that would mask the fixture. Reproduced CI's fresh-clone
+  state with a `-p` plugin pointing _LIVE_CONFIG_PATH at a non-existent name
+  under the REAL data/ (the guard blocks the write, so nothing is created --
+  the guard IS the safety net):
+    stopgap OFF + conftest fixture OFF -> 2 failed   (the CI failure, reproduced)
+    stopgap OFF + conftest fixture ON  -> 11 passed  (the fixture does the work)
+  Guarded by tests/test_prod_data_guard.py::TestLiveConfigIsolation, whose
+  second test deletes the file first so the CREATE branch is genuinely taken
+  -- otherwise it would pass via the read branch and prove nothing.
+
+What is still open:
+  The production behaviour. A loader that writes on read is the root cause;
+  isolating the path in tests hides it rather than fixing it. Options are to
+  split "load" from "materialise defaults" so the write is an explicit call,
+  or to return defaults in memory and let whatever owns config lifecycle
+  decide when to persist. Needs main.py, which was batch-82's file.
+
+When to revisit:
+  Next time main.py's config surface is open, or if a THIRD file starts
+  needing a stopgap despite the conftest fixture (which would mean something
+  binds the path at import rather than reading the attribute).
+
+[OPEN 2026-08-26 -- adjacency found by batch-83 while building the isolation
+  harness above. Not fixed there because each script needs its own
+  needs-real-data judgement, which is 24 separate calls, not a sweep.]
+  24 OF THE 25 audit/reproductions/ SCRIPTS ARE STILL UNISOLATED, AND 17 OF
+  THEM OPEN WITH A sys.path.insert POINTING AT A DELETED WORKTREE
+Priority: LOW -- these are historical one-off artefacts, not running code.
+  Nothing executes them on a schedule. The exposure only materialises when
+  somebody actually runs one, which is exactly when it is most dangerous.
+Files: audit/reproductions/*.py (all except repro_target_date_due.py, which
+  batch-83 migrated as the worked example)
+
+Problem:
+  17 of the 25 scripts begin with
+
+    sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
+
+  That worktree no longer exists (`git worktree list`, 2026-08-26). The line
+  is inert rather than fatal -- inserting a non-existent path does nothing --
+  so these scripts work only because they happen to be run from the repo root,
+  and they are completely unisolated when they do. Several import production
+  modules directly (web_app, paper, cloud_backup, execution_log, cron), and
+  any such import resolves paths.py against the operator's real data/.
+
+  Note the counted-surface trap: 17 carry the dead path, but 24 lack
+  isolation. Those are different sets and neither is the number that matters
+  -- what matters is which scripts, when run, would touch real state.
+
+What the fix looks like:
+  Per script: replace the sys.path.insert with
+  `from audit.reproductions._isolate import isolate` + `isolate()` above every
+  repo import, and decide whether that script needs `allow_real_data=True`.
+  See audit/reproductions/README.md. The decision is per-script: some of these
+  exist precisely to inspect live state, and sandboxing those silently changes
+  what they reproduce -- which is worse than leaving them as they are.
+
+When to revisit:
+  Before running ANY existing script in that directory. Migrate it at that
+  point rather than in bulk; the judgement is cheap when you already know what
+  the script is for and expensive when you do not.
 
 [OPEN 2026-08-26 -- opus review of batch-76 item 2; not fixed there because
   tracker.py is batch-78's file this cycle] backfill_member_actual_temp'S

@@ -672,7 +672,7 @@ def clear_nws_mos_climate_indices_caches():
 
 
 @pytest.fixture(autouse=True)
-def neutral_temperature_scaling(monkeypatch):
+def neutral_temperature_scaling(tmp_path, monkeypatch):
     """Patch ml_bias._TEMP_CACHE to neutral T=1.0 before every test.
 
     data/temperature_scale.json is rewritten by cron retrains and is not git-tracked.
@@ -684,7 +684,27 @@ def neutral_temperature_scaling(monkeypatch):
     Tests in test_ml_bias.py that exercise temperature scaling directly reset
     _TEMP_CACHE = None in their test body to force a reload from their own patched
     _TEMP_PATH — those direct assignments bypass monkeypatch and take precedence.
+
+    Patching _TEMP_CACHE ALONE was not enough, and the gap was live (opus
+    review, batch-83). _load_temperature_scale() short-circuits only on
+    `_TEMP_CACHE is not None and _TEMP_CACHE_MTIME == mtime` (ml_bias.py:762).
+    _TEMP_CACHE_MTIME was left unpatched, so the FIRST test in a session to
+    reach the loader found it None, fell through, and reloaded the operator's
+    live data/temperature_scale.json straight over the neutral cache — for the
+    rest of that test. Measured: the real file holds T_above≈1.27, T_global≈4.6,
+    and exactly one test per session (whichever got there first) ran against
+    those values while every later test got the neutral ones. Two parametrised
+    cases of the same test could therefore run under different calibration.
+
+    So the redirect is now structural, matching the other isolate_* fixtures:
+    _TEMP_PATH points at a per-test file holding neutral values, and the cache
+    and its mtime agree with it. A test that nulls _TEMP_CACHE reloads from the
+    neutral file rather than the production one, so both routes give the same
+    answer. It also closes the WRITE side — ml_bias.py:1208 persists retrained
+    coefficients through this same constant.
     """
+    import json as _json
+
     import ml_bias
 
     neutral = {
@@ -694,7 +714,21 @@ def neutral_temperature_scaling(monkeypatch):
         "global": 1.0,
         "sameday": 1.0,
     }
+    # A SUBDIRECTORY, not tmp_path itself. tmp_path is shared with the test
+    # body, and tests/test_ml_bias.py points its own _TEMP_PATH at
+    # `tmp_path / "temperature_scale.json"` and then asserts that file does
+    # NOT exist to prove a rejected fit wrote nothing. Creating the neutral
+    # file at the same name made that assertion fail on this fixture's
+    # artefact rather than on the behaviour under test.
+    scale_dir = tmp_path / "_neutral_temp_scale"
+    scale_dir.mkdir(exist_ok=True)
+    scale_path = scale_dir / "temperature_scale.json"
+    scale_path.write_text(
+        _json.dumps({k: {"T": v} for k, v in neutral.items()}), encoding="utf-8"
+    )
+    monkeypatch.setattr(ml_bias, "_TEMP_PATH", scale_path)
     monkeypatch.setattr(ml_bias, "_TEMP_CACHE", neutral)
+    monkeypatch.setattr(ml_bias, "_TEMP_CACHE_MTIME", scale_path.stat().st_mtime)
 
 
 @pytest.fixture(autouse=True)
@@ -811,6 +845,46 @@ def isolate_tracker_db(tmp_path, monkeypatch, _tracker_db_template):
     shutil.copyfile(_tracker_db_template, db)
     monkeypatch.setattr(tracker, "DB_PATH", db)
     monkeypatch.setattr(tracker, "_db_initialized", True)
+
+
+@pytest.fixture(autouse=True)
+def isolate_live_config(tmp_path, monkeypatch):
+    """Redirect main._LIVE_CONFIG_PATH to a per-test temp file.
+
+    _load_live_config() CREATES data/live_config.json when it is absent
+    (main.py:2619-2622, the FileNotFoundError branch). That file is untracked
+    and gitignored, so it exists on a developer machine and NOT on a fresh
+    clone -- which means CI is the only place the create branch is ever taken,
+    and CI is where it writes into the real data/ dir.
+
+    Two things make it fail obscurely rather than loudly, which is why this is
+    a structural autouse fixture rather than another per-file patch:
+
+      * the create step's own `except OSError` cannot catch ProdDataWriteError
+        -- it derives from RuntimeError, exactly the distinction
+        paths.materialize_missing_seeds' docstring calls out for the same
+        reason; and
+      * the call site swallows it anyway (cron.py logs "cmd_cron:
+        _poll_pending_orders failed" and continues), so the test body PASSES
+        and only the phase-end assert_clean() reports the recorded violation.
+
+    Scale is why it belongs here: 58 test files reach a caller of this
+    (cmd_cron / cmd_order / _poll_pending_orders / _auto_place_trades) and 6
+    isolate it, so 52 were exposed and CI was going red one file at a time.
+    Two per-file stopgaps (109e09fa, ab3fc018) were filed by a parallel
+    session and are superseded by this fixture; they are harmless if left, as
+    setting the same attribute twice is idempotent per test.
+
+    The in-body `import main` is just a local binding -- main is ALREADY
+    imported at module scope (see the `import main as _main` block at the top
+    of this file, which is deliberate and load-bearing for load_dotenv()
+    ordering). It is written this way only to match the other isolate_*
+    fixtures; do not read it as a claim that importing main here would be
+    harmful, and do not delete the module-scope import on its account.
+    """
+    import main
+
+    monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", tmp_path / "live_config.json")
 
 
 @pytest.fixture(autouse=True)
@@ -2180,3 +2254,30 @@ def pytest_sessionfinish(session, exitstatus):
             lines.append(f"        by {nodeid} on thread {thread}")
     if lines:
         print("\n" + "\n".join(lines))
+
+    # The guard must still be in BLOCK mode. arm_for_script() (batch-83) added
+    # an AUDIT mode for code running outside pytest, and its own guards make a
+    # mid-session downgrade unreachable today -- an already-armed BLOCK cannot
+    # be loosened, and AUDIT is refused outright once BLOCK has been armed.
+    # This checks the OUTCOME rather than trusting those mechanisms to stay
+    # correct: a session that somehow ended permissive blocked nothing after
+    # the downgrade, and every assert_clean() from that point on passed on an
+    # empty list.
+    #
+    # Deliberately NOT an `assert`. An exception raised here propagates out of
+    # _pytest.main.wrap_session's finally, so TerminalReporter's post-yield
+    # half never runs: no "N passed" line, no short test summary, no traceback
+    # for whatever genuinely failed, and on CI no coverage report and no
+    # --cov-fail-under evaluation -- with exit code 1, indistinguishable from
+    # an ordinary test failure. Setting exitstatus is honoured (wrap_session
+    # returns session.exitstatus after the finally) and keeps the report
+    # intact. An `assert` would also vanish entirely under `python -O`.
+    if prod_data_guard._mode != prod_data_guard._MODE_BLOCK:
+        print(
+            f"\n*** [prod-data-guard] the guard ended this session in "
+            f"{prod_data_guard._mode!r} mode, not BLOCK -- real data/ "
+            f"mutations were recorded and ALLOWED THROUGH from some point "
+            f"onwards, and every assert_clean() after it passed on an empty "
+            f"list ***"
+        )
+        session.exitstatus = pytest.ExitCode.INTERNAL_ERROR

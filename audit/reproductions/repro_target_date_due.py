@@ -1,10 +1,25 @@
+"""Run with:  python -m audit.reproductions.repro_target_date_due
+
+isolate() must stay ABOVE `import main`. main.py imports paths.py, which
+computes DATA_DIR from safe_io.project_root() at import time and then calls
+materialize_missing_seeds() -- so by the time `import main` has finished,
+an un-isolated run has already resolved, and written to, the operator's real
+data/ directory. `py main.py validate` applying schema migrations v77 and v78
+to the production database on 2026-08-26 is the same mechanism.
+
+This script only exercises _target_date_due's timezone arithmetic, so it
+wants no real data at all and takes the default sandbox.
+"""
+
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-import main
+from audit.reproductions._isolate import isolate
+
+isolate()
+
+import main  # noqa: E402
 
 # AUD-0017 fix verification (batch-07, 2026-08-21): _target_date_due's
 # signature changed from (target_date_str, today_date) to

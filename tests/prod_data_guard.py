@@ -45,6 +45,27 @@ There is no opt-out marker, by design. A test that genuinely needs a real
 data file must copy it into tmp_path first; nothing may quietly re-open the
 hole this module exists to close.
 
+That describes install(), which is the only entry point conftest uses and
+the only one the test suite can reach. arm_for_script() (added batch-83) is
+for code running OUTSIDE pytest, and it adds a second mode: AUDIT records
+and reports a mutation, then lets it proceed. "MUTATIONS are blocked" is
+therefore a statement about the SUITE, not about every caller of this
+module. Three things keep it true for the suite, and all three are tested:
+
+  * install() has no mode parameter and cannot select AUDIT.
+  * An already-armed guard can only ever be TIGHTENED (AUDIT -> BLOCK); a
+    second arm can neither loosen the mode nor re-point the watched dir.
+  * Once BLOCK has been armed anywhere in this process, AUDIT is refused
+    outright, and that latch deliberately SURVIVES uninstall(). uninstall()
+    resets the mode but not the latch -- without that, clearing _installed
+    would let the next arm_for_script(mode="audit") re-arm the whole process
+    permissive.
+
+conftest.pytest_sessionfinish additionally asserts the session ended in
+BLOCK, so the outcome is checked rather than the mechanisms merely trusted.
+See arm_for_script's own docstring for why an operator subcommand writing
+the real data/ must stay legal.
+
 Interaction with tests/test_paths_bypass_guard.py
 -------------------------------------------------
 _under_real_data() classifies a path with pure string operations (no
@@ -112,11 +133,13 @@ import os
 import pathlib
 import shutil
 import sqlite3
+import sys
 import threading
 import urllib.parse
 
 __all__ = [
     "ProdDataWriteError",
+    "arm_for_script",
     "install",
     "uninstall",
     "set_current_test",
@@ -162,6 +185,37 @@ _WRITE_MODES = ("w", "a", "x", "+")
 _EXTENDED_PREFIX = "\\\\?\\"
 _installed = False
 _atexit_registered = False
+
+# How a detected mutation is handled. BLOCK raises at the call site (what the
+# test suite has always done, and the only mode install() can select). AUDIT
+# records and prints, then lets the write proceed.
+#
+# AUDIT exists because "no out-of-pytest write to data/" is the WRONG rule.
+# Roughly 70 main.py operator subcommands exist precisely to write the real
+# data/ -- repair-metar-lockout-rows, backfill-attempt-outcomes and
+# backfill-ensemble-var all did so deliberately during the 2026-08-26 session
+# -- so a script-facing guard that blocked would break the maintenance tooling
+# it is meant to protect. The defect that motivated this is narrower: code
+# executing outside pytest against the real data dir with NOBODY ABLE TO SAY
+# WHICH CODE. Attribution is the thing three separate sessions could not do
+# after a MagicMock repr reached data/miami_index_state.json. See backlog.txt
+# "audit/reproductions/ SCRIPTS RUN OUTSIDE PYTEST", plan item 4.
+_MODE_BLOCK = "block"
+_MODE_AUDIT = "audit"
+_mode = _MODE_BLOCK
+# One-way latch: True once BLOCK has been armed anywhere in this process, and
+# NEVER reset -- not by uninstall(), which is exactly the hole it closes.
+_block_ever_armed = False
+
+# AUDIT-mode bookkeeping. _violations is self-limiting under BLOCK (it raises
+# on the first entry); under AUDIT the write proceeds, so both the retained
+# list and the stderr stream need explicit bounds -- see _block(). Keys are
+# (operation, normalised path, nodeid, thread). _audit_seen is bounded by
+# _AUDIT_MAX_RETAINED because a key is only added when it is also retained.
+_audit_seen: set[tuple[str, str, str, str]] = set()
+_audit_counts: dict[tuple[str, str, str, str], int] = {}
+_AUDIT_MAX_RETAINED = 200
+_audit_suppressed = [0]  # list, so _block() can bump it without a global
 
 
 def _strip_extended(p: str) -> str:
@@ -219,6 +273,23 @@ def _resolve_at(path, dir_fd):
     return os.path.join(base, s)
 
 
+def _norm_pathlike(p) -> str:
+    """_norm(), but going through fspath/fsdecode first.
+
+    `_norm(str(p))` on a bytes path yields "b'/x/y'", which abspath() then
+    joins onto the cwd -- so a bytes path and its str equivalent normalise to
+    two different strings. Shared by _under_real_data and AUDIT's dedup key so
+    the two cannot disagree about what counts as the same path.
+    """
+    try:
+        s = os.fspath(p)
+    except TypeError:
+        s = str(p)
+    if isinstance(s, bytes):
+        s = os.fsdecode(s)
+    return _norm(s)
+
+
 def _under_real_data(p) -> bool:
     """True if `p` names the real data/ dir or anything inside it."""
     try:
@@ -266,6 +337,54 @@ def _sqlite_target(database) -> tuple[object, str]:
 
 def _block(operation: str, path) -> None:
     thread = threading.current_thread().name
+    if _mode == _MODE_AUDIT:
+        # Record and report, then return so the write proceeds. Printed
+        # immediately rather than only at exit because a script that goes on
+        # to crash, hang or be Ctrl-C'd still needs to have named its writer;
+        # _report_at_exit repeats the surviving list.
+        #
+        # De-duplicated, and the retained list is capped. In BLOCK mode
+        # _violations is self-limiting -- it raises on the first entry -- but
+        # AUDIT returns, and the stated use case is the operator subcommands:
+        # `main.py cron` or a backfill rewrites hundreds of files, often the
+        # same one repeatedly. Unbounded, the attribution this mode exists to
+        # provide drowns in its own output.
+        #
+        # The key includes the NODEID AND THE THREAD, not just (operation,
+        # path). Keying on the path alone would mean that once any writer
+        # touched a file, a LATER writer of the same file was silent -- and
+        # that is precisely this module's motivating incident: a legitimate
+        # cron write to data/miami_index_state.json followed by a MagicMock
+        # repr written to the same path. The second is the one worth seeing.
+        # Same for a daemon thread writing a file the main thread already
+        # wrote: the thread is recorded, so it must also be keyed on.
+        #
+        # Repeats are COUNTED rather than discarded, so "×47" survives even
+        # though only the first is printed. The cap therefore bounds distinct
+        # writers, not distinct writes.
+        with _lock:
+            nodeid = _current_nodeid
+            key = (operation, _norm_pathlike(path), nodeid, thread)
+            first_time = key not in _audit_seen
+            if first_time:
+                if len(_violations) < _AUDIT_MAX_RETAINED:
+                    _audit_seen.add(key)
+                    _violations.append((nodeid, operation, str(path), thread))
+                else:
+                    # NOT added to _audit_seen: if _violations is later drained
+                    # (assert_clean), a key marked seen but never retained could
+                    # never be recorded again.
+                    _audit_suppressed[0] += 1
+            else:
+                _audit_counts[key] = _audit_counts.get(key, 1) + 1
+        if first_time:
+            on_thread = "" if thread == "MainThread" else f" (on thread {thread!r})"
+            print(
+                f"[prod-data-guard] REAL data/ mutation: {operation} {path}\n"
+                f"    by {nodeid}{on_thread}",
+                file=sys.stderr,
+            )
+        return
     with _lock:
         _violations.append((_current_nodeid, operation, str(path), thread))
         nodeid = _current_nodeid
@@ -423,6 +542,22 @@ def _g_path_touch(self, *args, **kwargs):
     return _o_path_touch(self, *args, **kwargs)
 
 
+def _matches_armed_dir(data_dir) -> bool:
+    """True if `data_dir` names the directory the guard is already armed on.
+
+    Checks the RESOLVED spelling as well as the literal one, for the same
+    reason install() stores both: a junction, a symlink or an 8.3 short name
+    in the project path would otherwise make a caller naming the very same
+    directory look like an attempt to re-point the guard.
+    """
+    if _norm(str(data_dir)) in _data_prefixes:
+        return True
+    try:
+        return _norm(str(pathlib.Path(data_dir).resolve())) in _data_prefixes
+    except OSError:
+        return False
+
+
 def _bound_dst_guard(original, operation, *, also_check_src=False):
     """Guard a bound Path method whose first argument is the destination."""
 
@@ -436,10 +571,29 @@ def _bound_dst_guard(original, operation, *, also_check_src=False):
     return guarded
 
 
-def install(data_dir) -> None:
-    """Patch every filesystem mutation entry point. Idempotent."""
+def install(data_dir, *, _from_arm: bool = False) -> None:
+    """Patch every filesystem mutation entry point.
+
+    install() ALWAYS means BLOCK. conftest is its only direct caller and never
+    selects a mode, so reaching here from anywhere but arm_for_script() forces
+    BLOCK and latches it -- otherwise a process where something armed AUDIT
+    before pytest_configure ran would have had conftest's install() no-op and
+    then run the entire session permissive, with the latch still False.
+
+    Idempotent in the patching, but NOT silently so in its target: a second
+    call naming a different directory raises rather than keeping the first
+    one, because _data_prefixes is frozen on the first call and a caller that
+    believed it had re-pointed the guard would be watching the wrong tree.
+    """
     global _installed, _data_prefixes, _atexit_registered
+    if not _from_arm:
+        _tighten_to_block()
     if _installed:
+        if _data_prefixes and not _matches_armed_dir(data_dir):
+            raise RuntimeError(
+                f"the guard is already armed on {_data_prefixes[0]!r} and "
+                f"cannot be re-pointed at {_norm(str(data_dir))!r}."
+            )
         return
     literal = _norm(str(data_dir))
     try:
@@ -496,21 +650,140 @@ def install(data_dir) -> None:
     _installed = True
 
 
+def arm_for_script(data_dir=None, *, mode: str = _MODE_BLOCK, label: str = "") -> None:
+    """Arm the guard from a plain script -- no pytest, no conftest.
+
+    install() above is reachable only from conftest, so until this existed the
+    guard protected the test runner and nothing else. That is backwards: a
+    test writing the real data/ is caught by a fixture the next time anyone
+    looks, while `py some_script.py` writing it is caught by nobody. On
+    2026-08-26 four commands were run against the real data/predictions.db
+    from an ordinary shell, and one of them (`py main.py validate`) applied
+    schema migrations v77 and v78 to the production database purely as a side
+    effect of being run. Both existing guards were present, correct, and
+    inapplicable.
+
+    `mode` is the whole design decision:
+
+      BLOCK  -- raise at the call site. For a script that must not touch real
+                data at ALL. Pair it with a redirected safe_io.project_root()
+                so the script has somewhere else to write; blocking without
+                redirecting just moves the failure.
+      AUDIT  -- record, print to stderr, and let the write through. For a
+                script that is SUPPOSED to write real data (the ~70 main.py
+                operator subcommands) but should still be able to say so
+                afterwards. This is the mode that buys attribution.
+
+    `data_dir` defaults to the REAL data dir, resolved through the same
+    safe_io.project_root() that paths.py uses -- and resolved HERE, at arm
+    time, so that a caller which subsequently redirects project_root still
+    has the guard pointed at the real directory rather than at its own
+    sandbox. Callers that redirect FIRST must pass the real dir explicitly.
+
+    Arming twice cannot RE-POINT the guard: install() freezes _data_prefixes on
+    the first call, so a second arm naming a different directory raises rather
+    than being silently ignored -- otherwise a caller would believe it was
+    guarded against its own sandbox while the guard watched somewhere else. A
+    second arm naming the SAME directory may only ever TIGHTEN the mode
+    (AUDIT -> BLOCK), never loosen it.
+
+    AUDIT is refused outright once BLOCK has been armed anywhere in this
+    process, and that latch deliberately survives uninstall(). Without it,
+    uninstall() clearing _installed would let the very next
+    arm_for_script(mode="audit") re-arm the WHOLE process permissive -- and
+    since uninstall()'s own docstring invites tests to use it, the first test
+    that did so in a try/finally would silently disarm every test after it and
+    assert_clean() would never fire again for the rest of the session.
+    """
+    global _mode
+    if mode not in (_MODE_BLOCK, _MODE_AUDIT):
+        raise ValueError(
+            f"mode must be {_MODE_BLOCK!r} or {_MODE_AUDIT!r}, got {mode!r}"
+        )
+    if mode == _MODE_AUDIT and _block_ever_armed:
+        raise RuntimeError(
+            "refusing to arm AUDIT mode: BLOCK was already armed in this "
+            "process. AUDIT lets real data/ mutations through, so honouring "
+            "this would retroactively unprotect everything that ran under "
+            "BLOCK -- including a whole pytest session if uninstall() was "
+            "called in between."
+        )
+    if data_dir is None:
+        from safe_io import project_root
+
+        data_dir = project_root() / "data"
+
+    if _installed:
+        if not _matches_armed_dir(data_dir):
+            raise RuntimeError(
+                f"the guard is already armed on {_data_prefixes[0]!r} and "
+                f"cannot be re-pointed at {_norm(str(data_dir))!r}. install() "
+                "freezes the watched directory on its first call; a second arm "
+                "silently keeping the old one would leave you believing the "
+                "wrong directory was protected."
+            )
+        if mode == _MODE_BLOCK:
+            _tighten_to_block()
+        # No set_current_test() here. It sweeps any pending _violations into
+        # _orphaned, which conftest only PRINTS at session end rather than
+        # failing on -- so calling it on an already-armed guard would launder
+        # a swallowed real-data write past assert_clean() and let the test go
+        # green. Attribution for an already-armed process is not worth that.
+        return
+
+    # install() FIRST, then commit the mode. Assigning _mode before install()
+    # could raise left the process at mode=AUDIT with nothing patched and the
+    # latch still False -- and conftest's later install() would then see AUDIT
+    # and arm the whole session permissive. The failure defaulted OPEN.
+    set_current_test(label or f"{' '.join(sys.argv) or '<script>'} (pid {os.getpid()})")
+    install(data_dir, _from_arm=True)
+    if mode == _MODE_BLOCK:
+        _tighten_to_block()
+    else:
+        _mode = mode
+
+
+def _tighten_to_block() -> None:
+    """Move to BLOCK and latch it for the lifetime of the process."""
+    global _mode, _block_ever_armed
+    _mode = _MODE_BLOCK
+    _block_ever_armed = True
+
+
 def _report_at_exit() -> None:  # pragma: no cover -- runs at interpreter exit
     with _lock:
         leftovers = list(_violations) + list(_orphaned)
-    if not leftovers:
+        counts = dict(_audit_counts)
+        suppressed = _audit_suppressed[0]
+    # `and not suppressed`: a process whose _violations were all drained by
+    # assert_clean() while the AUDIT cap had dropped others would otherwise
+    # report nothing at all, silently claiming zero mutations.
+    if not leftovers and not suppressed:
         return
+    # One phrasing, accurate under both modes. Branching on _mode HERE reads
+    # the mode as it stands AT EXIT, which need not be the mode any given
+    # entry was recorded under -- a process that ran AUDIT and later tightened
+    # to BLOCK would have reported its allowed writes as merely "attempted",
+    # and the reverse would have claimed blocked attempts actually landed.
     print(
-        "\n[prod-data-guard] *** "
-        f"{len(leftovers)} production mutation(s) were attempted but never "
-        "reported by a test phase ***"
+        f"\n[prod-data-guard] *** {len(leftovers)} real data/ mutation(s) "
+        "recorded and not claimed by a test phase ***"
     )
     for nodeid, operation, path, thread in leftovers:
-        print(f"    {operation}  {path}\n        by {nodeid} on {thread}")
+        repeats = counts.get((operation, _norm_pathlike(path), nodeid, thread), 1)
+        times = f"   (x{repeats})" if repeats > 1 else ""
+        print(f"    {operation}  {path}{times}\n        by {nodeid} on {thread}")
+    if suppressed:
+        print(
+            f"    ... and {suppressed} further distinct mutation(s) not "
+            f"retained (AUDIT cap {_AUDIT_MAX_RETAINED})"
+        )
     print(
-        "    These happened during collection, after the session ended (an "
-        "atexit\n    flusher), or on a thread that outlived its test. See "
+        "    Under BLOCK each was refused at the call site and did NOT land; "
+        "under\n    AUDIT each was allowed through deliberately and DID. They "
+        "reach this\n    report from collection, from after the session ended "
+        "(an atexit flusher),\n    from a thread that outlived its test, or "
+        "from a script arming this guard\n    directly. See "
         "tests/prod_data_guard.py."
     )
 
@@ -522,9 +795,21 @@ def uninstall() -> None:
     weather_markets registers three of them. Provided for tests that need
     to exercise the un-guarded behaviour explicitly.
     """
-    global _installed
+    global _installed, _mode
     if not _installed:
         return
+    # Back to the default, so an AUDIT-mode arm cannot outlive its own
+    # uninstall and silently downgrade a later BLOCK-mode caller -- including
+    # the test suite itself, whose install() never passes a mode. NOTE
+    # _block_ever_armed is deliberately NOT reset: that latch is what stops the
+    # next arm_for_script(mode="audit") re-arming this process permissive.
+    _mode = _MODE_BLOCK
+    # AUDIT dedup state must not survive either, or an in-process test that
+    # exercised AUDIT would leave keys behind that silently suppress a later
+    # recording of the same (operation, path, nodeid, thread).
+    _audit_seen.clear()
+    _audit_counts.clear()
+    _audit_suppressed[0] = 0
     builtins.open = _o_open
     pathlib.Path.open = _o_path_open
     sqlite3.connect = _o_connect
