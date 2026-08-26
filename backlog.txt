@@ -42642,15 +42642,47 @@ When to revisit:
     by horizon   d=0  n=348  model 0.1964  market 0.1143  t=+8.44
                  d=1  n=190  model 0.1274  market 0.0833  t=+5.60
     by city      0 of 18 cities with n>=15 have the model ahead
-    by method    ensemble n=211 t=+2.88;  metar_lockout n=106 t=+1.90
-                 (the observational path loses too -- a better-informed
-                  signal, but still not better than the price)
+    by method    *** SOURCED FROM `predictions`, NOT analysis_attempts ***
+                 ensemble n=211 t=+2.88;  metar_lockout n=106 t=+1.90
+                 CORRECTION 2026-08-26, caught by the batch-87 session:
+                 this one sub-check was run as
+                   SELECT p.method ... FROM predictions p JOIN outcomes_valid o
+                 i.e. on the SELECTED population, while every other number in
+                 this entry is on the unbiased set. It cannot have come from
+                 analysis_attempts, which has no `method` column at all
+                 (ticker, city, condition, target_date, analyzed_at,
+                 forecast_prob, market_prob, days_out, was_traded, outcome,
+                 status, not_found_at, last_checked_at). Independently
+                 reconciled: the 106 matches predictions.method='metar_lockout'
+                 at days_out=0 exactly, and 82+137=219 matches 'ensemble'.
+                 The OBSERVATION still stands on its own population -- the
+                 METAR path loses to the market too, a better-informed signal
+                 that is still not better than the price -- but it is NOT
+                 evidence about the unbiased set and must not be cited as such.
     by family    KXLOWT t=+7.16;  KXHIGH t=+7.54
 
   Honest limits: 538 rows over one month (2026-07-25..08-24), summer only, and
   analysis_attempts covers only markets the scanner actually looked at. That is
   enough to reject "the model beats the market", not enough to characterise a
   seasonal effect.
+
+  SNAPSHOT, and it rots: every count here is as of 2026-08-26 ~03:00 UTC, when
+  analysis_attempts held 584 scored rows with newest analyzed_at
+  2026-08-24T20:17. The batch-87 session found it at 594 / 2026-08-26T01:10
+  hours later. RE-DERIVE, DO NOT QUOTE -- and stamp your own snapshot when you
+  do.
+
+  UNLANDED MEASUREMENT WORTH KEEPING (batch-87 session, 2026-08-26; its session
+  ended before committing, so this is the only surviving record). Fitting the
+  recalibration on the unbiased population and applying it held-out:
+    - it FLIPS which side the model favours on 61% of held-out d>=1 rows (46/76)
+    - it HALVES the rows clearing |f-m| >= 0.15, from 39 to 20
+  That is a far larger behavioural change than "recalibration" suggests, and it
+  is on the same decision surface any blend-weight change would touch -- which
+  is why the two must not land blind together, and why the recalibration
+  arguably needs its own go/no-go rather than being treated as pure hygiene.
+  Re-derive before acting; these numbers were reported, not independently
+  reproduced here.
 
 
 [OPEN 2026-08-26 -- follow-up to the entry above ("THE MODEL'S 'EDGE' IS ITS OWN
