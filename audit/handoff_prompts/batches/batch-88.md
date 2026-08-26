@@ -9,6 +9,49 @@ Repo: weather1. Written 2026-08-26 against master `0d69c25d` — **re-verify cur
 
 This is option 7 of `backlog.txt`'s *"PROJECT DIRECTION AFTER THE NO-EDGE RESULT"*, and its own entry *"gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max..."*. **Step 1 of that entry's plan is already done — the diagnosis below is the result. Start from it.**
 
+## CORRECTION 2026-08-26 -- THE TABLE BELOW WAS WRONG. Read this first.
+
+An earlier revision of this file named the blend as `gfs_seamless` / `ecmwf_ifs025` / `icon_seamless` at weights 1.0 / 1.5 / 1.0. **That is not the live blend.** `get_ensemble_temps` (`:5467`) iterates `_QUARANTINE_CANDIDATE_MODELS` (`:4611`):
+
+```python
+(*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble")
+  == ("icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble")
+```
+
+and the code's own comment at `:2637` calls that *"the single source of truth for the 3 real ensemble-blend models"*. **`ecmwf_ifs025` is not one of them.** Confirmed in the live 2026-08-26 08:46 UTC cron log, which shows the two paths fetching different ECMWF products:
+
+```
+[OM batch]  [2/3] ecmwf_ifs025              OK    <- daily-forecast prewarm
+[ENS batch] [5/10] ecmwf_aifs025_ensemble   OK    <- the ensemble blend
+```
+
+**The real defect is bigger.** `_model_weights` (`:2148`) returns keys `gfs_seamless` / `ecmwf_ifs025` / `icon_seamless`; the loop does `weights.get(model, 1.0)`. For `ecmwf_aifs025_ensemble` that key is **absent**, so it takes the **1.0 default** — and the entire `ecmwf_w` computation (1.5 summer, 2.5 winter, El Nino +0.5, La Nina +0.3) **never reaches the blend at all**. Every member resolves to 1.0, `repeats = 2`, and the effective split collapses to raw vendor member count. Measured live:
+
+| product | series | entries | effective |
+|---|---|---|---|
+| `ecmwf_aifs025_ensemble` | 51 | 102 | **41.8%** |
+| `icon_seamless_eps` | 40 | 80 | **32.8%** |
+| `ncep_gefs_seamless` | 31 | 62 | **25.4%** |
+
+**And the member the blend excludes is the best one measured.** Per-member MAE:
+
+```
+                         max     min
+  ecmwf_ifs025           2.138   1.914   <- BEST both. NOT blended.
+  icon_seamless          2.461   2.063
+  gfs_seamless           2.878   2.465
+  ecmwf_aifs025_ensemble 3.150   2.329   <- WORST on max. IS blended.
+```
+
+**Whether AIFS-in-blend is deliberate or drift is now question one, ahead of any weighting change.** Do not assume it is a bug — `git log` when `ecmwf_aifs025_ensemble` entered `_QUARANTINE_CANDIDATE_MODELS` against the last edit of `_model_weights`' baseline dict. AIFS may have been chosen on purpose and the weights dict simply left stale.
+
+Revised order of work:
+1. Establish deliberate-vs-drift for AIFS.
+2. Fix the silent `.get(model, 1.0)` over a hand-maintained dict — that lookup is what let this hide. Make it fail loudly or key it to the models actually blended.
+3. Only then per-member vs per-model normalisation and the `round(w*2)` quantisation. **Both are currently inert** — all weights resolve to 1.0 and `city_weights.json` is empty — but bite the moment either changes.
+
+Everything below is retained for context; treat its weight table as superseded.
+
 ## What the diagnosis found
 
 The entry asked which of two hypotheses explained `gfs_seamless`'s outsized error. One live call to `ensemble-api.open-meteo.com` (Chicago, `models=gfs_seamless,ecmwf_ifs025,icon_seamless`, `forecast_days=7`) returned 122 temperature series:
