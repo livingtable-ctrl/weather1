@@ -2,6 +2,15 @@
 
 Run: python main.py calibrate
 Outputs: data/seasonal_weights.json, data/city_weights.json
+
+Every calibrator is fitted TWICE, once per horizon (batch-82): a multi-day fit
+over days_out>=1 rows and a same-day fit over days_out=0 rows.  The two
+populations are disjoint by construction and are written to separate files, so
+a same-day run can never overwrite any part of the multi-day fit (user
+decision, 2026-08-26 -- "single day and multi day calibration should be 100%
+separate").  The read side, weather_markets._blend_weights, is the only place
+the two ever meet: a same-day row prefers the same-day fit and falls back to
+its multi-day sibling per tier while the same-day fit is still declining.
 """
 
 from __future__ import annotations
@@ -15,8 +24,10 @@ from datetime import date as _date_type
 from pathlib import Path
 
 from paths import CITY_WEIGHTS_PATH as _CITY_WEIGHTS_PATH
-from paths import CONDITION_WEIGHTS_PATH, DATA_DIR
+from paths import CITY_WEIGHTS_SAMEDAY_PATH as _CITY_WEIGHTS_SAMEDAY_PATH
+from paths import CONDITION_WEIGHTS_PATH, CONDITION_WEIGHTS_SAMEDAY_PATH, DATA_DIR
 from paths import SEASONAL_WEIGHTS_PATH as _SEASONAL_WEIGHTS_PATH
+from paths import SEASONAL_WEIGHTS_SAMEDAY_PATH as _SEASONAL_WEIGHTS_SAMEDAY_PATH
 from tracker import (
     _GATE_COUPLED_EXCLUDED_CONDITION_TYPES,
     _condition_type_not_in_sql,
@@ -192,7 +203,76 @@ _LOAD_ROWS_COND_CLAUSE, _LOAD_ROWS_COND_PARAMS = _condition_type_not_in_sql(
 )
 
 
-def _load_rows(db_path: Path) -> list[sqlite3.Row]:
+# batch-82: the two calibration horizons. Every calibrator in this module is
+# run once per horizon over a DISJOINT row population, and the results are
+# written to separate files, so neither fit can contaminate the other.
+#
+# The boundary is days_out=0, chosen to match the two places the repo already
+# draws it: tracker's multiday_predictions view ("days_out IS NULL OR >= 1")
+# and ml_bias's 'sameday' temperature-scaling pool. A three-way same-day /
+# next-day / multi-day split was considered and rejected on the data: of the
+# rows that actually satisfy the fit's own NOT NULL requirements, 89 sit at
+# D+1 and ZERO at D+2-and-up (measured 2026-08-26), so a third bucket would
+# leave the multi-day fit with an empty population.
+_HORIZON_MULTIDAY = "multiday"
+_HORIZON_SAMEDAY = "sameday"
+_CALIBRATION_HORIZONS: tuple[str, ...] = (_HORIZON_MULTIDAY, _HORIZON_SAMEDAY)
+
+# tracker.py's multiday_predictions view gives its own reason for excluding
+# days_out=0: those rows "use METAR-locked probs, not ensemble forecasts". The
+# same-day fit adopts that population, so it must adopt the reason too --
+# batch-75 spent a session removing exactly this kind of population mixing,
+# and the batch-82 handoff was explicit that metar_lockout rows must not be
+# folded in.
+#
+# Today they are already excluded, but only ACCIDENTALLY: all 106 settled
+# metar_lockout rows have NULL ensemble/nws/clim probs, so the three NOT NULL
+# predicates drop them (measured 2026-08-26: the same-day pool is 77/77
+# method='ensemble'). That is a property of what currently gets logged, not of
+# this query. If component probs ever start being written on locked rows, 106+
+# rows whose live decision path bypassed the blend entirely would enter the fit
+# silently. Stated explicitly here so it is structural (opus review finding).
+#
+# NOTE FOR FIXTURE AUTHORS: this makes `predictions.method` a hard requirement
+# for any test DB that reaches calibrate_and_save (which runs BOTH horizons) or
+# a same-day calibrator directly. tests/test_phase2_batch_p.py's _make_db
+# needed the column added for exactly this reason. A multi-day-only fixture is
+# unaffected -- the predicate lives on the same-day branch alone.
+_SAMEDAY_METAR_EXCLUSION = "AND (p.method IS NULL OR p.method != 'metar_lockout')"
+_SAMEDAY_ROW_CLAUSE = f"AND p.days_out = 0 {_SAMEDAY_METAR_EXCLUSION}"
+
+
+def _check_horizon(horizon: str) -> None:
+    """Reject an unknown horizon loudly.
+
+    Deliberately raises rather than falling back to a default: a typo'd
+    horizon that silently fitted the multi-day population and then got
+    written to the same-day file would produce exactly the cross-horizon
+    contamination this split exists to prevent, and nothing downstream could
+    detect it -- the file would be well-formed and its weights plausible.
+    """
+    if horizon not in _CALIBRATION_HORIZONS:
+        raise ValueError(
+            f"unknown calibration horizon {horizon!r} "
+            f"(expected one of {_CALIBRATION_HORIZONS})"
+        )
+
+
+def _load_rows(db_path: Path, *, horizon: str = _HORIZON_MULTIDAY) -> list[sqlite3.Row]:
+    """Load the seasonal/city blend-weight population for one horizon.
+
+    Shared by calibrate_seasonal_weights and calibrate_city_weights -- the
+    horizon is a parameter rather than a forked copy of this query so the
+    'between'/shadow condition-type exclusion below can only ever be written
+    once.
+
+    The multi-day branch keeps reading tracker's multiday_predictions view
+    verbatim, so this parameterisation is provably a no-op for the existing
+    (default) callers.
+    """
+    _check_horizon(horizon)
+    source = "predictions" if horizon == _HORIZON_SAMEDAY else "multiday_predictions"
+    horizon_clause = _SAMEDAY_ROW_CLAUSE if horizon == _HORIZON_SAMEDAY else ""
     with sqlite3.connect(str(db_path)) as con:
         con.row_factory = sqlite3.Row
         return con.execute(
@@ -200,13 +280,14 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
             SELECT p.city, p.market_date, p.condition_type,
                    p.ensemble_prob, p.nws_prob, p.clim_prob,
                    o.settled_yes
-            FROM multiday_predictions p
+            FROM {source} p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.ensemble_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL
               AND p.clim_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND {_LOAD_ROWS_COND_CLAUSE}
+              {horizon_clause}
             """,
             _LOAD_ROWS_COND_PARAMS,
         ).fetchall()
@@ -215,14 +296,17 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
 def calibrate_seasonal_weights(
     db_path: str | Path,
     cutoff_date: str | None = None,
+    *,
+    horizon: str = _HORIZON_MULTIDAY,
 ) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per season.
 
     Returns: {season: {ensemble, climatology, nws}} for seasons with >= _SEASONAL_MIN rows.
     Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
+    horizon selects the row population; see _load_rows.
     """
     db_path = Path(db_path)
-    rows = _load_rows(db_path)
+    rows = _load_rows(db_path, horizon=horizon)
 
     season_rows: dict[str, list[tuple]] = {}
     for row in rows:
@@ -264,7 +348,9 @@ def calibrate_seasonal_weights(
     for season, srows in season_rows.items():
         if len(srows) < _SEASONAL_MIN:
             _log.info(
-                "calibrate_seasonal_weights: %s has %d rows (need %d) — using neutral defaults",
+                "calibrate_seasonal_weights[%s]: %s has %d rows (need %d) — "
+                "using neutral defaults",
+                horizon,
                 season,
                 len(srows),
                 _SEASONAL_MIN,
@@ -278,14 +364,17 @@ def calibrate_seasonal_weights(
 def calibrate_city_weights(
     db_path: str | Path,
     cutoff_date: str | None = None,
+    *,
+    horizon: str = _HORIZON_MULTIDAY,
 ) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per city.
 
     Returns: {city: {ensemble, climatology, nws}} for cities with >= _CITY_MIN rows.
     Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
+    horizon selects the row population; see _load_rows.
     """
     db_path = Path(db_path)
-    rows = _load_rows(db_path)
+    rows = _load_rows(db_path, horizon=horizon)
 
     city_rows: dict[str, list[tuple]] = {}
     for row in rows:
@@ -308,7 +397,8 @@ def calibrate_city_weights(
     for city, crows in city_rows.items():
         if len(crows) < _CITY_MIN:
             _log.info(
-                "calibrate_city_weights: %s has %d rows (need %d) — skipping",
+                "calibrate_city_weights[%s]: %s has %d rows (need %d) — skipping",
+                horizon,
                 city,
                 len(crows),
                 _CITY_MIN,
@@ -319,30 +409,57 @@ def calibrate_city_weights(
     return result
 
 
+def _load_weights_file(
+    path: str | Path | None, default_path: Path, label: str
+) -> dict[str, dict[str, float]]:
+    """Shared body of the six load_*_weights loaders.
+
+    Extracted in batch-82 rather than copy-pasting the existing three a second
+    time for the same-day horizon. The behaviour is unchanged and is relied on
+    by weather_markets._maybe_refresh_calibration_weights, which specifically
+    documents that these loaders swallow their own JSON errors and return {}
+    instead of raising -- so an absent OR corrupt same-day file degrades to
+    "no same-day fit", which _blend_weights already handles by falling through
+    to the multi-day tier.
+    """
+    p = Path(path) if path else default_path
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception as exc:
+        _log.warning("%s: could not read %s: %s", label, p, exc)
+        return {}
+
+
 def load_seasonal_weights(
     path: str | Path | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Load seasonal weights from JSON. Returns {} if file missing."""
-    p = Path(path) if path else _SEASONAL_WEIGHTS_PATH
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception as exc:
-        _log.warning("load_seasonal_weights: could not read %s: %s", p, exc)
-        return {}
+    """Load multi-day seasonal weights from JSON. Returns {} if file missing."""
+    return _load_weights_file(path, _SEASONAL_WEIGHTS_PATH, "load_seasonal_weights")
 
 
 def load_city_weights(path: str | Path | None = None) -> dict[str, dict[str, float]]:
-    """Load per-city weights from JSON. Returns {} if file missing."""
-    p = Path(path) if path else _CITY_WEIGHTS_PATH
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception as exc:
-        _log.warning("load_city_weights: could not read %s: %s", p, exc)
-        return {}
+    """Load multi-day per-city weights from JSON. Returns {} if file missing."""
+    return _load_weights_file(path, _CITY_WEIGHTS_PATH, "load_city_weights")
+
+
+def load_seasonal_weights_sameday(
+    path: str | Path | None = None,
+) -> dict[str, dict[str, float]]:
+    """Load same-day (days_out=0) seasonal weights. Returns {} if file missing."""
+    return _load_weights_file(
+        path, _SEASONAL_WEIGHTS_SAMEDAY_PATH, "load_seasonal_weights_sameday"
+    )
+
+
+def load_city_weights_sameday(
+    path: str | Path | None = None,
+) -> dict[str, dict[str, float]]:
+    """Load same-day (days_out=0) per-city weights. Returns {} if file missing."""
+    return _load_weights_file(
+        path, _CITY_WEIGHTS_SAMEDAY_PATH, "load_city_weights_sameday"
+    )
 
 
 _CONDITION_MIN = (
@@ -363,12 +480,34 @@ def calibrate_condition_weights(
     db_path: str | Path,
     min_samples: int = _CONDITION_MIN,
     cutoff_date: str | None = None,
+    *,
+    horizon: str = _HORIZON_MULTIDAY,
 ) -> dict[str, dict[str, float]]:
     """Grid-search optimal blend weights per condition type (above/below/between).
 
     Returns: {condition_type: {ensemble, climatology, nws}} for types with >= min_samples rows.
     Weights are trained on rows before cutoff_date (auto 80/20 split if omitted).
+    horizon selects the row population (batch-82).
+
+    Unlike _load_rows this reads `predictions` with an inline days_out
+    predicate rather than the multiday_predictions view. That asymmetry is
+    pre-existing and deliberately left alone here: pointing the MULTI-DAY
+    branch at the view would be a provable behavioural no-op, but it breaks
+    the `_make_db` fixture in tests/test_phase2_batch_p.py, which creates
+    `outcomes_valid` but no multiday_predictions view -- and that file is not
+    in this change's scoped test set. (tests/test_phase3_batch_c.py DOES
+    create the view, at :31, so it would be unaffected; an earlier draft of
+    this comment named both files and was wrong.) The SAME-DAY branch could
+    never use the view regardless: the view excludes days_out = 0 by
+    construction. Filed in backlog.txt as "THE MULTI-DAY HORIZON PREDICATE IS
+    DEFINED IN TWO PLACES".
     """
+    _check_horizon(horizon)
+    horizon_predicate = (
+        f"p.days_out = 0 {_SAMEDAY_METAR_EXCLUSION}"
+        if horizon == _HORIZON_SAMEDAY
+        else "(p.days_out IS NULL OR p.days_out >= 1)"
+    )
     db_path = Path(db_path)
     con = sqlite3.connect(str(db_path))
     try:
@@ -384,7 +523,7 @@ def calibrate_condition_weights(
               AND p.clim_prob IS NOT NULL
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.days_out IS NULL OR p.days_out >= 1)
+              AND {horizon_predicate}
               AND {_COND_WEIGHTS_COND_CLAUSE}
             """,
             _COND_WEIGHTS_COND_PARAMS,
@@ -424,7 +563,9 @@ def calibrate_condition_weights(
     for ctype, crows in type_rows.items():
         if len(crows) < min_samples:
             _log.info(
-                "calibrate_condition_weights: %s has %d rows (need %d) — using neutral defaults",
+                "calibrate_condition_weights[%s]: %s has %d rows (need %d) — "
+                "using neutral defaults",
+                horizon,
                 ctype,
                 len(crows),
                 min_samples,
@@ -438,15 +579,17 @@ def calibrate_condition_weights(
 def load_condition_weights(
     path: str | Path | None = None,
 ) -> dict[str, dict[str, float]]:
-    """Load per-condition-type weights from JSON. Returns {} if file missing."""
-    p = Path(path) if path else CONDITION_WEIGHTS_PATH
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception as exc:
-        _log.warning("load_condition_weights: could not read %s: %s", p, exc)
-        return {}
+    """Load multi-day per-condition-type weights. Returns {} if file missing."""
+    return _load_weights_file(path, CONDITION_WEIGHTS_PATH, "load_condition_weights")
+
+
+def load_condition_weights_sameday(
+    path: str | Path | None = None,
+) -> dict[str, dict[str, float]]:
+    """Load same-day (days_out=0) per-condition-type weights. {} if missing."""
+    return _load_weights_file(
+        path, CONDITION_WEIGHTS_SAMEDAY_PATH, "load_condition_weights_sameday"
+    )
 
 
 def _preserve_hand_tuned_weights(
@@ -507,9 +650,19 @@ def calibrate_and_save(
     and the F3 cron auto-calibration block.  Keeping the disk-write logic here means
     changes to output paths or format only need to happen in one place.
 
-    Returns (seasonal, city, condition) dicts — same as calling each function
-    individually.  Cache invalidation (e.g. weather_markets._CONDITION_WEIGHTS) is
-    the caller's responsibility to avoid a circular import dependency.
+    Returns (seasonal, city, condition) dicts for the MULTI-DAY horizon — same
+    as calling each function individually.  Cache invalidation (e.g.
+    weather_markets._CONDITION_WEIGHTS) is the caller's responsibility to avoid
+    a circular import dependency.
+
+    batch-82: this also fits and writes the three same-day (days_out=0) weight
+    files as a side effect, so cron.py's weekly auto-calibration picks the
+    same-day horizon up with no change on its side.  The return stays a
+    3-tuple deliberately — cron.py unpacks exactly three values at two call
+    sites and is not in this change's owned file set; the same-day dicts are
+    read back from disk by callers that want to display them (main.cmd_calibrate)
+    and refreshed in-process by weather_markets._maybe_refresh_calibration_weights,
+    which is mtime-driven and therefore already covers every writer.
 
     Raises on DB read failure so callers can handle the error message appropriately.
     """
@@ -523,6 +676,14 @@ def calibrate_and_save(
     city = calibrate_city_weights(_db)
     condition = calibrate_condition_weights(_db)
 
+    # batch-82: the same-day fits. Separate calibrator invocations over a
+    # disjoint (days_out=0) population, preserved against and written to
+    # their OWN files -- nothing below ever reads or writes a multi-day file
+    # with a same-day value, or vice versa.
+    seasonal_sd = calibrate_seasonal_weights(_db, horizon=_HORIZON_SAMEDAY)
+    city_sd = calibrate_city_weights(_db, horizon=_HORIZON_SAMEDAY)
+    condition_sd = calibrate_condition_weights(_db, horizon=_HORIZON_SAMEDAY)
+
     # M-13b: preserve any manually-set weights auto-calibration left as
     # neutral/uncalibrated (insufficient samples) or dropped outright
     # (city). Without this, a weekly retrain on thin data would overwrite
@@ -534,27 +695,72 @@ def calibrate_and_save(
     _preserve_hand_tuned_weights(
         condition, _dir / "condition_weights.json", "condition"
     )
+    # Same preservation for the same-day files, each against its own file.
+    # This is what stops a same-day fit that has already graduated from being
+    # thrown away by a later run that happens to decline (e.g. a thin recent
+    # validation split), exactly as for the multi-day files.
+    _preserve_hand_tuned_weights(
+        seasonal_sd, _dir / "seasonal_weights_sameday.json", "seasonal_sameday"
+    )
+    _preserve_hand_tuned_weights(
+        city_sd, _dir / "city_weights_sameday.json", "city_sameday", allow_missing=True
+    )
+    _preserve_hand_tuned_weights(
+        condition_sd, _dir / "condition_weights_sameday.json", "condition_sameday"
+    )
 
     from safe_io import atomic_write_json_with_history
 
     atomic_write_json_with_history(seasonal, _dir / "seasonal_weights.json")
     atomic_write_json_with_history(city, _dir / "city_weights.json")
     atomic_write_json_with_history(condition, _dir / "condition_weights.json")
+    atomic_write_json_with_history(seasonal_sd, _dir / "seasonal_weights_sameday.json")
+    atomic_write_json_with_history(city_sd, _dir / "city_weights_sameday.json")
+    atomic_write_json_with_history(
+        condition_sd, _dir / "condition_weights_sameday.json"
+    )
 
     _log.info(
-        "calibrate_and_save: wrote seasonal(%d) city(%d) condition(%d) to %s",
+        "calibrate_and_save: wrote multiday seasonal(%d) city(%d) condition(%d) "
+        "and sameday seasonal(%d) city(%d) condition(%d) to %s",
         len(seasonal),
         len(city),
         len(condition),
+        len(seasonal_sd),
+        len(city_sd),
+        len(condition_sd),
         _dir,
     )
     return seasonal, city, condition
+
+
+def _validate_present_entries(table: dict, label: str) -> None:
+    """Sum-to-1 / non-negative checks over whatever entries a table HAS.
+
+    batch-82: used for the three same-day tables. Deliberately does not warn
+    about an ABSENT key, unlike the multi-day seasonal/condition loops below:
+    a missing same-day entry is the normal, correct state (the tier has not
+    graduated yet) and _blend_weights handles it by falling through to the
+    multi-day sibling, so warning on it would be pure noise on every startup.
+    Same shape as the existing city loop, which has always worked this way
+    because its key set is not fixed.
+    """
+    for key, w in table.items():
+        if not isinstance(w, dict):
+            continue
+        if abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
+            _log.error("%s weights for %s don't sum to 1.0: %s", label, key, w)
+        elif any(v < 0 for k, v in w.items() if not k.startswith("_")):
+            _log.error("%s weights for %s contain negative values: %s", label, key, w)
 
 
 def validate_weight_files(
     seasonal: dict | None = None,
     city: dict | None = None,
     condition: dict | None = None,
+    seasonal_sameday: dict | None = None,
+    city_sameday: dict | None = None,
+    condition_sameday: dict | None = None,
 ) -> None:
     """P2-7: Warn on missing or malformed weight file entries at startup."""
     if seasonal is None:
@@ -563,6 +769,12 @@ def validate_weight_files(
         city = load_city_weights()
     if condition is None:
         condition = load_condition_weights()
+    if seasonal_sameday is None:
+        seasonal_sameday = load_seasonal_weights_sameday()
+    if city_sameday is None:
+        city_sameday = load_city_weights_sameday()
+    if condition_sameday is None:
+        condition_sameday = load_condition_weights_sameday()
 
     for season in ("spring", "summer", "fall", "winter"):
         w = seasonal.get(season)
@@ -598,3 +810,9 @@ def validate_weight_files(
             _log.error("City weights for %s don't sum to 1.0: %s", city_name, w)
         elif any(v < 0 for k, v in w.items() if not k.startswith("_")):
             _log.error("City weights for %s contain negative values: %s", city_name, w)
+
+    # batch-82: the same-day tables get the malformed-value checks but not the
+    # absent-key warning -- see _validate_present_entries.
+    _validate_present_entries(seasonal_sameday, "Same-day seasonal")
+    _validate_present_entries(city_sameday, "Same-day city")
+    _validate_present_entries(condition_sameday, "Same-day condition")

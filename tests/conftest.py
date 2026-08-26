@@ -699,20 +699,61 @@ def neutral_temperature_scaling(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolate_condition_weights(monkeypatch):
-    """Snapshot and restore weather_markets._CONDITION_WEIGHTS around every test.
+    """Snapshot and restore weather_markets' condition weight tables per test.
 
-    cmd_calibrate() mutates the dict in place (.clear() + .update()) using the
-    module-level singleton. Without this fixture, calibration tests leave behind
+    cmd_calibrate() mutates the dicts in place (.clear() + .update()) using the
+    module-level singletons. Without this fixture, calibration tests leave behind
     overfitted weights (e.g. ens=0.996) that push analyze_trade blend probs past
     the model_mkt_gap gate (0.25), causing subsequent tests to receive None.
+
+    batch-82 widened this to all SIX weight tables. Two reasons beyond
+    cmd_calibrate, which now rebinds the two condition tables rather than
+    mutating them in place:
+
+    * A leaked same-day entry is the more dangerous kind — it only applies at
+      days_out=0, so it perturbs same-day tests while leaving the multi-day
+      ones looking fine.
+    * Any test reaching get_weather_markets() can have
+      _maybe_refresh_calibration_weights rebind these module globals from the
+      REAL data/ directory, with nothing restoring them afterwards (opus
+      review finding). That was already true of the three multi-day tables
+      before batch-82; snapshotting all six closes it for good rather than
+      leaving three of them exposed.
     """
     import weather_markets
 
-    monkeypatch.setattr(
-        weather_markets,
+    for _name in (
+        "_CITY_WEIGHTS",
+        "_SEASONAL_WEIGHTS",
         "_CONDITION_WEIGHTS",
-        copy.deepcopy(weather_markets._CONDITION_WEIGHTS),
-    )
+    ):
+        monkeypatch.setattr(
+            weather_markets,
+            _name,
+            copy.deepcopy(getattr(weather_markets, _name)),
+        )
+
+    # The three SAME-DAY tables are emptied, not snapshotted (round-2 opus
+    # review). Snapshotting fixes leak-OUT (restore after the test) but not
+    # leak-IN: these tables are loaded at IMPORT from the real main-clone
+    # data/ directory, and 31 existing call sites across 8 test files do
+    # `patch.object(wm, "_SEASONAL_WEIGHTS", {})` (and the city/condition
+    # equivalents) to force pricing down to the hardcoded schedule. NONE of
+    # them patch the same-day counterparts, because they predate them.
+    #
+    # That is inert only while every same-day entry carries _uncalibrated.
+    # The day a same-day tier graduates, every one of those tests that prices
+    # at days_out=0 would silently start reading live production calibration
+    # and its assertions would drift for reasons invisible in its own source.
+    # Empty is both today's real behaviour and the deterministic choice; any
+    # test that actually wants same-day weights sets them explicitly, and
+    # monkeypatch inside the test runs after this fixture, so it still wins.
+    for _name in (
+        "_CITY_WEIGHTS_SAMEDAY",
+        "_SEASONAL_WEIGHTS_SAMEDAY",
+        "_CONDITION_WEIGHTS_SAMEDAY",
+    ):
+        monkeypatch.setattr(weather_markets, _name, {})
 
 
 @pytest.fixture(scope="session")

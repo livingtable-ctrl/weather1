@@ -54,10 +54,20 @@ def _seed_db(db_path: Path, rows: list[dict]) -> None:
                     r["our_prob"],
                     0.5,
                     0.1,
-                    "ensemble",
+                    # batch-82: per-row so a fixture can place a row on the
+                    # metar_lockout path. Defaults to 'ensemble'.
+                    r.get("method", "ensemble"),
                     50,
                     datetime.now().isoformat(),
-                    3,
+                    # batch-82: per-row so a fixture can span both calibration
+                    # horizons. Defaults to 3 -- every pre-batch-82 caller
+                    # relies on these rows being multi-day.
+                    # NULL days_out is meaningful ("predates the column",
+                    # treated as multi-day), and .get already preserves an
+                    # explicit None -- a round-2 review caught the earlier
+                    # comment here claiming otherwise, which was simply wrong
+                    # about dict.get. Reverted to the plain form.
+                    r.get("days_out", 3),
                     r.get("ensemble_prob"),
                     r.get("nws_prob"),
                     r.get("clim_prob"),
@@ -340,6 +350,48 @@ class TestCalibrateCLI:
         assert "winter" in loaded
         w = loaded["winter"]
         assert abs(w["ensemble"] + w["climatology"] + w["nws"] - 1.0) < 1e-6
+
+    def test_calibrate_writes_and_invalidates_the_sameday_tables(
+        self, monkeypatch, capsys
+    ):
+        """batch-82: the same-day half of cmd_calibrate, end to end.
+
+        Covers the three things the CLI path is responsible for beyond
+        calibrate_and_save itself: the files land in data_dir, the summary is
+        printed, and weather_markets' in-process same-day condition cache is
+        invalidated rather than being left stale until the next mtime sweep.
+        """
+        import main
+        import ml_bias
+        import tracker
+        import weather_markets as wm
+
+        _seed_db(self._db, _mixed_horizon_rows())
+        monkeypatch.setattr(tracker, "DB_PATH", self._db)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", self._data_dir)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", self._data_dir / "temperature_scale.json"
+        )
+        # A stale value the run must replace. conftest's
+        # isolate_condition_weights snapshots this table, so mutating it here
+        # cannot leak into another test.
+        wm._CONDITION_WEIGHTS_SAMEDAY.clear()
+        wm._CONDITION_WEIGHTS_SAMEDAY["stale"] = {"ensemble": 1.0}
+
+        main.cmd_calibrate()
+
+        for name in (
+            "seasonal_weights_sameday.json",
+            "city_weights_sameday.json",
+            "condition_weights_sameday.json",
+        ):
+            assert (self._data_dir / name).exists(), name
+        sd_disk = json.loads(
+            (self._data_dir / "condition_weights_sameday.json").read_text()
+        )
+        assert wm._CONDITION_WEIGHTS_SAMEDAY == sd_disk
+        assert "stale" not in wm._CONDITION_WEIGHTS_SAMEDAY
+        assert "Same-day (days_out=0) weights" in capsys.readouterr().out
 
     def test_calibrate_calls_update_learned_weights(self, monkeypatch):
         """P1-9: cmd_calibrate() must call update_learned_weights_from_tracker()."""
@@ -880,3 +932,651 @@ class TestSharedConditionTypeExclusion:
                 assert "_excluded_brier_condition_types(" not in body, (
                     f"{name}:{fn_name} must not gate-couple a calibration-curve fit"
                 )
+
+
+# ── batch-82: same-day (days_out=0) calibration horizon ───────────────────────
+
+
+def _mixed_horizon_rows() -> list[dict]:
+    """Rows at both horizons, with a DIFFERENT signal structure in each.
+
+    Same-day rows are built so climatology alone predicts the outcome
+    perfectly and ensemble/NWS are anti-correlated with it; multi-day rows are
+    built the opposite way round. That makes the two fits land far apart, which
+    is what lets the horizon tests assert *which* population produced a given
+    weight file rather than merely that both files exist.
+    """
+    rows: list[dict] = []
+    for i in range(80):
+        settled = i % 2 == 0
+        rows.append(
+            {
+                "ticker": f"SD-{i}",
+                "city": "Denver",
+                "market_date": f"2026-01-{(i % 28) + 1:02d}",
+                "our_prob": 0.5,
+                "days_out": 0,
+                "clim_prob": 0.97 if settled else 0.03,
+                "ensemble_prob": 0.05 if settled else 0.95,
+                "nws_prob": 0.05 if settled else 0.95,
+                "settled_yes": settled,
+            }
+        )
+    for i in range(80):
+        settled = i % 2 == 0
+        rows.append(
+            {
+                "ticker": f"MD-{i}",
+                "city": "Denver",
+                "market_date": f"2026-01-{(i % 28) + 1:02d}",
+                "our_prob": 0.5,
+                "days_out": 2,
+                "ensemble_prob": 0.97 if settled else 0.03,
+                "clim_prob": 0.05 if settled else 0.95,
+                "nws_prob": 0.05 if settled else 0.95,
+                "settled_yes": settled,
+            }
+        )
+    return rows
+
+
+class TestHorizonSplit:
+    """_load_rows partitions the population; neither horizon sees the other."""
+
+    def setup_method(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._db = Path(self._tmpdir) / "test.db"
+        _seed_db(self._db, _mixed_horizon_rows())
+
+    def teardown_method(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_sameday_loads_only_days_out_zero(self):
+        from calibration import _HORIZON_SAMEDAY, _load_rows
+
+        rows = _load_rows(self._db, horizon=_HORIZON_SAMEDAY)
+        assert len(rows) == 80
+        assert all(r["city"] == "Denver" for r in rows)
+        # Positive control on the discriminating column: the same-day rows are
+        # the ones whose clim_prob is the extreme value, so this proves the
+        # SAME-DAY population arrived and not merely "80 rows of something".
+        assert {round(r["clim_prob"], 2) for r in rows} == {0.97, 0.03}
+
+    def test_multiday_loads_only_days_out_ge_one(self):
+        from calibration import _HORIZON_MULTIDAY, _load_rows
+
+        rows = _load_rows(self._db, horizon=_HORIZON_MULTIDAY)
+        assert len(rows) == 80
+        assert {round(r["ensemble_prob"], 2) for r in rows} == {0.97, 0.03}
+
+    def test_default_horizon_is_multiday(self):
+        """Every pre-batch-82 caller passes no horizon and must be unaffected."""
+        from calibration import _HORIZON_MULTIDAY, _load_rows
+
+        assert [tuple(r) for r in _load_rows(self._db)] == [
+            tuple(r) for r in _load_rows(self._db, horizon=_HORIZON_MULTIDAY)
+        ]
+
+    def test_the_two_horizons_partition_the_population(self):
+        """No row is in both, and together they are the whole fittable set."""
+        import sqlite3 as _sq
+
+        from calibration import _HORIZON_MULTIDAY, _HORIZON_SAMEDAY, _load_rows
+
+        sd = _load_rows(self._db, horizon=_HORIZON_SAMEDAY)
+        md = _load_rows(self._db, horizon=_HORIZON_MULTIDAY)
+        with _sq.connect(str(self._db)) as con:
+            total = con.execute(
+                "SELECT COUNT(*) FROM predictions p JOIN outcomes_valid o "
+                "ON p.ticker = o.ticker WHERE p.ensemble_prob IS NOT NULL "
+                "AND p.nws_prob IS NOT NULL AND p.clim_prob IS NOT NULL "
+                "AND o.settled_yes IS NOT NULL"
+            ).fetchone()[0]
+        assert len(sd) + len(md) == total
+        assert not ({tuple(r) for r in sd} & {tuple(r) for r in md})
+
+    def test_unknown_horizon_raises_rather_than_defaulting(self):
+        """A typo must not silently fit the wrong population."""
+        import pytest
+
+        from calibration import (
+            _load_rows,
+            calibrate_city_weights,
+            calibrate_condition_weights,
+            calibrate_seasonal_weights,
+        )
+
+        for fn in (
+            _load_rows,
+            calibrate_seasonal_weights,
+            calibrate_city_weights,
+            calibrate_condition_weights,
+        ):
+            with pytest.raises(ValueError, match="unknown calibration horizon"):
+                fn(self._db, horizon="same-day")  # correct spelling is "sameday"
+
+    def test_horizon_is_keyword_only(self):
+        """horizon must not be passable positionally.
+
+        calibrate_*'s second positional is cutoff_date, so a positional
+        horizon would silently be read as a cutoff DATE -- the call would
+        succeed, fit the wrong (default multi-day) population, and the result
+        would be written to a same-day file. Caught while writing the test
+        above, which is why it is pinned rather than left to review.
+        """
+        import inspect
+
+        import pytest
+
+        from calibration import (
+            _load_rows,
+            calibrate_city_weights,
+            calibrate_condition_weights,
+            calibrate_seasonal_weights,
+        )
+
+        for fn in (
+            _load_rows,
+            calibrate_seasonal_weights,
+            calibrate_city_weights,
+            calibrate_condition_weights,
+        ):
+            kind = inspect.signature(fn).parameters["horizon"].kind
+            assert kind is inspect.Parameter.KEYWORD_ONLY, f"{fn.__name__}: {kind}"
+        # Behavioural half: a THIRD positional -- the shape someone reaching
+        # for the new parameter would most naturally write -- is now a
+        # TypeError rather than being bound to something else.
+        with pytest.raises(TypeError):
+            calibrate_seasonal_weights(self._db, None, "sameday")
+        # Honest limitation: a SECOND positional still binds to cutoff_date,
+        # which no keyword-only marker can prevent. It degrades safely rather
+        # than fitting the wrong population -- "sameday" sorts after every ISO
+        # date, so the 80/20 split puts every row in train and none in val,
+        # and _best_weights' val-row floor returns _uncalibrated.
+        assert calibrate_seasonal_weights(self._db, "sameday")["winter"][
+            "_uncalibrated"
+        ]
+
+    def test_sameday_path_keeps_the_between_and_shadow_exclusion(self):
+        """_LOAD_ROWS_COND_CLAUSE must survive on the new horizon too."""
+        from calibration import _HORIZON_SAMEDAY, _load_rows
+
+        extra = [
+            {
+                "ticker": f"BTW-{i}",
+                "city": "Denver",
+                "market_date": "2026-01-05",
+                "condition_type": "between",
+                "our_prob": 0.5,
+                "days_out": 0,
+                "ensemble_prob": 0.5,
+                "nws_prob": 0.5,
+                "clim_prob": 0.5,
+                "settled_yes": True,
+            }
+            for i in range(30)
+        ]
+        extra += [
+            {**r, "ticker": f"HUR-{i}", "condition_type": "hurricane_count"}
+            for i, r in enumerate(extra[:30])
+        ]
+        _seed_db(self._db, extra)
+        rows = _load_rows(self._db, horizon=_HORIZON_SAMEDAY)
+        assert {r["condition_type"] for r in rows} == {"above"}
+        assert len(rows) == 80  # the 60 excluded rows did not leak in
+
+
+class TestSamedayFitIsSeparateFromMultiday:
+    """The user's constraint: the two fits must stay 100% separate on disk."""
+
+    def setup_method(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._db = Path(self._tmpdir) / "test.db"
+        self._out = Path(self._tmpdir) / "out"
+        self._out.mkdir()
+        _seed_db(self._db, _mixed_horizon_rows())
+
+    def teardown_method(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _fits(self):
+        from calibration import (
+            _HORIZON_MULTIDAY,
+            _HORIZON_SAMEDAY,
+            calibrate_seasonal_weights,
+        )
+
+        sd = calibrate_seasonal_weights(self._db, horizon=_HORIZON_SAMEDAY)["winter"]
+        md = calibrate_seasonal_weights(self._db, horizon=_HORIZON_MULTIDAY)["winter"]
+        return sd, md
+
+    def test_the_two_horizons_produce_different_weights(self):
+        """Guards every other test here: if these coincided they'd be vacuous."""
+        sd, md = self._fits()
+        assert not sd.get("_uncalibrated"), sd
+        assert not md.get("_uncalibrated"), md
+        # Same-day rows are climatology-driven, multi-day rows ensemble-driven.
+        assert sd["climatology"] > 0.5, sd
+        assert md["ensemble"] > 0.5, md
+
+    def test_calibrate_and_save_writes_each_fit_to_its_own_file(self):
+        import json as _json
+
+        from calibration import calibrate_and_save
+
+        calibrate_and_save(self._db, self._out)
+        md_disk = _json.loads((self._out / "seasonal_weights.json").read_text())
+        sd_disk = _json.loads((self._out / "seasonal_weights_sameday.json").read_text())
+        sd_fit, md_fit = self._fits()
+
+        # Positive control: each file holds its OWN horizon's fit...
+        assert md_disk["winter"]["ensemble"] == md_fit["ensemble"]
+        assert sd_disk["winter"]["climatology"] == sd_fit["climatology"]
+        # ...and the absence half -- neither file carries the other's values.
+        assert md_disk["winter"]["ensemble"] != sd_fit["ensemble"]
+        assert sd_disk["winter"]["ensemble"] != md_fit["ensemble"]
+
+    def test_every_table_keeps_its_own_horizon_content(self):
+        """Content separation for ALL THREE tables, not just seasonal.
+
+        Four contamination mutations survived the seasonal-only version
+        (opus review, HIGH): preserving a same-day fit FROM the multi-day
+        file (seasonal/condition), and writing a multi-day fit INTO a
+        same-day file (condition/city). Condition is the consequential one --
+        _blend_weights resolves it before seasonal, and the live
+        condition_weights.json holds real fitted values, so contamination
+        there would pin every same-day trade to multi-day numbers with no
+        _uncalibrated flag and nothing would notice.
+        """
+        import json as _json
+
+        from calibration import (
+            _HORIZON_MULTIDAY,
+            _HORIZON_SAMEDAY,
+            calibrate_city_weights,
+            calibrate_condition_weights,
+            calibrate_seasonal_weights,
+        )
+
+        calibrate_and_save_ = __import__("calibration").calibrate_and_save
+        calibrate_and_save_(self._db, self._out)
+
+        # City included (round-2 opus review): the earlier version's docstring
+        # claimed all three tables but looped over two, and city_weights_
+        # sameday.json's CONTENT was asserted nowhere in the suite -- only its
+        # existence. So writing the multi-day city fit into the same-day city
+        # file survived the entire scoped test set.
+        for name, fn, key in (
+            ("seasonal_weights", calibrate_seasonal_weights, "winter"),
+            ("condition_weights", calibrate_condition_weights, "above"),
+            ("city_weights", calibrate_city_weights, "Denver"),
+        ):
+            md_disk = _json.loads((self._out / f"{name}.json").read_text())
+            sd_disk = _json.loads((self._out / f"{name}_sameday.json").read_text())
+            md_fit = fn(self._db, horizon=_HORIZON_MULTIDAY)[key]
+            sd_fit = fn(self._db, horizon=_HORIZON_SAMEDAY)[key]
+            # Whatever each horizon produced, that is what its own file holds.
+            assert md_disk[key] == md_fit, (name, "multiday file")
+            assert sd_disk[key] == sd_fit, (name, "sameday file")
+            # And the two are distinguishable, so the above is not vacuous.
+            assert md_fit != sd_fit, (name, "fits coincided -- test is vacuous")
+
+    def test_preservation_reads_each_file_s_own_history_not_its_sibling_s(self):
+        """_preserve_hand_tuned_weights must never cross horizons.
+
+        It restores an on-disk calibrated entry whenever the fresh fit
+        declines. Pointed at the WRONG file it would make a declining
+        same-day tier silently adopt multi-day numbers -- and "declining" is
+        the normal state for every same-day tier on real data, so this is the
+        likeliest contamination direction of all (opus review, HIGH).
+
+        TWO runs, because preservation reads the target file BEFORE this run
+        writes it: on a first run into an empty dir there is nothing on disk
+        to preserve from, so the contamination is invisible. Run 1 populates
+        both horizons' files; run 2 removes the same-day rows so every
+        same-day fit declines and preservation is forced to fire.
+        """
+        import json as _json
+        import sqlite3 as _sq
+
+        from calibration import calibrate_and_save
+
+        calibrate_and_save(self._db, self._out)
+        after_run_1 = {
+            name: _json.loads((self._out / f"{name}.json").read_text())
+            for name in (
+                "seasonal_weights",
+                "seasonal_weights_sameday",
+                "condition_weights",
+                "condition_weights_sameday",
+            )
+        }
+        with _sq.connect(str(self._db)) as con:
+            con.execute("DELETE FROM predictions WHERE days_out = 0")
+        calibrate_and_save(self._db, self._out)
+
+        for name, key in (
+            ("seasonal_weights", "winter"),
+            ("condition_weights", "above"),
+        ):
+            md_1 = after_run_1[name][key]
+            sd_1 = after_run_1[f"{name}_sameday"][key]
+            sd_2 = _json.loads((self._out / f"{name}_sameday.json").read_text())[key]
+            # Positive controls: run 1 really did fit BOTH horizons to
+            # DIFFERENT values, so there is something to confuse and the
+            # assertions below can actually discriminate.
+            assert not md_1.get("_uncalibrated"), (name, md_1)
+            assert not sd_1.get("_uncalibrated"), (name, sd_1)
+            assert md_1["ensemble"] != sd_1["ensemble"], (name, "fits coincided")
+            # Run 2's same-day fit declined, so preservation fired. It must
+            # have restored the SAME-DAY file's own earlier value...
+            assert sd_2 == sd_1, (name, "same-day lost its own history", sd_2)
+            # ...and must not have reached across to the multi-day file.
+            assert sd_2["ensemble"] != md_1["ensemble"], (name, "CONTAMINATED", sd_2)
+
+    def test_all_six_files_are_written(self):
+        from calibration import calibrate_and_save
+
+        calibrate_and_save(self._db, self._out)
+        for name in (
+            "seasonal_weights.json",
+            "city_weights.json",
+            "condition_weights.json",
+            "seasonal_weights_sameday.json",
+            "city_weights_sameday.json",
+            "condition_weights_sameday.json",
+        ):
+            assert (self._out / name).exists(), name
+
+    def test_return_tuple_stays_three_wide_for_cron(self):
+        """cron.py unpacks exactly three values at two call sites."""
+        from calibration import calibrate_and_save
+
+        assert len(calibrate_and_save(self._db, self._out)) == 3
+
+    def test_returned_dicts_are_the_multiday_fit(self):
+        from calibration import calibrate_and_save
+
+        seasonal, _city, _cond = calibrate_and_save(self._db, self._out)
+        _sd_fit, md_fit = self._fits()
+        assert seasonal["winter"]["ensemble"] == md_fit["ensemble"]
+
+    def test_a_sameday_rerun_cannot_overwrite_the_multiday_file(self):
+        """Re-running with ONLY same-day rows present leaves multi-day intact."""
+        import json as _json
+        import sqlite3 as _sq
+
+        from calibration import calibrate_and_save
+
+        calibrate_and_save(self._db, self._out)
+        before = (self._out / "seasonal_weights.json").read_text()
+        # Delete every multi-day row, then recalibrate. The multi-day fit now
+        # declines (no rows), and _preserve_hand_tuned_weights must keep the
+        # previously-written multi-day values rather than letting the run
+        # blank them -- and the same-day file must be the only thing that can
+        # carry same-day numbers.
+        with _sq.connect(str(self._db)) as con:
+            con.execute("DELETE FROM predictions WHERE days_out >= 1")
+        calibrate_and_save(self._db, self._out)
+        assert (self._out / "seasonal_weights.json").read_text() == before
+        sd_disk = _json.loads((self._out / "seasonal_weights_sameday.json").read_text())
+        assert sd_disk["winter"]["climatology"] > 0.5
+
+
+def _repo_seeds_dir() -> Path:
+    """seeds/ of THIS checkout, not paths.SEEDS_DIR.
+
+    Same reasoning as tests/test_paths.py's _REPO_ROOT: paths.SEEDS_DIR
+    resolves through safe_io.project_root(), which returns the MAIN CLONE even
+    when the tests are running from a worktree -- so it would review the wrong
+    checkout's seeds (and fail outright on a worktree that has just added
+    one). The two coincide in the main clone and on CI.
+    """
+    import paths as _paths
+
+    return Path(_paths.__file__).resolve().parent / "seeds"
+
+
+class TestSamedaySeedFlag:
+    """batch-79's hazard: an unflagged uniform dict reads as a real fit."""
+
+    def test_every_sameday_seed_entry_is_flagged_uncalibrated(self):
+        import json as _json
+
+        seeds = _repo_seeds_dir()
+        checked = 0
+        for name in (
+            "seasonal_weights_sameday.json",
+            "condition_weights_sameday.json",
+            "city_weights_sameday.json",
+        ):
+            data = _json.loads((seeds / name).read_text())
+            assert isinstance(data, dict), name
+            for key, entry in data.items():
+                assert entry.get("_uncalibrated") is True, f"{name}:{key} lost the flag"
+                checked += 1
+        # Positive control (opus review): city_weights_sameday.json is {}, so
+        # its loop body never runs. Without this the test reads as covering
+        # three files while covering two -- and an empty seasonal/condition
+        # seed would pass silently.
+        assert checked == 7, f"expected 4 seasons + 3 conditions, checked {checked}"
+
+    def test_sameday_seed_key_sets_match_their_calibrators(self):
+        import json as _json
+
+        seeds = _repo_seeds_dir()
+        assert set(
+            _json.loads((seeds / "seasonal_weights_sameday.json").read_text())
+        ) == {"winter", "spring", "summer", "fall"}
+        assert set(
+            _json.loads((seeds / "condition_weights_sameday.json").read_text())
+        ) == {"above", "below", "between"}
+        # city mirrors its multi-day sibling: below-floor cities are omitted
+        # outright rather than given a placeholder, so an empty dict is correct.
+        assert _json.loads((seeds / "city_weights_sameday.json").read_text()) == {}
+
+
+class TestSamedayValidationAndWiring:
+    """Gaps the opus review found in batch-82's own first pass."""
+
+    def test_validate_weight_files_flags_a_malformed_sameday_entry(self, caplog):
+        """_validate_present_entries had zero coverage (opus review, LOW)."""
+        import logging
+
+        from calibration import validate_weight_files
+
+        bad = {"above": {"ensemble": 0.9, "climatology": 0.9, "nws": 0.9}}
+        with caplog.at_level(logging.ERROR):
+            validate_weight_files(
+                seasonal={},
+                city={},
+                condition={},
+                seasonal_sameday={},
+                city_sameday={},
+                condition_sameday=bad,
+            )
+        assert any(
+            "Same-day condition" in r.message and "sum to 1.0" in r.message
+            for r in caplog.records
+        ), [r.message for r in caplog.records]
+
+    def test_validate_weight_files_flags_a_negative_sameday_weight(self, caplog):
+        import logging
+
+        from calibration import validate_weight_files
+
+        bad = {"winter": {"ensemble": 1.4, "climatology": -0.4, "nws": 0.0}}
+        with caplog.at_level(logging.ERROR):
+            validate_weight_files(
+                seasonal={},
+                city={},
+                condition={},
+                seasonal_sameday=bad,
+                city_sameday={},
+                condition_sameday={},
+            )
+        assert any("negative" in r.message for r in caplog.records), [
+            r.message for r in caplog.records
+        ]
+
+    def test_validate_weight_files_does_not_warn_about_an_absent_sameday_key(
+        self, caplog
+    ):
+        """Absence is the NORMAL same-day state and must stay silent.
+
+        Unlike the multi-day seasonal/condition loops, a missing same-day
+        entry means "this tier has not graduated", which _blend_weights
+        handles by falling through. Warning on it would fire on every startup.
+        """
+        import logging
+
+        from calibration import validate_weight_files
+
+        with caplog.at_level(logging.WARNING):
+            validate_weight_files(
+                seasonal={
+                    s: {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+                    for s in ("spring", "summer", "fall", "winter")
+                },
+                city={},
+                condition={
+                    c: {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+                    for c in ("above", "below", "between")
+                },
+                seasonal_sameday={},
+                city_sameday={},
+                condition_sameday={},
+            )
+        assert not [r for r in caplog.records if "Same-day" in r.message], [
+            r.message for r in caplog.records
+        ]
+        # Positive control: the same call DOES speak up for a malformed entry,
+        # so the silence above is about absence, not about the code being inert.
+        caplog.clear()
+        with caplog.at_level(logging.ERROR):
+            validate_weight_files(
+                seasonal={},
+                city={},
+                condition={},
+                seasonal_sameday={"winter": {"ensemble": 5.0}},
+                city_sameday={},
+                condition_sameday={},
+            )
+        assert any("Same-day seasonal" in r.message for r in caplog.records)
+
+    def test_calibrate_and_save_writes_exactly_the_paths_py_filenames(self):
+        """Binds calibrate_and_save's write literals to the path constants.
+
+        The writer uses six hardcoded strings; every loader resolves
+        paths.*_PATH. Nothing bound them, so a rename done consistently in
+        paths.py + _SEEDED_FILENAMES + seeds/ would leave calibrate_and_save
+        writing the old names with a green suite (opus review, LOW).
+        """
+        import shutil
+        import tempfile
+        from pathlib import Path as _P
+
+        import paths
+        from calibration import calibrate_and_save
+
+        tmp = _P(tempfile.mkdtemp())
+        try:
+            db = tmp / "t.db"
+            out = tmp / "out"
+            out.mkdir()
+            _seed_db(db, _mixed_horizon_rows())
+            calibrate_and_save(db, out)
+            written = {p.name for p in out.glob("*.json")}
+            expected = {
+                paths.SEASONAL_WEIGHTS_PATH.name,
+                paths.CITY_WEIGHTS_PATH.name,
+                paths.CONDITION_WEIGHTS_PATH.name,
+                paths.SEASONAL_WEIGHTS_SAMEDAY_PATH.name,
+                paths.CITY_WEIGHTS_SAMEDAY_PATH.name,
+                paths.CONDITION_WEIGHTS_SAMEDAY_PATH.name,
+            }
+            assert written == expected, written ^ expected
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_sameday_pool_excludes_metar_lockout_rows_structurally(self):
+        """batch-75's population-mixing lesson, made structural.
+
+        The three NOT NULL predicates already drop today's metar_lockout rows
+        because none of them carry component probs. This pins the property
+        against the day that changes (opus review, MEDIUM-LOW).
+        """
+        import shutil
+        import tempfile
+        from pathlib import Path as _P
+
+        from calibration import _HORIZON_SAMEDAY, _load_rows
+
+        tmp = _P(tempfile.mkdtemp())
+        try:
+            db = tmp / "t.db"
+            rows = [
+                {
+                    "ticker": f"LOCK-{i}",
+                    "city": "Denver",
+                    "market_date": "2026-01-07",
+                    "our_prob": 0.5,
+                    "days_out": 0,
+                    # The case the NOT NULL predicates would NOT catch: a
+                    # locked row that does carry all three component probs.
+                    "ensemble_prob": 0.5,
+                    "nws_prob": 0.5,
+                    "clim_prob": 0.5,
+                    "settled_yes": True,
+                    "method": "metar_lockout",
+                }
+                for i in range(20)
+            ]
+            _seed_db(db, rows + _mixed_horizon_rows())
+            loaded = _load_rows(db, horizon=_HORIZON_SAMEDAY)
+            assert len(loaded) == 80, len(loaded)  # the 20 locked rows dropped
+            # Positive control: the same 20 rows DO arrive once the method is
+            # anything else, so the count above is the exclusion working and
+            # not some unrelated filter.
+            db2 = tmp / "t2.db"
+            _seed_db(
+                db2,
+                [{**r, "method": "ensemble"} for r in rows] + _mixed_horizon_rows(),
+            )
+            assert len(_load_rows(db2, horizon=_HORIZON_SAMEDAY)) == 100
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_null_days_out_counts_as_multiday_not_sameday(self):
+        """tracker.py: NULL days_out "predates the column, treated as
+        multi-day". The horizon fixture only had {0, 2} rows, so this branch
+        -- the likeliest real-world edge -- was uncovered (opus review, LOW).
+        """
+        import shutil
+        import tempfile
+        from pathlib import Path as _P
+
+        from calibration import _HORIZON_MULTIDAY, _HORIZON_SAMEDAY, _load_rows
+
+        tmp = _P(tempfile.mkdtemp())
+        try:
+            db = tmp / "t.db"
+            nulls = [
+                {
+                    "ticker": f"OLD-{i}",
+                    "city": "Denver",
+                    "market_date": "2026-01-09",
+                    "our_prob": 0.5,
+                    "days_out": None,
+                    "ensemble_prob": 0.6,
+                    "nws_prob": 0.6,
+                    "clim_prob": 0.6,
+                    "settled_yes": True,
+                }
+                for i in range(15)
+            ]
+            _seed_db(db, nulls + _mixed_horizon_rows())
+            assert len(_load_rows(db, horizon=_HORIZON_SAMEDAY)) == 80
+            assert len(_load_rows(db, horizon=_HORIZON_MULTIDAY)) == 95
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

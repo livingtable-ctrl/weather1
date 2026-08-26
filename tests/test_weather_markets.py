@@ -10605,3 +10605,422 @@ def test_above_below_lock_is_marked_monotone_safe():
 
     assert locked is True
     assert details["monotone_safe"] is True
+
+
+# ── batch-82: horizon-aware blend-weight tiers ───────────────────────────────
+
+
+# Deliberately lopsided and mutually exclusive, so any test below can tell
+# which table produced a weight from one component alone.
+_SD_W = {"ensemble": 0.10, "climatology": 0.80, "nws": 0.10}
+_MD_W = {"ensemble": 0.90, "climatology": 0.05, "nws": 0.05}
+
+
+def _neutralise_weights(monkeypatch, wm):
+    """Empty all six tables so a test only sees what it puts back."""
+    for name in (
+        "_CITY_WEIGHTS",
+        "_SEASONAL_WEIGHTS",
+        "_CONDITION_WEIGHTS",
+        "_CITY_WEIGHTS_SAMEDAY",
+        "_SEASONAL_WEIGHTS_SAMEDAY",
+        "_CONDITION_WEIGHTS_SAMEDAY",
+    ):
+        monkeypatch.setattr(wm, name, {})
+
+
+_TIERS = [
+    # (sameday table, multiday table, kwarg name, key)
+    ("_CITY_WEIGHTS_SAMEDAY", "_CITY_WEIGHTS", "city", "NYC"),
+    ("_CONDITION_WEIGHTS_SAMEDAY", "_CONDITION_WEIGHTS", "condition_type", "above"),
+    ("_SEASONAL_WEIGHTS_SAMEDAY", "_SEASONAL_WEIGHTS", "season", "summer"),
+]
+
+
+class TestSamedayWeightsAreUsedAtDayZero:
+    """The essential batch-82 claim, per tier.
+
+    Each test fits DELIBERATELY DIFFERENT values for the two horizons, so
+    "the same-day weights were used" is distinguishable from "some weights
+    were used". Every absence assertion (multi-day weights NOT used at d=0)
+    is paired with the positive control that the very same multi-day table
+    IS used at d=1.
+    """
+
+    def _w(self, wm, days_out, kwarg, key):
+        return wm._blend_weights(days_out, True, True, **{kwarg: key})
+
+    def test_day_zero_uses_the_sameday_table_not_the_multiday_one(self, monkeypatch):
+        import pytest
+
+        import weather_markets as wm
+
+        for sd_name, md_name, kwarg, key in _TIERS:
+            _neutralise_weights(monkeypatch, wm)
+            monkeypatch.setattr(wm, sd_name, {key: dict(_SD_W)})
+            monkeypatch.setattr(wm, md_name, {key: dict(_MD_W)})
+
+            w0 = self._w(wm, 0, kwarg, key)
+            # Present: the same-day fit.
+            assert w0["ensemble"] == pytest.approx(0.10), (kwarg, w0)
+            assert w0["climatology"] == pytest.approx(0.80), (kwarg, w0)
+            # Absent: the multi-day fit did not supply this.
+            assert w0["ensemble"] != pytest.approx(0.90), (kwarg, w0)
+
+            # POSITIVE CONTROL for that absence: the multi-day table is
+            # reachable and IS used one day out. Without this, dropping the
+            # tier entirely would also pass the assertion above.
+            w1 = self._w(wm, 1, kwarg, key)
+            assert w1["ensemble"] == pytest.approx(0.90), (kwarg, w1)
+            assert w1["climatology"] == pytest.approx(0.05), (kwarg, w1)
+
+    def test_multiday_rows_never_read_the_sameday_table(self, monkeypatch):
+        """The separation runs both ways."""
+
+        import weather_markets as wm
+
+        for sd_name, md_name, kwarg, key in _TIERS:
+            _neutralise_weights(monkeypatch, wm)
+            monkeypatch.setattr(wm, sd_name, {key: dict(_SD_W)})
+            monkeypatch.setattr(wm, md_name, {key: dict(_MD_W)})
+            # d=1 is the no-op scaling point, so the multi-day fit comes
+            # through exactly.
+            w1 = self._w(wm, 1, kwarg, key)
+            assert w1["ensemble"] == pytest.approx(0.90), (kwarg, w1)
+            assert w1["climatology"] == pytest.approx(0.05), (kwarg, w1)
+            # At d>=2 the NWS decay renormalises, so pin a bound that still
+            # separates all THREE possible sources positively rather than
+            # merely excluding the same-day one: multi-day lands at 0.90-0.91,
+            # the hardcoded schedule at 0.5655 (d=2) / 0.3975 (d=5), and the
+            # same-day fixture at 0.10. `climatology < 0.5` alone -- the
+            # original assertion -- would have passed for the hardcoded
+            # schedule too (opus review finding).
+            for days_out in (2, 5):
+                w = self._w(wm, days_out, kwarg, key)
+                assert w["ensemble"] > 0.85, (kwarg, days_out, w)
+
+    def test_day_zero_falls_back_to_multiday_when_sameday_declines(self, monkeypatch):
+        """Option (b): a declining same-day tier borrows its multi-day sibling."""
+        import pytest
+
+        import weather_markets as wm
+
+        for sd_name, md_name, kwarg, key in _TIERS:
+            _neutralise_weights(monkeypatch, wm)
+            monkeypatch.setattr(wm, sd_name, {key: {**_SD_W, "_uncalibrated": True}})
+            monkeypatch.setattr(wm, md_name, {key: dict(_MD_W)})
+            w = self._w(wm, 0, kwarg, key)
+            assert w["ensemble"] == pytest.approx(0.90), (kwarg, w)
+
+    def test_day_zero_falls_through_when_neither_horizon_has_a_fit(self, monkeypatch):
+        """Both declining -> the next tier / the hardcoded schedule."""
+        import pytest
+
+        import weather_markets as wm
+
+        for sd_name, md_name, kwarg, key in _TIERS:
+            _neutralise_weights(monkeypatch, wm)
+            monkeypatch.setattr(wm, sd_name, {key: {**_SD_W, "_uncalibrated": True}})
+            monkeypatch.setattr(wm, md_name, {key: {**_MD_W, "_uncalibrated": True}})
+            w = self._w(wm, 0, kwarg, key)
+            # Hardcoded d<=1 branch: nws 0.35, ens 0.65*0.94, clim 0.65*0.06.
+            assert w["nws"] == pytest.approx(0.35), (kwarg, w)
+            assert w["ensemble"] == pytest.approx(0.611), (kwarg, w)
+
+
+class TestSamedayUncalibratedFlagIsLoadBearing:
+    """batch-79's hazard, reintroduced by a new tier if the flag is dropped."""
+
+    def test_unflagged_uniform_sameday_dict_satisfies_the_tier(self, monkeypatch):
+        """Documents the FAILURE mode, so the guard below is not vacuous.
+
+        An all-uniform dict WITHOUT the flag is indistinguishable from a real
+        fit at uniform weights -- it wins the tier and suppresses both the
+        multi-day fallback and the hardcoded schedule. This is exactly what
+        seeds/seasonal_weights.json's summer entry actually shipped with.
+        """
+        import pytest
+
+        import weather_markets as wm
+
+        _neutralise_weights(monkeypatch, wm)
+        uniform = {"ensemble": 1 / 3, "climatology": 1 / 3, "nws": 1 / 3}
+        monkeypatch.setattr(wm, "_CONDITION_WEIGHTS_SAMEDAY", {"above": uniform})
+        monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {"above": dict(_MD_W)})
+        w = wm._blend_weights(0, True, True, condition_type="above")
+        assert w["ensemble"] == pytest.approx(1 / 3)
+
+    def test_flagged_uniform_sameday_dict_does_not_satisfy_the_tier(self, monkeypatch):
+        """The guard: with the flag, the multi-day sibling answers instead."""
+        import pytest
+
+        import weather_markets as wm
+
+        _neutralise_weights(monkeypatch, wm)
+        uniform = {
+            "ensemble": 1 / 3,
+            "climatology": 1 / 3,
+            "nws": 1 / 3,
+            "_uncalibrated": True,
+        }
+        monkeypatch.setattr(wm, "_CONDITION_WEIGHTS_SAMEDAY", {"above": uniform})
+        monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {"above": dict(_MD_W)})
+        w = wm._blend_weights(0, True, True, condition_type="above")
+        assert w["ensemble"] == pytest.approx(0.90)
+        assert w["ensemble"] != pytest.approx(1 / 3)
+
+    def test_the_shipped_sameday_seeds_do_not_satisfy_any_tier(self, monkeypatch):
+        """End to end: load the real seed files and confirm they stay inert."""
+        import json
+        from pathlib import Path
+
+        import pytest
+
+        import paths
+        import weather_markets as wm
+
+        seeds = Path(paths.__file__).resolve().parent / "seeds"
+        _neutralise_weights(monkeypatch, wm)
+        monkeypatch.setattr(
+            wm,
+            "_CONDITION_WEIGHTS_SAMEDAY",
+            json.loads((seeds / "condition_weights_sameday.json").read_text()),
+        )
+        monkeypatch.setattr(
+            wm,
+            "_SEASONAL_WEIGHTS_SAMEDAY",
+            json.loads((seeds / "seasonal_weights_sameday.json").read_text()),
+        )
+        # Every key, not just one: a flag stripped from a SINGLE entry is the
+        # exact shape of batch-79's summer bug, so checking only "above" left
+        # that hole open -- found by mutation-testing this test against a flag
+        # removed from "below", then again from seasonal "fall".
+        #
+        # Each tier is exercised with the tiers ABOVE it empty. Without that,
+        # the condition tier answers first and the seasonal assertions are
+        # vacuous -- which is also true in production today: with all three
+        # condition weights fitted, the seasonal tier is unreachable for
+        # temperature markets.
+        for ctype in ("above", "below", "between"):
+            monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {ctype: dict(_MD_W)})
+            monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+            w = wm._blend_weights(0, True, True, condition_type=ctype)
+            assert w["ensemble"] == pytest.approx(0.90), (ctype, w)
+
+        for season in ("winter", "spring", "summer", "fall"):
+            monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+            monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {season: dict(_MD_W)})
+            w = wm._blend_weights(0, True, True, season=season)
+            assert w["ensemble"] == pytest.approx(0.90), (season, w)
+
+
+class TestNwsDaysOutScaleAtDayZero:
+    """The `days_out <= 0` guard batch-82 was required to decide explicitly."""
+
+    def test_day_zero_weights_are_returned_untouched(self):
+        import weather_markets as wm
+
+        w = {"ensemble": 0.10, "climatology": 0.80, "nws": 0.10}
+        assert wm._nws_days_out_scale(dict(w), 0) == w
+
+    def test_scaling_at_day_zero_would_boost_nws_which_is_why_it_is_skipped(self):
+        """The guard prevents an AMPLIFICATION, not a decay.
+
+        Derives the d=0 scale from the function's OWN behaviour rather than
+        from re-typed literals: d=2 and d=3 give two points on the linear
+        schedule, which extrapolate back to the factor d=0 would use. An
+        earlier version of this test recomputed `max(0.6, 1.0 - (0-1)*0.10)`
+        from literals and imported nothing -- it was green under every
+        possible mutation of weather_markets.py despite calling itself a
+        mutation guard (opus review finding, batch-82).
+        """
+        import pytest
+
+        import weather_markets as wm
+
+        base = {"ensemble": 0.50, "climatology": 0.10, "nws": 0.40}
+        s2 = wm._nws_days_out_scale(dict(base), 2)["nws"] / 0.40
+        s3 = wm._nws_days_out_scale(dict(base), 3)["nws"] / 0.40
+        step = s2 - s3  # per-day decay, read off the real schedule
+        scale_at_zero = s2 + 2 * step
+        assert scale_at_zero > 1.0, scale_at_zero
+        assert scale_at_zero == pytest.approx(1.1)
+        # And the guard means that factor is never actually applied.
+        assert wm._nws_days_out_scale(dict(base), 0)["nws"] == pytest.approx(0.40)
+
+    def test_day_zero_also_skips_the_085_nws_ceiling(self):
+        """Pins the cap bypass at d=0 (opus review finding, MEDIUM).
+
+        _nws_days_out_scale's early return skips `min(w_nws * scale, 0.85)`
+        as well as the decay, so an nws weight above the ceiling is returned
+        verbatim at d=0 and capped at d>=1. That is PRE-EXISTING -- the live
+        `between` entry (nws 0.903) already behaves this way -- but batch-82
+        makes it structural for a same-day fit, which is only ever read at
+        d<=0 and therefore never flows through the capped path at all.
+
+        Deliberately NOT fixed in batch-82: capping at d=0 would change live
+        same-day `between` pricing, and that batch shipped as a behavioural
+        no-op. Pinned here so the current behaviour is a recorded decision
+        rather than an accident. See backlog.txt "THE 0.85 NWS CEILING IS
+        SKIPPED ENTIRELY AT days_out=0".
+        """
+        import pytest
+
+        import weather_markets as wm
+
+        hot = {"ensemble": 0.05, "climatology": 0.02, "nws": 0.93}
+        assert wm._nws_days_out_scale(dict(hot), 0)["nws"] == pytest.approx(0.93)
+        assert wm._nws_days_out_scale(dict(hot), 1)["nws"] == pytest.approx(0.85)
+        # Reachability: the fixed seed-42 search really can produce nws > 0.85.
+        import random
+
+        rng = random.Random(42)
+        over = 0
+        for _ in range(200):
+            x, y = rng.random(), rng.random()
+            if x > y:
+                x, y = y, x
+            if 1.0 - y > 0.85:
+                over += 1
+        assert over > 0, "no seed-42 sample exceeds the cap; premise is stale"
+
+    def test_day_one_is_still_the_no_op_boundary(self):
+        """Positive control: d=1 unchanged, d=2 genuinely decays."""
+        import pytest
+
+        import weather_markets as wm
+
+        w = {"ensemble": 0.50, "climatology": 0.10, "nws": 0.40}
+        assert wm._nws_days_out_scale(dict(w), 1)["nws"] == pytest.approx(0.40)
+        assert wm._nws_days_out_scale(dict(w), 2)["nws"] == pytest.approx(0.36)
+
+
+class TestSamedayTablesAreRefreshedFromDisk:
+    """A horizon-aware read must not become a per-call file read."""
+
+    def test_refresh_loop_maps_each_file_to_the_right_table_and_loader(self):
+        """Pins ALL THREE elements of every refresh tuple, not just the name.
+
+        The earlier version regex-extracted only the *.json literals, so the
+        module-attribute name and the loader callable were unpinned. Changing
+        the city_weights_sameday entry's key to "_CITY_WEIGHTS" would make the
+        sweep write the SAME-DAY fit into the MULTI-DAY module global -- the
+        exact cross-horizon contamination this batch exists to prevent -- with
+        a fully green suite (round-2 opus review). A typo'd attribute name is
+        just as invisible: globals()[key] = fresh silently creates a dead
+        attribute and the real table is never refreshed again.
+
+        Drives the real function instead of parsing its source: each file is
+        given a fresh mtime one at a time, and the table that actually changes
+        is observed.
+        """
+        import weather_markets as wm
+
+        expected = {
+            "city_weights.json": ("_CITY_WEIGHTS", {"CW": 1}),
+            "seasonal_weights.json": ("_SEASONAL_WEIGHTS", {"SW": 1}),
+            "condition_weights.json": ("_CONDITION_WEIGHTS", {"NW": 1}),
+            "city_weights_sameday.json": ("_CITY_WEIGHTS_SAMEDAY", {"CWS": 1}),
+            "seasonal_weights_sameday.json": ("_SEASONAL_WEIGHTS_SAMEDAY", {"SWS": 1}),
+            "condition_weights_sameday.json": (
+                "_CONDITION_WEIGHTS_SAMEDAY",
+                {"NWS": 1},
+            ),
+        }
+        assert set(expected) == set(wm._CAL_WEIGHTS_MTIMES)
+
+        loader_attr = {
+            "city_weights.json": "_load_city_weights",
+            "seasonal_weights.json": "_load_seasonal_weights",
+            "condition_weights.json": "_load_condition_weights",
+            "city_weights_sameday.json": "_load_city_weights_sameday",
+            "seasonal_weights_sameday.json": "_load_seasonal_weights_sameday",
+            "condition_weights_sameday.json": "_load_condition_weights_sameday",
+        }
+        all_tables = [t[0] for t in expected.values()]
+
+        for target, (table_attr, sentinel) in expected.items():
+            import pytest as _pytest
+
+            mp = _pytest.MonkeyPatch()
+            try:
+                for name in all_tables:
+                    mp.setattr(wm, name, {})
+                mp.setattr(wm, "_CAL_WEIGHTS_LAST_CHECKED", -1e9)
+                mp.setattr(wm, "_CAL_WEIGHTS_MTIMES", dict.fromkeys(expected))
+                # Only `target` looks changed on disk.
+                mp.setattr(
+                    wm,
+                    "_cal_weights_mtime",
+                    lambda n, _t=target: 1.0 if n == _t else None,
+                )
+                # Every loader returns a DISTINCT sentinel, so the assertion
+                # below identifies which loader ran, not merely that one did.
+                for fname, attr in loader_attr.items():
+                    mp.setattr(
+                        wm, attr, lambda _s=expected[fname][1]: dict(_s), raising=True
+                    )
+                wm._maybe_refresh_calibration_weights()
+
+                assert getattr(wm, table_attr) == sentinel, (
+                    f"{target} refreshed the wrong table or used the wrong loader: "
+                    f"{table_attr}={getattr(wm, table_attr)}"
+                )
+                # Absence half: no OTHER table moved.
+                for other in all_tables:
+                    if other != table_attr:
+                        assert getattr(wm, other) == {}, (target, other)
+            finally:
+                mp.undo()
+
+    def test_all_six_files_are_in_the_mtime_sweep(self):
+        import weather_markets as wm
+
+        assert set(wm._CAL_WEIGHTS_MTIMES) == {
+            "city_weights.json",
+            "seasonal_weights.json",
+            "condition_weights.json",
+            "city_weights_sameday.json",
+            "seasonal_weights_sameday.json",
+            "condition_weights_sameday.json",
+        }
+
+    def test_sameday_table_reloads_when_its_file_changes(self, monkeypatch, tmp_path):
+        import pytest
+
+        import weather_markets as wm
+
+        _neutralise_weights(monkeypatch, wm)
+        monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {"above": dict(_MD_W)})
+        # -1e9, not 0.0: time.monotonic() is time-since-boot on Windows, so
+        # 0.0 leaves the 300s throttle un-cleared for the first five minutes
+        # after a reboot and this test would fail deterministically there
+        # (opus review finding).
+        monkeypatch.setattr(wm, "_CAL_WEIGHTS_LAST_CHECKED", -1e9)
+        monkeypatch.setattr(
+            wm, "_CAL_WEIGHTS_MTIMES", dict.fromkeys(wm._CAL_WEIGHTS_MTIMES)
+        )
+        monkeypatch.setattr(
+            wm, "_cal_weights_mtime", lambda name: 1.0 if "sameday" in name else None
+        )
+        monkeypatch.setattr(
+            wm, "_load_condition_weights_sameday", lambda: {"above": dict(_SD_W)}
+        )
+        monkeypatch.setattr(wm, "_load_seasonal_weights_sameday", dict)
+        monkeypatch.setattr(wm, "_load_city_weights_sameday", dict)
+
+        # Before: the same-day table is empty, so d=0 borrows multi-day.
+        assert wm._blend_weights(0, True, True, condition_type="above")[
+            "ensemble"
+        ] == pytest.approx(0.90)
+
+        wm._maybe_refresh_calibration_weights()
+
+        # After: the sweep picked the file up and d=0 now uses it.
+        assert wm._blend_weights(0, True, True, condition_type="above")[
+            "ensemble"
+        ] == pytest.approx(0.10)
+        # Positive control: the MULTI-DAY answer is unchanged by the refresh.
+        assert wm._blend_weights(1, True, True, condition_type="above")[
+            "ensemble"
+        ] == pytest.approx(0.90)

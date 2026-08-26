@@ -51,8 +51,13 @@ import metar as _metar
 import nws
 import safe_io as _safe_io
 from calibration import load_city_weights as _load_city_weights
+from calibration import load_city_weights_sameday as _load_city_weights_sameday
 from calibration import load_condition_weights as _load_condition_weights
+from calibration import (
+    load_condition_weights_sameday as _load_condition_weights_sameday,
+)
 from calibration import load_seasonal_weights as _load_seasonal_weights
+from calibration import load_seasonal_weights_sameday as _load_seasonal_weights_sameday
 from circuit_breaker import CircuitBreaker
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
@@ -1331,6 +1336,13 @@ _CAL_WEIGHTS_MTIMES: dict[str, float | None] = {
     "city_weights.json": _cal_weights_mtime("city_weights.json"),
     "seasonal_weights.json": _cal_weights_mtime("seasonal_weights.json"),
     "condition_weights.json": _cal_weights_mtime("condition_weights.json"),
+    "city_weights_sameday.json": _cal_weights_mtime("city_weights_sameday.json"),
+    "seasonal_weights_sameday.json": _cal_weights_mtime(
+        "seasonal_weights_sameday.json"
+    ),
+    "condition_weights_sameday.json": _cal_weights_mtime(
+        "condition_weights_sameday.json"
+    ),
 }
 
 # ── Calibration data (loaded at import; refreshed from disk periodically --
@@ -1339,23 +1351,34 @@ _CAL_WEIGHTS_MTIMES: dict[str, float | None] = {
 _CITY_WEIGHTS: dict[str, dict[str, float]] = _load_city_weights()
 _SEASONAL_WEIGHTS: dict[str, dict[str, float]] = _load_seasonal_weights()
 _CONDITION_WEIGHTS: dict[str, dict[str, float]] = _load_condition_weights()
+# batch-82: same-day (days_out=0) halves of the three tables above. Loaded
+# ONCE at import exactly like their multi-day siblings and refreshed by the
+# same mtime-gated sweep -- a horizon-aware read must not become a per-call
+# file read on the pricing path.
+_CITY_WEIGHTS_SAMEDAY: dict[str, dict[str, float]] = _load_city_weights_sameday()
+_SEASONAL_WEIGHTS_SAMEDAY: dict[str, dict[str, float]] = (
+    _load_seasonal_weights_sameday()
+)
+_CONDITION_WEIGHTS_SAMEDAY: dict[str, dict[str, float]] = (
+    _load_condition_weights_sameday()
+)
 
 _CAL_WEIGHTS_CHECK_INTERVAL = 300  # throttle: at most one stat() sweep per 5 min
 _CAL_WEIGHTS_LAST_CHECKED = 0.0
 
 
 def _maybe_refresh_calibration_weights() -> None:
-    """Reload _CITY_WEIGHTS/_SEASONAL_WEIGHTS/_CONDITION_WEIGHTS if their JSON
-    files changed on disk since the last check.
+    """Reload the six calibration weight tables if their JSON files changed on
+    disk since the last check.
 
     backlog.txt "ONE-SHOT PROCESS LIFECYCLE IS BAKED INTO MODULE STATE": these
-    three dicts load once at import. cron.py's F3 auto-calibration and weekly
+    six dicts load once at import. cron.py's F3 auto-calibration and weekly
     ML-bias-retrain blocks already push fresh values into these same dicts
     in-process -- but only along the cron.py call path (cmd_cron/loop). watch
     mode (main.py's cmd_watch/_analyze_once) never runs any cron.py code, so on
     an always-on watch process a recalibration written by a separate cron run
     would otherwise never be picked up without a restart. Throttled to
-    _CAL_WEIGHTS_CHECK_INTERVAL so this doesn't add 3 stat() calls to every
+    _CAL_WEIGHTS_CHECK_INTERVAL so this doesn't add 6 stat() calls to every
     single analyze_trade() invocation -- called from get_weather_markets(),
     which cron/loop/watch all already call once per scan.
 
@@ -1380,6 +1403,35 @@ def _maybe_refresh_calibration_weights() -> None:
         ("city_weights.json", "_CITY_WEIGHTS", _load_city_weights),
         ("seasonal_weights.json", "_SEASONAL_WEIGHTS", _load_seasonal_weights),
         ("condition_weights.json", "_CONDITION_WEIGHTS", _load_condition_weights),
+        # batch-82: the same-day halves. cron.py's two auto-calibration blocks
+        # push fresh MULTI-DAY values straight into the module dicts but know
+        # nothing about these three, so this mtime sweep is their only
+        # in-process refresh path -- calibrate_and_save writes the files, this
+        # picks them up within _CAL_WEIGHTS_CHECK_INTERVAL.
+        #
+        # Consequence worth naming (round-2 opus review): for up to that
+        # interval after a cron recalibration, a d=0 row can read a STALE
+        # same-day entry that shadows a FRESH multi-day one -- mixed vintages
+        # WITHIN a single tier, not merely between tiers. Inert until a
+        # same-day tier graduates, since a declining entry is skipped anyway.
+        # The multi-day tables also have cron's explicit push as a backstop if
+        # an mtime comparison ever misses on a coarse filesystem timestamp;
+        # these three have only this sweep.
+        (
+            "city_weights_sameday.json",
+            "_CITY_WEIGHTS_SAMEDAY",
+            _load_city_weights_sameday,
+        ),
+        (
+            "seasonal_weights_sameday.json",
+            "_SEASONAL_WEIGHTS_SAMEDAY",
+            _load_seasonal_weights_sameday,
+        ),
+        (
+            "condition_weights_sameday.json",
+            "_CONDITION_WEIGHTS_SAMEDAY",
+            _load_condition_weights_sameday,
+        ),
     ):
         mtime = _cal_weights_mtime(name)
         if mtime == _CAL_WEIGHTS_MTIMES.get(name):
@@ -9873,9 +9925,51 @@ def _nws_days_out_scale(weights: dict[str, float], days_out: int) -> dict[str, f
     decaying 10% per day beyond that, floored at 0.6x. NWS capped at 0.85 to
     prevent over-concentration when calibrated nws weight is very high.
 
-    The returned dict is a fresh object the caller owns outright — never mutate
-    a dict reached from a module-level weight table (_REGIME_BLEND_WEIGHTS,
-    _CITY_WEIGHTS, etc.); always build/copy before writing into a `w[...]` key.
+    The returned dict is a fresh object the caller owns outright ON THE SCALING
+    PATH — never mutate a dict reached from a module-level weight table
+    (_REGIME_BLEND_WEIGHTS, _CITY_WEIGHTS, etc.); always build/copy before
+    writing into a `w[...]` key. NOTE the early return below hands BACK THE
+    SAME OBJECT it was given (opus review finding, batch-82). Safe today
+    because every _blend_weights branch passes a freshly-built `w`, but
+    days_out=0 is now the ordinary same-day path rather than an edge case, so
+    a future caller that passes a dict reached straight from a weight table
+    would receive an aliased reference at d=0.
+
+    batch-82 revisited the `days_out <= 0` half of the guard below, since it
+    used to be the single line that handed the d=1 fit to same-day unchanged
+    and now means something different. It stays, and it is now load-bearing
+    for two independent reasons rather than one:
+
+    * Weights that came from the SAME-DAY fit were fitted on days_out=0 rows,
+      so they are already at their own horizon and there is nothing to decay.
+    * Weights that fell back to the MULTI-DAY fit are a d=1 fit. The schedule
+      only ever claimed to decay NWS *beyond* d=1; extrapolating it below d=1
+      would compute scale = 1.0 - (0 - 1) * 0.10 = 1.1 and BOOST the NWS
+      weight by 10%. Nothing justifies that, and it points the wrong way on
+      the data: same-day NWS is the weakest of the three components on the
+      settled population (on 'below', mean prob 0.146 against a 0.583 outcome
+      rate, solo Brier 0.502 — worse than always guessing 0.5).
+
+    So d=0 must never be scaled regardless of which horizon supplied the
+    weights, which is exactly what this guard already does. Pinned by
+    tests/test_weather_markets.py so a later "simplification" to
+    `days_out == 1` or `days_out < 1` cannot silently reintroduce the boost.
+
+    THE GUARD ALSO SKIPS THE 0.85 NWS CEILING, and batch-82 changes what that
+    means (opus review finding, MEDIUM). The cap lives on the scaling path
+    below, so at d=0 an nws weight is returned verbatim: the live `between`
+    condition entry (nws 0.903) is already uncapped at d=0 today and capped to
+    0.85 at d=1 — pre-existing, not introduced here. What IS new is that a
+    SAME-DAY-fitted entry is by construction read only at d<=0, so it can
+    never flow through the capped path in any context, permanently. That is
+    reachable, not theoretical: 4 of _best_weights' 200 fixed seed-42 simplex
+    samples have nws > 0.85.
+        Deliberately NOT fixed here. Applying the cap at d=0 would change
+    live same-day pricing for `between` markets (0.903 -> 0.85), and this
+    batch shipped on the explicit basis of being a behavioural no-op today.
+    Current behaviour is pinned by a test so it cannot drift unnoticed, and
+    the decision is filed in backlog.txt as "THE 0.85 NWS CEILING IS SKIPPED
+    ENTIRELY AT days_out=0" for its own measurement and user decision.
     """
     w_nws = weights["nws"]
     if w_nws == 0.0 or days_out <= 0:
@@ -11103,6 +11197,135 @@ def get_signal_graduation_report() -> list[dict]:
     return report
 
 
+# Round-2 opus review: _usable_cal runs up to 6x per _blend_weights call, and
+# _blend_weights runs once per market per scan, so an unthrottled WARNING on a
+# persistently-corrupt table entry emits hundreds of identical lines per scan
+# forever. The repo has no log-once helper (grepped), so this is the local one:
+# bounded by the number of DISTINCT (horizon, key, reason) triples, which is
+# bounded by the weight tables themselves.
+_BAD_CAL_WARNED: set[tuple[str, str, str]] = set()
+
+
+def _warn_bad_cal_once(horizon: str, key: str, reason: str) -> None:
+    """WARN about a malformed calibration entry once per distinct problem."""
+    token = (horizon, key, reason)
+    if token in _BAD_CAL_WARNED:
+        return
+    _BAD_CAL_WARNED.add(token)
+    _log.warning(
+        "_blend_weights: ignoring malformed %s calibration entry for %r (%s) "
+        "-- falling through to the next tier. Further identical warnings "
+        "suppressed.",
+        horizon,
+        key,
+        reason,
+    )
+
+
+def _usable_cal(cal: object, key: str, horizon: str) -> bool:
+    """True when `cal` is a real, usable calibration entry for one tier.
+
+    The isinstance check is what makes _tier_cal robust to a corrupted table
+    entry, but it also converts what used to be a loud AttributeError (the old
+    city tier did `_CITY_WEIGHTS[city].get(...)` on whatever was there) into a
+    silent tier-skip. calibration.validate_weight_files likewise `continue`s
+    past a non-dict entry, so without this log line a corrupted entry would be
+    invisible everywhere (opus review finding, batch-82). Logged at WARNING
+    rather than raising: a bad entry in one tier must not take down pricing
+    for every market when falling through to the next tier is well-defined.
+    """
+    if cal is None:
+        return False
+    if not isinstance(cal, dict):
+        _warn_bad_cal_once(horizon, key, f"expected dict, got {type(cal).__name__}")
+        return False
+    if cal.get("_uncalibrated"):
+        return False
+    # Round-2 opus review: _blend_weights indexes cal["ensemble"] /
+    # ["climatology"] / ["nws"] directly, so a PRESENT, unflagged, partially
+    # written entry used to raise KeyError on the live pricing path -- and it
+    # did so INSTEAD of the healthy multi-day entry it shadows at d=0. That
+    # shape is reachable: calibration._preserve_hand_tuned_weights copies
+    # on-disk entries verbatim into a fresh result, so a hand-edited or
+    # torn-write file propagates straight through. Treat an incomplete entry
+    # the same as an absent one -- fall through to the sibling/next tier.
+    missing = [k for k in ("ensemble", "climatology", "nws") if k not in cal]
+    if missing:
+        _warn_bad_cal_once(horizon, key, f"missing {'/'.join(missing)}")
+        return False
+    return True
+
+
+def _tier_cal(
+    sameday_table: dict[str, dict[str, float]],
+    multiday_table: dict[str, dict[str, float]],
+    key: str | None,
+    days_out: int,
+) -> dict[str, float] | None:
+    """Pick one _blend_weights tier's calibrated entry, honouring the horizon.
+
+    batch-82. A same-day row (days_out<=0) prefers the same-day fit for this
+    tier and falls back to the tier's MULTI-DAY fit when the same-day one has
+    not graduated yet. Any other horizon never looks at the same-day table at
+    all. Returns None when neither side has a usable fit, which is the
+    existing "fall through to the next tier" signal.
+
+    Why per-tier fallback rather than a wholly separate same-day chain that
+    bottoms out at the hardcoded schedule (user decision, 2026-08-26): as of
+    that date NO same-day tier can fit -- city tops out at 11 rows against a
+    50 floor, condition at 41/36 against 60, and seasonal clears its row
+    floors but is rejected by the brier-improvement gate. So a separate chain
+    would send every same-day row to the hardcoded schedule, which measured
+    +0.141 Brier worse on same-day 'below' (n=36, t=3.24, bootstrap 95% CI
+    [+0.058,+0.223]) than the multi-day condition weights it would replace.
+    The mechanism is that same-day NWS on 'below' is badly miscalibrated
+    (mean prob 0.146 against a 0.583 outcome rate, solo Brier 0.502) and the
+    multi-day 'below' weights happen to starve it, while the hardcoded d=0
+    schedule hands it 35%. Once a same-day tier does graduate the two designs
+    agree forever after; they differ only during the wait.
+
+    The `_uncalibrated` check is the load-bearing part and is why an
+    all-uniform dict is NOT interchangeable with a declined fit: without the
+    flag this returns those uniform weights as a real calibration and
+    suppresses everything below it, which is precisely the bug batch-79 found
+    in seeds/seasonal_weights.json's summer entry.
+
+    One asymmetry, deliberate: "declined" (missing or `_uncalibrated`) is
+    handled here and falls back to the multi-day sibling, but DEGENERATE
+    weights (a present, unflagged entry whose three components sum to 0) are
+    detected by the caller's own `total > 0.0` check and fall through to the
+    NEXT TIER rather than to this tier's multi-day sibling. A degenerate
+    MULTI-DAY entry behaved exactly this way before batch-82; the genuinely
+    new case is a degenerate SAME-DAY entry shadowing a HEALTHY multi-day
+    sibling, which had no pre-batch-82 analogue. Left as is because the state
+    is unreachable from the calibrator -- _best_weights only ever returns
+    simplex weights summing to 1 or the flagged uniform dict -- so it takes a
+    hand-edit or on-disk corruption. Note validate_weight_files only LOGS an
+    error for a non-sum-to-1 entry, it does not reject one, so nothing stops
+    such an entry reaching this path (opus review finding).
+
+    A second ordering consequence, also deliberate: the horizon preference is
+    INTRA-TIER. Tier order still wins overall, so a multi-day-fitted CITY
+    weight outranks a same-day-fitted CONDITION weight at d=0. That can only
+    bite once city graduates multi-day (floor 50) while condition has
+    graduated same-day (floor 60); inert today, since city_weights.json holds
+    zero entries.
+    """
+    # Not redundant despite dict.get(None) being harmless: it narrows `key` to
+    # str for mypy against dict[str, ...].get. Deleting it leaves every test
+    # green and breaks the type check.
+    if key is None:
+        return None
+    if days_out <= 0:
+        cal = sameday_table.get(key)
+        if _usable_cal(cal, key, "sameday"):
+            return cal
+    cal = multiday_table.get(key)
+    if _usable_cal(cal, key, "multiday"):
+        return cal
+    return None
+
+
 def _blend_weights(
     days_out: int,
     has_nws: bool,
@@ -11147,9 +11370,9 @@ def _blend_weights(
             w = {k: v / total for k, v in w.items()}
         return _nws_days_out_scale(w, days_out)
 
-    # 1. City-specific calibration weights
-    if city and city in _CITY_WEIGHTS and not _CITY_WEIGHTS[city].get("_uncalibrated"):
-        cal = _CITY_WEIGHTS[city]
+    # 1. City-specific calibration weights (same-day fit preferred at d<=0)
+    cal = _tier_cal(_CITY_WEIGHTS_SAMEDAY, _CITY_WEIGHTS, city or None, days_out)
+    if cal is not None:
         w = {
             "ensemble": cal["ensemble"],
             "climatology": cal["climatology"],
@@ -11168,9 +11391,11 @@ def _blend_weights(
             return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to condition/seasonal/hardcoded
 
-    # 2. Condition-type calibration weights
-    _cond_cal = _CONDITION_WEIGHTS.get(condition_type) if condition_type else None
-    if isinstance(_cond_cal, dict) and not _cond_cal.get("_uncalibrated"):
+    # 2. Condition-type calibration weights (same-day fit preferred at d<=0)
+    _cond_cal = _tier_cal(
+        _CONDITION_WEIGHTS_SAMEDAY, _CONDITION_WEIGHTS, condition_type or None, days_out
+    )
+    if _cond_cal is not None:
         w = {
             "ensemble": _cond_cal["ensemble"],
             "climatology": _cond_cal["climatology"],
@@ -11189,13 +11414,11 @@ def _blend_weights(
             return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to seasonal/hardcoded
 
-    # 3. Seasonal calibration weights
-    if (
-        season
-        and season in _SEASONAL_WEIGHTS
-        and not _SEASONAL_WEIGHTS[season].get("_uncalibrated")
-    ):
-        cal = _SEASONAL_WEIGHTS[season]
+    # 3. Seasonal calibration weights (same-day fit preferred at d<=0)
+    cal = _tier_cal(
+        _SEASONAL_WEIGHTS_SAMEDAY, _SEASONAL_WEIGHTS, season or None, days_out
+    )
+    if cal is not None:
         w = {
             "ensemble": cal["ensemble"],
             "climatology": cal["climatology"],
@@ -11214,7 +11437,7 @@ def _blend_weights(
             return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to hardcoded schedule
 
-    # 3. Hardcoded schedule (original logic)
+    # 4. Hardcoded schedule (original logic)
     if days_out <= 3:
         w_nws = 0.35
     elif days_out <= 7:
@@ -17979,6 +18202,27 @@ def analyze_trade(
     rec_side = "yes" if blended_prob > market_prob else "no"
 
     # ── 10b. METAR lock side-agreement override ──────────────────────────────
+    #
+    # batch-82 cross-reference: the calibrated ceiling/floor arithmetic this
+    # block relies on is written up in backlog.txt under "METAR SETTLEMENT-LAG
+    # CALIBRATION MAKES CRON.PY'S >=0.80 FORCE-CLOSE GATE MATHEMATICALLY
+    # UNREACHABLE", see its "CROSS-REFERENCE 2026-08-26 (batch-82)" note --
+    # which reconciles the two independently-derived figure sets (0.5954 vs
+    # 0.54647607: different points of the same curve, not a contradiction)
+    # and records the fact that MATTERS HERE: the [0.72, 0.97] bound below
+    # exists in TWO places, metar.py:104 (_dynamic_lock_in_confidence) and
+    # metar.py:146 (_between_dynamic_lock_in_confidence). Raising "the cap"
+    # is therefore two edits.
+    #
+    # Precisely which between branches this block protects, since the coarse
+    # version of this claim ("between is not protected") is wrong:
+    # _between_dynamic_lock_in_confidence has THREE call sites in
+    # _metar_lock_in -- two between-NO branches that set
+    # "monotone_safe": True, and the between-YES branch that sets it False.
+    # The gate below is scoped to monotone_safe locks, so it covers 2 of the
+    # 3. It is BETWEEN-YES specifically whose ceiling/floor arithmetic this
+    # block does not make safe.
+    #
     # A METAR lock produces BOTH a categorical verdict (metar_lockout
     # ["outcome"]) and a probability, and until this block nothing enforced
     # agreement between them. Because the `rec_side` line above is a bare

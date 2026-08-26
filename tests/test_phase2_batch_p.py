@@ -33,7 +33,12 @@ def _make_db(
             ensemble_prob REAL,
             clim_prob REAL,
             nws_prob REAL,
-            days_out INTEGER
+            days_out INTEGER,
+            -- batch-82: calibrate_and_save now also runs the SAME-DAY
+            -- calibrators, whose query excludes metar_lockout rows by method
+            -- (see calibration._SAMEDAY_METAR_EXCLUSION). This fixture drives
+            -- calibrate_and_save, so it needs the column the real schema has.
+            method TEXT
         )"""
     )
     con.execute(
@@ -51,8 +56,8 @@ def _make_db(
         for i in range(n):
             ticker = f"{ctype}_{i:03d}"
             con.execute(
-                "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
-                (ticker, ctype, "2026-06-01", 0.45, 0.55, 0.40, 1),
+                "INSERT INTO predictions VALUES (?,?,?,?,?,?,?,?)",
+                (ticker, ctype, "2026-06-01", 0.45, 0.55, 0.40, 1, "ensemble"),
             )
             con.execute(
                 "INSERT INTO outcomes (ticker, settled_yes) VALUES (?,?)",

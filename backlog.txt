@@ -2,6 +2,405 @@ BACKLOG — future improvements to implement when ready
 ======================================================
 
 
+[OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS
+  SKIPPED ENTIRELY AT days_out=0
+Priority: Medium -- live today for `between` same-day markets, and structural
+  for any future same-day fit. Not urgent, but it is a real uncapped weight on
+  the live pricing path.
+Files: weather_markets.py (_nws_days_out_scale)
+
+Problem:
+  _nws_days_out_scale's first guard is
+  `if w_nws == 0.0 or days_out <= 0: return weights`. That early return skips
+  the DECAY (correct, and batch-82 re-derived why) but it also skips
+  `min(w_nws * scale, 0.85)` -- the ceiling that exists "to prevent
+  over-concentration when calibrated nws weight is very high".
+
+  Measured 2026-08-26 with weights {ens .05, clim .02, nws .93}:
+    d=0 -> nws 0.9300   (verbatim, uncapped)
+    d=1 -> nws 0.8500   (capped)
+    d=2 -> nws 0.8370
+  This is live right now: data/condition_weights.json's `between` entry has
+  nws 0.903283623166536, so a same-day `between` market priced through the
+  ensemble path gets the full 0.903.
+
+  batch-82 makes it worse in kind, not degree. A SAME-DAY-fitted weight set is
+  by construction only ever read at days_out<=0, so it can never flow through
+  the capped path in ANY context -- a permanent exemption rather than a
+  horizon-specific one. Reachable, not theoretical: 4 of _best_weights' 200
+  fixed seed-42 simplex samples have nws > 0.85.
+
+  batch-82 deliberately did not fix it. Applying the cap at d=0 changes live
+  same-day `between` pricing (0.903 -> 0.85), and that batch shipped on the
+  explicit basis of being a behavioural no-op. Current behaviour is pinned by
+  tests/test_weather_markets.py::TestNwsDaysOutScaleAtDayZero::
+  test_day_zero_also_skips_the_085_nws_ceiling so it cannot drift unnoticed.
+
+  Whoever picks this up: measure the `between` same-day population before
+  changing it, and note that the cap and the decay are separable -- applying
+  `min(w_nws, 0.85)` at d=0 without any scale factor is the narrow fix.
+
+
+[OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] A GRADUATED SAME-DAY FIT
+  CAN NEVER UN-GRADUATE, AND IT OUTRANKS THE MULTI-DAY TIER
+Priority: Medium -- inert until the first same-day tier clears its floor
+  (~60 D+0 rows per condition, roughly 2-3 months at August 2026 accrual).
+  Worth deciding BEFORE that happens rather than after.
+Files: calibration.py (_preserve_hand_tuned_weights, calibrate_and_save),
+  weather_markets.py (_tier_cal)
+
+Problem:
+  _preserve_hand_tuned_weights restores any on-disk entry lacking
+  `_uncalibrated` whenever the fresh fit declines. batch-82 applies it to the
+  three same-day files, each against its own file -- which is what stops a
+  graduated same-day fit being thrown away by one thin run.
+
+  The flip side: once a same-day tier clears the brier-improvement gate ONCE,
+  no later run can un-graduate it. Only a manual file edit can. That is also
+  true of the multi-day files (pre-existing), but it is newly consequential
+  because (a) _tier_cal gives the same-day entry PRIORITY over the multi-day
+  one at days_out<=0, and (b) the same-day populations are tiny. At the
+  _CONDITION_MIN floor of 60 rows the 80/20 split yields ~12 validation rows,
+  barely over _MIN_VAL_ROWS=10 -- so one noise-lucky validation window can
+  permanently override a well-fitted multi-day tier for every same-day trade.
+
+  Options if this is judged wrong: re-fit-or-expire semantics (drop a
+  preserved entry after N runs where it would not re-qualify), a stricter
+  floor for the same-day horizon specifically, or excluding the same-day
+  files from preservation entirely (accepting that a graduated fit can be
+  lost to one thin run).
+
+  Related, same review, LOW and deliberately not fixed: the horizon preference
+  is INTRA-TIER, so a multi-day-fitted CITY weight outranks a same-day-fitted
+  CONDITION weight at d=0. Inert today -- data/city_weights.json holds zero
+  entries -- but it is the same class of ordering question and should be
+  settled in the same pass.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-82 while measuring which blend-weight
+  components carry same-day skill] SAME-DAY NWS PROBABILITIES ON 'below'
+  MARKETS ARE SEVERELY MISCALIBRATED
+Priority: Medium -- it is not currently costing much, but only by accident.
+  The live multi-day `below` condition weights happen to give NWS just 0.20,
+  which is why same-day `below` prices reasonably today. Nothing designed
+  that; a recalibration that raised NWS's `below` weight would expose this
+  immediately.
+Files: nws.py (nws_prob for temperature markets is derived at ~:359, but
+  the NBM-percentile path runs through nws.nws_prob_from_quantiles at ~:434
+  fed by mos.py ~:547/652 -- an investigation scoped to nws.py alone would
+  miss the quantile path), mos.py, tracker.py (predictions.nws_prob)
+
+Problem:
+  Measured 2026-08-26 over settled rows with all three component probs
+  populated, scoring each component ALONE as a Brier score:
+
+    condition  horizon   ensemble   climatology   NWS     outcome rate
+    below      D+0 (36)   0.3390      0.1975     0.5015      0.583
+    below      D+1+ (31)  0.3318      0.3835     0.3022      0.484
+    above      D+0 (41)   0.2984      0.2749     0.3117      0.463
+    above      D+1+ (58)  0.2886      0.3748     0.3793      0.534
+
+  Same-day NWS on `below` averages a probability of 0.146 against an actual
+  outcome rate of 0.583, for a solo Brier of 0.5015 -- worse than a constant
+  0.5 (0.25), and worse than a constant base rate (0.243). That is not
+  "weak signal", it is a systematic sign-like bias: the component is
+  confidently wrong in one direction. The same component at D+1-and-up
+  scores 0.3022, so the defect is specific to the same-day horizon.
+
+  It is NOT a clean YES/NO inversion -- 1 - 0.146 = 0.854, which is not the
+  0.583 outcome rate either -- so it needs a real investigation of how
+  nws_prob is derived for below-threshold markets at days_out=0, not a sign
+  flip. Worth checking whether the same-day NWS forecast being fetched is a
+  stale previous-cycle value.
+
+  batch-82 deliberately did not fix this: it is a different subsystem (NWS
+  probability derivation) from that batch's own surface (blend-weight
+  calibration), and the fix needs its own investigation.
+
+
+[OPEN 2026-08-26 -- noticed by batch-82 while parameterising the calibration
+  horizon] THE MULTI-DAY HORIZON PREDICATE IS DEFINED IN TWO PLACES
+Priority: Low -- the two definitions are currently identical, so nothing is
+  wrong today. This is drift surface, not a live bug.
+Files: tracker.py (multiday_predictions view), calibration.py
+  (calibrate_condition_weights)
+
+Problem:
+  tracker.py's multiday_predictions view carries the comment "All analytics
+  queries use this view so the filter is defined once" -- but
+  calibration.calibrate_condition_weights does not use it. It selects
+  `FROM predictions p` with its own inline
+  `(p.days_out IS NULL OR p.days_out >= 1)`, a hand-copy of the view's own
+  WHERE clause. calibration._load_rows, by contrast, does use the view.
+
+  batch-82 added TWO same-day sibling predicates (`p.days_out = 0`, once in
+  _load_rows and once in calibrate_condition_weights), so the horizon
+  boundary is now asserted in FOUR places, not two: the view, the inline
+  multi-day copy, and the two same-day literals.
+
+  The fix is narrower than it first looks. Only the MULTI-DAY branch of
+  calibrate_condition_weights can point at the view, and doing so is
+  provably a behavioural no-op (the view IS `SELECT * FROM predictions`
+  plus that exact predicate). The SAME-DAY branch can never use it -- the
+  view excludes days_out = 0 by construction -- so at best this gets four
+  sites down to three.
+
+  batch-82 did not make the change because it breaks the `_make_db` fixture
+  in tests/test_phase2_batch_p.py, which creates `outcomes_valid` but no
+  multiday_predictions view, and that file was not in the batch's scoped
+  test set. NOTE: an earlier draft of this entry also named
+  tests/test_phase3_batch_c.py -- that was wrong, it DOES create the view
+  (at :31) and would be unaffected. Any session picking this up must run
+  tests/test_phase2_batch_p.py, not just tests/test_calibration.py.
+
+
+[RESOLVED 2026-08-26 (batch-82)] SAME-DAY TRADES WERE PRICED WITH BLEND
+  WEIGHTS FITTED ONLY ON MULTI-DAY ROWS
+Files: calibration.py, weather_markets.py, main.py, paths.py, seeds/
+
+Problem:
+  calibration._load_rows selected `FROM multiday_predictions p` (the view
+  defined as days_out IS NULL OR >= 1) and calibrate_condition_weights
+  carried the same predicate inline, so all three blend-weight tables were
+  fitted exclusively on multi-day rows -- then applied verbatim to same-day
+  trades by weather_markets._blend_weights. Temperature scaling has honoured
+  the same/multi-day separation since it shipped (data/temperature_scale.json
+  has a dedicated `sameday` key, T=3.829 vs global 4.601, and ml_bias is
+  explicit about "no fallback to global/multi-day T"); blend-weight
+  calibration never did.
+
+  This mattered more than it used to. The non-`between` METAR same-day lock
+  is now closed by design in the unsafe direction by two monotone-safety
+  vetoes (3e6af667 LOW, d65decff HIGH), so same-day non-between pricing runs
+  through the ensemble path: August 2026 D+0 above/below is 25 ensemble +
+  3 hourly_ensemble and ZERO metar_lockout, against 20 of 39 lockout in June.
+  (Both counts are above/below-only. June's D+0 NON-BETWEEN count is 47,
+  which includes 8 rows with a NULL method -- a different denominator, and
+  not the one the 39 belongs to.)
+
+What shipped:
+  A horizon dimension on all three calibrators. Each is now fitted twice
+  over DISJOINT populations -- multi-day (unchanged) and same-day
+  (days_out = 0) -- and the two fits are written to SEPARATE FILES
+  (seasonal_weights_sameday.json, city_weights_sameday.json,
+  condition_weights_sameday.json, seeded via seeds/ per batch-79's
+  mechanism). Separate files rather than a nesting level so that "100%
+  separate" (user's words, 2026-08-26) is structural: no same-day
+  calibration run can write into a multi-day file at all.
+
+  Read side, weather_markets._blend_weights via the new _tier_cal helper:
+  a days_out<=0 row prefers the same-day fit for each tier and falls back
+  to that tier's MULTI-DAY fit when the same-day one has not graduated.
+  Any other horizon never consults the same-day tables.
+
+The decision, and why it went against the handoff brief's recommendation:
+  The brief argued for a wholly separate same-day chain bottoming out at
+  the hardcoded schedule, on the grounds that it is "the only option that
+  does anything". The measurement falsified that premise. As of 2026-08-26
+  NO same-day tier can be fitted:
+    - city:      max 11 rows (Minneapolis) vs _CITY_MIN 50
+    - condition: above 41, below 36, between 0 vs _CONDITION_MIN 60
+    - seasonal:  summer 77 rows -- clears _SEASONAL_MIN 20 AND the 10-val-row
+                 floor (train 61 / val 16), but is REJECTED by
+                 _BRIER_IMPROVEMENT_GATE. The in-sample search finds
+                 clim-heavy weights (0.0017, 0.9239, 0.0744) at train Brier
+                 0.20549, which score 0.35478 on the held-out recent rows
+                 against 0.29679 for equal weights -- an improvement of
+                 -0.05799 against a gate needing STRICTLY MORE than
+                 +0.005 (the code rejects on `<=`). Correctly refused.
+  A lowered floor would not help: at 41/36 rows the 80/20 split gives val=9
+  and val=8, under _MIN_VAL_ROWS=10, and _CONDITION_MIN=60 is the higher
+  bar regardless.
+
+  So a separate chain would send EVERY same-day row to the hardcoded
+  schedule today, which measures as a regression, not a no-op:
+
+    D+0 condition   today (multi-day cond tier)   hardcoded d=0   delta
+    above  n=41            0.25715                  0.25787      +0.0007
+    below  n=36            0.21083                  0.35177      +0.1409
+
+  The `below` gap is robust -- t=+3.2396, and a paired bootstrap over the
+  per-row squared-error differences gives 95% CI [+0.05791, +0.22251]
+  (random.seed(7), B=5000 resamples -- RECORD THESE, the digits are not
+  reproducible without them; the normal approximation is [+0.0557,
+  +0.2262]). 24 of 36 individual rows favour it, and it is stable across
+  older/newer halves (+0.145 / +0.137). The mechanism is the NWS miscalibration filed
+  as its own OPEN entry above: the multi-day `below` weights give NWS only
+  0.20 and climatology 0.75, starving the two components that are wrong
+  same-day, while the hardcoded d=0 schedule hands ensemble 0.611 and NWS
+  0.35 -- 96% of its weight to exactly those two.
+
+  The two designs CONVERGE once a same-day tier graduates (~60 D+0 rows per
+  condition, roughly 2-3 months at August's accrual); they differ only
+  during the wait. User chose per-tier fallback on that basis, with the
+  constraint that the calibration DATA stay 100% separate.
+
+Before/after, measured via the production calibrate_and_save against a copy
+of the live DB (2026-08-26):
+  - All three MULTI-DAY files come back byte-identical to what is live.
+  - All three same-day files are written with every entry _uncalibrated;
+    no tier graduated.
+  So the shipped change is a behavioural no-op on live pricing today. That
+  is the finding: the pooling was not costing same-day anything -- it was
+  quietly helping -- and this batch is the mechanism that will pick the
+  separation up automatically once the data supports it, not a correction.
+
+Other decisions recorded:
+  - Horizon boundary is days_out = 0, matching multiday_predictions and
+    ml_bias's `sameday` pool. A three-way same/next/multi split was
+    rejected on the data: of the rows satisfying the fit's own NOT NULL
+    requirements, 89 sit at D+1 and ZERO at D+2-and-up, so a third bucket
+    would leave the multi-day fit with an empty population.
+  - _nws_days_out_scale's `days_out <= 0` early return STAYS, and is now
+    load-bearing for two independent reasons rather than one (same-day
+    weights are already at their horizon; borrowed d=1 weights would be
+    scaled by 1.0 - (0-1)*0.10 = 1.1, BOOSTING the weakest same-day
+    component by 10%). Documented in the docstring and pinned by a test.
+  - calibrate_and_save still returns a 3-tuple. cron.py unpacks exactly
+    three values at two sites and was not in this batch's owned file set;
+    the same-day dicts reach consumers via the mtime sweep and, for the
+    CLI, a disk read-back.
+  - The row counts in the handoff brief (204 fittable all-horizon, 127 at
+    D+1-and-up) were measured WITHOUT _load_rows's own 'between'+shadow
+    condition-type exclusion. The real _load_rows population is 166 / 77
+    D+0 / 89 D+1-and-up. 348 settled and 77 D+0 were correct.
+
+Tests: TestHorizonSplit, TestSamedayFitIsSeparateFromMultiday,
+  TestSamedaySeedFlag, TestCalibrateCLI::test_calibrate_writes_and_
+  invalidates_the_sameday_tables (tests/test_calibration.py);
+  TestSamedayWeightsAreUsedAtDayZero, TestSamedayUncalibratedFlagIsLoad
+  Bearing, TestNwsDaysOutScaleAtDayZero, TestSamedayTablesAreRefreshedFrom
+  Disk (tests/test_weather_markets.py); one added to tests/test_paths.py
+  (test_sameday_and_multiday_seed_names_are_distinct) and one existing test
+  there extended.
+  45 tests collected across the batch-82 classes (re-counted at the moment of
+  writing this). Ten mutations applied via the Edit tool and each confirmed to
+  fail the specific test claiming to catch it; two of them exposed real gaps in the
+  new tests (a seed-flag test that only checked one key, and a tier that
+  was shadowed and therefore asserted vacuously) which were fixed before
+  the mutation was reverted.
+
+Opus review (three independent reviewers: calibration/write side, live
+pricing/read side, and a fact-check of every number written here). All
+findings addressed; the ones that changed code:
+
+  - HIGH, and a genuine breach of the "100% separate" constraint that this
+    batch's own author missed: safe_io.atomic_write_json_with_history prunes
+    history with `glob(f"{path.stem}_*.json")`, which ALSO matches the
+    backups of a longer-named file sharing that stem plus an underscore.
+    Timestamps start with a digit and every sibling suffix starts with a
+    letter, so foreign backups sorted last and `existing[0].unlink()` ate
+    THIS file's real history first. Writing seasonal_weights.json would have
+    drained the multi-day blend-weight backups to zero over ~10 calibration
+    runs from the live state (all three were already at the 10 cap).
+    PRE-EXISTING, not introduced here -- temperature_scale.json has been
+    pruning temperature_scale_pre_emos backups the same way. Fixed at the
+    root in safe_io.py by matching the stamp shape exactly
+    (_HISTORY_STAMP_RE), with five regression tests in tests/test_safe_io.py
+    covering both the batch-82 pair and the pre-existing one.
+  - HIGH test gap: cross-horizon content separation was pinned for SEASONAL
+    only. Four contamination mutations passed the whole suite -- preserving a
+    same-day fit FROM the multi-day file (seasonal, condition) and writing a
+    multi-day fit INTO a same-day file (condition, city). Now covered for
+    every table. The preservation test needs TWO calibrate_and_save runs:
+    _preserve_hand_tuned_weights reads the target file BEFORE the run writes
+    it, so on a first run into an empty dir the contamination is invisible --
+    the single-run version let the mutation survive a second time.
+  - MEDIUM: _nws_days_out_scale's d<=0 guard also skips the 0.85 NWS
+    ceiling. Filed as its own OPEN entry above and pinned by a test rather
+    than fixed, because fixing it changes live same-day `between` pricing.
+  - MEDIUM: a vacuous test of this batch's own writing. The
+    "mutation guard" for the d=0 scaling decision imported nothing from
+    weather_markets and re-derived the schedule from literals -- green under
+    every possible mutation of the module. Rewritten to read the decay off
+    the real function.
+  - MEDIUM-LOW: the same-day pool excluded metar_lockout rows only by
+    accident (all 106 have NULL component probs). Now excluded structurally
+    via _SAMEDAY_METAR_EXCLUSION, with a test that seeds locked rows WITH
+    all three probs and a positive control proving the same rows arrive when
+    the method is anything else.
+  - MEDIUM-LOW: cmd_calibrate's new print block indexed disk-sourced dicts
+    directly, so a hand-edited *_sameday.json would KeyError and abort the
+    command before cache invalidation and before the Platt block.
+  - Plus: whole-dict rebind instead of .clear()+.update() in cmd_calibrate
+    (Flask threaded=True); all three same-day tables invalidated, not one; a
+    WARNING when a malformed non-dict entry is skipped (the isinstance guard
+    had converted a loud AttributeError into a silent tier-skip); horizon
+    tags on every decline log line; conftest's isolate fixture widened from
+    one table to all six; and a test binding calibrate_and_save's write
+    literals to the paths.py constants, which nothing had connected.
+
+ROUND-2 opus review, of the round-1 FIXES themselves (the workflow requires
+this, and it earned its keep -- two of the round-1 fixes were wrong):
+
+  - The round-1 KeyError fix in cmd_calibrate was justified by a FALSE claim
+    ("only the same-day tables come off disk"), and the identical failure was
+    still live on the multi-day path three blocks above it.
+    _preserve_hand_tuned_weights copies on-disk entries VERBATIM into the
+    fresh result, so a hand-edited weights file propagates through
+    calibrate_and_save's return value. Reproduced: a
+    {"winter": {"ensemble": .5, "climatology": .5}} on disk makes the
+    multi-day block raise KeyError: 'nws'. All four print blocks now share a
+    gap-tolerant _fmt_weights helper.
+  - The same partial-entry shape reaches the LIVE PRICING PATH, which is
+    worse: _blend_weights indexes cal["ensemble"] directly, so a present,
+    unflagged, partially-written same-day entry raised KeyError at d=0 --
+    and did so INSTEAD of the healthy multi-day entry it shadows. _usable_cal
+    now requires all three keys and falls through, same as for an absent one.
+  - The round-1 mtime-sweep test pinned only the FILENAME literals in each
+    refresh tuple, by regex over the function's source. The module-attribute
+    name and the loader were unpinned, so pointing the
+    city_weights_sameday.json entry at "_CITY_WEIGHTS" would have written the
+    SAME-DAY fit into the MULTI-DAY global -- this batch's exact
+    contamination -- with a green suite. Replaced by a behavioural test that
+    drives the real function, freshening one file at a time with a distinct
+    sentinel per loader; mutation-confirmed.
+  - The round-1 "all three tables" separation test looped over two. City
+    content was asserted NOWHERE in the suite, so writing the multi-day city
+    fit into the same-day city file survived everything. Now covered and
+    mutation-confirmed.
+  - 31 call sites across 8 test files neutralise the three MULTI-DAY globals
+    to force hardcoded pricing; none patch the same-day counterparts, which
+    load at import from the real data/. conftest now EMPTIES the three
+    same-day tables per test rather than snapshotting them -- snapshotting
+    fixes leak-out, not leak-in, and leak-in is the half that would perturb
+    those 31 tests the day a same-day tier graduates.
+  - Smaller: an unthrottled WARNING on a per-market hot path (now log-once
+    per distinct problem); two unused `type: ignore` comments; a _seed_db
+    comment that was simply wrong about dict.get preserving an explicit None
+    (reverted to the plain .get); a backlog citation missing the word
+    ENTIRELY; a cmd_calibrate rationale citing a "long-lived process" that
+    does not exist (it is one-shot CLI); schema-validator coverage for the
+    three new live files; and the mixed-vintage-within-one-tier consequence
+    of cron refreshing multi-day immediately while same-day waits for the
+    300s sweep.
+
+  Round 2 also CLEARED, with its own verification: the safe_io stamp-regex
+  slice (every one of the 41 live .history files is still claimed by exactly
+  one owner, so nothing becomes immortal), the SQL NULL semantics of the
+  metar_lockout exclusion, the conftest cost (~12 ms across the suite), and
+  the _seed_db change being behaviourally inert. It also independently
+  confirmed the operator-precedence question the new horizon clause raises --
+  tracker._condition_type_not_in_sql parenthesises its fragment, so appending
+  the horizon predicate after it is safe.
+
+  One test failure seen during review, investigated and NOT ours:
+  test_atomic_write_text_concurrent_writers_never_expose_torn_file fails with
+  WinError 5 under load. Confirmed by running the CLEAN HEAD version of that
+  file against it -- it fails identically, exercises atomic_write_text (which
+  this change does not touch), and safe_io.py's own docstring already
+  documents this test as load-flaky on Windows.
+
+The fact-check reviewer confirmed every measured number in this entry
+against the live DB and re-ran the production calibrators, and refuted five
+prose claims, all corrected above: tests/test_phase3_batch_c.py DOES create
+the multiday_predictions view (only test_phase2_batch_p.py lacks it); the
+horizon boundary now sits in four places, not three; "every clause is now
+false" overstated -- data/ is still gitignored; 10b protects between-NO and
+excludes only between-YES; and the bootstrap CI needed its seed and B
+recorded to be reproducible.
+
+
 [OPEN 2026-08-26 -- found by batch-81's second opus review round, which
   noticed the batch had documented this hazard for the rain entry and not
   carried the reasoning across to the temperature one] THE TWO MARKET-IMPLIED
@@ -2514,6 +2913,41 @@ RESOLUTION 2026-08-24 (batch-37 items 3/7): AskUserQuestion asked (git-track
   declined that option, so the mislabeled "fails closed" docstring wording
   (item 3c's finding: it actually fails OPEN to raw confidence) is still
   live and worth a future doc fix, just not resolved here.
+
+  ADDENDUM 2026-08-26 (batch-82): THE MECHANISM ABOVE NO LONGER EXISTS.
+  In the parenthetical "(git add -f, matching the other calibration
+  artifacts -- seasonal/city/condition_weights.json and
+  temperature_scale.json are already tracked the same way despite data/
+  being gitignored)", the two clauses about git-tracking are now false.
+  The last clause is NOT: data/ is still gitignored (.gitignore:23), which
+  is exactly why the force-add was needed in the first place. batch-79 item 2 (commit 2af1daef,
+  2026-08-25) untracked all five: `git ls-files data/` is empty, and
+  metar_lockout_calibration.json moved as a PURE RENAME,
+  `{data => seeds}/metar_lockout_calibration.json`, 0 content lines
+  changed. 1faf7b58's force-add is undone. batch-79's commit message never
+  referenced this entry, so the reversal was undocumented on both sides
+  until now.
+    THE USER'S INTENT SURVIVES INTACT -- do NOT "restore" the old
+  behaviour. What was chosen on 2026-08-24 was "a fresh host inherits the
+  fitted model", and seeds/ + paths.materialize_missing_seeds() serves that
+  strictly better than force-tracking did: the seed is applied only when
+  data/ lacks the file, so it can never overwrite learned state, and
+  `git restore .` no longer reverts live calibration -- which was this
+  entry's own sibling bug.
+    CONSEQUENCE FOR THE OUTSTANDING DOC FIX, checked as this batch was
+  asked to: the fail-open path is STILL REACHABLE, so the mislabelled
+  "Fails closed" docstring in settlement_monitor._calibrate_metar_
+  settlement_confidence is not moot -- it is MORE misleading than before.
+  materialize_missing_seeds swallows every per-file failure (`except
+  Exception: continue`) -- a read-only data/, a filesystem without hard
+  links, an absent seeds/, a test write-guard -- and weather_markets.
+  _load_metar_calibration independently returns None when the file exists
+  but fails its a>0/b>0 and coefficient-bound re-validation. Either way
+  _calibrate_metar_settlement_confidence returns the RAW confidence, which
+  is the higher, more-likely-to-cross-0.80 number: fail-OPEN in effect
+  while the docstring calls it fail-closed. Seeds make that path rarer,
+  which is precisely why the wrong label now gets less scrutiny than it
+  used to. The doc fix remains outstanding and is worth doing.
   Also triggered a REAL refit via `ml_bias.fit_and_save_metar_calibration()`
   against the live DB (read-only query + file write, not a manual tracker.py
   script touching the DB) rather than just committing the stale 08-20 fit:
@@ -2548,6 +2982,40 @@ Problem:
   taking the review's word for it): swept clearance x hour x margin_f=1.0
   through both the raw formula and `apply_metar_calibration`, confirmed
   max(calibrated) = 0.7661 (YES) / 0.5954 (NO) < 0.80 with no exceptions.
+
+  CROSS-REFERENCE 2026-08-26 (batch-82): batch-76 re-derived this same
+  compression from scratch on 2026-08-25 without finding this entry, and
+  reported 0.54647607 where this entry reports 0.5954. The two figure sets
+  look contradictory and are NOT -- they report different quantities at
+  different points of the same curve. Written down once here so a third
+  session does not repeat the work.
+    g = ml_bias.apply_metar_calibration takes P(YES). A lock confidence
+  lives in [0.72, 0.97] (metar.py, see the two-sites note below), so g's
+  actual input domain is [0.03, 0.28] for a NO-lock and [0.72, 0.97] for a
+  YES-lock. Re-verified live against the fitted coefficients on disk
+  (a=b=0.2261958294541918, c=0.40007576061723593, n=33):
+      g(0.03) = 0.40463162031     g(0.28) = 0.54647607006
+      g(0.72) = 0.64878641873     g(0.97) = 0.76608848699
+  - This entry's no_ceiling 0.59536837969 = 1 - g(0.03): P(NO) at the MOST
+    confident NO-lock. Its yes_ceiling 0.7660884869914 = g(0.97).
+  - batch-76's 0.54647607 = g(0.28): P(YES) at the LEAST confident NO-lock.
+  They agree exactly -- for a 0.97 NO-lock, g(0.03) = 0.4046 and
+  0.4046 + 0.5954 = 1.0.
+    ONE THING NEITHER RECORD HAD, and it matters more than the
+  reconciliation: THE [0.72, 0.97] BOUND EXISTS IN TWO PLACES, NOT ONE.
+  metar.py:104 in _dynamic_lock_in_confidence and metar.py:146 in
+  _between_dynamic_lock_in_confidence, both `round(min(0.97, max(0.72,
+  conf)), 3)`. Raising "the cap" is therefore TWO edits.
+    And the asymmetry that reads as an oversight later, stated precisely
+  (a coarser version of this -- "between is not protected by 10b" -- is
+  WRONG): _between_dynamic_lock_in_confidence has THREE call sites in
+  _metar_lock_in. Two are between-NO and set "monotone_safe": True; the
+  third is between-YES and sets it False. weather_markets.py section 10b
+  (`# 10b. METAR lock side-agreement override`, with
+  `rec_side = _lock_outcome` further down -- find them by those strings,
+  the line numbers move every batch) gates on monotone_safe, so it covers
+  2 of the 3. It is BETWEEN-YES specifically whose ceiling/floor
+  arithmetic 10b does not make safe.
 
   Separately: `ml_bias.fit_metar_calibration()` is fit on
   `tracker.get_metar_lockout_calibration_data()` rows, which come from

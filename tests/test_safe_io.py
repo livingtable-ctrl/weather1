@@ -1958,3 +1958,105 @@ def test_atomic_write_bytes_failure_leaves_the_previous_file_intact(
     # The previous model is byte-for-byte intact and still unpickles.
     assert model_path.read_bytes() == previous
     assert pickle.loads(model_path.read_bytes()) == {"NYC": "previous-model"}
+
+
+# ── batch-82: history pruning must not touch a prefix-sharing sibling ────────
+
+
+class TestHistoryPruneDoesNotTouchPrefixSiblings:
+    """A file's history prune must only ever delete ITS OWN backups.
+
+    `{stem}_*.json` also matches the backups of any longer-named file sharing
+    this stem plus an underscore. Two such pairs exist in data/:
+    temperature_scale.json / temperature_scale_pre_emos.json (pre-existing),
+    and each blend-weight table against its _sameday sibling (batch-82).
+    Because timestamps start with a digit and every sibling suffix starts with
+    a letter, the foreign backups sorted LAST -- so the pruner deleted the
+    file's own real history first while the foreign entries survived.
+    """
+
+    def _write_backups(self, hist, stem, n, start=0):
+        for i in range(start, start + n):
+            (hist / f"{stem}_202608{10 + i:02d}T120000.json").write_text("{}")
+
+    def test_pruning_deletes_only_its_own_backups(self, tmp_path):
+        import safe_io
+
+        target = tmp_path / "seasonal_weights.json"
+        target.write_text('{"winter": 1}')
+        hist = tmp_path / ".history"
+        hist.mkdir()
+        self._write_backups(hist, "seasonal_weights", 11)
+        self._write_backups(hist, "seasonal_weights_sameday", 11)
+
+        safe_io.atomic_write_json_with_history({"winter": 2}, target, max_history=10)
+
+        own = sorted(p.name for p in hist.glob("seasonal_weights_2*.json"))
+        sibling = sorted(p.name for p in hist.glob("seasonal_weights_sameday_*.json"))
+        # The sibling is untouched...
+        assert len(sibling) == 11, sibling
+        # ...and this file pruned only itself, down to the cap. 11 pre-existing
+        # + 1 written by this call = 12, pruned to 10.
+        assert len(own) == 10, own
+
+    def test_the_sibling_survives_many_rounds(self, tmp_path):
+        """The failure was cumulative, so one round is not a sufficient guard.
+
+        From the live state (both at the 10 cap) the old code drained the
+        multi-day backups to zero over ~10 runs while the sibling grew.
+        """
+        import safe_io
+
+        target = tmp_path / "condition_weights.json"
+        target.write_text("{}")
+        hist = tmp_path / ".history"
+        hist.mkdir()
+        self._write_backups(hist, "condition_weights_sameday", 10)
+
+        for i in range(12):
+            safe_io.atomic_write_json_with_history({"n": i}, target, max_history=10)
+
+        sibling = list(hist.glob("condition_weights_sameday_*.json"))
+        own = list(hist.glob("condition_weights_2*.json"))
+        assert len(sibling) == 10, f"sibling backups were pruned: {len(sibling)}"
+        assert len(own) == 10, own
+
+    def test_the_preexisting_temperature_scale_pair_is_also_protected(self, tmp_path):
+        """Not a batch-82 name -- this pair was already colliding on master."""
+        import safe_io
+
+        target = tmp_path / "temperature_scale.json"
+        target.write_text("{}")
+        hist = tmp_path / ".history"
+        hist.mkdir()
+        self._write_backups(hist, "temperature_scale_pre_emos", 11)
+
+        safe_io.atomic_write_json_with_history({"global": 1}, target, max_history=10)
+
+        assert len(list(hist.glob("temperature_scale_pre_emos_*.json"))) == 11
+
+    def test_stamp_regex_accepts_real_stamps_and_rejects_sibling_suffixes(self):
+        """Positive control for the discriminator itself.
+
+        Without this, a regex that matched NOTHING would also make the three
+        tests above pass -- pruning would simply never delete anything.
+        """
+        import safe_io
+
+        r = safe_io._HISTORY_STAMP_RE
+        assert r.fullmatch("20260826T120000")
+        assert r.fullmatch("20260826T120000_431")  # same-second disambiguator
+        assert not r.fullmatch("sameday_20260826T120000")
+        assert not r.fullmatch("pre_emos_20260826T120000")
+
+    def test_pruning_still_actually_prunes(self, tmp_path):
+        """Second positive control: the cap is still enforced at all."""
+        import safe_io
+
+        target = tmp_path / "city_weights.json"
+        target.write_text("{}")
+        hist = tmp_path / ".history"
+        hist.mkdir()
+        self._write_backups(hist, "city_weights", 25)
+        safe_io.atomic_write_json_with_history({"NYC": 1}, target, max_history=10)
+        assert len(list(hist.glob("city_weights_2*.json"))) == 10

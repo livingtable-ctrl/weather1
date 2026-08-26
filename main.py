@@ -885,6 +885,13 @@ _PERMANENT_DATA_FILES = {
     "seasonal_weights.json",
     "city_weights.json",
     "condition_weights.json",
+    # batch-82: the same-day halves of the three tables above. Same reasoning
+    # -- a 2-day cron pause followed by one CLI invocation must not delete
+    # learned calibration, which under seeds/ would now mean a silent rollback
+    # to the uncalibrated seed rather than a clean absent state.
+    "seasonal_weights_sameday.json",
+    "city_weights_sameday.json",
+    "condition_weights_sameday.json",
     "walk_forward_params.json",
     "platt_models.json",
     "live_config.json",
@@ -8592,6 +8599,30 @@ def cmd_report() -> None:
 _CALIBRATE_DATA_DIR: "Path | None" = None  # overridable in tests
 
 
+def _fmt_weights(w: dict) -> str:
+    """Format one weight entry for the calibrate summary, tolerating gaps.
+
+    Round-2 opus review corrected an earlier comment here that claimed only
+    the same-day tables could be incomplete "because they come off disk". That
+    was wrong, and the multi-day blocks had the identical exposure:
+    calibration._preserve_hand_tuned_weights copies on-disk entries VERBATIM
+    into the fresh result, so a hand-edited or torn-write weights file
+    propagates straight through calibrate_and_save's return value. Verified by
+    reproduction -- a `{"winter": {"ensemble": .5, "climatology": .5}}` on disk
+    made the multi-day seasonal block raise KeyError: 'nws', aborting
+    cmd_calibrate before the cache invalidation and before the Platt block,
+    which is exactly the outcome the same-day guard existed to prevent.
+    """
+    return "  ".join(
+        f"{short}={w[full]:.2f}" if full in w else f"{short}=?"
+        for short, full in (
+            ("ensemble", "ensemble"),
+            ("clim", "climatology"),
+            ("nws", "nws"),
+        )
+    )
+
+
 def cmd_calibrate() -> None:
     """Recompute seasonal and per-city blend weights from settled predictions."""
 
@@ -8621,9 +8652,7 @@ def cmd_calibrate() -> None:
     if seasonal:
         print(f"\nSeasonal weights ({len(seasonal)} seasons calibrated):")
         for season, w in sorted(seasonal.items()):
-            print(
-                f"  {season:8s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
-            )
+            print(f"  {season:8s}: {_fmt_weights(w)}")
     else:
         print(
             "\nSeasonal weights: insufficient data for all seasons — using hardcoded defaults."
@@ -8632,31 +8661,91 @@ def cmd_calibrate() -> None:
     if city:
         print(f"\nCity weights ({len(city)} cities calibrated):")
         for c, w in sorted(city.items()):
-            print(
-                f"  {c:12s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
-            )
+            print(f"  {c:12s}: {_fmt_weights(w)}")
     else:
         print("\nCity weights: insufficient data for any city — using defaults.")
 
     if condition:
         print(f"\nCondition weights ({len(condition)} condition types calibrated):")
         for ctype, w in sorted(condition.items()):
-            print(
-                f"  {ctype:10s}: ensemble={w['ensemble']:.2f}  clim={w['climatology']:.2f}  nws={w['nws']:.2f}"
-            )
+            print(f"  {ctype:10s}: {_fmt_weights(w)}")
     else:
         print(
             "\nCondition weights: insufficient data — using city/seasonal/hardcoded defaults."
         )
 
+    # batch-82: calibrate_and_save also fits and writes the same-day halves.
+    # Read them back off disk rather than widening its return tuple — cron.py
+    # unpacks exactly three values at two call sites and is not in this
+    # change's owned file set. The read-back doubles as proof the write landed.
+    from calibration import (
+        load_city_weights_sameday,
+        load_condition_weights_sameday,
+        load_seasonal_weights_sameday,
+    )
+
+    # Named, not indexed out of the display list below (round-2 opus review):
+    # driving cache invalidation off `sameday_tables[0][1]` meant a 0<->1 swap
+    # would push the CITY table into the seasonal global and survive the suite.
+    sameday_seasonal = load_seasonal_weights_sameday(
+        data_dir / "seasonal_weights_sameday.json"
+    )
+    sameday_city = load_city_weights_sameday(data_dir / "city_weights_sameday.json")
+    sameday_condition = load_condition_weights_sameday(
+        data_dir / "condition_weights_sameday.json"
+    )
+    sameday_tables = [
+        ("Same-day seasonal", sameday_seasonal),
+        ("Same-day city", sameday_city),
+        ("Same-day condition", sameday_condition),
+    ]
+    print("\nSame-day (days_out=0) weights — fitted separately, never pooled:")
+    for label, table in sameday_tables:
+        fitted = {
+            k: w
+            for k, w in table.items()
+            if isinstance(w, dict) and not w.get("_uncalibrated")
+        }
+        if not fitted:
+            print(f"  {label:20s}: no tier has graduated — falls back to multi-day.")
+            continue
+        for k, w in sorted(fitted.items()):
+            print(f"  {label:20s} {k:10s}: {_fmt_weights(w)}")
+
     print(f"\nWritten to: {seasonal_path}")
     print(f"           {city_path}")
     print(f"           {condition_path}")
+    print(f"           {data_dir / 'seasonal_weights_sameday.json'}")
+    print(f"           {data_dir / 'city_weights_sameday.json'}")
+    print(f"           {data_dir / 'condition_weights_sameday.json'}")
 
     import weather_markets as _wm
 
-    _wm._CONDITION_WEIGHTS.clear()
-    _wm._CONDITION_WEIGHTS.update(condition)
+    # batch-82 (opus review finding): whole-dict REBIND, not .clear()+.update().
+    # weather_markets._maybe_refresh_calibration_weights' docstring spells out
+    # why -- web_app.py runs Flask threaded=True, and a concurrent reader can
+    # observe the dict between the clear() and the update(). A name rebind is
+    # a single atomic operation, and every read site resolves the module
+    # attribute afresh on each access. The same-day table is invalidated
+    # alongside the multi-day one so a `py main.py calibrate` in a long-lived
+    # process picks both up immediately rather than waiting out
+    # _CAL_WEIGHTS_CHECK_INTERVAL.
+    _wm._CONDITION_WEIGHTS = dict(condition)
+    # All THREE same-day tables, not just condition (opus review). The
+    # multi-day seasonal/city tables are left alone, matching the pre-existing
+    # asymmetry on that side rather than widening this change's blast radius
+    # into behaviour cron.py also drives.
+    #
+    # Round-2 review corrected the original rationale here: cmd_calibrate is
+    # dispatched only from main()'s one-shot CLI, which exits shortly after,
+    # so "a long-lived process picks it up immediately" was not the reason.
+    # The real reasons are that the in-process tables would otherwise
+    # disagree with what was just written to disk for the remainder of this
+    # command (the Platt block below runs after this point), and consistency
+    # with the multi-day condition invalidation directly above.
+    _wm._SEASONAL_WEIGHTS_SAMEDAY = dict(sameday_seasonal)
+    _wm._CITY_WEIGHTS_SAMEDAY = dict(sameday_city)
+    _wm._CONDITION_WEIGHTS_SAMEDAY = dict(sameday_condition)
 
     # Per-city Platt scaling (requires 200+ settled predictions per city)
     try:

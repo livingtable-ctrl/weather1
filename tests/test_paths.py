@@ -201,7 +201,7 @@ class TestSeedsShippedInThisRepo:
         assert set(paths._SEEDED_FILENAMES) < set(main._PERMANENT_DATA_FILES)
 
     def test_declared_filenames_match_the_path_constants_loaders_use(self):
-        """Pins _SEEDED_FILENAMES against the constants the five loaders
+        """Pins _SEEDED_FILENAMES against the constants the eight loaders
         actually open, so a rename in paths.py cannot leave seeds/ quietly
         seeding a filename nothing reads."""
         assert set(paths._SEEDED_FILENAMES) == {
@@ -210,7 +210,30 @@ class TestSeedsShippedInThisRepo:
             paths.SEASONAL_WEIGHTS_PATH.name,
             paths.TEMPERATURE_SCALE_PATH.name,
             paths.METAR_CALIBRATION_PATH.name,
+            # batch-82: the same-day halves of the three blend-weight tables.
+            paths.CITY_WEIGHTS_SAMEDAY_PATH.name,
+            paths.CONDITION_WEIGHTS_SAMEDAY_PATH.name,
+            paths.SEASONAL_WEIGHTS_SAMEDAY_PATH.name,
         }
+
+    def test_sameday_and_multiday_seed_names_are_distinct(self):
+        """The two horizons must never resolve to the same file.
+
+        A copy-paste slip in paths.py that pointed a _SAMEDAY_PATH at its
+        multi-day sibling would make a same-day calibration run overwrite the
+        multi-day fit -- precisely the contamination the split exists to
+        prevent -- and every other seeds test would still pass, because the
+        name would be a valid, declared, permanent, loader-backed one.
+        """
+        pairs = [
+            (paths.CITY_WEIGHTS_PATH, paths.CITY_WEIGHTS_SAMEDAY_PATH),
+            (paths.CONDITION_WEIGHTS_PATH, paths.CONDITION_WEIGHTS_SAMEDAY_PATH),
+            (paths.SEASONAL_WEIGHTS_PATH, paths.SEASONAL_WEIGHTS_SAMEDAY_PATH),
+        ]
+        for multiday, sameday in pairs:
+            assert multiday != sameday, multiday
+        # And all six are distinct from each other, not merely pairwise.
+        assert len({p.name for pair in pairs for p in pair}) == 6
 
 
 def _seed_a_fresh_clone(tmp_path, *, with_seeds: bool) -> list[str]:

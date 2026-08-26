@@ -265,6 +265,36 @@ class TestLiveWeightFilesPassValidation:
         data = json.loads(SEASONAL_WEIGHTS_PATH.read_text(encoding="utf-8"))
         assert validate_weight_file(data, source="seasonal_weights") is True
 
+    def test_sameday_weight_files(self):
+        """batch-82's three same-day tables get the same live-file check.
+
+        They are materialised into data/ by paths.materialize_missing_seeds on
+        first import exactly like their multi-day siblings, so a malformed one
+        is just as real a production artifact (round-2 opus review flagged the
+        coverage gap). Parametrised in one test rather than three near-copies
+        of the block above, since all three share a shape.
+        """
+        from paths import (
+            CITY_WEIGHTS_SAMEDAY_PATH,
+            CONDITION_WEIGHTS_SAMEDAY_PATH,
+            SEASONAL_WEIGHTS_SAMEDAY_PATH,
+        )
+        from schema_validator import validate_weight_file
+
+        checked = 0
+        for path, source in (
+            (CITY_WEIGHTS_SAMEDAY_PATH, "city_weights"),
+            (CONDITION_WEIGHTS_SAMEDAY_PATH, "condition_weights"),
+            (SEASONAL_WEIGHTS_SAMEDAY_PATH, "seasonal_weights"),
+        ):
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+            assert validate_weight_file(data, source=path.stem) is True, path
+            checked += 1
+        if checked == 0:
+            pytest.skip("no *_sameday.json present on this checkout")
+
     def test_temperature_scale_json(self):
         from paths import TEMPERATURE_SCALE_PATH
         from schema_validator import validate_temperature_scale_file

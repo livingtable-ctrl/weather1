@@ -48,6 +48,16 @@ EMOS_PARAMS_PATH = _DATA / "emos_params.json"
 CONDITION_WEIGHTS_PATH = _DATA / "condition_weights.json"
 SEASONAL_WEIGHTS_PATH = _DATA / "seasonal_weights.json"
 CITY_WEIGHTS_PATH = _DATA / "city_weights.json"
+# batch-82: the same-day (days_out=0) halves of the three blend-weight tables
+# above. Deliberately SEPARATE FILES rather than a horizon level nested inside
+# the existing ones: the same-day and multi-day fits are drawn from disjoint
+# row populations and must stay 100% separate on disk too, so that no
+# same-day calibration run can ever write into -- or partially rewrite -- the
+# multi-day values (user decision, 2026-08-26). Separate files make that
+# structural rather than a property of the writing code.
+CONDITION_WEIGHTS_SAMEDAY_PATH = _DATA / "condition_weights_sameday.json"
+SEASONAL_WEIGHTS_SAMEDAY_PATH = _DATA / "seasonal_weights_sameday.json"
+CITY_WEIGHTS_SAMEDAY_PATH = _DATA / "city_weights_sameday.json"
 LEARNED_WEIGHTS_PATH = _DATA / "learned_weights.json"
 MEMBER_QUARANTINE_PATH = _DATA / "member_quarantine.json"
 CORRELATIONS_PATH = _DATA / "correlations.json"
@@ -188,22 +198,32 @@ NWS_STATION_CACHE_PATH = _DATA / ".nws_station_cache.json"
 # nothing downstream noticing it was now running on a stale snapshot -- and
 # these files change on a normal cadence (the 2026-08-26 cron wrote
 # seasonal_weights.json via F3 auto-calibration). batch-79 item 2 untracked
-# them and moved the fresh-clone copies here instead: git no longer knows
+# those five and moved the fresh-clone copies here instead: git no longer knows
 # about anything under data/, so no git command can revert live calibration.
 #
-# seeds/ is a frozen snapshot of what data/ held in git at untracking time,
-# byte for byte -- deliberately NOT a curated set of neutral defaults, so the
-# untracking commit changed only WHERE the bytes live and WHEN they are
-# applied, never what a fresh clone actually starts with. It is not
-# maintained: nothing writes back to it, and a running bot's calibration
+# The five files batch-79 moved are a frozen snapshot of what data/ held in
+# git at untracking time, byte for byte -- deliberately NOT a curated set of
+# neutral defaults, so the untracking commit changed only WHERE the bytes live
+# and WHEN they are applied, never what a fresh clone actually starts with.
+#
+# The three *_sameday.json files batch-82 added are NOT a snapshot of anything
+# -- they were authored, and every entry carries "_uncalibrated": true. That is
+# the correct fresh-clone state (no same-day tier can be fitted yet) and is
+# also exactly what calibrate_and_save emits today, so they are inert either
+# way. seeds/README.md explains why the flag on them is load-bearing.
+#
+# Not maintained: nothing writes back here, and a running bot's calibration
 # diverges from it immediately and correctly.
 SEEDS_DIR = _ROOT / "seeds"
 
 _SEEDED_FILENAMES: tuple[str, ...] = (
     "city_weights.json",
+    "city_weights_sameday.json",
     "condition_weights.json",
+    "condition_weights_sameday.json",
     "metar_lockout_calibration.json",
     "seasonal_weights.json",
+    "seasonal_weights_sameday.json",
     "temperature_scale.json",
 )
 
@@ -214,12 +234,12 @@ def materialize_missing_seeds(
     """Copy each seed whose data/ counterpart is absent. Returns names copied.
 
     Called once at import below, which is what gives this its coverage: every
-    module that READS one of these five files reaches paths.py at module
+    module that READS one of these eight files reaches paths.py at module
     scope (calibration.py, ml_bias.py, weather_markets.py and web_app.py all
     do `from paths import ...`), so no reader can run without this having run
     first. That matters because the two loaders furthest from this file live
     in weather_markets.py and ml_bias.py; seeding centrally here means none
-    of the five loaders needed changing, and none can be missed later.
+    of the eight loaders needed changing, and none can be missed later.
 
     Not every script in the repo imports paths -- backlog_index.py and
     migrate_backup.py do not (measured; the earlier claim here that "every
@@ -253,7 +273,7 @@ def materialize_missing_seeds(
     whole point of these files is to be optional. The catch is `Exception`,
     not `OSError`: tests/prod_data_guard.py raises ProdDataWriteError, which
     derives from RuntimeError, and letting that escape would fail the whole
-    suite at COLLECTION rather than reporting one violation. All five
+    suite at COLLECTION rather than reporting one violation. All eight
     loaders already treat an absent file as "uncalibrated" and return {} or
     None, so the degraded outcome of this function doing nothing at all is a
     correct, already-supported state, and never a reason to fail an import.

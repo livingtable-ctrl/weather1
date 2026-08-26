@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -682,6 +683,14 @@ def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
     return results
 
 
+# batch-82: the exact shape atomic_write_json_with_history stamps onto a
+# backup filename after "{stem}_" -- "YYYYmmddTHHMMSS", optionally followed by
+# "_NNN" when two writes land in the same second. Used to tell this file's own
+# backups apart from those of a longer-named sibling that shares its prefix
+# (e.g. seasonal_weights vs seasonal_weights_sameday).
+_HISTORY_STAMP_RE = re.compile(r"\d{8}T\d{6}(?:_\d+)?")
+
+
 def atomic_write_json_with_history(
     data: dict,
     path: Path,
@@ -712,8 +721,29 @@ def atomic_write_json_with_history(
                 )
             history_file.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
-            # Prune oldest history files if over limit
-            existing = sorted(history_dir.glob(f"{path.stem}_*.json"))
+            # Prune oldest history files if over limit.
+            #
+            # The glob alone is NOT sufficient: `{stem}_*` also matches the
+            # backups of any OTHER tracked file whose name starts with this
+            # one plus an underscore. Two such pairs exist --
+            # temperature_scale.json / temperature_scale_pre_emos.json
+            # (pre-existing), and each of the three blend-weight tables
+            # against its _sameday sibling (batch-82). Because the timestamp
+            # stamps start with a digit and every sibling suffix starts with a
+            # letter, the foreign backups sort AFTER this file's own, so
+            # `existing[0].unlink()` deleted THIS file's real history first and
+            # the foreign entries survived -- silently draining the backups of
+            # a file that was never even written. Found by opus review; a
+            # simulation from the live .history state (10 backups each, at the
+            # cap) reaches zero multi-day backups after ~10 calibration runs.
+            #
+            # Match the stamp shape exactly instead: `_YYYYmmddTHHMMSS`, plus
+            # the optional `_NNN` same-second disambiguator written above.
+            existing = sorted(
+                p
+                for p in history_dir.glob(f"{path.stem}_*.json")
+                if _HISTORY_STAMP_RE.fullmatch(p.stem[len(path.stem) + 1 :])
+            )
             while len(existing) > max_history:
                 existing[0].unlink(missing_ok=True)
                 existing = existing[1:]

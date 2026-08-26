@@ -1,7 +1,9 @@
 # seeds/
 
-First-run copies of the five calibration files a fresh clone needs before it
-has learned anything of its own. `paths.materialize_missing_seeds()` copies a
+The eight calibration files a fresh clone needs before it has learned
+anything of its own. Five are byte-for-byte copies of what `data/` held in
+git at untracking time; the three `_sameday` files were authored by batch-82
+and are deliberately inert (see below). `paths.materialize_missing_seeds()` copies a
 file from here into `data/` at import **only if `data/` does not already have
 it**, so a running bot's learned calibration is never overwritten.
 
@@ -12,10 +14,13 @@ it**, so a running bot's learned calibration is never overwritten.
 | `seasonal_weights.json` | `calibration.calibrate_seasonal_weights` | `weather_markets._blend_weights` |
 | `temperature_scale.json` | `ml_bias.train_all_temperature_scaling`, `web_app` | `ml_bias` temperature scaling |
 | `metar_lockout_calibration.json` | `ml_bias`, `main.py` (`cmd_metar_calibrate`) | `weather_markets._load_metar_calibration` |
+| `city_weights_sameday.json` | `calibration.calibrate_city_weights(horizon="sameday")` | `weather_markets._blend_weights` |
+| `condition_weights_sameday.json` | `calibration.calibrate_condition_weights(horizon="sameday")` | `weather_markets._blend_weights` |
+| `seasonal_weights_sameday.json` | `calibration.calibrate_seasonal_weights(horizon="sameday")` | `weather_markets._blend_weights` |
 
 ## Why this directory exists
 
-These five were previously force-tracked inside `data/` (`git add -f`, since
+The first five were previously force-tracked inside `data/` (`git add -f`, since
 `data/` is gitignored). That made a routine `git restore .` or
 `git checkout -- data/` revert live, learned calibration to the committed
 values — silently, with nothing downstream noticing it was now running on a
@@ -53,6 +58,28 @@ Two things worth knowing:
   for every summer trade on a fresh clone. Pinned by
   `tests/test_paths.py::TestSeedsShippedInThisRepo`.
 
+## The three `_sameday` seeds (batch-82)
+
+Unlike the five above, these are **not** a snapshot of anything — they were
+authored by batch-82 when the same-day horizon was added, and every entry in
+them carries `"_uncalibrated": true` at uniform 1/3 weights. That is not a
+placeholder to be tidied up later: it is the correct fresh-clone state. No
+same-day tier could be fitted as of 2026-08-26 (city tops out at 11 rows
+against a floor of 50, condition at 41/36 against 60, and seasonal clears its
+row floors but is rejected by the brier-improvement gate), and until one
+graduates `_blend_weights` is meant to fall through to the multi-day sibling.
+
+**The `_uncalibrated` flag on every entry is load-bearing, not decoration.**
+Strip it and the file becomes indistinguishable from a real fit at uniform
+weights, which would make every same-day trade resolve at that tier and
+suppress both the multi-day fallback and the hardcoded days-out schedule —
+the same failure `seasonal_weights.json`'s `summer` entry actually shipped
+with. Pinned by `tests/test_calibration.py::TestSamedaySeedFlag`.
+
+`city_weights_sameday.json` is `{}` for the same reason its multi-day sibling
+is: `calibrate_city_weights` omits a below-floor city key entirely rather
+than emitting a placeholder for it.
+
 This directory is not maintained. Nothing writes back to it, and a running
 bot's calibration diverges from it immediately and correctly.
 
@@ -70,4 +97,6 @@ exactly the declared names, each must be valid JSON, the names must match the
 `main._PERMANENT_DATA_FILES` so `cleanup_data_dir` cannot delete it (which
 would now mean a silent rollback to the seed rather than a clean
 uncalibrated state). Confirm the new file's loader treats an absent file as
-"uncalibrated" rather than crashing; all five current ones do.
+"uncalibrated" rather than crashing; all eight current ones do (there are
+six blend-weight loaders now -- three per horizon -- plus the temperature
+and METAR ones).
