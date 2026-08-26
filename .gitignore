@@ -3,6 +3,10 @@ __pycache__/
 *.pem
 *.key
 *.log
+# Rotated logs too -- *.log does NOT match bot.log.1/.2/.3, so 10MB
+# rotations kept showing up as untracked and were one `git add -A`
+# away from being committed.
+*.log.*
 .env
 .env.*
 !.env.example
