@@ -42756,7 +42756,7 @@ re-proposed:
     needs. Its only real case was the user's own attention cost, and option 1
     covers that at the same price while preserving the option value.
 
-THE FOUR THAT REMAIN
+THE OPTIONS THAT REMAIN
 
  1. STOP DEVELOPMENT, KEEP MEASURING.
     For: zero risk, near-zero cost, data keeps accruing so the seasonal
@@ -42816,9 +42816,32 @@ THE FOUR THAT REMAIN
     Against: unmeasured, because orderbook_depth_snapshots has never been
       written. Turning the WS depth path on is the cheap prerequisite.
 
-RECOMMENDATION AS OF 2026-08-26
-  Do 2, then 1, with 5 running in shadow alongside. Explicitly do not do the
-  "improve the forecast" work that most of the remaining backlog consists of --
+ 7. FIX THE BLEND'S DATA SOURCES, MEMBERSHIP AND WEIGHTS.  (added 2026-08-26
+    after the user challenged the blanket "do not improve the forecast")
+    For: concrete and measured, not speculative. gfs_seamless shows ~2x the
+      error of both peers on max (3.963 vs 2.020/2.138 over 21 paired cells)
+      while weighted equal to the best member, and the blend is beaten by its
+      own best member on both variables. Crucially, published verification
+      puts GFS SECOND GLOBALLY after ECMWF -- so this contradiction points at
+      the local product/config, i.e. a BUG, not a skill gap. That is a
+      different thing from "build a better model", which is the distinction
+      the earlier recommendation missed.
+    Against: n=21, one month, summer; MAE and Brier disagree (min-Brier has
+      gfs BEST); the drop-gfs figures are member-mean arithmetic, not a
+      pipeline counterfactual; and closing it is not shown to narrow the
+      model-vs-market gap, which lives on a different population.
+    Status: diagnose the product/resolution and returned member count FIRST --
+      one live call discriminates the two hypotheses. Do not reweight before
+      that. See its own entry.
+
+RECOMMENDATION AS OF 2026-08-26 (revised)
+  Do 2 and 7, then 1, with 5 running in shadow alongside. The earlier version
+  of this line said to avoid "improve the forecast" work wholesale; that was
+  too broad and the user was right to push back. The distinction that matters
+  is between BUILDING a better model -- which the evidence argues against --
+  and FIXING a data source that is measurably misbehaving, which is cheap,
+  concrete, and probably a bug. What still should not be started is the
+  former:
   0 of 18 cities, both horizons, all three methods and both families lose, and
   recalibration (the single largest available improvement) closes less than
   half the gap.
@@ -42829,3 +42852,91 @@ RECOMMENDATION AS OF 2026-08-26
 When to revisit:
   Immediately on any live-trading proposal, and at the 60-day mark
   (~2026-10-25) when autumn data makes the seasonal caveat testable.
+
+
+[OPEN 2026-08-26 -- raised by the user against the blanket "do not improve the
+  forecast" recommendation. They were right; that line was written without
+  checking member-level data. Measured after the challenge, then checked
+  against published verification, which REVERSED the interpretation.]
+  gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max IN THIS PIPELINE -- WHICH
+  CONTRADICTS ITS PUBLISHED GLOBAL RANKING, SO SUSPECT THE PRODUCT/CONFIG, NOT
+  THE MODEL
+Priority: MEDIUM -- concrete and cheap, unlike the modelling work the no-edge
+  entries argue against. If the leading hypothesis holds this is a data-source
+  defect, which is a bug, not a skill gap.
+Files: weather_markets.py (_model_weights' `baseline` dict ~:2148 --
+  gfs_seamless 1.0, ecmwf_ifs025 ecmwf_w, icon_seamless 1.0; ecmwf_w = 1.5
+  summer / 2.5+ winter with an ENSO bump). NOTE: ENSEMBLE_MODELS (~:884) is
+  NOT the live membership -- its own comment says "keep for backward compat".
+  The live temperature blend is that three-key baseline dict.
+
+Measured on ensemble_member_scores, PAIRED -- only (city, target_date, var)
+cells where all three live members are present, so it is like-for-like:
+
+    var=max  n=21 cells            var=min  n=21 cells
+      icon_seamless   2.020          ecmwf_ifs025    1.914
+      blended         2.052          blended         2.037
+      ecmwf_ifs025    2.138          icon_seamless   2.155
+      gfs_seamless    3.963  <--     gfs_seamless    2.752  <--
+
+    recomputed from the stored member means:
+      equal weight          2.397          2.001
+      live weight 1/1.5/1   2.341          1.975
+      DROP gfs_seamless     1.914  -18.2%  1.831  -7.3%
+
+  Also: the blend is beaten by its own best member on BOTH variables (2.052 vs
+  2.020; 2.037 vs 1.914). Blending is supposed to beat the best member.
+
+THE ONLINE CHECK IS WHY THIS ENTRY EXISTS IN THIS FORM. Published verification
+(2026) puts GFS SECOND GLOBALLY after ECMWF, trailing it by roughly one day of
+forecast skill -- i.e. ahead of or comparable to ICON, and nowhere near 2x its
+error. The measurement above says the opposite. Two numbers that disagree that
+badly mean the local pipeline, not NOAA's model.
+
+  Leading hypothesis, and it is checkable: PRODUCT MISMATCH. Open-Meteo's
+  `gfs_seamless` ensemble product is a GFS+GEFS blend at ~50 km resolution
+  (documented as lower-resolution, extending to 35 days), while `ecmwf_ifs025`
+  is 0.25 deg (~25 km). If the repo requests the coarse seamless product for
+  GFS and a finer one for ECMWF, the comparison is between grid resolutions,
+  not between forecasting centres -- and reweighting would paper over a fixable
+  configuration choice.
+
+  Second hypothesis, with direct precedent IN THIS REPO: member-count asymmetry.
+  The far-tail rain entry records that a 16-day request silently fell outside
+  icon_seamless's ~7-day and ecmwf_ifs025's ~14-day horizons, leaving "the
+  ensemble" as EXACTLY 30 gfs_seamless members with ZERO ECMWF weight, versus a
+  ~130-member ~77%-ECMWF ensemble in the near case -- undetectable from the
+  logged value alone. Whatever fixed that for rain may not cover temperature.
+
+  Both hypotheses predict the same symptom and need different fixes. Do not
+  reweight before establishing which.
+
+What this does NOT establish -- the caveats are load-bearing:
+  - n=21 paired cells, one month, summer. Far below this repo's own floors
+    (batch-81 derived 112 for a single signal).
+  - MAE is not probability skill, and the two DISAGREE here: on unpaired
+    per-member Brier the ordering partly inverts, with min-Brier putting
+    gfs BEST (0.3613) and ecmwf_ifs025 WORST (0.4008). Any decision must be
+    made on Brier over paired cells.
+  - The "drop gfs" rows are arithmetic on stored member means, NOT a pipeline
+    counterfactual -- the real path applies sigma/EMOS/temperature-scaling on
+    top. Direction, not magnitude.
+  - Fixing this is not shown to narrow the model-vs-market gap, which is
+    measured on a different population (analysis_attempts: model 0.1724 vs
+    market 0.1076). Do not assume they combine.
+
+Plan:
+  1. Compare the actual Open-Meteo product/resolution requested per model, and
+     the member COUNT actually returned per model per call. That is one live
+     call and it discriminates both hypotheses.
+  2. Re-measure paired, on Brier not MAE, once n clears a defensible floor.
+  3. Only then revisit weights, held out the same way the calibration work is.
+
+When to revisit:
+  Alongside the recalibration option in the direction entry. These are the two
+  cheap, concrete, data-grounded improvements available, and neither is the
+  speculative "better model" work the no-edge finding argues against.
+
+Sources for the published-ranking claim:
+  https://www.getambee.com/blogs/best-weather-forecast-models
+  https://open-meteo.com/en/docs/ensemble-api
