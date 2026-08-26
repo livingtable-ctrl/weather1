@@ -40964,8 +40964,10 @@ What this invalidates right now:
   batch-76. Same trap batch-40's handoff flagged for a different
   population.
 
-  Separable second defect: the panel gives no indication its population is
-  stale. A calibration curve whose newest tail row is seven weeks old
+  Separable second defect, NOW ITS OWN ENTRY at the end of this file
+  ("THE CALIBRATION PANEL POOLS POPULATIONS WITH DIFFERENT GOVERNING CODE
+  AND THEN PRINTS A REASSURING VERDICT OVER THEM") -- fix it there, not
+  here: the panel gives no indication its population is stale. A calibration curve whose newest tail row is seven weeks old
   should say so rather than render an authoritative table under a
   reassuring verdict.
 
@@ -41106,3 +41108,89 @@ When to revisit:
   Before citing any same-day calibration number, and before treating
   batch-75's or batch-76's METAR fixes as validated on live data -- as of
   today neither has enough August traffic to have been exercised.
+
+
+[OPEN 2026-08-26 -- promoted from a sub-bullet of the entry "THE METAR LOCK
+  HAS STOPPED FIRING" above, which found it. Filed as its own entry rather
+  than left folded in because it is a different subsystem with a different
+  fix, and because three separate wrong numbers were produced from this same
+  class of error in one session -- see "The pattern" below.]
+  THE CALIBRATION PANEL POOLS POPULATIONS WITH DIFFERENT GOVERNING CODE AND
+  THEN PRINTS A REASSURING VERDICT OVER THEM
+Priority: Medium -- operator-facing and actively misleading rather than
+  merely absent. It renders an authoritative table plus an explicit
+  all-clear, and both are wrong in ways an operator cannot see from the
+  output. No trading gate reads it, which is the only reason this is not
+  higher.
+Files: main.py (cmd_walkforward's "Multiday/Sameday Calibration Curve"
+  blocks and the "No significant systematic bias detected" line), tracker.py
+  (get_sameday_calibration_cli / get_multiday_calibration_cli /
+  _calibration_curve). Note web_app.py:3139 has its own _calibration_curve
+  for the dashboard -- check whether it shares the defect before fixing only
+  one.
+
+Problem -- three distinct faults, all visible in one `py main.py validate`
+run on 2026-08-26:
+
+  1. THE VERDICT IS COMPUTED ON A MEAN, SO CANCELLING TAILS READ AS CLEAN.
+     Actual output:
+
+       7% bucket:  predicted  7.1%  actual 43.8%  N=16   -36.6%
+      34% bucket:  predicted 33.6%  actual 50.0%  N= 6   -16.4%
+      53% bucket:  predicted 53.1%  actual 51.9%  N=52    +1.2%  OK
+      69% bucket:  predicted 69.4%  actual 62.5%  N=16    +6.9%
+      91% bucket:  predicted 90.8%  actual 72.7%  N=33   +18.1%
+
+      "No significant systematic bias detected."
+      Mean predicted 58.4% | Mean actual 57.7% | N=123
+
+     A same-day "7%" resolves YES 43.8% of the time and a "91%" resolves
+     72.7%. The two errors point opposite ways, so the MEAN is off by
+     0.7pp and the check passes. The statistic answers "is the average
+     right", which is not the question a calibration curve exists to ask.
+
+  2. THE POPULATION IS STALE AND THE PANEL DOES NOT SAY SO. Of the 49
+     same-day tail rows, 48 are June/July 2026 and exactly one is August.
+     All 33 same-day metar_lockout rows are June (20) and July (13). The
+     code that produced them has since been changed by the METAR beta-
+     calibration (first fit ~2026-08-20), the 2026-08-09 'between'
+     re-enable, batch-75, batch-76 and batch-59's HIGH monotone veto
+     (2026-08-25). The panel presents a seven-week-old population with no
+     date range shown.
+
+  3. IT POOLS ACROSS GOVERNING CODE. The same-day population mixes
+     method='ensemble' and method='metar_lockout' rows, and those two are
+     priced by entirely different machinery gated by different code. The
+     91% bucket is 24/33 metar_lockout; the 53% bucket is 52/54 ensemble.
+     One curve over both describes no actual system.
+
+The pattern, which is why this is worth fixing rather than caveating:
+  In a single session on 2026-08-26, THREE separate wrong numbers were
+  produced by pooling populations with different governing code --
+  (a) a "1 in 10,000" significance claim on the METAR lock that pooled two
+  ticker families governed by different vetoes (corrected in the entry
+  above); (b) batch-81's accrual table, which pooled rows the registry's own
+  filter excludes (corrected at 0374c3a2); and (c) this panel. The first two
+  were caught. This one is still live and is the one an operator actually
+  looks at.
+
+Plan:
+  1. Make the verdict refuse rather than reassure. "No significant
+     systematic bias detected" should require every bucket with N above
+     some floor to be within tolerance, not the pooled mean. A per-bucket
+     rule would have flagged both tails immediately.
+  2. Print the population's date range, and withhold or loudly caveat the
+     verdict when the newest row is older than a threshold. This is the
+     cheapest of the three and would have prevented the whole
+     investigation that found this.
+  3. Decide whether to split the same-day curve by `method`, or at minimum
+     print the method mix per bucket. Do NOT silently pool -- that is the
+     defect batch-75 spent a session removing from forecast_temp_f, in a
+     different place.
+  4. Check web_app.py:3139's own _calibration_curve for the same three
+     faults before considering this closed.
+
+When to revisit:
+  Before quoting any calibration-curve number, and before trusting an
+  all-clear from this panel. Coordinate with batch-82 if it is still open --
+  it owns main.py, tracker.py and the same-day calibration surface.
