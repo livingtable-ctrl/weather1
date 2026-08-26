@@ -755,6 +755,31 @@ class TestAtexitFlushersAreAllDrained:
             f"to conftest._ATEXIT_FLUSH_BUFFERS."
         )
 
+    def test_every_registered_flusher_is_unregistered_at_session_end(self):
+        """conftest._ATEXIT_FLUSHERS must name every atexit.register target.
+
+        Draining the buffers is a race on its own: anything repopulating one
+        between pytest_sessionfinish and true interpreter shutdown still
+        flushes to the un-redirected production path. Unregistering the
+        flushers removes the race, but only for the ones actually listed.
+        """
+        source = inspect.getsource(weather_markets)
+        registered = set(re.findall(r"atexit\.register\((\w+)\)", source))
+        assert registered, "no atexit.register calls found -- pattern went stale"
+        missing = registered - set(conftest._ATEXIT_FLUSHERS)
+        assert not missing, (
+            f"atexit flusher(s) conftest never unregisters: {sorted(missing)}. "
+            f"Add them to conftest._ATEXIT_FLUSHERS."
+        )
+
+    def test_declared_flushers_all_exist_and_are_callable(self):
+        for flusher_name in conftest._ATEXIT_FLUSHERS:
+            flusher = getattr(weather_markets, flusher_name, None)
+            assert callable(flusher), (
+                f"weather_markets.{flusher_name} is missing or not callable -- "
+                f"atexit.unregister would silently no-op on it."
+            )
+
     def test_declared_buffers_all_exist(self):
         for buffer_name in conftest._ATEXIT_FLUSH_BUFFERS:
             assert hasattr(weather_markets, buffer_name), (

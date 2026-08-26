@@ -121,6 +121,27 @@ CORRECTION to the count above: this entry originally said 37 rows, derived
   Worth remembering generally: an "obviously test-shaped" small batch is not
   evidence of a test when the writer dedups on insert.
 
+FOLLOW-UP 2026-08-26: draining the buffers was necessary but not
+  sufficient, and the guard's own atexit reporter could never have caught
+  the gap. atexit is LIFO: weather_markets registers its flushers at IMPORT,
+  while prod_data_guard registers its reporter later at pytest_configure, so
+  the reporter always runs BEFORE the flushers and cannot observe them. It
+  reported nothing across four full-suite runs for that reason, not because
+  nothing happened -- a further 13 synthetic rows landed in one flush at
+  2026-08-26T00:45:15Z from a transitional state and had to be removed in a
+  second pass (605 real rows retained, independently corroborated by the
+  batch-75 session's own count).
+
+  pytest_sessionfinish now also calls atexit.unregister() on each flusher
+  (conftest._ATEXIT_FLUSHERS), which is ordering-independent and closes the
+  residual race where anything repopulates a buffer between the drain and
+  true interpreter shutdown. A companion test checks that list against
+  weather_markets' real atexit.register calls, same as the buffer list.
+
+  Lesson worth keeping: a last-line-of-defence reporter that registers
+  itself LATER than the hazard it watches is inert by construction. Verify
+  the ordering, do not assume registration implies observation.
+
 Downstream-consumption check: nothing outside tracker.py's own writer reads
   this table today (grep for ensemble_member_values across the repo returns
   only the CREATE/INDEX/INSERT in tracker.py and two comments in

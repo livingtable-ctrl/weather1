@@ -1994,6 +1994,16 @@ _ATEXIT_FLUSH_BUFFERS = (
     "_member_values_pending",
 )
 
+#: The atexit-registered flushers themselves, unregistered at session end so
+#: that a buffer repopulated after the drain cannot still reach production.
+#: Checked against weather_markets' real atexit.register calls by
+#: tests/test_prod_data_guard.py::TestAtexitFlushersAreAllDrained.
+_ATEXIT_FLUSHERS = (
+    "flush_forecast_disk_cache",
+    "flush_ensemble_disk_cache",
+    "flush_member_values",
+)
+
 
 def pytest_sessionfinish(session, exitstatus):
     """Drain every atexit-flushed buffer before the interpreter's hooks fire.
@@ -2031,10 +2041,28 @@ def pytest_sessionfinish(session, exitstatus):
     Exception, so it also registers its own atexit reporter that prints
     anything it blocked after the session ended.
     """
+    import atexit as _atexit
+
     import weather_markets as wm
 
     for buffer_name in _ATEXIT_FLUSH_BUFFERS:
         getattr(wm, buffer_name).clear()
+
+    # Belt AND braces: drop the flushers from the atexit registry outright,
+    # rather than relying on their buffers still being empty by the time the
+    # interpreter runs them. Draining alone is a race -- anything that
+    # repopulates a buffer between here and true shutdown (a lingering
+    # thread, a late finalizer) gets flushed to the un-redirected production
+    # path, and by then no test can be failed.
+    #
+    # prod_data_guard's own atexit reporter cannot cover this gap either,
+    # and it is worth being explicit about why: atexit is LIFO, and
+    # weather_markets registers its flushers at IMPORT while the guard
+    # registers its reporter later, at pytest_configure. The reporter
+    # therefore always runs BEFORE the flushers and can never observe them.
+    # Unregistering is the only ordering-independent fix.
+    for flusher_name in _ATEXIT_FLUSHERS:
+        _atexit.unregister(getattr(wm, flusher_name))
 
     # Production-data READS are allowed (see tests/prod_data_guard.py), but
     # each one is an isolation gap that has not bitten yet -- the same file
