@@ -35,6 +35,33 @@ Three claims in that entry are wrong, verified 2026-08-26 by enumerating `_Signa
 
 The ten on `sample_floor=20` are: `run_trend`, `market_implied`, `market_implied_rain`, `gated_edge`, `nbm_quantile_prob`, `ecmwf_consensus_gap`, `gem_graduation`, `ukmo_graduation`, `hrrr_graduation`, `rain_forecast_blend`. The two on `None` are `richer_ml_features` and `cross_city_pooling`. Fix the entry as part of this batch.
 
+## ⚠ CORRECTION 2026-08-26 — the two number sets below are WRONG. Read this first.
+
+Both were re-derived by the implementing session and by an independent re-measurement. **Neither the floor of 86 nor the accrual table survives.** They are left in place below so the reasoning is auditable, not because they are usable.
+
+**The floor is ~112, not 86.** Two independent errors compounded:
+
+1. The back-solve took the source entry's *"~27% power"* as belonging to **n=20**. It belongs to **n=26** — the row count `nbm_quantile_prob` actually cleared on, not the floor value. The effect size derived from it (δ=0.3012) is therefore wrong, and on the corrected basis the floor of 20 bought **21.4%** power, not 27%.
+2. Even on its own wrong effect size the arithmetic was rounded the wrong way: `((z₀.₉₇₅ + z₀.₈₀)/δ)² = (2.801585/0.3012)² = **86.52**`, so 86 buys 79.8% power, not the 80% claimed. It should have been 87.
+
+Re-solving the entry's own Hanley–McNeil table (AUC 0.657, 9/17 split) for 80% power gives **n=112**, and that re-derivation reproduces the entry's published SE/CI/power at n=26/50/100/200 to rounding. On the corrected basis, **86 is ~69% power.**
+
+**The accrual table was measured with the wrong query.** It omitted the `settled_temp_f IS NOT NULL` filter the registry actually applies, inflating three of five counts. Measured via the production helper:
+
+| Signal | Table below claims | `tracker.count_settled_signal_rows` |
+|---|---|---|
+| `gated_edge` | 110 | **89** |
+| `implied_mean` | 82 | **78** |
+| `run_trend_delta` | 40 | **28** |
+| `ecmwf_consensus_gap` | 77 | 77 |
+| `nbm_quantile_prob` | 27 | 27 |
+
+**Derive registry counts by calling `tracker.count_settled_signal_rows(column)` (`tracker.py:4156`), never by hand-writing a similar query.** It carries a `_SIGNAL_COLUMN_ALLOWLIST` guard that also catches a typo'd or derived column name — `run_trend` and `ecmwf_consensus_gap` are not real column names and it says so rather than silently returning a wrong count.
+
+Two consequences worth carrying forward:
+- **Seven** signals reported `floor_cleared` under the floor of 20, not six. `gem_graduation` and `ukmo_graduation` were both in that set.
+- `backlog.txt`'s GEM/UKMO graduation entry records *"min_n=20 has cleared for both models (36 obs)"*. They are at **42 each** in `ensemble_member_scores`, accruing ~2.3/day, with no `analysis_attempts` counterpart to accelerate them (their samples are per-model scores, not per-market analysis dicts). Against a floor of 112 that is ~30 days away, and the entry's recorded status is superseded.
+
 ## Item 1 — raise the floor to ~86
 
 **Files:** `weather_markets.py` (the ten `sample_floor=20` entries, `get_signal_graduation_report`'s `floor_cleared` at ~`:10388`, `_notify_feature_activation` at ~`:9900`), `main.py` (the report printer at ~`:7489`).
