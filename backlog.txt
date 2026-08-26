@@ -40516,3 +40516,116 @@ What it would look like:
   test repair -- and test_trades_placed_below_cap's `== 5` becomes `== 2`
   when it lands, which is what the batch-62 entry originally expected the
   code to already do.
+
+
+[OPEN 2026-08-26 -- found while writing up an apparent same-day calibration
+  defect seen in `py main.py validate`. That calibration finding turned out
+  to be real-but-dead (48 of its 49 tail rows predate August); THIS is what
+  was underneath it. Filed at the end of the file rather than the top only
+  because the batch-81 session has backlog.txt open and is filing at the top.]
+  THE METAR LOCK HAS STOPPED FIRING: IT PRICED 65% OF TEMPERATURE-MARKET
+  PREDICTIONS IN JUNE AND 6% IN AUGUST, WITH SAME-DAY ANALYSIS VOLUME FLAT,
+  AND THE NON-'between' LOCK PATH HAS PRODUCED NOTHING SINCE JULY
+Priority: Medium, and it is the kind that becomes High the moment the cause
+  is known -- either a live path silently narrowed (regression) or it is
+  seasonal and harmless. Nothing is provably broken yet. What IS certain:
+  two batches shipped fixes to this path this week and neither can be
+  validated on live data, and the operator-facing calibration panel for it
+  is scoring a seven-week-old population without saying so.
+Files: weather_markets.py (`_metar_lock_in()` and analyze_trade's locked
+  branch -- the site that sets method='metar_lockout'), tracker.py
+  (get_sameday_calibration_cli / get_sameday_calibration), main.py
+  (cmd_walkforward's "Sameday Calibration Curve" block).
+
+Problem:
+  Measured 2026-08-26 against data/predictions.db.
+
+  Compare the METAR lock against `ensemble` -- the OTHER method that prices
+  the same temperature markets. Do NOT normalise against total predictions:
+  August's total is inflated by new shadow-only families (hurricane_count_
+  bootstrap 113, monthly_rain_bootstrap_tilted 83, storm_order_climatology
+  12) that did not exist in June, and an earlier draft of this entry drew a
+  "total volume doubled" comparison that was measuring those, not this.
+
+    month     metar_lockout   ensemble   lock share of the two
+    2026-06        89            48              65.0%
+    2026-07        13            57              18.6%
+    2026-08         4            61               6.2%
+
+  Ensemble volume GREW across the window. So this is substitution, not a
+  drop in traffic: the same temperature markets are still being priced, by
+  a different method. Per active scanning day the lock went 3.2/day (June)
+  -> 0.7 (July) -> 0.2 (August).
+
+  The composition change is starker than the volume change. metar_lockout
+  rows by condition_type:
+
+    2026-06:  above 17,  below 3,  between 69
+    2026-08:  between 4,  above 0,  below 0
+
+  The non-'between' lock path -- 20 of June's rows -- has produced ZERO
+  predictions in August. That is the path batch-75 (observed_extreme_f
+  contamination) and batch-76 (section 10b side-agreement override) both
+  shipped fixes to this week; batch-76's override explicitly excludes
+  between-YES as not monotone-safe, so it governs a population with no
+  August rows at all.
+
+Diagnostics -- what is ruled OUT:
+  1. NOT a mislabel/rename. batch-75's `observed_extreme_f` is written only
+     on the lockout path and was backfilled across history; it is populated
+     on exactly 89 / 13 / 4 rows for June / July / August and on no row of
+     any other method. If the lock were still firing under a different
+     `method` label, those counts would diverge. They do not.
+  2. NOT a settlement backlog. Every metar_lockout row is settled:
+     89/89, 13/13, 4/4.
+  3. NOT reduced scanning. analysis_attempts at days_out=0 is flat:
+     July 90 attempts / 7 active days = 12.9 per day; August 285 / 24 =
+     11.9 per day. All-horizon attempts likewise (23.4 -> 22.7). The bot
+     analyses the same number of same-day markets; the lock just does not
+     fire. (analysis_attempts starts in July, so there is no June baseline.)
+
+  Candidate causes, none confirmed:
+   - Seasonal. Locks fire on clearance from the strike; June's heat may
+     simply have produced more lockable days. This is the benign reading
+     and it is plausible. Test it on clearance/margin DISTRIBUTIONS, not
+     on prediction counts -- counts are the thing in question.
+   - A gate tightened. `git log -L` `_metar_lock_in` and its caller across
+     2026-06-01..2026-08-26 and diff the conditions.
+   - Strike ladders moved relative to climatology, so the same weather no
+     longer clears any strike by the required margin.
+
+What this invalidates right now:
+  `py main.py validate`'s "Sameday Calibration Curve" shows severe tail
+  miscalibration -- 7% bucket predicted 7.1% vs 43.8% actual (N=16); 91%
+  bucket predicted 90.8% vs 72.7% actual (N=33) -- then prints "No
+  significant systematic bias detected", because the 53% bucket (N=52)
+  dominates and the two tails cancel (58.4% predicted vs 57.7% actual).
+
+  Both observations are real but must NOT be cited as current-code
+  findings: of 49 same-day tail rows, 48 are June/July and exactly one is
+  August. All 33 same-day metar_lockout rows are June (20) and July (13).
+  The panel is scoring code since changed by the METAR beta-calibration
+  (first fit ~2026-08-20), the 2026-08-09 'between' re-enable, batch-75 and
+  batch-76. Same trap batch-40's handoff flagged for a different
+  population.
+
+  Separable second defect: the panel gives no indication its population is
+  stale. A calibration curve whose newest tail row is seven weeks old
+  should say so rather than render an authoritative table under a
+  reassuring verdict.
+
+Plan:
+  1. `git log -L` `_metar_lock_in` over the window; diff the gate conditions.
+  2. Decide seasonal-vs-regression on clearance/margin distributions across
+     the three months, not counts.
+  3. Independently of the answer: make the calibration panel state its
+     population's date range, and withhold or loudly caveat the
+     "no significant systematic bias" verdict when the newest row is older
+     than a threshold. Worth doing whatever 1-2 conclude.
+  4. If seasonal, record the expected annual cycle here so the next person
+     does not re-raise it every August.
+
+When to revisit:
+  Before citing any same-day calibration number, and before treating
+  batch-75's or batch-76's METAR fixes as validated on live data -- as of
+  today neither has enough August traffic to have been exercised.
