@@ -41743,3 +41743,32 @@ When to revisit:
   no-Brier-skill note (model 0.2596 vs market 0.2201, n=214) -- that was the
   same phenomenon seen through the selected population, at a quarter of the
   effect size.
+
+  ADDENDUM 2026-08-26 -- DOES RECALIBRATION RECOVER THE EDGE? NO, BUT IT
+  HALVES THE GAP. Temporal split, no look-ahead: Platt scaling fitted on the
+  earlier 322 core-temperature rows (2026-07-25..08-13), applied to the later
+  216 (08-13..08-24). Fitted a=-0.6833, b=1.4168 -- b>1 confirms compression
+  independently of the earlier linear fit.
+
+    HELD-OUT Brier (n=216)   raw model 0.1756   CALIBRATED 0.1473   market 0.1106
+    calibrated - market      diff +0.0366   t = +3.50
+
+  Calibration is real and worth doing -- it removes ~44% of the excess Brier.
+  It does not create edge: the market still wins at t=3.50 on data the fit
+  never saw. And of the rows that STILL clear |f-m|>=0.15 after calibration
+  (n=86), the model is 0.2088 against the market's 0.1236 -- the surviving
+  signals are still the adverse ones.
+
+  NO SUBPOPULATION WINS. Checked exhaustively on the unbiased set:
+    by horizon   d=0  n=348  model 0.1964  market 0.1143  t=+8.44
+                 d=1  n=190  model 0.1274  market 0.0833  t=+5.60
+    by city      0 of 18 cities with n>=15 have the model ahead
+    by method    ensemble n=211 t=+2.88;  metar_lockout n=106 t=+1.90
+                 (the observational path loses too -- a better-informed
+                  signal, but still not better than the price)
+    by family    KXLOWT t=+7.16;  KXHIGH t=+7.54
+
+  Honest limits: 538 rows over one month (2026-07-25..08-24), summer only, and
+  analysis_attempts covers only markets the scanner actually looked at. That is
+  enough to reject "the model beats the market", not enough to characterise a
+  seasonal effect.
