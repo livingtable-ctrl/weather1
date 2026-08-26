@@ -40,8 +40,91 @@ export function authHeader() {
   return pwd ? { ...csrf, Authorization: 'Basic ' + btoa(':' + pwd) } : csrf;
 }
 
-async function apiFetch(path) {
-  const res = await fetch(path, { headers: authHeader() });
+// ---------------------------------------------------------------------------
+// Request timeouts — batch-80 item 1 (backlog "useData.js's apiFetch has no
+// request timeout, so a HUNG backend freezes the whole dashboard silently
+// instead of degrading"; filed by batch-61's opus review as F1).
+//
+// An ERRORING backend already degrades correctly: safe() catches, returns
+// null, and every branch in fetchAll's merge keeps its prior value. A HUNG
+// one degrades not at all -- fetch() has no default timeout, so the promise
+// simply never settles, Promise.allSettled never resolves, setData is never
+// called, and the dashboard sits on last-known numbers with no indication.
+// The visibility-gated poll meanwhile keeps firing every 60s, so pending
+// requests accumulate for as long as the backend stays hung.
+//
+// 30s for the main endpoints. The number has to cover SERVER time plus the
+// browser's own connection queueing, and the second term dominates:
+//
+//   - AbortSignal.timeout() starts counting when the signal is CREATED, and
+//     fetchAllSafe creates all 23 at once via Promise.allSettled, so every
+//     clock starts at t0 whether or not the request has been dispatched.
+//   - The backend is plain HTTP/1.1 (web_app.py's app.run), so browsers cap
+//     ~6 connections per origin, and the EventSource on /api/stream holds
+//     one for the session. Requests 6-23 therefore sit in the browser queue
+//     burning their budget before they are ever sent.
+//
+// A budget sized only against server time would truncate the TAIL of the
+// array deterministically -- roughly the same endpoints every poll, ending
+// with /health and the anomaly/calibration/scan-stats group. That is the
+// worst possible failure shape: silent, repeatable, and concentrated on the
+// endpoints the freshness banner does not watch.
+//
+// The slowest single endpoint is /api/weather-alerts. Its handler fans out
+// over ThreadPoolExecutor(max_workers=8) across every city with an open
+// position, each with requests' timeout=5 (web_app.py:2987), so its worst
+// case is ceil(N/8) x 5s, NOT 5s -- with CITY_COORDS' 21-city fallback that
+// is ~15s, and requests' timeout is per-socket-operation rather than a
+// whole-request deadline, so even one wave can run longer.
+//
+// The binding constraint on the other side is the 60s poll interval: a
+// timeout at or above it lets requests stack, which is the unbounded
+// accumulation this whole change exists to stop. 30s sits between the two.
+export const API_TIMEOUT_MS = 30_000;
+// The scan-version poll runs every 5s (the tightest loop in this file) and
+// asks only for one os.path.getmtime, so server time is microseconds. Its
+// budget is bounded ABOVE by its own 5s interval -- anything at or past that
+// stacks -- which leaves no room to also absorb the queueing above. So
+// roughly once a minute, when this lands inside the main poll's burst, it
+// will abort rather than answer. That is accepted rather than fixed: the
+// only cost is one missed cron-completion detection, retried 5s later, and
+// the alternative (letting it stack) is the defect being fixed.
+export const SCAN_VERSION_TIMEOUT_MS = 4_000;
+
+// AbortSignal.timeout is Chrome 103 / Firefox 100 / Safari 16. Vite 5's
+// default build target is ~Chrome 87 and it transpiles SYNTAX only -- it
+// does not polyfill runtime APIs, and there is no browserslist here. On an
+// older engine the bare call throws, and in pollScanVersion it would throw
+// during argument evaluation, i.e. BEFORE fetch() returns a promise, so the
+// trailing .catch() would never attach and the 5s interval would raise
+// uncaught every tick. The fallback keeps that impossible.
+export function timeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  const c = new AbortController();
+  setTimeout(() => c.abort(), ms);
+  return c.signal;
+}
+
+async function apiFetch(path, timeoutMs = API_TIMEOUT_MS) {
+  // A timeout aborts with a TimeoutError DOMException, which carries no
+  // `isAuth`, so safe() below treats it exactly like any other non-auth
+  // failure: null, and the merge keeps the prior value. That is deliberate
+  // -- a timeout must not be able to put `undefined` where a consumer
+  // expects data, which would trade a frozen dashboard for a crashing one.
+  //
+  // The accepted cost of that direction: a 401 that would have arrived
+  // LATER than the budget is now aborted instead of surfaced, so
+  // fetchAllSafe's batch-401 handler never fires and the operator gets
+  // silent nulls rather than a password prompt. Only reachable when the
+  // backend is already pathologically slow -- the regime this timeout
+  // exists for -- and the safe direction (an abort is never MISTAKEN for
+  // auth) is what matters here.
+  const res = await fetch(path, {
+    headers: authHeader(),
+    signal: timeoutSignal(timeoutMs),
+  });
   if (res.status === 401) {
     throw Object.assign(new Error('AUTH'), { isAuth: true });
   }
@@ -50,8 +133,8 @@ async function apiFetch(path) {
 }
 
 /** Returns null on non-auth error; re-throws auth errors. */
-async function safe(path) {
-  try { return await apiFetch(path); }
+async function safe(path, timeoutMs) {
+  try { return await apiFetch(path, timeoutMs); }
   catch (e) {
     if (e.isAuth) throw e;
     return null;
@@ -527,13 +610,107 @@ export function mapScanStats(raw) {
 // Each predicate must stay byte-for-byte the same condition as the
 // corresponding `next.* = ...` assignment in fetchAll. That coupling is the
 // whole invariant, so they are asserted together in useData.test.js.
-export function orderFeedSuccess(trades, resolvedOpportunities, anomalyStatus) {
+//
+// batch-80 item 1 adds `stats` to this SAME map, for the same reason
+// batch-63 added its two here rather than beside it: a second definition of
+// "when did this last refresh" is exactly the dashboard-wide inconsistency
+// this function exists to prevent.
+//
+// `stats` tracks /api/status specifically, because that is where every
+// headline number on OverviewTab comes from -- balance, open_count, brier,
+// the whole drawdown row -- and where RiskTab's heat and daily-spend come
+// from. Its predicate is `status && !status.error`, byte-for-byte the gate
+// mapStats itself uses before taking any of those values, so the timestamp
+// cannot claim freshness for a merge that did not happen. A 200-with-an-
+// error body counts as unreachable, matching mapAnomalyStatus' treatment.
+export function orderFeedSuccess(
+  trades, resolvedOpportunities, anomalyStatus, status, risk, grad,
+) {
   return {
     anomalyStatus: Boolean(anomalyStatus),
     positions: (trades ? trades.open : null) != null,
     opportunities: resolvedOpportunities !== undefined,
+    stats: Boolean(status) && !status.error,
+    // `risk` and `graduation` added by round-2 opus review (M1/M2). The
+    // banner is a POOLED gate, and it was pooling two keys while RiskTab
+    // renders eight feeds -- /api/risk alone supplies agedPositions,
+    // correlatedEvents, expiryCluster and directionalBias, and had no
+    // fetchedAt key at all, so a 500 there froze four cards on the safety
+    // tab with nothing to say so. /api/graduation is the same shape one
+    // level down: it writes win_rate, profit_factor and month_pnl INTO
+    // next.stats under its own gate, so `stats` stamping fresh vouched for
+    // numbers /api/status never supplied.
+    //
+    // Each predicate is byte-for-byte its own mapper's gate -- mapRisk's
+    // `!raw || raw.error` and mapStats' `grad && !grad.error` -- so neither
+    // can claim freshness for a merge that did not happen.
+    risk: Boolean(risk) && !risk.error,
+    graduation: Boolean(grad) && !grad.error,
   };
 }
+
+// anyFeedResolved — did this poll get ANYTHING back at all?
+//
+// batch-80 item 1. Distinct from the per-feed map above: that answers "may
+// this feed's timestamp advance", this answers "did the backend answer us at
+// all this cycle", which is what separates a hung backend from a healthy one
+// that happens to have nothing new. Its one consumer is stats.timestamp,
+// which resets the header's refresh countdown -- without this, a poll in
+// which all 23 endpoints timed out stamped the identical "just refreshed"
+// marker a fully successful poll does.
+//
+// Exported and pure for the same reason as everything else in this section:
+// frontend/ has no jsdom or RTL, so logic left inline inside fetchAll's
+// setData updater is logic no test can reach.
+export function anyFeedResolved(values) {
+  return Array.isArray(values) && values.some((v) => v != null);
+}
+
+// nextStatsTimestamp — what stats.timestamp should become after this poll.
+//
+// The DECISION, extracted from fetchAll's setData updater so a test can
+// reach it. What necessarily stays inline is a single assignment of this
+// function's return value; frontend/ has no jsdom or RTL, so the updater
+// body itself cannot be exercised, and mutating that one line back to a
+// bare `Date.now()` does still leave the suite green. Stated plainly rather
+// than implied, because batch-63's opus review (F5) found exactly this
+// shape of gap here before: predicates living inline where no test reaches
+// them. Keeping the untested surface to one assignment is the most this
+// file's test setup allows.
+//
+// Returns the PREVIOUS value UNCHANGED when nothing resolved -- including
+// when that value is `undefined`. An earlier version coerced it with
+// `?? null`, which looked tidier and was wrong: MOCK.stats deliberately
+// carries no timestamp, App.jsx keys RefreshCountdown's effect on
+// [M.stats?.timestamp], and `undefined -> null` IS a dependency change. So a
+// cold load against a hung backend fired exactly one spurious "60s" reset --
+// the precise false-reassurance this function exists to remove, on the same
+// widget, during the same outage. Returning it untouched is the real no-op.
+export function nextStatsTimestamp(prevTimestamp, values, now) {
+  return anyFeedResolved(values) ? now : prevTimestamp;
+}
+
+// Which fetchedAt keys each tab's staleness banner has to watch — batch-80
+// item 1. Declared here, beside orderFeedSuccess which produces the keys,
+// rather than inside each tab, for two reasons:
+//
+//  1. useData.js is where this file's pure, testable logic lives (frontend/
+//     has no jsdom or RTL, so a list inline in a .jsx component is a list no
+//     test can reach). shared.jsx cannot host it -- shared.jsx already
+//     imports from this file, so the dependency only runs one way.
+//  2. A tab's banner is a POOLED gate: it reports one verdict for several
+//     feeds, so a key that is misspelled, renamed, or newly added and never
+//     listed here inherits the pool's all-clear and goes unwatched in
+//     silence. Keeping the lists next to their producer lets a test assert
+//     mechanically that every name here is one orderFeedSuccess actually
+//     emits, which a comment could not.
+//
+// Each list is only the feeds that tab actually RENDERS. RiskTab shows no
+// opportunities, and handles anomalyStatus in its own dedicated card
+// (batch-61 item 3) with its own badge and wording, so pooling it into a
+// tab-wide banner would say the same thing twice.
+export const OVERVIEW_FEED_KEYS = ['stats', 'positions', 'opportunities', 'graduation'];
+export const RISK_FEED_KEYS = ['stats', 'positions', 'risk'];
 
 export function mergeFetchedAt(prev, succeeded, now = Date.now()) {
   const next = { ...(prev || {}) };
@@ -657,9 +834,14 @@ const ENDPOINTS = [
  * password that's already there, instead of asking the operator twice for
  * one real auth event.
  */
-export async function fetchAllSafe(endpoints, promptFn = window.prompt) {
+// `timeoutMs` is threaded through to apiFetch rather than left at its
+// default so a test can use a 50ms budget instead of waiting out the real
+// 30s one. Same injection pattern as `promptFn` here and `doc` in
+// startVisibilityGatedPoll -- and it is what gives apiFetch's timeoutMs
+// parameter an actual caller rather than leaving it decorative.
+export async function fetchAllSafe(endpoints, promptFn = window.prompt, timeoutMs) {
   const pwdBefore = sessionStorage.getItem('kalshi-pwd');
-  const results = await Promise.allSettled(endpoints.map(safe));
+  const results = await Promise.allSettled(endpoints.map(p => safe(p, timeoutMs)));
 
   const authFailedIdx = results
     .map((r, i) => (r.status === 'rejected' && r.reason?.isAuth ? i : -1))
@@ -675,7 +857,7 @@ export async function fetchAllSafe(endpoints, promptFn = window.prompt) {
     }
     if (havePwd) {
       const retried = await Promise.allSettled(
-        authFailedIdx.map((i) => safe(endpoints[i]))
+        authFailedIdx.map((i) => safe(endpoints[i], timeoutMs))
       );
       authFailedIdx.forEach((idx, j) => { results[idx] = retried[j]; });
     }
@@ -737,6 +919,39 @@ export function startVisibilityGatedPoll(fn, intervalMs, doc = document) {
   };
 }
 
+// makeScanVersionPoller — the 5s "did a cron run just finish" poll.
+//
+// Extracted to module scope (batch-80 item 1, opus review M3) because it was
+// declared inside the mount useEffect, where no test can reach it -- and
+// deleting its `signal:` left the whole suite green, so half of this item's
+// TIMEOUT deliverable had zero behavioural coverage. `fetchImpl` is
+// injectable for the same reason `promptFn` is in fetchAllSafe and `doc` is
+// in startVisibilityGatedPoll: this file has no jsdom.
+//
+// Returns a closure holding `lastVersion`, so each caller gets its own
+// "have I seen a version before" state exactly as the inline version did --
+// a null lastVersion must not fire onNewVersion, or every mount would
+// trigger a spurious full refresh.
+export function makeScanVersionPoller(onNewVersion, fetchImpl = fetch) {
+  let lastVersion = null;
+  return function pollScanVersion() {
+    // This raw fetch needs the timeout MORE than the main poll, not less:
+    // it is the 5-second loop, so a hung backend accumulates a pending
+    // request every 5s here versus every 60s there.
+    return fetchImpl('/api/scan-version', {
+      headers: authHeader(),
+      signal: timeoutSignal(SCAN_VERSION_TIMEOUT_MS),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || d.version == null) return;
+        if (lastVersion !== null && d.version !== lastVersion) onNewVersion();
+        lastVersion = d.version;
+      })
+      .catch(() => {});
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main hook
 // ---------------------------------------------------------------------------
@@ -754,6 +969,7 @@ export default function useData(setConnected) {
       const results = await fetchAllSafe(ENDPOINTS);
 
       // Unwrap allSettled — treat rejected as null
+      const values = results.map(r => r.status === 'fulfilled' ? r.value : null);
       const [
         statusR, gradR, tradesR, riskR,
         cbsR, balHistR, analyticsR,
@@ -764,7 +980,7 @@ export default function useData(setConnected) {
         samedayCalibR,
         anomalyStatusR, calibStatusR, scanStatsR,
         emosStatusR, healthR,
-      ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+      ] = values;
 
       setData(prev => {
         // Start from the current state so SSE patches aren't wiped
@@ -776,7 +992,22 @@ export default function useData(setConnected) {
         // Real "last successful fetch" marker so consumers (e.g. App's
         // refresh countdown) can resync to an actual poll instead of
         // free-running on their own timer.
-        next.stats.timestamp = Date.now();
+        //
+        // batch-80 item 1: only on a poll that actually got something back.
+        // This used to stamp unconditionally, so a cycle in which every one
+        // of the 23 endpoints timed out left the identical marker a fully
+        // successful cycle does, and App's RefreshCountdown reset to "60s"
+        // as if data had just landed -- the header reading most reassuring
+        // during a total outage. Leaving the old value in place instead
+        // stops the countdown from re-announcing a refresh that did not
+        // happen; the countdown itself keeps ticking either way, since its
+        // interval runs independently of this effect and simply wraps at 0,
+        // so nothing appears frozen.
+        // Reads the SAME unwrapped array the destructure above does,
+        // rather than re-deriving it, so the two cannot drift.
+        next.stats.timestamp = nextStatsTimestamp(
+          prev.stats?.timestamp, values, Date.now(),
+        );
 
         // batch-48 item 8: OverviewTab's cron-staleness banner used to fetch
         // /health itself, once, in a mount-only useEffect -- so a staleness
@@ -920,7 +1151,9 @@ export default function useData(setConnected) {
         // back and make it under-report freshness.
         next.fetchedAt = mergeFetchedAt(
           prev.fetchedAt,
-          orderFeedSuccess(trades, resolvedOpportunities, anomalyStatus),
+          orderFeedSuccess(
+            trades, resolvedOpportunities, anomalyStatus, statusR, riskR, gradR,
+          ),
         );
 
         // Multi-day temperature-scaling calibration gate
@@ -1029,17 +1262,7 @@ export default function useData(setConnected) {
     // their own after a few minutes hidden, so the real pre-fix volume is
     // lower than a naive 5s-forever calculation implies — but still real,
     // ongoing, unbounded load with nobody looking at the tab).
-    let lastVersion = null;
-    function pollScanVersion() {
-      fetch('/api/scan-version', { headers: authHeader() })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (!d || d.version == null) return;
-          if (lastVersion !== null && d.version !== lastVersion) fetchAll();
-          lastVersion = d.version;
-        })
-        .catch(() => {});
-    }
+    const pollScanVersion = makeScanVersionPoller(fetchAll);
     const stopScanPoll = startVisibilityGatedPoll(pollScanVersion, 5_000);
     // Accepted tradeoff (opus review, batch-47): returning from a long
     // background stretch where a cron run completed can trigger BOTH this

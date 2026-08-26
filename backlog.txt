@@ -562,9 +562,10 @@ Independent opus review (effort:high) -- findings NOT yet applied:
     day one is, it surfaces as a ProdDataWriteError in an unrelated test.
 
 
-[OPEN 2026-08-25 -- found by batch-68's own test run: a real
-  notify.send_system_alert() call raised inside its notify thread during
-  tests. Filed rather than fixed: notify.py is batch-69's file.]
+[RESOLVED 2026-08-25 -- batch-80 item 2. Originally found by batch-68's
+  own test run: a real notify.send_system_alert() call raised inside its
+  notify thread during tests, and was filed rather than fixed because
+  notify.py was batch-69's file.]
   A SYSTEM ALERT LONGER THAN 256 CHARACTERS CRASHES THE DESKTOP-TOAST BACKEND
 Priority: Low -- Discord still delivers, and the exception is confined to the
   notify thread, so no caller is affected. But it silently drops the desktop
@@ -607,6 +608,121 @@ What it would look like:
   try/except so a backend failure can never escape the thread is worth doing
   in the same pass. Then the Miami alert body can go back to being as long as
   it wants.
+
+Resolution (batch-80 item 2):
+  notify.py gained DESKTOP_MESSAGE_MAX / DESKTOP_TITLE_MAX and
+  _truncate_for_desktop(), applied at BOTH _notif.notify() call sites --
+  send_system_alert_detailed's and alert_strong_signal's. Only the desktop
+  copy is clipped; Discord, Pushover, ntfy and email are each still handed
+  the full original text, which is what keeps this a repair rather than a
+  new loss. Every truncation logs a warning naming the field and both
+  lengths, so the alert is no longer shortened without a record.
+
+  THREE CORRECTIONS to this entry, all found by re-verifying it against the
+  installed plyer (plyer/platforms/win/libs/win_api_defs.py:52-68) and
+  against the cited source, rather than trusting the description:
+
+  1. THE TITLE LIMIT IS 64, NOT 256. The entry names only szInfo's 256-char
+     message cap. szInfoTitle is a WCHAR*64 and fails identically, four
+     times sooner. It is capped too. (szTip, the third string field, is 128
+     and takes app_name, hardcoded to the 14-char "Kalshi Weather".)
+
+  2. THE ENTRY'S SECOND SUGGESTED FIX IS NOT IMPLEMENTABLE. It proposed
+     "wrapping the plyer call in its own try/except so a backend failure can
+     never escape the thread". It cannot: WindowsNotification._notify is
+     `thread(target=balloon_tip, kwargs=kwargs).start()`, so plyer spawns
+     its OWN thread and returns immediately. The ValueError is raised on
+     that thread and no try/except in notify.py is on its stack -- which is
+     precisely why it surfaced as a PytestUnhandledThreadExceptionWarning
+     rather than as the caught-and-logged failure the existing
+     `except Exception` around the call looks like it would produce. Not
+     sending an over-long string is the only control available from this
+     side, so truncation is the whole fix rather than half of it.
+
+  3. THE MIAMI ALERT BODY IS ~377 CHARACTERS, NOT ~1,499. The Problem
+     section above cites 1,499 and that figure is kept there as written, for
+     history. Evaluating tracker.audit_settlement's actual f-string with
+     realistic values renders ~372-377 depending on ticker length, and an
+     AST sweep of the send_system_alert*/alert_strong_signal call sites in
+     the top-level modules (12 direct ones; aliased `import ... as _alert`
+     forms make an exact repo-wide count awkward, and an earlier draft's
+     "31" was not reproducible) puts the longest static body at ~382-388. The defect is unchanged -- 377 still exceeds 256,
+     and that alert still loses its desktop half -- but it is ~1.5x over the
+     cap, not ~6x.
+
+  Both limits are set one below the array width (255 / 63) so the NUL
+  terminator has somewhere to go: measured, ctypes accepts a string of
+  exactly the array length but stores it unterminated, and Shell_NotifyIconW
+  reads on into the adjacent field.
+
+  Tests: tests/test_notify.py::TestDesktopFieldTruncation, 10 new. The
+  load-bearing one builds the REAL ctypes arrays and asserts the constants
+  against them from both sides, because the constants are transcribed by
+  hand and a wrong transcription would reintroduce the bug while every
+  double-based test still passed. Mutation-verified: 255 -> 256 fails two
+  tests, `<=` -> `<` fails the at-limit passthrough test, and 63 -> 255
+  (i.e. this entry's own wrong assumption about the title) fails THREE --
+  an earlier draft said two (opus review L-1).
+
+  NOT fixed here, and deliberately: `successes.append(True)` still runs
+  after _notif.notify() returns, even though on Windows that return means
+  only "a thread was started". With truncation in place the ValueError can
+  no longer be the cause, but a Shell_NotifyIconW failure would still be
+  recorded as a delivered desktop channel. That is a separate defect about
+  plyer's fire-and-forget contract, not about field widths -- filed as its
+  own entry below.
+
+REVIEW FINDINGS ADDRESSED (independent opus review, effort:high):
+  - M-1 (the substantive one): THE BUDGET WAS IN THE WRONG UNIT. A WCHAR
+    array counts UTF-16 CODE UNITS, not Python characters, so every
+    character above U+FFFF costs two -- a string of 129 emoji has len() 129
+    but raises ValueError("string too long (258, maximum length 256)").
+    Measured on the real ctypes array. So a message clipped to 255 code
+    points could still be 510 units and reproduce the ORIGINAL bug, on the
+    same uncatchable thread, through a fix that looked correct. Now budgeted
+    via _utf16_units(), clipping per-character by width and never splitting
+    a surrogate pair. Latent today -- swept every top-level .py and found no
+    character above U+FFFF (the two warning signs are U+26A0, BMP) -- but
+    notify_templates.json is operator-editable and both templates .format()
+    in external `city` and `ticker`, which is the same reasoning that made
+    the alert_strong_signal site worth capping at all. Mutation-verified:
+    reverting to a code-point budget fails the new astral test with
+    "assert 400 <= 255".
+  - M-2: corrected above (correction 3). The 1,499 figure came from the
+    entry and was propagated into a test comment; both now say ~377.
+  - L-1: the title mutation fails three tests, not two. Corrected above.
+  - L-7: _truncate_for_desktop was not total for limit <= 1 -- at limit 0 it
+    returned `text[:-1] + "…"`, i.e. a LONGER string than it was handed.
+    Unreachable with the 255/63 constants, so hygiene only; guarded and
+    tested anyway rather than left as a known sharp edge.
+  - Reviewer independently confirmed, against the installed plyer rather
+    than on trust: the three field widths; that the NUL-reservation
+    rationale is real (ctypes accepts exactly 256, raises at 257, and
+    szInfo is immediately followed by uVersion); that notify.py's
+    `except Exception` genuinely cannot catch the thread's ValueError; that
+    no truncation leaks to any other channel; that there is no third
+    _notif.notify() call site; and that BOTH call sites are independently
+    covered (untruncating either fails tests the other does not mask).
+
+ROUND-2 REVIEW (of the round-1 fixes). No HIGH; the UTF-16 fix held up under a
+~9,000-case fuzz sweep against the real ctypes arrays. Three real findings, all
+of them defects the UTF-16 fix itself introduced or left:
+  - L1: _utf16_units raised UnicodeEncodeError on an UNPAIRED SURROGATE, which
+    ctypes itself accepts (both measured) -- a new failure mode the round-1
+    len() version did not have, and reachable, since notify_templates.json is
+    operator-editable and JSON permits a lone escaped surrogate. Now encodes
+    with "surrogatepass".
+  - L2: the new `limit <= 1` hygiene guard could itself return an over-budget
+    string -- at limit 1 an astral first character is one code point but TWO
+    units, so the bare slice was strictly worse than the unguarded path it
+    was added to protect. It was the single over-budget case in the whole
+    fuzz corpus. Now unit-checked.
+  - L3: the isinstance coercion was entirely unpinned (mutating it away left
+    all 21 tests green). Given a test rather than deleted -- both call sites
+    format templates whose values come from callers, so the branch is live.
+  All three are mutation-verified: dropping surrogatepass, restoring the bare
+  degenerate slice, and removing the coercion each now fail exactly one test.
+  tests/test_notify.py: 23 passed.
 
 [RESOLVED 2026-08-25 -- batch-68 items 1 and 2] A13 SETTLEMENT-SOURCE AUDIT:
   EVERY GRADING CONSUMER TRACED; TWO REAL DEFECTS FOUND AND FIXED
@@ -36751,8 +36867,9 @@ Recommendation: regenerate the Obsidian vault + graph.html + GRAPH_REPORT.md
   Batch-75 therefore SKIPPED its step-29 scoped refresh deliberately rather
   than merging new AST nodes onto an artifact whose base commit is unknown.
   Full record: none -- surfaced by batch-59's graphify refresh.
-[OPEN -- filed 2026-08-24 by batch-61's opus review (F1), out of scope for
-  that batch's display fix] useData.js's apiFetch has no request timeout, so
+[RESOLVED 2026-08-25 -- batch-80 item 1. Originally filed 2026-08-24 by
+  batch-61's opus review (F1), out of scope for that batch's display fix]
+  useData.js's apiFetch has no request timeout, so
   a HUNG backend freezes the whole dashboard silently instead of degrading
 Priority: Medium -- not a crash and not a data-integrity issue, but it
   defeats every "is this data still live?" signal the UI has, including the
@@ -36807,6 +36924,234 @@ Recommendation:
   never-resolving fetch mock still lets fetchAllSafe settle. Consider also
   surfacing "no successful poll in N minutes" globally (the `connected`
   indicator is SSE-only today and cannot see this).
+
+Resolution (batch-80 item 1):
+  Two halves: make a hang degrade like an error, and make the degraded state
+  visible.
+
+  TIMEOUT. apiFetch takes a timeoutMs and passes AbortSignal.timeout(). Two
+  budgets rather than the entry's per-endpoint-overridable scheme:
+  API_TIMEOUT_MS = 30s for the 23 polled endpoints, SCAN_VERSION_TIMEOUT_MS
+  = 4s for the raw /api/scan-version fetch. The scan-version poll had the
+  same missing-timeout defect and needs it MORE, not less: it runs every 5s,
+  the tightest loop in the file, so a hung backend accumulates a pending
+  request twelve times faster there than on the main poll.
+
+  The entry worried one global number might not fit because "/api/weather-
+  alerts is documented as slow". Checked rather than assumed: that handler
+  fans out to NWS through a ThreadPoolExecutor with a per-city timeout=5
+  (web_app.py:2987), so its realistic worst case is ~5-6s and 15s covers it
+  with ~2.5x headroom. The binding constraint is the other end anyway -- a
+  timeout at or above its own poll interval lets requests stack, which is
+  the unbounded accumulation the item is about. Both constants are asserted
+  against their intervals in useData.test.js so a later edit past them fails
+  a test rather than reaching production.
+
+  "Whether a timeout should count as a failure for keep-last-known-good
+  purposes" -- yes, and it already does, by construction. A TimeoutError
+  carries no `isAuth`, so safe() maps it to null exactly like a 500, and
+  every branch of fetchAll's merge is already null-tolerant. That is what
+  stops a timeout putting `undefined` where OverviewTab/RiskTab expect data,
+  i.e. trading a frozen dashboard for a crashing one. No retry was added:
+  the next scheduled poll is the retry.
+
+  VISIBILITY, which is the larger half. With keep-last-known-good, a dead
+  backend renders identically to a healthy one whose numbers have not moved
+  -- confirmed by running the dev server with no Flask behind it, where the
+  dashboard cheerfully displayed "$1247.83 / +24.8% / graduation gate
+  cleared" from MOCK with nothing to say none of it was real.
+    - orderFeedSuccess gained a `stats` key, in the SAME map batch-63 built
+      rather than a second freshness path. Its predicate is
+      `status && !status.error`, byte-for-byte mapStats' own gate, so the
+      timestamp cannot vouch for a merge that did not happen.
+    - shared.jsx gained staleFeedState() (pure, tested) + StaleFeedBanner,
+      rendered by OverviewTab and RiskTab from OVERVIEW_FEED_KEYS /
+      RISK_FEED_KEYS in useData.js. STALE-WITH-A-MARKER, not an error state
+      that blanks values -- following batch-61 F2's precedent that a safety
+      surface must not get LESS informative because its feed died.
+      anomalyStatus is deliberately excluded from RISK_FEED_KEYS: its own
+      card already reports it.
+    - stats.timestamp (which resets App's refresh countdown) now stamps only
+      via nextStatsTimestamp(), i.e. only when at least one endpoint
+      actually returned. It used to stamp unconditionally, so a poll in
+      which all 23 endpoints timed out reset the header to "60s" as if data
+      had just landed. Decided with the user rather than assumed.
+
+  A per-tab banner is a POOLED gate, so a key that is misspelled, renamed or
+  newly added and never listed goes unwatched with no visible symptom.
+  useData.test.js asserts the key lists mechanically against the names
+  orderFeedSuccess actually emits.
+
+  KNOWN GAP, stated rather than implied: the one line assigning
+  nextStatsTimestamp's result inside fetchAll's setData updater is not test-
+  covered, and mutating it back to a bare Date.now() leaves the suite green.
+  frontend/ has no jsdom or RTL, so the updater body cannot be exercised at
+  all; the decision was extracted into nextStatsTimestamp precisely to
+  shrink the untested surface to that single assignment. Same shape of gap
+  batch-63's opus review (F5) found here before. Adding RTL was out of scope.
+  Likewise the banner's amber branch was verified by unit tests but not
+  visually -- staging a real stamp and then stopping it needs a live
+  backend; the pending branch was confirmed in a browser on both tabs.
+
+  Mutation-verified: removing the AbortSignal fails 2 tests; `stats:
+  Boolean(status)` (dropping the error-body check) fails 2; staleFeedState
+  reporting only the first key instead of the worst fails 4;
+  nextStatsTimestamp returning `now` unconditionally fails 2. The first
+  round of the timeout test passed under the signal-removal mutation for the
+  wrong reason and was strengthened with an explicit `aborted` assertion
+  until it failed.
+
+  frontend: 303 passed (was 259). static/dist rebuilt, per this repo's
+  convention that every frontend/src commit ships its build artifacts.
+
+REVIEW FINDINGS ADDRESSED (independent opus review of this diff, effort:high).
+All 15 were fixed; none was dismissed.
+  - H1 (the real one): StaleFeedBanner used `formatFeedAge(feed.ageMs) == null`
+    as its test for "pending", and feedFreshness returns a null ageMs for TWO
+    states -- 'pending' AND an escalated 'stale' (never answered, now past
+    maxAgeMs from `since`). Since worstStaleness ranks a null age as Infinity,
+    a never-answered feed also always WINS the pool. So a backend that hung at
+    page load sat on a calm grey "waiting…" forever over MOCK's fabricated
+    balance, and two feeds two hours dead were masked behind the same wording.
+    That is verbatim the trap batch-61's F4 closed one layer down,
+    re-introduced one layer up by the banner meant to surface it. Now keyed on
+    `feed.state === 'pending'`.
+    The fix needed a second step: reintroducing the bug left all 293 tests
+    green, because the decision lived in a component and frontend/ has no
+    jsdom/RTL. So the decision was extracted to a pure `staleBannerCopy(feed)`
+    in shared.jsx, with the component keeping only style application. The same
+    mutation now fails 2 tests. A wrong decision no test can reach is the same
+    failure mode this whole item exists to remove.
+  - M1/M6: the 15s budget was sized against server time alone. Corrected to
+    30s. AbortSignal.timeout starts at signal CREATION and fetchAllSafe creates
+    all 23 at once, while the backend is plain HTTP/1.1 (~6 connections/origin,
+    one held by the EventSource) -- so requests 6-23 burn budget queued in the
+    browser, and a server-time-sized budget truncates the TAIL of the array
+    deterministically, the same endpoints every poll. M6 separately: the
+    /api/weather-alerts worst case is ceil(N/8) x 5s, not 5s -- ThreadPoolExecutor
+    (max_workers=8) over every open-position city, up to ~15s at CITY_COORDS'
+    21-city fallback. The old comment's "~2.5x headroom" was wrong.
+  - M2: SCAN_VERSION_TIMEOUT_MS stays 4s, now documented honestly -- bounded
+    above by its own 5s interval, so it will abort roughly once a minute when
+    it lands inside the main poll's burst. Accepted: the cost is one missed
+    cron-completion detection, retried 5s later.
+  - M3: the scan-version `signal:` had ZERO coverage -- deleting it left the
+    suite green, so half the TIMEOUT deliverable was unproven. pollScanVersion
+    was lifted out of the mount useEffect to an exported
+    makeScanVersionPoller(onNewVersion, fetchImpl), same injection pattern as
+    fetchAllSafe's promptFn. 4 new tests.
+  - M4: the pooled-key test only asserted `listed subset of produced`, which is
+    satisfied by an EMPTY list -- deleting 'positions' from OVERVIEW_FEED_KEYS
+    passed, as did adding a key to orderFeedSuccess and never listing it, the
+    exact case the comment claimed to cover. Now asserts exact contents AND the
+    reverse direction against an explicit exclusion list.
+  - M5: the "never settles" test really waited 15 real seconds while its own
+    comment claimed a "tiny budget", and apiFetch's timeoutMs parameter had no
+    caller at all. timeoutMs is now threaded through safe/fetchAllSafe and the
+    test passes 50ms. Suite went from 15.4s to 0.4s.
+  - L1: nextStatsTimestamp coerced a missing prior stamp with `?? null`.
+    MOCK.stats deliberately carries no timestamp and App.jsx keys
+    RefreshCountdown's effect on [M.stats?.timestamp], so undefined -> null IS
+    a dependency change -- one spurious "60s" reset on a cold load against a
+    hung backend, i.e. the exact false reassurance this function removes. Now
+    returns the previous value untouched.
+  - L2: AbortSignal.timeout is Chrome 103+, Vite 5 targets ~Chrome 87 and
+    polyfills no runtime APIs. In makeScanVersionPoller the bare call would
+    throw during ARGUMENT evaluation, before fetch() returns a promise, so the
+    trailing .catch() could not attach -- uncaught, every 5s. Added
+    timeoutSignal() with an AbortController fallback.
+  - L3: an abort now pre-empts a 401 that would have arrived later, so no
+    password prompt. Documented as an accepted cost at the call site.
+  - L4/I9: "no response from the backend" was the wrong diagnosis -- one
+    endpoint at 500 stops only its own feed stamping. Reworded to "Some data
+    has stopped updating", and "since 5 min ago" de-duplicated.
+  - L5: RiskTab duplicated the `feedState.stale` predicate around a banner that
+    already returns null when fresh. Dropped; the margin rides on the banner.
+  - I1: "22 endpoints" was wrong in three comments -- ENDPOINTS has 23.
+  - I2: stray double blank line. I4: the constants had only range assertions,
+    now pinned to their exact values as well.
+  - I3: every staleFeedState test passed `visibleSince: null`, the one value
+    for which the escalated branch is unreachable -- so the exact input that
+    broke H1 was structurally excluded from the suite that covered it. Added.
+  - I5/I7/I8 acknowledged as benign: OverviewTab now re-renders once per 60s
+    via useFeedClock (required -- staleness must become visible with no fetch
+    completing), RiskTab shows two amber messages on a total outage, and the
+    pooled banner reports "since this page loaded" rather than the age it does
+    know for a sibling feed.
+  - I6 partially actioned -- see round 2 below, which found the same gap was
+    larger than I6 described and fixed the two worst members inline.
+
+ROUND-2 REVIEW (independent opus review OF THE ROUND-1 FIXES, effort:high).
+The workflow requires this because a fix can introduce new bugs distinct from
+what it fixed. It did, and the round-1 H1 fix turned out to be incomplete:
+
+  - H1 (round 2): THE ROUND-1 FIX WAS HALF A FIX. Keying tone on
+    `feed.state === 'pending'` removed the ageMs confusion but not the
+    underlying problem, because the tone was still read off the POOL WINNER
+    and worstStaleness ranks an unknown age as Infinity -- so a member that
+    has never answered always wins. Measured: two feeds 13 minutes dead
+    alongside one that never answered still reported {state:'pending'}, i.e.
+    a calm grey "waiting" over two dead safety feeds.
+    Second, independent half: with no stamp, feedFreshness measures from
+    `since`, and FEED_HARD_STALE_MS is gated behind `hasStamp` -- so nothing
+    caps that credit. _onFeedClockVisible resets visibleSince on EVERY
+    hidden->visible transition, so a total hang from page load showed amber
+    at 180s and then reverted to grey on every alt-tab, forever. An operator
+    switching away more often than every three minutes would never have seen
+    it. That is precisely the "repeated alt-tabbing must not defer an alarm
+    indefinitely" case the ceiling exists for, on the one path it could not
+    reach.
+    Fixed in two places: staleFeedState now computes `anyEscalated` across
+    EVERY member rather than reading the winner's state, and _feedClock
+    gained a `pageLoad` anchor that nothing ever resets, so once we have been
+    watching longer than the hard ceiling and something is still not
+    answering, it alarms and stays alarmed. The ranking is still what picks
+    which AGE to show -- it was only ever the wrong input for deciding
+    whether to alarm.
+  - M1: THE POOLED GATE COVERED 2 OF RISKTAB'S ~8 FEEDS, and the rationale
+    comment was factually wrong about it -- it attributed the aged /
+    correlated / expiry / directional counts to M.positions when they come
+    from /api/risk, which had no fetchedAt key at all. So a 500 on /api/risk
+    froze four cards on the safety tab with nothing to say so. orderFeedSuccess
+    gained a `risk` key (predicate byte-for-byte mapRisk's own `!raw ||
+    raw.error` gate) and RISK_FEED_KEYS now watches it.
+  - M2: the same shape one level down. `stats` vouched only for /api/status,
+    but mapStats also writes win_rate, profit_factor and month_pnl into
+    next.stats from /api/graduation under its own separate gate -- both of
+    which OverviewTab renders. Added a `graduation` key.
+    Still NOT pooled, and now stated rather than implied: circuitBreakers,
+    scanStats and brierHistory have no fetchedAt key. Each needs its own
+    predicate; left for the follow-up rather than guessed at.
+  - L1: StaleFeedBanner destructured staleBannerCopy's return value while
+    repeating its null guard -- two copies of one predicate, and a drift
+    between them would throw DURING RENDER, which App's ErrorBoundary turns
+    into a blank Risk or Overview tab. Collapsed to one guard.
+  - L2: the 401-retry path's timeoutMs threading is unpinned (that mutation
+    survives) while the main path's is pinned. Code is correct, branch is
+    unverified; recorded rather than left silent.
+  - L3: added role="status" to the banner, matching the sibling warning
+    renderer in the same file. A banner that appears with no user action is
+    exactly the case that needs it.
+  - L4: fetchWeatherAlerts inherits the 30s budget, but this change's own
+    analysis puts that endpoint's worst case at ceil(N/8) x 5s. Its poll
+    interval is 900s so it has room for its own longer budget; noted for the
+    follow-up rather than changed, since it needs its own fetchedAt key to be
+    meaningful anyway.
+  - L5/I4/I5 acknowledged: two defensive guards and one `!= null` are
+    unexercised; harmless, and noted rather than removed.
+  - Reviewer ran 26 mutations and confirmed the rest of the change is pinned,
+    including every round-1 fix. Reverting staleBannerCopy's pending test,
+    the `?? null`, either timeout constant, the AbortController fallback, the
+    error-body check, and dropping a key from either list all fail the suite.
+    Two remain unprovable and are stated as such: the single assignment of
+    nextStatsTimestamp's result, and StaleFeedBanner's own body -- both
+    inside code frontend/ cannot render without jsdom/RTL.
+
+  NOT done here: the raw fetch() calls in App.jsx, AnalyticsTab, PositionsTab,
+  SettingsTab, SignalsTab and shared.jsx have the same missing timeout. They
+  are separate consumers in files this batch does not own, each with its own
+  error handling -- filed as its own entry below rather than stretched into
+  this change.
 
 [OPEN -- filed 2026-08-25 during batch-61] the `graphify update` CLI path still
   rebuilds the WHOLE repo even though manifest.json is now portable, because
@@ -36869,7 +37214,7 @@ Recommendation:
   into graph.json by hand, skip Obsidian/HTML regen) is the only path that has
   actually worked here.
 
-[OPEN 2026-08-25 -- found by opus review during batch-62 item 1, while tightening an assertion that had been hiding it] tests/test_trade_improvements.py::test_trades_placed_below_cap has never exercised the 20-position cap it is named for
+[RESOLVED 2026-08-25 -- batch-80 item 3. Originally found by opus review during batch-62 item 1, while tightening an assertion that had been hiding it] tests/test_trade_improvements.py::test_trades_placed_below_cap has never exercised the 20-position cap it is named for
 Priority: LOW -- a permanently-vacuous test, not a production bug. No live path is affected.
 Files: tests/test_trade_improvements.py (TestMaxConcurrentPositions), order_executor.py (_auto_place_trades sizing gates)
 
@@ -36898,6 +37243,168 @@ Recommendation:
   batch-62 owned the isolation, not the fixture realism. Check the sibling
   test_no_trades_placed_when_at_cap at the same time: it asserts `== 0`, which
   currently passes for the same wrong reason.
+
+Resolution (batch-80 item 3):
+  Both tests in TestMaxConcurrentPositions are now non-vacuous. The sibling
+  warning in the paragraph above was right: test_no_trades_placed_when_at_cap
+  was equally vacuous, and is fixed in the same pass.
+
+  ROOT CAUSE, which is NOT the one recorded above. This entry and the
+  in-test comment both blamed the synthetic ticker "KXHIGH-CHI-0" not
+  parsing to a real city/target-date, so that one of
+  portfolio_kelly_fraction / corr_kelly_scale / liquidity_kelly_scale
+  zeroed adj_kelly. Traced against the live code, that is not what happens:
+  with city and target_date both absent, portfolio_kelly_fraction takes its
+  `if not city or not target_date_str` branch and PASSES the value through
+  as min(base_fraction, remaining), and liquidity_kelly_scale returns 1.00
+  for the fixture's volume 500 + open_interest 1000. The real cause was a
+  missing dict key: _auto_place_trades sizes from `ci_adjusted_kelly` or
+  `fee_adjusted_kelly` (order_executor.py:4761-4765) and never reads
+  `kelly_fraction`, which is the only Kelly field the fixture set. ci_kelly
+  therefore fell back to 0.0 and every opportunity died at
+  kelly_too_small(0.0000) before reaching any cap.
+
+  A SECOND fixture defect surfaced once sizing worked: the open positions
+  were {"cost": 10.0, "qty": 1}, which is not a position that can exist (a
+  Kalshi contract settles at $0 or $1, so one contract cannot cost $10), and
+  it spelled the size `qty` while monte_carlo.simulate_portfolio reads
+  `quantity` (defaulting to 1) and `entry_price` (defaulting to 0.50).
+  Measured via portfolio_var(): 18 rows in that shape project $174 of VaR
+  against the $200 MAX_VAR_DOLLARS limit, and the candidate pushes it to
+  $217, so every opportunity was skipped as var_limit($217>$200). The 18-open
+  case is the operative one -- at 20 open the concurrent-position gate
+  returns before VaR is reached. (An earlier draft paired the 20-row figure,
+  $194, with the 18-row $217; both are real but belong to different
+  portfolios -- opus review M-5.) The same 18 positions in a consistent
+  shape (0.40 x 25 == $10.00) project $30, and $24 with the candidate.
+  The fixture was manufacturing a near-limit portfolio out of an impossible
+  position rather than exercising a real risk gate.
+
+  THE CAP IS AN ENTRY GATE, NOT A PER-PLACEMENT COUNTER. This entry's
+  "restore the `== 2` assertion" is based on a misreading that the fix had
+  to correct. MAX_CONCURRENT_POSITIONS is checked exactly once, before the
+  opportunity loop (order_executor.py:4368): at or above the cap it returns
+  0 for the whole cycle, and below it imposes no limit at all. Nothing
+  decrements toward it inside the loop. So with 18 open and 5 placeable
+  opportunities the correct expectation is 5, not 2, and the assertion is
+  now `== 5`. Equality, not a bound -- `<= 5` would pass at 0 all over
+  again, which is exactly how this test spent months green.
+
+  The two tests now share a _run_with_open(monkeypatch, repatch, n_open)
+  helper so the open-position count is the ONLY difference between them,
+  which is what makes them a matched pair rather than two assertions that
+  happen to sit together. They had already drifted as separate setup blocks:
+  the at-cap one stubbed place_paper_order with a bare MagicMock() and
+  omitted the execution_log stub, invisible while it returned at the gate,
+  but capping the observable count at 1 instead of 5 the moment the gate was
+  mutated away -- i.e. exactly when the test had to do its job.
+
+  MUTATION EVIDENCE (order_executor.py:4367's `int(os.getenv(
+  "MAX_CONCURRENT_POSITIONS", "20"))` default, edited and reverted; the file
+  is otherwise unchanged by this batch and was restored byte-identical):
+    "99" -> test_no_trades_placed_when_at_cap fails, "got 5"
+    "21" -> test_no_trades_placed_when_at_cap fails, "got 5"  (one above 20,
+            so the gate stops firing at exactly one past the real value)
+    "18" -> test_trades_placed_below_cap fails, "got 0"  (18 >= 18 fires the
+            gate a rung early), while the at-cap test still passes
+  21 breaks one half and 18 breaks the other, so the pair brackets the cap
+  at 20 from both sides rather than merely proving "a cap exists".
+
+  And the vacuity was MEASURED rather than asserted: the ORIGINAL tests were
+  run against all three of those mutations in a throwaway worktree at
+  6b116698, and passed under every one -- including "99", which removes the
+  cap's effect entirely.
+
+REVIEW FINDINGS ADDRESSED (independent opus review, effort:high):
+  - H-1: THE EXPECTED COUNT WAS A PROPERTY OF ONE MACHINE'S .env, NOT OF THE
+    CODE. `import main` inside the helper runs main.py's load_dotenv(), and
+    find_dotenv() walks UP OUT OF THE WORKTREE to the main clone's .env,
+    which sets MAX_DAILY_SPEND=200. Separately, the recording double
+    returned no `cost` key, and order_executor both accumulates
+    `daily_spent += trade.get("cost", 0.0)` and appends that same dict to
+    _open_trades_list for the in-cycle VaR gate -- so the spend cap was
+    inert for the whole cycle, and every position placed this cycle was
+    re-read by portfolio_var with quantity defaulting to 1 and entry_price
+    to 0.5. That is the exact impossible-position shape this item removed
+    from _make_open_trades, reintroduced one function later. Two unrealistic
+    things were cancelling. Fixed: the double now returns the real trade
+    shape, and MAX_DAILY_SPEND / MAX_VAR_DOLLARS are pinned via setattr
+    (module constants, so setenv cannot reach them) and MAX_POSITIONS_PER_DATE
+    via setenv.
+    MAX_CONCURRENT_POSITIONS is DELETED from the env rather than pinned --
+    it is read via os.getenv INSIDE the function, so setting it would
+    override the source literal that this class's mutation testing edits and
+    would have handed the class straight back to vacuity.
+  - M-4: "the pair brackets the cap at 20 from both sides" WAS NOT TRUE. The
+    gate is `>=` and the probes were at 18 and 20, so 19 is indistinguishable
+    from 20 (18 >= 19 False, 20 >= 19 True) -- the reviewer ran it and both
+    tests passed with the cap mutated to 19. Added a third probe,
+    test_one_below_the_cap_still_places (19 open, expects 5). Re-ran the full
+    matrix afterwards:
+      "99" -> at-cap fails      "21" -> at-cap fails
+      "20" -> all 3 pass        "19" -> the new probe fails
+      "18" -> below-cap + probe fail
+    Now genuinely bracketed at 20, and order_executor.py was restored
+    byte-identical (sha256 compared against a pre-mutation copy).
+  - M-3: `== 5` also depended on _make_opp omitting `target_date` -- adding
+    it makes the run place 4, stopped by date_cap(4/4). The docstring now
+    names MAX_POSITIONS_PER_DATE and MAX_DAILY_SPEND as the two gates that
+    would bite, so whoever next makes the fixture realistic gets an
+    explanation rather than a bare red test.
+  - M-5: the $194 -> $217 chain joined two different portfolios. Corrected
+    above; $217 is the 18-open case, which is the operative one.
+  - L-2: the counting double's `placed_count` was built and discarded. Now
+    asserted equal to _auto_place_trades' return value. A consistency
+    cross-check rather than a behavioural assertion -- neutralising it leaves
+    the suite green, so it is not evidence of anything by itself; it is there
+    to catch a future divergence between what the function reports and what
+    it actually placed. Round-2 review confirmed it does not misfire in the
+    at-cap case (both sides are 0, the gate returning before the loop).
+  - L-3: dropped the unused `tmp_path` parameter from both tests.
+  - L-4: the `qty` justification overstated. Outside tests/ exactly one
+    reader touches it (main.py's `t.get("quantity", t.get("qty", 0))`, as a
+    fallback), and paper.place_paper_order never writes a `qty` key at all.
+    Comment corrected; the field is kept only to avoid an unrelated change.
+  - Reviewer independently reproduced each half of the causal story in
+    throwaway copies (kelly key removed -> all five kelly_too_small; position
+    shape reverted -> all five var_limit($217>$200); both reverted -> the
+    original, dying at Kelly first), and independently confirmed `== 0` is
+    non-vacuous now and that the bare-MagicMock claim is exact.
+
+ROUND-2 REVIEW (of the round-1 fixes). No HIGH. The reviewer independently
+reproduced the full mutation matrix and confirmed the cap is now bracketed at
+exactly 20 (and that "1" also fails, as it should). Four findings:
+  - M1: THIS NARRATIVE CLAIMED A REMEDIATION THAT WAS NEVER WRITTEN. It said
+    the docstring "now names MAX_POSITIONS_PER_DATE and MAX_DAILY_SPEND as
+    the two gates that would bite". It did not -- only the bare pin
+    statements existed. The underlying fact is correct (adding a real
+    target_date drops the count to 4 via date_cap, measured), so the
+    explanation has now actually been written into
+    test_trades_placed_below_cap's docstring. Exactly the failure this entry
+    exists to prevent, committed in the entry itself.
+  - L4: HALF THE H-1 REMEDIATION WAS UNMUTATION-COVERED. Deleting the `cost`
+    key from _fake_place -- the half this narrative describes most
+    emphatically -- left all three tests green, because MAX_DAILY_SPEND was
+    pinned at 500 while five placements cost only ~$220. Added
+    test_the_spend_cap_counts_each_placed_trade_s_cost, which pins the cap at
+    200 so the accumulator is load-bearing and expects 4. Removing `cost` now
+    fails it with "got 5". (The quantity/entry_price half was already covered
+    -- removing those fails the 19-open probe.)
+  - L5: the MAX_POSITIONS_PER_DATE pin is INERT today (mutating it to "1"
+    leaves everything green) because the fixture has no target_date, and its
+    comment claimed more than that. Reworded to say it is defensive and
+    currently unreachable, and to point at the docstring.
+  - I6: _fake_place claimed to "mirror what paper.place_paper_order actually
+    writes" while returning a `qty` key the real writer never emits. Comment
+    corrected to name that as a deliberate exception matching
+    _make_open_trades' own legacy spelling.
+  - Reviewer also confirmed, by probing the live test process, that the
+    MAX_DAILY_SPEND / MAX_VAR_DOLLARS setattr pins genuinely reach the values
+    _auto_place_trades reads (both are LOAD_GLOBAL in its code object), that
+    delenv("MAX_CONCURRENT_POSITIONS") is sound with no other reader in the
+    repo, and that a deliberately hostile env leaves all tests green -- i.e.
+    the machine-dependence H-1 found is closed.
+  tests/test_trade_improvements.py: 10 passed.
 
 [RESOLVED 2026-08-25 -- see resolution below. SCOPE WIDENED on pickup: four guards had this pattern, not one.] tests/test_bare_os_replace_guard.py's rglob scan takes ~8 minutes when run from the main clone
 Priority: LOW -- test-suite latency only; the guard itself works correctly.
@@ -38124,7 +38631,7 @@ RESOLUTION 2026-08-26 -- and the finding is that NO CODE WAS EVER NEEDED:
   markets where we broadly agreed with the mid, but `predictions` contains no
   such rows at all. That correction is still outstanding.
 
-[OPEN 2026-08-25 -- reproduced on unmodified master while regression-testing the isolate_tracker_db change] tests/test_kelly_property.py has a hypothesis DeadlineExceeded flake under machine load
+[RESOLVED 2026-08-25 -- batch-80 item 4. Originally reproduced on unmodified master while regression-testing the isolate_tracker_db change] tests/test_kelly_property.py has a hypothesis DeadlineExceeded flake under machine load
 Priority: LOW -- a timing-sensitive test, not a logic defect. Fails intermittently in local runs; would also fail intermittently in CI.
 Files: tests/test_kelly_property.py (test_kelly_quantity_cost_never_exceeds_balance, test_kelly_bet_dollars_never_exceeds_balance)
 
@@ -38147,6 +38654,79 @@ Recommendation:
   I/O, so a slow example means a busy machine, not a slow implementation.
   While there, check the other hypothesis-based tests in the suite for the
   same default-deadline exposure.
+
+Resolution (batch-80 item 4):
+  @settings(max_examples=200, deadline=None) on both named tests. Values and
+  max_examples untouched -- strict on VALUES, lenient on TIME. The property
+  is a financial invariant (cost never exceeds balance) and keeps its full
+  200 examples.
+
+  Measured before retuning: ~0.57s and ~0.63s for all 200 examples, i.e.
+  ~3ms each against a 200ms default, so a failure needs a ~65x stall. That
+  is an external stall, never a code change -- which is also why the
+  deadline was the wrong instrument here. What it actually timed was each
+  test's OWN per-example fixture I/O (a TemporaryDirectory created and torn
+  down 200 times, plus a ledger write in the second one), not the pure
+  arithmetic under test.
+
+  ONE CORRECTION to this entry: it describes these as having "no I/O". They
+  do -- the tempdir-per-example IS the I/O, and it is the entire reason they
+  are the two slowest tests in the file. The conclusion (a slow example
+  means a busy machine) still holds; the stated reason did not.
+
+  CONFTEST FIXTURES RULED OUT as a cause, which the batch-80 handoff asked
+  for explicitly. The default-deny network guard (3cca1e8e) and the
+  real-data/-write blocker (27949ffa) both landed 2026-08-25 -- the handoff
+  said 2026-08-26, which git log contradicts and which would be tomorrow
+  (opus review L-5). Timed the identical file at 95b0df4c, the true parent
+  of 3cca1e8e, in a throwaway worktree: 0.57-0.58s, versus
+  0.57-0.59s with both present. They cost roughly 0.25ms per example against
+  ~197ms of headroom. Not the cause.
+
+  Mutation-verified, both directions:
+    deadline=1  -> DeadlineExceeded, "Test took 2.81ms" (proves the setting
+                   is live and that deadline=None is doing real work rather
+                   than being a no-op on an already-deadline-free test; also
+                   independently confirms the ~3ms per-example measurement)
+    assertion inverted to `>=` -> fails on the VALUE ("assert 0.0 >=
+                   1000.01"), not on timing, proving deadline=None did not
+                   neuter the invariant
+  A mutation of paper.kelly_quantity itself was NOT performed: paper.py is
+  batch-77's owned file this session.
+
+  SCOPED TO THE TWO NAMED TESTS. The entry's "check the other
+  hypothesis-based tests in the suite" was checked and is a no-op:
+  test_kelly_property.py is the only file in the repo importing hypothesis,
+  and its other five tests do no I/O (0.04-0.21s for 100-200 examples), so
+  they keep their default deadline and its regression signal.
+
+  CONSIDERED AND DECLINED (opus review L-6): a generous ceiling --
+  deadline=timedelta(seconds=2), ~600x the measured per-example cost --
+  instead of None. It would keep an order-of-magnitude regression tripwire
+  and would not have flaked under the load that produced the original
+  report. Declined on the grounds that what the clock actually measures here
+  is this test's own per-example TemporaryDirectory churn, so a tripwire on
+  it guards fixture I/O rather than the Kelly code, and the stall that
+  caused the report was unbounded rather than merely large -- a 2s ceiling
+  narrows the flake window without closing it. A real perf guard for
+  paper.kelly_quantity would belong on the function, not on a property test.
+  Recorded rather than silently dropped: it is a defensible alternative that
+  the evidence also supports.
+
+  REVIEW FINDING ADDRESSED (independent opus review, effort:high):
+  - L-5: this narrative said the two conftest guards "both landed
+    2026-08-26". git log says 2026-08-25 for both 3cca1e8e and 27949ffa --
+    and 2026-08-26 would be tomorrow. The date came from the batch-80
+    handoff and was propagated without checking. Corrected here and in the
+    test's own comment. The rest of the paragraph was verified exact: both
+    hashes resolve, and 95b0df4c IS the immediate parent of 3cca1e8e.
+  - Reviewer independently measured 0.65s/0.67s per 200 examples (~3.3ms
+    each, ~60x headroom), confirmed deadline=None hides no performance
+    regression, confirmed the invariant assertions and max_examples are
+    untouched, and confirmed this is the only file importing hypothesis with
+    no global profile in conftest.
+
+  tests/test_kelly_property.py: 7 passed.
 
 
 [RESOLVED 2026-08-26 (batch-79 item 1) -- filed 2026-08-25 by batch-66 item 2 (surfaced by a round-2 opus review of that batch's own fix)] A standalone `py web.py` server never calls load_dotenv, so every env-derived constant in the dashboard process silently shows the CODE DEFAULT rather than the operator's configured value
@@ -39798,3 +40378,141 @@ Why not now: watchdog.py is outside batch-79's file scope, and with
 
 When to revisit: whenever NTFY_TOPIC is actually set, or next time anyone
   touches watchdog.py or the notification path.
+
+
+[OPEN 2026-08-25 -- filed by batch-80 item 2 while fixing the 256-char
+  truncation in the same function]
+  NOTIFY.PY RECORDS THE DESKTOP CHANNEL AS DELIVERED WHENEVER PLYER'S
+  notify() RETURNS, BUT ON WINDOWS THAT ONLY MEANS "A THREAD WAS STARTED"
+Priority: Low -- affects the accuracy of a delivery tally and of
+  send_system_alert's bool contract, not whether other channels deliver.
+Files: notify.py (send_system_alert_detailed's desktop branch,
+  alert_strong_signal's desktop branch) -- no code changed by this entry.
+
+Problem:
+  Both desktop branches do:
+
+      _notif.notify(...)
+      successes.append(True)
+
+  On Windows, plyer's WindowsNotification._notify is
+  `thread(target=balloon_tip, kwargs=kwargs).start()` -- it spawns a thread
+  and returns immediately. The return therefore carries no information about
+  whether the toast was actually shown. balloon_tip can still fail on that
+  thread (balloontip.py raises Exception('Shell_NotifyIconW failed.') on
+  either of two API calls), and every such failure is recorded as a
+  SUCCESSFUL desktop delivery.
+
+  Consequences, in increasing order of consequence:
+  - send_system_alert_detailed's (status, n_succeeded, n_attempted) tuple
+    over-reports n_succeeded to the batch-69 delivery log.
+  - `if not any(successes)` cannot fire when desktop is the ONLY configured
+    channel and it failed, so the disk-persisted cooldown is NOT rolled back
+    and the alert is suppressed for the full 6h window despite never having
+    reached anyone. That is the exact failure mode the rollback added by
+    batch-24 item 3 exists to prevent -- it just cannot see this case.
+
+  Batch-80 item 2 removed the one failure that was actually being hit (a
+  ValueError from an over-long string, now truncated before it can happen),
+  so this is currently latent rather than active. It is a distinct defect
+  about plyer's fire-and-forget contract, not about field widths, which is
+  why it was not folded into that fix.
+
+What it would look like:
+  There is no clean fix from inside notify.py -- the thread is plyer's and
+  nothing this module does is on its stack. The options are to stop treating
+  desktop as a channel that can report success at all (append True only when
+  it is the sole channel, or exclude it from the `any(successes)` rollback
+  decision so a desktop-only failure still rolls back), or to bypass
+  plyer.notification on Windows and call balloon_tip directly on a thread
+  this module owns and can wrap. The first is small and honest; the second
+  couples notify.py to plyer internals. Worth deciding before any operator
+  runs with NOTIFY_CHANNELS=desktop alone.
+
+
+[OPEN 2026-08-25 -- filed by batch-80 item 1, which fixed the same defect in
+  useData.js's apiFetch but does not own these files]
+  EVERY OTHER RAW fetch() IN THE FRONTEND STILL HAS NO REQUEST TIMEOUT
+Priority: Low -- these are operator-initiated actions and per-tab loads
+  rather than the 60s poll that drives the whole dashboard, so a hang
+  stalls one button or one card instead of freezing every number on screen.
+Files: frontend/src/App.jsx (/api/cron-status x2, /api/run_cron,
+  /api/cancel-cron), frontend/src/shared.jsx (haltOrResume's /api/halt |
+  /api/resume), frontend/src/tabs/AnalyticsTab.jsx (/api/edge-realization,
+  /api/reliability/<city>), frontend/src/tabs/PositionsTab.jsx
+  (/api/close-position x2), frontend/src/tabs/SettingsTab.jsx
+  (/api/weekly-report, /api/override x2), frontend/src/tabs/SignalsTab.jsx
+  (/api/paper-order x2) -- no code changed by this entry.
+
+Problem:
+  Batch-80 item 1 gave useData.js's apiFetch an AbortSignal.timeout(), which
+  covers the 23 polled endpoints and the scan-version poll. Thirteen other
+  call sites across six files still call fetch() bare, so a backend that
+  HANGS rather than errors leaves each of them pending forever.
+
+  The consequences differ from the poll's, which is why this is filed rather
+  than assumed equivalent:
+  - The POST actions (run_cron, cancel-cron, halt/resume, close-position,
+    paper-order, override) mostly set a local "in flight" flag and clear it
+    in .then()/.finally(). A never-settling fetch leaves the button disabled
+    or spinning with no way back except a page reload.
+  - PositionsTab's and SignalsTab's order paths are the ones worth looking
+    at first: an operator who cannot tell a hung submit from a slow one may
+    retry, and these submit a price.
+  - AnalyticsTab's two GETs just leave a card in its loading state.
+
+What it would look like:
+  Import API_TIMEOUT_MS from useData.js (already exported) and add
+  `signal: AbortSignal.timeout(API_TIMEOUT_MS)` at each site, then check
+  each one's existing .catch()/.finally() actually restores its UI state on
+  an abort rather than only on an HTTP error. The POST sites need more care
+  than the GETs: aborting a submit that the server may already have
+  processed is not the same as aborting a read, so "timed out" must not be
+  rendered as "did not happen".
+
+
+[OPEN 2026-08-25 -- filed by batch-80 item 3, surfaced by making
+  TestMaxConcurrentPositions actually exercise the cap it is named for]
+  MAX_CONCURRENT_POSITIONS IS A PER-CYCLE ENTRY GATE, SO ONE CYCLE CAN OPEN
+  MORE POSITIONS THAN THE CAP ALLOWS
+Priority: Low -- paper trading is dormant and the overshoot is bounded by
+  the spend and per-date caps, but it is a real gap between what the cap is
+  documented to do and what it does.
+Files: order_executor.py (_auto_place_trades, the check at line 4368) -- no
+  code changed by this entry.
+
+Problem:
+  The cap is evaluated exactly once, before the opportunity loop:
+
+      if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
+          ... return 0
+
+  `_open_trades_list` is the snapshot taken at the top of the cycle and
+  nothing re-checks it, or increments a counter toward it, as placements
+  happen. So the cap is all-or-nothing per cycle: at 20 open it places
+  nothing, and at 19 open it may place every qualifying opportunity in the
+  batch.
+
+  Measured, not inferred: tests/test_trade_improvements.py::
+  test_trades_placed_below_cap now starts from 18 open positions and places
+  all 5 of its opportunities, ending at 23 -- three past a cap the class
+  docstring describes as "must refuse new trades once 20 open positions
+  exist". That test asserts `== 5` because that is what the code does today;
+  it is deliberately pinned to the real behaviour so this entry's fix has to
+  come back and change it.
+
+  Bounded in practice by MAX_DAILY_SPEND / MAX_SAME_DAY_SPEND, the per-date
+  concentration caps, and the VaR gate, all of which ARE evaluated per
+  opportunity inside the loop. So the realistic overshoot is a few positions
+  on a batch of unusually diverse, cheap signals, not an unbounded one.
+
+What it would look like:
+  Count placements inside the loop and re-test
+  `len(_open_trades_list) + placed >= MAX_CONCURRENT_POSITIONS` per
+  opportunity, the way the same-day and per-date caps already do
+  (`_same_day_open >= _eff_sameday_cap` / `_multiday_date_counts[...] >=
+  MAX_POSITIONS_PER_DATE`). Small change, but it alters live sizing
+  behaviour, so it needs its own decision rather than riding along with a
+  test repair -- and test_trades_placed_below_cap's `== 5` becomes `== 2`
+  when it lands, which is what the batch-62 entry originally expected the
+  code to already do.

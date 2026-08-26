@@ -88,6 +88,139 @@ except Exception as exc:
 _NOTIFY_COOLDOWN_SECS = int(os.getenv("NOTIFY_COOLDOWN_SECS", "300"))  # 5 min default
 _last_notified: dict[str, float] = {}  # ticker -> last fire timestamp
 
+
+# ---------------------------------------------------------------------------
+# Desktop-toast field limits (batch-80 item 2; backlog.txt "A SYSTEM ALERT
+# LONGER THAN 256 CHARACTERS CRASHES THE DESKTOP-TOAST BACKEND").
+#
+# plyer's Windows backend packs the toast into a NOTIFYICONDATAW struct whose
+# string members are fixed-width ctypes WCHAR arrays. Assigning a longer
+# Python string raises ValueError("string too long") from ctypes, inside
+# get_NOTIFYICONDATAW. Verified against the installed plyer on 2026-08-25
+# (plyer/platforms/win/libs/win_api_defs.py:52-68):
+#
+#     szTip       WCHAR * 128   <- app_name  (hardcoded "Kalshi Weather")
+#     szInfo      WCHAR * 256   <- message
+#     szInfoTitle WCHAR *  64   <- title
+#
+# THE TITLE LIMIT IS 64, NOT 256. The backlog entry only names the 256-char
+# message cap, but szInfoTitle is four times tighter and fails identically --
+# a title is simply the likelier of the two to already be short. Both are
+# capped here.
+#
+# Why truncating is the whole fix, and why the entry's second suggestion
+# ("wrapping the plyer call in its own try/except so a backend failure can
+# never escape the thread") is not implementable from this side:
+# WindowsNotification._notify is `thread(target=balloon_tip, kwargs=...)
+# .start()` -- plyer spawns its OWN thread and returns immediately. The
+# ValueError is raised on that thread, so notify.py's `except Exception`
+# around _notif.notify() never sees it; it surfaces only as pytest's
+# PytestUnhandledThreadExceptionWarning, or in production as nothing at all.
+# There is no wrapper this module can add that catches it. Not sending an
+# over-long string is the only control available here.
+#
+# One unit is reserved for the NUL terminator: ctypes accepts a string of
+# exactly the array length (measured -- 256 raises nothing, 257 raises), but
+# stores it with no terminator, and Shell_NotifyIconW reads until one. At
+# exactly 256 it would read on into the adjacent uVersion field.
+#
+# UNITS, NOT CHARACTERS. A WCHAR array counts UTF-16 code units, so every
+# character above U+FFFF costs two -- 129 emoji raise
+# ValueError("string too long (258, maximum length 256)") despite len() 129.
+# _truncate_for_desktop budgets in units for that reason; see its own note.
+#
+# These bounds are the Windows struct's. macOS and Linux backends have their
+# own (looser) limits; truncating everywhere costs a few characters on those
+# platforms and keeps one code path.
+DESKTOP_MESSAGE_MAX = 255
+DESKTOP_TITLE_MAX = 63
+
+
+def _utf16_units(text: str) -> int:
+    """Length of `text` in UTF-16 code units -- what a WCHAR array counts.
+
+    ctypes measures a `WCHAR * N` field in UTF-16 code units, not Python
+    characters, so any character above U+FFFF costs two. len() and this
+    function agree for all-BMP text and diverge exactly where the crash is.
+
+    "surrogatepass" because a bare utf-16-le encode REJECTS an unpaired
+    surrogate while ctypes accepts one -- both measured. Without it this
+    helper would raise UnicodeEncodeError on input the field would happily
+    have taken, which is a failure mode the earlier len()-based version did
+    not have, and a reachable one: notify_templates.json is operator-editable
+    and JSON permits a lone escaped surrogate, which json.loads turns into a
+    real one. Each counts as one unit, which is what ctypes stores.
+    """
+    return len(text.encode("utf-16-le", "surrogatepass")) // 2
+
+
+def _truncate_for_desktop(text: str, limit: int, field: str) -> str:
+    """Clip `text` to `limit` UTF-16 code units for the toast, logging if so.
+
+    Returns `text` unchanged when it already fits, so the common case is
+    untouched and the log line only appears when something was actually
+    dropped -- the current behaviour loses the desktop half of an alert with
+    no record at all, which is the substance of the entry.
+
+    Only the DESKTOP copy is clipped. Discord, Pushover, ntfy and email are
+    each passed the full original text by both call sites, so this can never
+    shorten an alert on a channel that could have carried it.
+    """
+    if not isinstance(text, str):
+        # Defensive: this module's alerting path is the last place a
+        # surprise TypeError is acceptable (same reasoning as
+        # send_system_alert_detailed's cooldown_secs coercion).
+        text = str(text)
+    # Hygiene: unreachable with this module's 255/63 constants, but a limit
+    # of 0 or 1 would make the text[: limit - 1] slice below produce a
+    # LONGER string than it was given.
+    #
+    # The single kept character is UNIT-checked, not just sliced: at limit 1
+    # an astral first character is one code point but TWO units, so a bare
+    # text[:1] would return something over the very budget this guard exists
+    # to respect -- and strictly worse than the unguarded path, which
+    # returned a 1-unit ellipsis. Found by a fuzz sweep in round-2 review.
+    if limit <= 1:
+        head = text[:1]
+        return head if limit == 1 and _utf16_units(head) <= 1 else ""
+
+    original = _utf16_units(text)
+    if original <= limit:
+        return text
+    _log.warning(
+        "desktop notify: %s truncated from %d to %d UTF-16 units for the "
+        "Windows toast field limit -- the full text was still sent to every "
+        "other configured channel",
+        field,
+        original,
+        limit,
+    )
+    # Clip by UTF-16 UNITS, not by Python characters, and never mid-pair.
+    # The budget must be counted the way the struct counts: a WCHAR array of
+    # 256 holds 256 UTF-16 code units, and every non-BMP character (an emoji,
+    # most obviously) occupies TWO of them. A 129-emoji string has len() 129
+    # but raises ValueError("string too long (258, maximum length 256)") --
+    # measured, not assumed -- so a code-point budget would let the exact
+    # original bug back in on plyer's uncatchable thread. Latent today (no
+    # source file in this repo contains a character above U+FFFF), but
+    # notify_templates.json is operator-editable and both templates .format()
+    # in external `city` and `ticker` strings, which is the same reasoning
+    # that made alert_strong_signal's call site worth capping at all.
+    #
+    # The ellipsis is spent INSIDE the budget, not appended to it -- appending
+    # would re-cross the limit and reintroduce the ValueError. U+2026 is BMP,
+    # so it costs exactly one unit.
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        width = 2 if ord(ch) > 0xFFFF else 1
+        if used + width > limit - 1:
+            break
+        out.append(ch)
+        used += width
+    return "".join(out) + "…"
+
+
 # backlog.txt "NOTIFY.SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY
 # ONLY": send_system_alert()'s own cooldown, unlike the per-ticker one above,
 # is persisted to disk so it survives across separate process invocations
@@ -507,9 +640,14 @@ def alert_strong_signal(
     # Desktop notification (plyer)
     if _ENABLED and "desktop" in _CHANNELS:
         try:
+            # batch-80 item 2: truncated for the Windows toast field limits.
+            # This call site matters as much as send_system_alert's -- both
+            # `title` and `msg` here come from operator-editable templates
+            # (_TEMPLATES via notify_templates.json), so their length is
+            # entirely unbounded by anything in this file.
             _notif.notify(
-                title=title,
-                message=msg,
+                title=_truncate_for_desktop(title, DESKTOP_TITLE_MAX, "title"),
+                message=_truncate_for_desktop(msg, DESKTOP_MESSAGE_MAX, "message"),
                 app_name="Kalshi Weather",
                 timeout=10,
             )
@@ -635,9 +773,16 @@ def send_system_alert_detailed(
     # Desktop notification
     if _ENABLED and "desktop" in _CHANNELS:
         try:
+            # batch-80 item 2: truncated for the Windows toast field limits.
+            # The known live case is tracker.audit_settlement's Miami
+            # index-mismatch alert. The backlog entry put that body at
+            # ~1,499 characters; evaluating the real f-string with realistic
+            # values renders ~377 (opus review M-2) -- still ~1.5x over the
+            # cap and still lost today, but not 6x. Every other channel below
+            # still receives the untouched `message`.
             _notif.notify(
-                title=title,
-                message=message,
+                title=_truncate_for_desktop(title, DESKTOP_TITLE_MAX, "title"),
+                message=_truncate_for_desktop(message, DESKTOP_MESSAGE_MAX, "message"),
                 app_name="Kalshi Weather",
                 timeout=10,
             )

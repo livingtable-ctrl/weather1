@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { DataContext } from '../DataContext.js';
-import { StatCard, alarmSafeFlag, brierAlertTier, feedFreshness, formatFeedAge, haltOrResume, heatStatus, useFeedClock } from '../shared.jsx';
+import { StatCard, alarmSafeFlag, brierAlertTier, feedFreshness, formatFeedAge, haltOrResume, heatStatus, StaleFeedBanner, staleFeedState, useFeedClock } from '../shared.jsx';
+import { RISK_FEED_KEYS } from '../useData.js';
 
 // ---------------------------------------------------------------------------
 // BrierAlertCard — P10.3 Brier degradation alert. Fires when weekly Brier
@@ -243,12 +244,48 @@ export default function RiskTab() {
   // visually distinct from INACTIVE, which is the entry's actual requirement.
   const anomalyUnavailableAmber = anomalyFeed.state === 'stale';
 
+  // batch-80 item 1: the tab-wide staleness banner. Portfolio heat, daily
+  // spend, VaR and the drawdown figures come from M.stats (/api/status);
+  // the open-position rows from M.positions (/api/trades); and the aged,
+  // correlated, expiry-cluster and directional-bias counts from /api/risk.
+  // An earlier version of this comment attributed that last group to
+  // M.positions -- wrong, and it was why RISK_FEED_KEYS originally watched
+  // only two of this tab's feeds (round-2 opus review M1). batch-61 gave
+  // the anomaly card its own freshness treatment, but the rest of the tab
+  // had none: a hung backend left "Portfolio heat 41%" and "Aged positions
+  // 4" on screen indefinitely with nothing to say they had stopped
+  // updating.
+  //
+  // Still NOT pooled, because they have no fetchedAt key of their own:
+  // M.circuitBreakers, M.scanStats and M.brierHistory. Each needs its own
+  // success predicate wired into orderFeedSuccess; filed as a follow-up
+  // rather than guessed at here.
+  //
+  // Reuses anomalyClock rather than calling useFeedClock() again, so the two
+  // freshness readings on this tab cannot be evaluated against different
+  // clocks -- the same reasoning that made the anomaly card take its clock
+  // as a prop (opus review F7, batch-61).
+  //
+  // anomalyStatus is deliberately NOT in RISK_FEED_KEYS: its own card
+  // already reports it with a dedicated badge and wording, and pooling it in
+  // here would state the same outage twice on one screen.
+  const feedState = staleFeedState(M.fetchedAt, RISK_FEED_KEYS, anomalyClock);
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Risk</h1>
       <p style={{ margin: '0 0 24px', color: 'var(--text-muted)', fontSize: 13 }}>
         Portfolio exposure, aged positions, correlated events, directional bias, expiry clustering.
       </p>
+
+      {/* No `feedState.stale &&` guard: StaleFeedBanner already returns null
+          when the feeds are fresh, and duplicating the predicate here would
+          be a second copy to keep in sync by hand (opus review L5). The
+          margin rides on the banner itself so a fresh tab gets no stray
+          spacing. OverviewTab still needs the predicate in its own
+          condition, because there it also gates a shared alert-stack
+          wrapper that other banners live in. */}
+      <StaleFeedBanner feed={feedState} style={{ marginBottom: 18 }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         <StatCard label="Portfolio heat" tooltip="% of capital deployed. Bot halts new trades above 80%."

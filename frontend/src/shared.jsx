@@ -1138,6 +1138,156 @@ export function worstStaleness(...parts) {
   return worst || { stale: false, ageMs: null, label: null };
 }
 
+// ---------------------------------------------------------------------------
+// staleFeedState / StaleFeedBanner — batch-80 item 1 (backlog "useData.js's
+// apiFetch has no request timeout, so a HUNG backend freezes the whole
+// dashboard silently instead of degrading").
+//
+// Adding the timeout in useData.js is what makes a hang degrade like an
+// error rather than stall. This pair is what makes the degraded state
+// VISIBLE. The two failure modes are otherwise indistinguishable from the
+// operator's chair, because both end in "keep the last known value": every
+// branch of fetchAll's merge is deliberately null-tolerant, so a dead
+// backend renders pixel-for-pixel like a healthy one whose numbers have not
+// moved.
+//
+// STALE-WITH-A-MARKER, not an error state that blanks the values. This
+// follows the precedent RiskTab's anomaly card set in batch-61, where opus
+// review F2 rejected withholding a last-known reading during an outage: a
+// safety surface must not become LESS informative because its feed died. An
+// operator reading a kill switch or a drawdown tier is better served by the
+// last real value, plainly labelled as not live, than by a dash.
+//
+// Lives here, beside worstStaleness and staleQuoteWarning, so OverviewTab
+// and RiskTab cannot word the same condition differently -- the same
+// reasoning staleQuoteWarning gives for its four order surfaces. Split into
+// a pure part and a render part because frontend/ has no jsdom or RTL: the
+// component cannot be exercised by a test, but staleFeedState can, and it
+// holds all of the decision-making.
+//
+// `keys` comes from useData.js (OVERVIEW_FEED_KEYS / RISK_FEED_KEYS), which
+// is also where the keys are produced, so a test can check the two agree.
+export function staleFeedState(fetchedAt, keys, clock) {
+  const opts = { now: clock?.now, since: clock?.visibleSince };
+  const parts = (Array.isArray(keys) ? keys : []).map(k =>
+    feedFreshness(fetchedAt?.[k], opts));
+  const worst = worstStaleness(...parts);
+
+  // `anyEscalated` is computed across EVERY member, not read off the pool
+  // winner (round-2 opus review H1). worstStaleness ranks an unknown age as
+  // Infinity -- "knowing nothing is worse than knowing it is old" -- so a
+  // member that has never answered ALWAYS wins the pool, and its 'pending'
+  // state was then driving the banner's tone for the whole tab. Measured:
+  // two feeds 13 minutes dead alongside one that never answered reported
+  // {state:'pending'}, i.e. a calm grey "waiting" over two dead safety
+  // feeds. The ranking is right for choosing WHICH age to show; it is the
+  // wrong input for deciding whether to alarm.
+  const nowMs = Number.isFinite(clock?.now) ? clock.now : Date.now();
+  // Second half of the same finding: with no stamp, feedFreshness measures
+  // from `since`, and nothing caps that -- so a total hang from page load
+  // reverts from amber to grey on every alt-tab, forever. The page-load
+  // anchor is immune to that reset, so once we have been watching longer
+  // than the hard ceiling and something is still not answering, it alarms
+  // and stays alarmed.
+  const watchedLongerThanCeiling =
+    Number.isFinite(clock?.pageLoad) && nowMs - clock.pageLoad > FEED_HARD_STALE_MS;
+  const anyEscalated =
+    parts.some(p => p.stale && p.state === 'stale') ||
+    (watchedLongerThanCeiling && parts.some(p => p.stale));
+
+  return { ...worst, anyEscalated };
+}
+
+// staleBannerCopy — the amber-vs-grey decision and its wording, as a pure
+// function.
+//
+// Split out (opus review round 1, H1) because leaving the decision inside
+// the component made it unprovable: frontend/ has no jsdom or RTL, so
+// reintroducing the original `formatFeedAge(feed.ageMs) == null` bug left
+// all 293 tests green. A wrong decision that no test can reach is the same
+// failure mode this whole item exists to remove from the dashboard, so the
+// decision moved to where a test can hold it and the component kept only
+// the style application.
+export function staleBannerCopy(feed) {
+  if (!feed || !feed.stale) return null;
+  // Keyed on state, NOT on a null ageMs. feedFreshness returns ageMs null
+  // for BOTH 'pending' (nothing has answered, but we have not been watching
+  // long enough to care) and an escalated 'stale' (never answered, now past
+  // maxAgeMs from `since`) -- and worstStaleness ranks a null age as
+  // Infinity, so a single never-answered feed always wins the pool. Reading
+  // that null as "pending" therefore both suppressed the alarm forever on a
+  // backend that hung at page load AND masked genuinely stale siblings
+  // behind a calm "waiting" message.
+  if (!feed.anyEscalated) {
+    return { tone: 'pending', headline: 'Waiting for the first response from the backend…' };
+  }
+  // formatFeedAge is now only the "never render NaN min ago" backstop.
+  // It returns a phrase already ending in "ago", so the suffix is stripped
+  // rather than pairing it with "for".
+  const age = formatFeedAge(feed.ageMs);
+  // "Some data has stopped updating", not "the backend is not responding":
+  // one endpoint answering 500 while the other 22 are healthy stops its own
+  // feed stamping, and asserting the backend is down sends the operator to
+  // check the wrong thing.
+  return {
+    tone: 'alert',
+    headline: age
+      ? `⚠ Some data has stopped updating — no successful refresh for ${age.replace(/ ago$/, '')}.`
+      : '⚠ Some data has stopped updating — no successful refresh since this page loaded.',
+  };
+}
+
+export function StaleFeedBanner({ feed, style }) {
+  // GREY IS KEYED ON state === 'pending', NOT ON A NULL ageMs.
+  //
+  // The first version of this used `formatFeedAge(feed.ageMs) == null` as its
+  // pending test, and that was wrong in a way that re-introduced the exact
+  // trap batch-61's opus review F4 had already closed one layer down.
+  // feedFreshness returns a null ageMs for TWO different states: 'pending'
+  // (nothing has answered yet, but we have not been watching long enough to
+  // care) and an escalated 'stale' (a feed that has never answered and has
+  // now aged past maxAgeMs from `since`). Collapsing both into the neutral
+  // grey branch meant a backend that hung at page load stayed on a calm
+  // "waiting…" forever, over MOCK's fabricated balance and positions.
+  //
+  // Worse, worstStaleness ranks a null ageMs as Infinity -- "knowing nothing
+  // is worse than knowing it is old" -- so a single never-answered feed
+  // always WINS the pool. Two feeds two hours dead alongside one that never
+  // answered therefore also rendered as "waiting". Verified against the real
+  // primitives before fixing:
+  //   feedFreshness(undefined, {now, since: now - 600_000})
+  //     -> {state:'stale', stale:true, ageMs:null}
+  //
+  // Grey for genuinely-pending is still the right call -- it fires on every
+  // reload for the few hundred ms before the first poll lands, and an amber
+  // flash there is the alarm fatigue RiskTab's anomaly banner avoided for the
+  // same reason (opus review F5, batch-61). Only the TEST for it was wrong.
+  // One guard, not two (round-2 opus review L1). staleBannerCopy returns
+  // null for a fresh feed, and destructuring that null would throw DURING
+  // RENDER -- which App's ErrorBoundary turns into a blank Risk or Overview
+  // tab, the worst possible outcome for the surface this exists to protect.
+  const copy = staleBannerCopy(feed);
+  if (!copy) return null;
+  const alert = copy.tone === 'alert';
+  return (
+    <div style={{
+      padding: '10px 16px', borderRadius: 9,
+      background: alert ? 'rgba(202,138,4,0.07)' : 'var(--bg-subtle)',
+      border: '1px solid ' + (alert ? 'rgba(202,138,4,0.35)' : 'var(--border)'),
+      color: alert ? 'var(--warn)' : 'var(--text-muted)',
+      fontSize: 13, fontWeight: 600,
+      ...style,
+    }} role="status">
+      {copy.headline}
+      {alert && (
+        <span style={{ fontWeight: 400 }}>
+          {' '}These are the last known values, not live.
+        </span>
+      )}
+    </div>
+  );
+}
+
 // staleQuoteWarning — the single wording for all four order actions, so
 // Approve, bulk Approve, Close and bulk Close cannot describe the same
 // condition differently. Returns null when there is nothing to warn about,
@@ -1255,7 +1405,20 @@ export function alarmSafeFlag(value, stale) {
 // started watching, and a remount is not a new page load) and, as a side
 // effect, collapses the two mounted consumers onto ONE interval and ONE
 // listener instead of one each.
-const _feedClock = { now: Date.now(), visibleSince: Date.now() };
+// `pageLoad` is set once and NEVER written again -- deliberately unlike
+// `visibleSince`, which _onFeedClockVisible resets on every hidden->visible
+// transition. feedFreshness's FEED_HARD_STALE_MS ceiling is gated behind
+// `hasStamp`, so a feed that has NEVER answered gets an uncapped `since`
+// credit: an operator alt-tabbing more often than FEED_STALE_MS keeps
+// restarting its tolerance window and it never escalates past 'pending'.
+// That is exactly the "repeated alt-tabbing must not defer an alarm
+// indefinitely" case the ceiling exists for, on the one path it cannot
+// reach. staleFeedState uses this anchor to close it (round-2 opus review).
+const _feedClock = {
+  now: Date.now(),
+  visibleSince: Date.now(),
+  pageLoad: Date.now(),
+};
 const _feedClockSubscribers = new Set();
 let _feedClockTimer = null;
 let _feedClockTickMs = null;
