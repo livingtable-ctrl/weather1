@@ -850,3 +850,154 @@ class TestReadsAreAllowedButCounted:
         lines = prod_data_guard.read_summary_lines()
         assert any("example.json" in line for line in lines)
         del prod_data_guard._reads[r"C:\fake\data\example.json"]
+
+
+# ── dir_fd resolution (CI-only false positive, fixed 2026-08-26) ─────────────
+
+
+class TestDirFdRelativePaths:
+    """shutil.rmtree uses the fd-based _rmtree_safe_fd walk wherever the
+    platform supports it, calling os.rmdir(entry.name, dir_fd=topfd) with a
+    BARE entry name. _norm()'s abspath() resolved that against the process
+    cwd -- the repo root under CI -- so tearing down any tmpdir containing a
+    subdirectory named "data" was blocked as if it were the production data/.
+
+    tests/test_calibration.py's TestCalibrateCLI creates exactly that layout,
+    and its teardown_method failed on Linux CI while passing on Windows (which
+    has no os.supports_dir_fd entries, so rmtree takes the path-based walk).
+    """
+
+    def test_bare_relative_name_is_not_judged_against_cwd(self, monkeypatch):
+        from tests import prod_data_guard as g
+
+        real = os.path.normcase(os.path.normpath(os.path.abspath("data")))
+        monkeypatch.setattr(g, "_data_prefixes", (real,))
+
+        # Positive control: without a dir_fd the bare name IS read as the
+        # production dir. This is the exact misjudgement being fixed, so if it
+        # ever stops being true the test below proves nothing.
+        assert g._under_real_data("data") is True
+
+        # With a dir_fd naming some other directory, it must resolve there.
+        monkeypatch.setattr(
+            g.os, "readlink", lambda p: os.path.join("/tmp", "pytest-99")
+        )
+        resolved = g._resolve_at("data", 7)
+        assert resolved is not None
+        assert g._under_real_data(resolved) is False
+
+    def test_a_dir_fd_pointing_at_real_data_is_still_blocked(self, monkeypatch):
+        """The fix must not become a bypass: an fd that really does name the
+        production dir still resolves there and still trips."""
+        from tests import prod_data_guard as g
+
+        real = os.path.normcase(os.path.normpath(os.path.abspath("data")))
+        monkeypatch.setattr(g, "_data_prefixes", (real,))
+        monkeypatch.setattr(g.os, "readlink", lambda p: os.path.abspath("data"))
+
+        resolved = g._resolve_at("kill_switch.json", 7)
+        assert g._under_real_data(resolved) is True
+
+    def test_unresolvable_fd_declines_to_judge(self, monkeypatch):
+        """No /proc (macOS) or a stale fd -> None, meaning "cannot judge".
+        Guessing is what produced the false positive, and no production code
+        in this repo passes dir_fd at all."""
+        from tests import prod_data_guard as g
+
+        def _boom(_p):
+            raise OSError("no /proc")
+
+        monkeypatch.setattr(g.os, "readlink", _boom)
+        assert g._resolve_at("data", 7) is None
+
+    def test_absolute_path_ignores_dir_fd(self, monkeypatch):
+        """The OS ignores dir_fd for an absolute path, so the guard must too
+        -- and must not consult readlink at all."""
+        from tests import prod_data_guard as g
+
+        def _boom(_p):
+            raise AssertionError("readlink must not be called for an abs path")
+
+        monkeypatch.setattr(g.os, "readlink", _boom)
+        assert g._resolve_at(os.path.abspath("data"), 7) == os.path.abspath("data")
+
+    def test_no_dir_fd_is_passed_through_unchanged(self):
+        from tests import prod_data_guard as g
+
+        assert g._resolve_at("data", None) == "data"
+
+    @pytest.mark.skipif(
+        os.rmdir not in os.supports_dir_fd,
+        reason="platform has no dir_fd support, so rmtree never takes the fd walk",
+    )
+    def test_rmtree_of_a_tmpdir_containing_data_is_not_blocked(self, tmp_path):
+        """The end-to-end reproduction, on the platform CI actually runs.
+        Skipped on Windows, which is precisely why this went unnoticed."""
+        import shutil
+
+        victim = tmp_path / "scratch"
+        (victim / "data").mkdir(parents=True)
+        (victim / "data" / "seasonal_weights.json").write_text("{}")
+
+        shutil.rmtree(victim)
+        assert not victim.exists()
+
+    def test_target_guard_actually_consults_dir_fd(self, monkeypatch):
+        """Pins the WIRING, not just the helper.
+
+        Mutation-testing caught this gap: reverting _target_guard to
+        `_under_real_data(path)` -- i.e. reintroducing the exact CI failure --
+        left every other test in this class green, because they exercise
+        _resolve_at directly and the end-to-end rmtree case is skipped on
+        Windows. Calling the wrapper with a stubbed `original` reproduces the
+        fd path on any platform, with no os.supports_dir_fd needed.
+        """
+        from tests import prod_data_guard as g
+
+        real = os.path.normcase(os.path.normpath(os.path.abspath("data")))
+        monkeypatch.setattr(g, "_data_prefixes", (real,))
+        monkeypatch.setattr(
+            g.os, "readlink", lambda p: os.path.join("/tmp", "pytest-99")
+        )
+
+        called = []
+        guarded = g._target_guard(lambda *a, **kw: called.append((a, kw)), "os.rmdir")
+
+        # The bare name resolves under the fd's directory, not the cwd.
+        guarded("data", dir_fd=7)
+        assert called == [(("data",), {"dir_fd": 7})]
+
+        # Positive control: the same bare name with NO dir_fd is still judged
+        # against the cwd and still blocked, so the pass above is the fd
+        # resolution working rather than the guard being disabled outright.
+        with pytest.raises(BaseException) as exc:
+            guarded("data")
+        assert "data" in str(exc.value)
+        assert len(called) == 1
+        # _block() also appends to the session ledger, which assert_clean
+        # turns into a teardown failure. This one was deliberate, so drop it.
+        g._violations.clear()
+
+    def test_move_guard_actually_consults_the_dir_fds(self, monkeypatch):
+        """Same wiring check for os.rename/os.replace, which take
+        src_dir_fd/dst_dir_fd and had the identical latent false positive."""
+        from tests import prod_data_guard as g
+
+        real = os.path.normcase(os.path.normpath(os.path.abspath("data")))
+        monkeypatch.setattr(g, "_data_prefixes", (real,))
+        monkeypatch.setattr(
+            g.os, "readlink", lambda p: os.path.join("/tmp", "pytest-99")
+        )
+
+        called = []
+        guarded = g._move_guard(
+            lambda *a, **kw: called.append((a, kw)), "os.rename -> "
+        )
+
+        guarded("data", "data", src_dir_fd=7, dst_dir_fd=8)
+        assert len(called) == 1
+
+        with pytest.raises(BaseException):
+            guarded("data", "data")
+        assert len(called) == 1
+        g._violations.clear()  # deliberate block, see the test above

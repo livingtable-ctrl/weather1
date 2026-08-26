@@ -181,6 +181,44 @@ def _norm(p: str) -> str:
     return os.path.normcase(os.path.normpath(p))
 
 
+def _resolve_at(path, dir_fd):
+    """Resolve `path` against `dir_fd`, or return None if that is impossible.
+
+    os.remove/unlink/rmdir/utime accept a `dir_fd` on platforms whose
+    os.supports_dir_fd includes them (Linux yes, Windows no), and the path is
+    then relative to THAT DIRECTORY -- not to the process cwd. _norm()'s
+    abspath() does not know this, so a bare entry name was being judged
+    against the repo root.
+
+    That is not theoretical: shutil.rmtree uses the fd-based _rmtree_safe_fd
+    walk whenever the platform supports it, calling os.rmdir(entry.name,
+    dir_fd=topfd). So ANY test tearing down a tmpdir that happens to contain a
+    subdirectory named "data" -- tests/test_calibration.py's TestCalibrateCLI
+    does exactly that -- had its cleanup blocked as if it were deleting the
+    production data/ dir. Green on Windows (no fd walk), red on Linux CI.
+
+    Returns None when the path cannot be resolved (no /proc, or a bad fd).
+    Callers treat None as "cannot judge, do not block": guessing is what
+    produced the false positive, and nothing in this repo passes dir_fd from
+    production code, so there is no real delete path being waved through.
+    """
+    if dir_fd is None:
+        return path
+    try:
+        s = os.fspath(path)
+    except TypeError:
+        return None
+    if isinstance(s, bytes):
+        s = os.fsdecode(s)
+    if os.path.isabs(s):
+        return s  # the OS ignores dir_fd for an absolute path
+    try:
+        base = os.readlink(f"/proc/self/fd/{dir_fd}")
+    except (OSError, ValueError, TypeError):
+        return None
+    return os.path.join(base, s)
+
+
 def _under_real_data(p) -> bool:
     """True if `p` names the real data/ dir or anything inside it."""
     try:
@@ -341,10 +379,14 @@ def _move_guard(original, operation):
     """
 
     def guarded(src, dst, *args, **kwargs):
-        if _under_real_data(dst):
-            _block(operation, dst)
-        if _under_real_data(src):
-            _block(f"{operation} (moved OUT of data/)", src)
+        # os.rename/os.replace take src_dir_fd/dst_dir_fd, the same
+        # relative-to-a-directory semantics _resolve_at exists for.
+        _dst = _resolve_at(dst, kwargs.get("dst_dir_fd"))
+        _src = _resolve_at(src, kwargs.get("src_dir_fd"))
+        if _dst is not None and _under_real_data(_dst):
+            _block(operation, _dst)
+        if _src is not None and _under_real_data(_src):
+            _block(f"{operation} (moved OUT of data/)", _src)
         return original(src, dst, *args, **kwargs)
 
     return guarded
@@ -352,8 +394,9 @@ def _move_guard(original, operation):
 
 def _target_guard(original, operation):
     def guarded(path, *args, **kwargs):
-        if _under_real_data(path):
-            _block(operation, path)
+        target = _resolve_at(path, kwargs.get("dir_fd"))
+        if target is not None and _under_real_data(target):
+            _block(operation, target)
         return original(path, *args, **kwargs)
 
     return guarded
