@@ -162,12 +162,12 @@ class TestAnalyzeTradeHourlyModel:
 
         monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: temps)
         monkeypatch.setattr(wm, "_get_combined_station_bias", lambda *a, **kw: 0.0)
-        from nws import get_live_observation as _real_get_live_obs  # noqa: F401
 
-        monkeypatch.setattr(wm, "_get_live_obs", lambda *a, **kw: None, raising=False)
-
-        # _compute_persistence_prob imports get_live_observation locally each
-        # call -- patch the source module so that local import sees the stub.
+        # nws is the ONLY patchable target: weather_markets no longer re-exports
+        # get_live_observation, and both of its call sites go through `nws.`.
+        # (Until then this helper also carried an unused import and a
+        # raising=False patch of a `wm._get_live_obs` attribute that never
+        # existed -- both dead, both removed.)
         import nws
 
         monkeypatch.setattr(nws, "get_live_observation", lambda *a, **kw: None)
@@ -357,6 +357,21 @@ class TestAnalyzeTradeHourlyModel:
             "open_interest": 1000,
             "close_time": close_time,
         }
+        # Past the lock-in call this daily path runs the whole real model.
+        # This test only asserts that _metar_lock_in is reached, so pin the
+        # fetchers -- unpinned they reach Open-Meteo, mesonet and NWS.
+        monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [77.0] * 20)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
+        )
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
+
         wm.analyze_trade(enriched)
         assert len(calls) == 1
 

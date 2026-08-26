@@ -287,7 +287,22 @@ class TestTracker(unittest.TestCase):
             }
         ]
 
-        count = tracker.sync_outcomes(mock_client)
+        # audit_settlement (reached from sync_outcomes) builds its OWN client
+        # via tracker._get_settlement_kalshi_client() and ignores the one
+        # passed in, so without this it called the real
+        # api.elections.kalshi.com. Same fake-client convention as
+        # test_rain_markets.py / test_snow_markets.py. A SEPARATE mock, not
+        # mock_client: sharing one would couple this test's
+        # get_candlesticks assertions to whatever audit_settlement happens to
+        # call, so the day it grows a candlestick read a price-history test
+        # would fail for an unrelated reason (opus-review-caught).
+        settlement_client = MagicMock()
+        settlement_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+        }
+        with patch("tracker._get_settlement_kalshi_client", lambda: settlement_client):
+            count = tracker.sync_outcomes(mock_client)
         self.assertEqual(count, 1)
 
         mock_client.get_candlesticks.assert_called_once()
@@ -321,7 +336,22 @@ class TestTracker(unittest.TestCase):
         }
         mock_client.get_candlesticks.return_value = []
 
-        tracker.sync_outcomes(mock_client)
+        # audit_settlement (reached from sync_outcomes) builds its OWN client
+        # via tracker._get_settlement_kalshi_client() and ignores the one
+        # passed in, so without this it called the real
+        # api.elections.kalshi.com. Same fake-client convention as
+        # test_rain_markets.py / test_snow_markets.py. A SEPARATE mock, not
+        # mock_client: sharing one would couple this test's
+        # get_candlesticks assertions to whatever audit_settlement happens to
+        # call, so the day it grows a candlestick read a price-history test
+        # would fail for an unrelated reason (opus-review-caught).
+        settlement_client = MagicMock()
+        settlement_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+        }
+        with patch("tracker._get_settlement_kalshi_client", lambda: settlement_client):
+            tracker.sync_outcomes(mock_client)
         call_args = mock_client.get_candlesticks.call_args[0]
         self.assertEqual(call_args[0], "REAL-SERIES")
 

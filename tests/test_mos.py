@@ -342,7 +342,7 @@ class TestMosIntegration:
             patch("weather_markets.get_ensemble_temps", return_value=[65.0] * 15),
             patch("weather_markets.nws_prob", return_value=0.55),
             patch("weather_markets.climatological_prob", return_value=0.50),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
         ):
             result = weather_markets.analyze_trade(enriched)
 

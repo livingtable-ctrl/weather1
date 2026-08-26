@@ -405,10 +405,21 @@ class TestForecastModelWeights(unittest.TestCase):
 
     def test_gfs_and_icon_constant(self):
         """GFS and ICON weights should be 1.0 year-round."""
-        for month in range(1, 13):
-            weights = _forecast_model_weights(month)
-            self.assertAlmostEqual(weights["gfs_seamless"], 1.0, msg=f"month={month}")
-            self.assertAlmostEqual(weights["icon_seamless"], 1.0, msg=f"month={month}")
+        from unittest.mock import patch
+
+        # range(1, 13) includes the winter months, where _forecast_model_weights
+        # consults _get_enso_phase and fetches three real index files from
+        # www.cpc.ncep.noaa.gov. Same pin as test_ecmwf_weight_winter above;
+        # test_ecmwf_weight_summer needs none because Apr-Sep never reach it.
+        with patch("weather_markets._get_enso_phase", return_value="neutral"):
+            for month in range(1, 13):
+                weights = _forecast_model_weights(month)
+                self.assertAlmostEqual(
+                    weights["gfs_seamless"], 1.0, msg=f"month={month}"
+                )
+                self.assertAlmostEqual(
+                    weights["icon_seamless"], 1.0, msg=f"month={month}"
+                )
 
 
 class TestCIAdjustedKelly(unittest.TestCase):

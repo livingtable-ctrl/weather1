@@ -512,6 +512,13 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
             lambda lat, lon, tz, year, month: None,
         )
 
+        # The bootstrap's forecast tilt runs its own multi-day Open-Meteo
+        # ensemble fetch, which is neither an ACIS call nor mocked by any of
+        # the acis_precip patches above -- this class's docstring already
+        # claims "no live network" and this is what makes that true.
+        monkeypatch.setattr(
+            "weather_markets._fetch_ensemble_precip_multiday", lambda *a, **kw: None
+        )
         result = wm.analyze_trade(m)
         assert result is not None
         assert result["condition"]["type"] == "precip_month_total"
@@ -748,6 +755,13 @@ class TestAnalyzeMonthlyRainTradeEndToEnd:
             lambda lat, lon, tz, year, month: None,
         )
 
+        # The bootstrap's forecast tilt runs its own multi-day Open-Meteo
+        # ensemble fetch, which is neither an ACIS call nor mocked by any of
+        # the acis_precip patches above -- this class's docstring already
+        # claims "no live network" and this is what makes that true.
+        monkeypatch.setattr(
+            "weather_markets._fetch_ensemble_precip_multiday", lambda *a, **kw: None
+        )
         assert wm.analyze_trade(m) is not None
 
     def test_no_historical_data_returns_none(self, monkeypatch):

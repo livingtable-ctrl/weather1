@@ -159,7 +159,8 @@ class TestPersistenceProb:
             ),
             patch("weather_markets.climatological_prob", return_value=0.6),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=71.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=71.0),
@@ -609,7 +610,8 @@ class TestTimeDecayEdge:
             ),
             patch("weather_markets.climatological_prob", return_value=0.5),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
@@ -621,7 +623,6 @@ class TestTimeDecayEdge:
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-            patch("nws.get_live_observation", return_value=None),
             patch("climatology.persistence_prob", return_value=0.3),
         ):
             result = wm.analyze_trade(enriched)
@@ -862,7 +863,13 @@ class TestForecastModelWeightsTrackerIntegration:
             "ecmwf_ifs025": 0.55,
             "icon_seamless": 0.20,
         }
-        with patch("tracker.get_model_weights", return_value=tracker_weights):
+        with (
+            patch("tracker.get_model_weights", return_value=tracker_weights),
+            # _forecast_model_weights consults _get_enso_phase, which fetches
+            # three real index files from www.cpc.ncep.noaa.gov; same pin as
+            # the sibling classes in this file.
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
             result = _forecast_model_weights(month=1, city="NYC")
         assert result["gfs_seamless"] == pytest.approx(0.75)
         assert result["ecmwf_ifs025"] == pytest.approx(1.65)
@@ -975,10 +982,11 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.get_ensemble_members", return_value=[]),
             patch("weather_markets.climatological_prob", return_value=0.5),
             patch("weather_markets.nws_prob", return_value=None),
-            # Patch the weather_markets-namespace reference (imported with `from
-            # nws import get_live_observation`) so obs_override stays None.
-            # Patching nws.get_live_observation alone does NOT intercept this.
-            patch("weather_markets.get_live_observation", return_value=None),
+            # Keeps obs_override None. weather_markets no longer re-exports
+            # get_live_observation (it calls nws.get_live_observation directly),
+            # so this single source-module patch reaches every call site.
+            patch("nws.get_live_observation", return_value=None),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
             patch("weather_markets.obs_prob", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             # Disable METAR lock-in: it gates on city-local (NY) date, not
@@ -1056,7 +1064,8 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.get_ensemble_members", return_value=[]),
             patch("weather_markets.climatological_prob", return_value=0.4),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
@@ -1065,7 +1074,6 @@ class TestGaussianEnsembleBlend:
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-            patch("nws.get_live_observation", return_value=None),
             patch("climatology.persistence_prob", return_value=0.3),
             # See the identical fix in test_gaussian_lifts_zero_ensemble_when_forecast_is_high
             # above — pin the model-spread gate so this test doesn't depend on
@@ -1139,6 +1147,16 @@ class TestEnrichWithForecastCacheTimestamp:
         mock_cache.get.return_value = None
 
         monkeypatch.setattr(wm, "_forecast_cache", mock_cache)
+        # A cache miss falls through to the real Open-Meteo fetch;
+        # TestEnrichWithForecastSkipsFetch below stubs it the same way. Safe:
+        # data_fetched_at comes solely from _forecast_cache.get_with_ts(), never
+        # from get_weather_forecast's return value, so stubbing the fetch cannot
+        # make the window assertion pass for the wrong reason.
+        monkeypatch.setattr(
+            wm,
+            "get_weather_forecast",
+            lambda city, target_date, **kw: {"high_f": 70.0, "_source": "open_meteo"},
+        )
 
         before = time.time()
         market = {"ticker": "KXHIGHNY-26MAY10-T70", "title": "NYC high > 70Â°F"}
@@ -1271,7 +1289,8 @@ class TestBimodalEnsemble:
             ),
             patch("weather_markets.climatological_prob", return_value=0.25),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=65.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=65.0),

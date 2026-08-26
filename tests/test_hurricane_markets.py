@@ -1535,6 +1535,7 @@ class TestAnalyzeHurricaneNextEventTrade:
         )
         return result, captured
 
+    @pytest.mark.allow_network
     def test_climatology_fallback_would_not_have_been_a_fail_safe(self):
         """The evidence behind returning no signal at all (opus review HIGH 1).
 
@@ -1548,9 +1549,19 @@ class TestAnalyzeHurricaneNextEventTrade:
         nobody reinstates that fallback believing it is conservative."""
         import hurricane_climatology as hc
 
+        # The one test in this repo that genuinely needs the network, hence the
+        # explicit @pytest.mark.allow_network above. It is pinned against the
+        # REAL HURDAT2 distribution on purpose (see the docstring: a hand-built
+        # fixture could be rigged to produce the very 0.99 this test exists to
+        # expose), and data/ is gitignored -- so on a fresh CI checkout the
+        # only way to have that data is to fetch it, exactly as this test did
+        # before the default-deny guard existed. Blocking it instead would have
+        # turned a real assertion into a permanent silent skip on CI
+        # (opus-review-caught). On a dev machine the on-disk cache means no
+        # fetch actually happens.
         storms = hc.load_basin_storms("ATL")
         if not storms:
-            pytest.skip("HURDAT2 cache unavailable in this environment")
+            pytest.skip("HURDAT2 unavailable (no cache and no network)")
         kt = hc.NEXT_EVENT_THRESHOLDS_KT["hurricane"]
         for month_day in ((9, 15), (10, 1), (12, 1)):
             outcomes = hc.next_event_outcomes(storms, kt, month_day)

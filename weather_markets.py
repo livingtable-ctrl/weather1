@@ -26,6 +26,17 @@ from urllib3.util.retry import Retry
 
 import climate_indices as _ci
 import metar as _metar
+
+# get_live_observation is deliberately NOT imported into this module's own
+# namespace: a `from nws import ...` binding is a separate object that
+# monkeypatching `nws.get_live_observation` does not rebind, so it gave the
+# same name two resolution behaviours -- section 5 below used this module's
+# copy while _compute_persistence_prob's call-time import saw nws's. Tests
+# aimed at the source module therefore missed section 5 entirely and it
+# fetched real live temperatures, moving the model probability with the
+# weather (df7cd97f). Both call sites now go through `nws.` so there is
+# exactly one patchable target.
+import nws
 import safe_io as _safe_io
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
@@ -35,7 +46,7 @@ from climate_indices import get_enso_index, temperature_adjustment
 from climatology import climatological_prob
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
-from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
+from nws import fetch_nbm_forecast, nws_prob, obs_prob
 from paths import (
     CATALOG_DRIFT_PATH,
     CITIES_JSON_PATH,
@@ -8800,9 +8811,8 @@ def _compute_persistence_prob(
         return None
     try:
         from climatology import persistence_prob as _persistence_prob
-        from nws import get_live_observation as _get_live_obs
 
-        _live = _get_live_obs(city, coords) if days_out <= 1 else None
+        _live = nws.get_live_observation(city, coords) if days_out <= 1 else None
         # For HIGH/max-role markets at days_out=0 the instantaneous current
         # temp is misleading after noon (the high has already occurred and
         # is higher) -- and symmetrically for LOW/min-role markets after the
@@ -16248,7 +16258,7 @@ def analyze_trade(
         # probabilities (Brier 0.40 observed in 29 settled "between" predictions).
         if days_out == 0 and condition.get("type") != "between":
             try:
-                live_obs = get_live_observation(city, coords)
+                live_obs = nws.get_live_observation(city, coords)
                 if live_obs:
                     obs_override = obs_prob(live_obs, condition)
             except Exception:

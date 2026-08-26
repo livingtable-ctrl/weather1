@@ -37276,3 +37276,305 @@ Why not now:
   deliberately. Also genuinely lower priority than settling analysis_attempts,
   which fixes the SELECTION BIAS this does not touch -- a bigger sample of the
   same biased population answers a different question than an unbiased one.
+[RESOLVED 2026-08-25] tests/conftest.py BLOCKS THE NETWORK FOR EXACTLY ONE
+  MODULE -- EVERY OTHER PATH OUT OF THE PROCESS IS OPEN
+Priority: was High -- not a production bug, but it left an unknown number of
+  assertions across the suite depending on live weather and on whichever
+  on-disk caches happened to be warm.
+Files: tests/conftest.py, pyproject.toml, weather_markets.py (3 lines),
+  tests/test_conftest_network_guard.py (new), plus 17 existing test files.
+
+Problem (filed by df7cd97f, which fixed two symptoms and left the cause):
+  conftest.py blocked climatology._session.get and nothing else. Any test that
+  forgot a mock, or aimed one at the wrong binding, silently made a real
+  request and let live data decide its assertions. df7cd97f's own case: the
+  section-5 obs override in analyze_trade fetched NYC's real temperature and
+  moved the model probability across the >0.25 model-market gap gate on some
+  days and not others.
+
+  Measured before the fix on a COLD cache -- which is every CI run, since
+  data/ is gitignored and a fresh checkout has only the 5 tracked calibration
+  files -- test_weather_markets.py alone reached api.weather.gov,
+  aviationweather.gov, mesonet.agron.iastate.edu, www.cpc.ncep.noaa.gov,
+  www.spc.noaa.gov, api.open-meteo.com and ensemble-api.open-meteo.com: 57
+  requests from 8 tests. 7 of those 8 leaked on a WARM cache too; only the SPC
+  tornado one was cache-masked.
+
+RESOLVED 2026-08-25:
+  1. block_outbound_network, a new autouse conftest fixture, default-denies
+     every outbound call for every test at two chokepoints:
+       - requests.adapters.HTTPAdapter.send -- one patch covering every
+         module-level requests.get and all ~13 requests.Session() singletons,
+         and the only layer that still knows the URL. Patching the adapter
+         class rather than each session means a new module is covered the day
+         it is written.
+       - socket.socket.connect/connect_ex -- for callers that never touch
+         requests (notify.py's urllib.request posts, kalshi_ws.py's
+         websocket). Loopback stays open so a test with its own local server
+         still works.
+     The error names the URL, the leaking test's nodeid, the both-bindings
+     rule and the opt-out. BlockedNetworkCall derives from BaseException, not
+     Exception, deliberately: nearly every fetch here sits inside
+     "try/except Exception: log-and-continue", and this entry's own 2026-08-07
+     predecessor already recorded that a raise-on-call stub "falsely passes
+     even with a mock removed" for exactly that reason.
+     Opt in with @pytest.mark.allow_network (registered in pyproject); the
+     pre-existing "integration" marker is honoured too.
+
+  2. weather_markets.py no longer imports get_live_observation into its own
+     namespace -- "import nws" plus nws.get_live_observation(...) at both call
+     sites (section 5 and _compute_persistence_prob), so there is exactly one
+     patchable target. 34 test sites retargeted from
+     "weather_markets.get_live_observation" to "nws.get_live_observation";
+     5 of them were patching both and became duplicates, removed.
+     No production behaviour change.
+
+  3. Two more suite-wide conftest defaults, both for unconditional cron-cycle
+     side effects that no cmd_cron test mocked and that only leak on a cold
+     cache -- i.e. always, on CI:
+       - isolate_fee_monitor_cadence: cron's FEE_CHECK_PATH and
+         FEE_SCHEDULE_SCRAPE_PATH redirected to per-test temp files SEEDED as
+         "already ran today". Absent the weekly marker,
+         _check_fee_schedule_page GETs kalshi.com/fee-schedule -- 65 tests
+         across test_cron_integration, test_main_cron_smoke,
+         test_trade_cycle_engine, test_cron_trade_updates, test_cron_group_c,
+         test_spend_validation and test_execution_stability were doing that.
+         Seeding also stops unrelated tests rewriting the real
+         data/fee_schedule_scrape_check.json, which both functions do on every
+         path they take, including their failure paths.
+       - nearby_station_obs.DEFAULT_SOURCE replaced with an offline double.
+         record_shadow_sample() runs at the end of every _cmd_cron_body and,
+         with a cold in-memory station cache (every one-shot test process),
+         discovers via api.weather.gov and observes via aviationweather.gov.
+         DEFAULT_SOURCE is the module's own documented backend seam and is
+         consulted only when the caller passes no source=, which is the cron
+         path and never test_nearby_station_obs.py's own tests.
+
+  4. Fixed every test the guard surfaced. One cold full-suite run found 89
+     failures, ALL of them BlockedNetworkCall -- no collateral breakage from
+     the guard itself. Beyond the cron-path groups above:
+       - test_silent_failures.py: _patch_analyze_prereqs was entered via a
+         hand-written "with (patches[0], ..., patches[7]):", so the three
+         entries appended to the end of the list sat inert. Rewritten onto
+         contextlib.ExitStack, and the helper's docstring now says why.
+       - test_phase2_batch_c.py::test_cache_is_thread_safe installed and tore
+         down patch.object on a shared module attribute inside each of 8
+         worker threads; one worker's exit restored the real fetcher while
+         another was mid-call, and that one hit www.cpc.ncep.noaa.gov. Racy by
+         construction and invisible until the guard turned it into a failure
+         (the worker's own "except Exception" never saw it either). Patches
+         hoisted to the main thread, plus a positive control that all 8
+         workers actually completed.
+       - test_tracker.py's two sync_outcomes tests: audit_settlement builds
+         its OWN client via _get_settlement_kalshi_client() and ignores the
+         one passed in, so both called the real api.elections.kalshi.com.
+       - test_rain_markets.py::TestAnalyzeMonthlyRainTradeEndToEnd's docstring
+         claimed "mocked ACIS/Open-Meteo calls (no live network)"; the
+         bootstrap's forecast tilt ran its own multi-day Open-Meteo ensemble
+         fetch. Now true.
+       - test_hurricane_markets.py's cache-only HURDAT2 test needs
+         fetch_hurdat2_raw's own except-handler to run so its pytest.skip
+         fires, so given a BaseException guard it stubs
+         hurricane_climatology._session.get itself (plain Exception, mirroring
+         conftest's climatology _blocked_get).
+       - Plus per-test mocks in test_weather_markets, test_forecasting,
+         test_gaussian_prob, test_integration, test_data_freshness,
+         test_edge_version, test_p0_11_retired_strategy, test_trading,
+         test_batch51_holiday_rain, test_settlement_monitor,
+         test_hourly_markets and test_main_cron_smoke.
+
+  5. tests/test_conftest_network_guard.py covers the guard itself (sibling of
+     test_conftest_paper_isolation.py): requests blocked with the URL named,
+     not swallowed by "except Exception", raw socket blocked, loopback still
+     allowed, marker opts out, and a positive control that the guard IS
+     installed for an unmarked test. Every address is RFC 5737 TEST-NET-1, so
+     a regression fails on a connect timeout rather than quietly reaching
+     something real. Four mutations verified individually: Exception instead
+     of BaseException, the loopback allowlist removed, the fixture never
+     installing, and the URL dropped from the message.
+
+Independent review: two opus effort=high agents, scoped by subsystem (core
+  mechanism / the test-file fixes), 25 findings between them, all addressed.
+  The four that changed the design:
+    - The guard was a function-scoped autouse fixture on the shared
+      `monkeypatch`. Autouse fixtures order ALPHABETICALLY, not by definition
+      order, so anything sorting ahead of it would have set up unguarded; and
+      three tests call monkeypatch.undo() mid-body (test_backtest.py:393,
+      test_batch64_forward_writers.py:1426, test_settlement_monitor.py:68),
+      which reverts every setattr recorded so far and stripped the guard for
+      the rest of those tests -- reproduced. Now installed once on a
+      SESSION-scoped pytest.MonkeyPatch, with a function-scoped fixture that
+      lifts it for @pytest.mark.allow_network / integration. Both are pinned
+      by tests.
+    - A BaseException still cannot fail a test if it is raised inside a plain
+      threading.Thread target: pytest turns that into
+      PytestUnhandledThreadExceptionWarning and the test PASSES. main.py's
+      auto_settle/auto_backtest threads and kalshi_ws.py's reader all qualify,
+      as does the one deliberate `except BaseException` in test code. Added a
+      pytest_runtest_makereport hook that fails any passing test which
+      recorded a block, plus expect_blocked_network() for the guard's own
+      tests to acknowledge a block they provoked on purpose. Deliberately NOT
+      done by promoting that warning to an error suite-wide:
+      test_live_execution.py already emits one from plyer's Windows
+      balloon-tip backend, which is a separately filed bug in another file.
+      Also narrowed test_state_consistency.py:132's `except BaseException` to
+      `except SystemExit`, which is all it ever needed.
+    - The HURDAT2 test (test_hurricane_markets.py) was left blocked with a
+      cache-only stub. data/ is gitignored, so on CI that turned a real
+      assertion into a permanent silent skip -- strictly worse coverage than
+      before this change, when it fetched for real. It is the one test in the
+      repo that genuinely needs the network (its docstring explains why a
+      fixture would defeat its purpose), so it now carries
+      @pytest.mark.allow_network, which is exactly what that marker is for.
+      Verified against a cold data dir: passes with real assertions, no skip.
+    - test_edge_version.py's precip test kept an `if result is None:
+      pytest.skip(...)` escape. With every input pinned, the only remaining
+      way to reach it was a GATE regression -- i.e. it had become a trapdoor
+      that silently swallowed the very failure it should report. Replaced with
+      an assert naming the gate counts. Its climatological_prob/nws_prob/
+      temperature_adjustment patches were also aimed only at the source
+      modules, so they were not reaching analyze_trade's own bindings; both
+      are now patched (the same two-binding trap this entry is about).
+  Smaller ones, all fixed: a false historical claim in the ExitStack docstring
+  (the pre-diff list had exactly 8 entries, so nothing WAS inert -- the hazard
+  is prospective); the three silent-failure tests' load-bearing "entered last"
+  ordering now asserted via call_count rather than trusted to a comment; the
+  thread-safety test's t.join(timeout=5) could still let a worker outlive the
+  patch scope, now asserted not-alive inside the with-block; test_tracker's two
+  sync_outcomes tests given a SEPARATE settlement-client mock so their
+  get_candlesticks assertions aren't coupled to audit_settlement's internals;
+  the holiday TMIN pin retuned from a 0.197 model-market gap (0.053 from
+  tripping the 0.25 gate) to 0.047, with climatological_prob pinned explicitly
+  instead of relying on an unrelated fixture happening to null it out;
+  connect_ex and the AF_UNIX/netlink/IPv6 address-shape branches given their
+  own tests; dead code and a stale comment removed from
+  test_hourly_markets.py's _pin_sources; and four comment corrections.
+  Documented as deliberate, not fixed: DNS is not intercepted (requests dies
+  before resolution, so it is a lookup and not a fetch); Windows'
+  ProactorEventLoop bypasses the socket hook for asyncio (Linux/CI does not,
+  and no async fetch exists in the repo); a daemon thread outliving its test
+  is attributed to whichever test is running; the fee-marker seeding is
+  defeated by a clock frozen forward a week (no cmd_cron test does that, and
+  the failure would be loud) and no cmd_cron test now exercises the fee
+  monitors past their early return. All are stated in the fixture docstrings.
+
+Verification: full suite against a cold data dir (safe_io.project_root
+  redirected for the run -- nothing deleted; paths.py resolves data/ to the
+  MAIN clone regardless of worktree). ruff + ruff-format + mypy clean via
+  python -m pre_commit run --files.
+
+Left open, filed as its own entry below: get_live_observation was one of
+  several names weather_markets.py re-exports from another module, and the
+  same two-binding trap still exists for the rest.
+
+[OPEN 2026-08-25 -- adjacency from the default-deny network guard above.
+  Filed rather than fixed there: that entry's scope was one name
+  (get_live_observation), and each remaining name is its own set of test
+  call sites, not a shared edit.]
+  weather_markets.py STILL RE-EXPORTS SIX NAMES FROM OTHER MODULES, SO EACH
+  ONE HAS TWO PATCHABLE BINDINGS THAT CAN DISAGREE
+Priority: Low -- the default-deny guard now catches the consequence loudly
+  (a mis-aimed patch fails the test naming the URL) instead of silently
+  serving live data. This is about removing the trap, not about a live bug.
+Files: weather_markets.py:26-30 (the import block), plus the test sites listed
+  below. No production behaviour would change.
+
+Problem:
+  weather_markets.py binds these at import:
+
+    from climate_indices import get_enso_index, temperature_adjustment
+    from climatology import climatological_prob
+    from nws import fetch_nbm_forecast, nws_prob, obs_prob
+
+  Each creates a second object. monkeypatching the SOURCE module
+  ("nws.nws_prob") does not rebind weather_markets' copy, and vice versa, so
+  the same name resolves two different ways depending on which call site runs
+  -- exactly the trap that made df7cd97f's two HRRR tests fetch NYC's real
+  temperature. get_live_observation was removed from this list by the entry
+  above; these six were left.
+
+  Two of them are already being patched inconsistently across the suite, which
+  is how a future instance would arrive (counts measured 2026-08-25):
+
+    nws_prob               47 sites patch weather_markets.nws_prob,
+                            5 patch nws.nws_prob
+    temperature_adjustment 45 sites patch weather_markets.…,
+                            5 patch climate_indices.…
+    climatological_prob    40 sites patch weather_markets.…,
+                            5 patch climatology.…
+    get_enso_index          8 sites, all weather_markets.…
+    fetch_nbm_forecast      5 sites, all weather_markets.…
+    obs_prob                2 sites, all weather_markets.…
+
+  Two of the source-module-only sites (in test_gaussian_prob.py) were found by
+  the new guard mid-fix: they patched nws.nws_prob and
+  climate_indices.temperature_adjustment only, and analyze_trade's own call
+  sites went to api.weather.gov and www.cpc.ncep.noaa.gov anyway. Fixed there
+  by patching both bindings, which is the workaround this entry would delete.
+
+What the fix looks like:
+  Same shape as the get_live_observation change: drop each name from its
+  "from X import" line, keep/add "import X", call it as X.name(...) at each
+  production call site, then retarget the test patches to the source module.
+  monkeypatch.setattr and patch.object both raise on a missing attribute, so
+  every stale test site fails loudly rather than silently no-opping -- the
+  churn is mechanical, just wide (about 150 test sites in total).
+
+Why not now:
+  Wide but shallow, and it wants doing per-name with the affected files' tests
+  re-run each time, not as one 150-site sweep. Also genuinely optional now
+  that the guard makes the failure mode loud.
+
+When to revisit:
+  Next time one of these six is at the centre of a flaky-test investigation,
+  or if the guard surfaces a third instance of the same trap.
+
+[OPEN 2026-08-25 -- adjacency from the default-deny network guard above.
+  Pre-existing, not caused by that change; none of the four sites is inside
+  one of its hunks. Filed rather than fixed there because each needs its own
+  fixture retuning, not a shared edit.]
+  FOUR `if result is None: pytest.skip(...)` TRAPDOORS IN test_weather_markets.py
+  ARE CURRENTLY SKIPPING ON EVERY RUN
+Priority: Medium -- these are not flaky-and-occasionally-skipped. All four skip
+  on EVERY run today (`pytest tests/test_weather_markets.py -rs`: 430 passed,
+  4 skipped, always the same four), so the assertions below them have not
+  executed in an unknown number of months.
+Files: tests/test_weather_markets.py:1205, :4467, :4499, :4543.
+
+Problem:
+  Each site calls analyze_trade(), and when it returns None -- which a gate
+  firing also produces -- calls pytest.skip() instead of failing. So the test
+  reports "skipped" in exactly the situation it exists to catch, and CI stays
+  green. The same pattern was fixed at tests/test_edge_version.py:171 by the
+  entry above (that one's inputs are now fully pinned, so the skip could only
+  ever mean a gate regression, and it is an assert).
+
+  The most valuable of the four is
+  TestNoSideEntryEdgeSign::test_no_trade_entry_side_edge_is_positive
+  (tests/test_weather_markets.py:4430-4467). Its docstring hand-derives the
+  expected numbers -- "ens_prob=0%, Gaussian~0%, blended_prob~5%,
+  model_mkt_gap=0.20 < 0.25, NO edge = (1-0.05) - 0.78 = +0.17 > 0" -- and its
+  body then asserts the P0-14 fix (entry_side_edge > 0 for a valid NO,
+  recommended_side == "no"). That body is dead code right now. P0-14 was a
+  real live-order bug: the old formula made every valid NO trade negative-edge
+  and blocked at the gate.
+
+What the fix looks like:
+  Per site: pin the inputs the way _analyze_trade_base_mocks already does for
+  its callers, work out why the result is None today (get_gate_counts() names
+  the gate), retune the fixture's quote so the intended path is reached, then
+  replace the skip with
+  `assert result is not None, f"gates: {wm.get_gate_counts()}"`.
+  Do them one at a time -- the three at :4467/:4499/:4543 share a class but
+  not a fixture, and the reason each returns None may differ.
+
+Why not now:
+  Out of scope for the network-guard entry above, and each one is a fixture
+  retuning exercise with its own hand-computed expected values to re-derive --
+  not a mechanical edit. Doing them under one commit would also make it hard
+  to tell which retune caused which assertion to start running again.
+
+When to revisit:
+  Next time anyone touches the entry-side-edge / model_mkt_gap area, and
+  before trusting "test_weather_markets.py is green" as evidence that the
+  P0-14 NO-side fix still holds.

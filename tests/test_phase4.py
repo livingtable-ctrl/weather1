@@ -264,9 +264,15 @@ class TestPerCityLearnedWeights:
             }
         }
 
-        with patch("weather_markets.load_learned_weights", return_value=mock_weights):
-            with patch("weather_markets._dynamic_model_weights", return_value=None):
-                result = _forecast_model_weights(1, city="NYC")
+        # _forecast_model_weights consults _get_enso_phase for winter months
+        # (month=1 here), which fetches three real index files from
+        # www.cpc.ncep.noaa.gov before any learned/dynamic weight is applied.
+        with (
+            patch("weather_markets.load_learned_weights", return_value=mock_weights),
+            patch("weather_markets._dynamic_model_weights", return_value=None),
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
+            result = _forecast_model_weights(1, city="NYC")
 
         assert result["gfs_seamless"] == pytest.approx(2.0)
         assert result["ecmwf_ifs025"] == pytest.approx(0.5)
@@ -299,9 +305,15 @@ class TestPerCityLearnedWeights:
             }
         }
 
-        with patch("weather_markets._dynamic_model_weights", return_value=dynamic):
-            with patch("weather_markets.load_learned_weights", return_value=learned):
-                result = _forecast_model_weights(1, city="NYC")
+        # _forecast_model_weights consults _get_enso_phase for winter months
+        # (month=1 here), which fetches three real index files from
+        # www.cpc.ncep.noaa.gov before any learned/dynamic weight is applied.
+        with (
+            patch("weather_markets._dynamic_model_weights", return_value=dynamic),
+            patch("weather_markets.load_learned_weights", return_value=learned),
+            patch("weather_markets._get_enso_phase", return_value="neutral"),
+        ):
+            result = _forecast_model_weights(1, city="NYC")
 
         assert result["gfs_seamless"] == pytest.approx(1.8)
 

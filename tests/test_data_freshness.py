@@ -157,7 +157,7 @@ def test_analyze_trade_accepts_fresh_data():
         ),
         patch("weather_markets.climatological_prob", return_value=0.6),
         patch("weather_markets.nws_prob", return_value=None),
-        patch("weather_markets.get_live_observation", return_value=None),
+        patch("nws.get_live_observation", return_value=None),
         patch("weather_markets.temperature_adjustment", return_value=0.0),
         patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
         patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
@@ -169,7 +169,9 @@ def test_analyze_trade_accepts_fresh_data():
             wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
         ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-        patch("nws.get_live_observation", return_value=None),
+        # Called through a call-time `import mos`, so no weather_markets.*
+        # patch reaches it; unmocked it fetches a real NBP bulletin.
+        patch("mos.fetch_nbm_quantiles", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),
     ):
         result = analyze_trade(enriched)
@@ -211,7 +213,7 @@ def test_analyze_trade_no_fetched_at_is_treated_as_fresh():
         ),
         patch("weather_markets.climatological_prob", return_value=0.6),
         patch("weather_markets.nws_prob", return_value=None),
-        patch("weather_markets.get_live_observation", return_value=None),
+        patch("nws.get_live_observation", return_value=None),
         patch("weather_markets.temperature_adjustment", return_value=0.0),
         patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
         patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
@@ -223,7 +225,9 @@ def test_analyze_trade_no_fetched_at_is_treated_as_fresh():
             wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
         ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-        patch("nws.get_live_observation", return_value=None),
+        # Called through a call-time `import mos`, so no weather_markets.*
+        # patch reaches it; unmocked it fetches a real NBP bulletin.
+        patch("mos.fetch_nbm_quantiles", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),
     ):
         result = analyze_trade(enriched)

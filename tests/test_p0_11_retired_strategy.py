@@ -74,9 +74,7 @@ def _stub_heavy_deps(monkeypatch):
     monkeypatch.setattr(
         "weather_markets.temperature_adjustment", lambda city, date: 0.0
     )
-    monkeypatch.setattr(
-        "weather_markets.get_live_observation", lambda city, coords: None
-    )
+    monkeypatch.setattr("nws.get_live_observation", lambda city, coords: None)
     monkeypatch.setattr(
         "weather_markets.fetch_temperature_nbm",
         lambda city, date: None,
@@ -96,6 +94,10 @@ def _stub_heavy_deps(monkeypatch):
         "weather_markets._get_consensus_probs",
         lambda city, date, cond, hour=None, var="max": (0.60, 0.58, 78.0, 77.0, None),
     )
+    # analyze_trade's nbm_quantile_prob block calls this directly (not through
+    # any weather_markets binding), so it needs its own stub -- unmocked it
+    # fetches a real NBP bulletin from mesonet.agron.iastate.edu.
+    monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
 
 
 class TestRetiredStrategyGate:

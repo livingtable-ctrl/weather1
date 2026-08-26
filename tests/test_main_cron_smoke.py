@@ -554,6 +554,10 @@ class TestCmdBrief:
             }
 
         monkeypatch.setattr(main, "enrich_with_forecast", _enrich)
+        # cmd_brief prewarms the forecast cache before it enriches anything,
+        # which is a real Open-Meteo fetch per model and entirely beside the
+        # point of this test (whether ONE bad market aborts the loop).
+        monkeypatch.setattr(main, "batch_prewarm_forecasts", lambda *a, **kw: 0)
         monkeypatch.setattr(
             main,
             "analyze_trade",

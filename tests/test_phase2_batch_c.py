@@ -286,22 +286,42 @@ class TestClimateIndicesTTL:
 
         def fetch_in_thread():
             try:
-                with patch.object(
-                    climate_indices, "_fetch_monthly_index", return_value={}
-                ):
-                    with patch.object(climate_indices, "_fetch_enso", return_value={}):
-                        r = climate_indices.get_indices()
-                        results.append(r)
+                results.append(climate_indices.get_indices())
             except Exception as exc:
                 errors.append(exc)
 
-        threads = [threading.Thread(target=fetch_in_thread) for _ in range(8)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=5)
+        # Patched ONCE, from the main thread, around the whole fan-out. These
+        # two patches used to be installed and torn down inside each worker:
+        # patch.object mutates a shared module attribute, so one thread's exit
+        # restored the real fetcher while another was still inside
+        # get_indices(), and that thread issued a live
+        # www.cpc.ncep.noaa.gov request. Racy by construction, and invisible
+        # until the network guard turned it into a failure -- the worker's own
+        # `except Exception` cannot see that either, because
+        # conftest.BlockedNetworkCall derives from BaseException.
+        with (
+            patch.object(climate_indices, "_fetch_monthly_index", return_value={}),
+            patch.object(climate_indices, "_fetch_enso", return_value={}),
+        ):
+            threads = [threading.Thread(target=fetch_in_thread) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=5)
+            # Checked INSIDE the with-block: a worker that outlived the join
+            # would otherwise still be in get_indices() when the patches come
+            # off, and would then call the real fetcher for real
+            # (opus-review-caught -- the same race, one level out).
+            assert not any(t.is_alive() for t in threads), (
+                "a worker outlived the 5s join; the patches below would come "
+                "off while it was still inside get_indices()"
+            )
 
         assert len(errors) == 0, f"Thread-safety errors: {errors}"
+        # Positive control: every thread must actually have completed and
+        # contributed a result -- `all()` over a short (or empty) list would
+        # otherwise pass vacuously if a worker died before appending.
+        assert len(results) == 8, f"expected 8 results, got {len(results)}"
         assert all(isinstance(r, dict) for r in results)
 
     def test_ttl_constant_is_24_hours(self):

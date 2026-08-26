@@ -3,6 +3,7 @@ Tests for P0.4 — Silent failure elimination.
 Every failure in the trading path must be logged, not swallowed.
 """
 
+import contextlib
 import datetime
 import logging
 from unittest.mock import MagicMock, patch
@@ -26,7 +27,16 @@ def _make_enriched():
 
 
 def _patch_analyze_prereqs():
-    """Return a stack of patches that let analyze_trade reach the risky sections."""
+    """Return a stack of patches that let analyze_trade reach the risky sections.
+
+    Enter these with ``contextlib.ExitStack``, never a hand-written
+    ``with (patches[0], ..., patches[N]):`` -- a fixed-arity unpack silently
+    stops entering anything appended after it. The three NBM/ECMWF/members
+    entries at the end were ADDED under ExitStack (analyze_trade was reaching
+    mesonet.agron.iastate.edu and Open-Meteo without them); appending them to
+    the old eight-way unpack instead would have left them inert with nothing
+    to say so.
+    """
     return [
         # Valid condition so we don't exit early
         patch(
@@ -60,7 +70,7 @@ def _patch_analyze_prereqs():
         patch("weather_markets.climatological_prob", return_value=None),
         patch("weather_markets.temperature_adjustment", return_value=0.0),
         # Skip observation override
-        patch("weather_markets.get_live_observation", return_value=None),
+        patch("nws.get_live_observation", return_value=None),
         patch("weather_markets.obs_prob", return_value=None),
         # Disable METAR lock-in: _metar_lock_in compares target_date against
         # datetime.now(ZoneInfo(city_tz)).date() (city-local). When the local
@@ -68,6 +78,19 @@ def _patch_analyze_prereqs():
         # but the clock has already rolled), the check fires and bypasses the
         # entire ensemble path these tests exercise.
         patch("weather_markets._metar_lock_in", return_value=(False, 0.0, {})),
+        # The NBM/ECMWF point fetchers and the nbm_quantile_prob block each
+        # issue their own request (mesonet.agron.iastate.edu, Open-Meteo).
+        # None is the "source unavailable" path, which is what these tests
+        # want: they assert on what analyze_trade LOGS when a section fails,
+        # not on any forecast value.
+        patch("weather_markets.fetch_temperature_nbm", return_value=None),
+        patch("weather_markets.fetch_temperature_ecmwf", return_value=None),
+        patch("mos.fetch_nbm_quantiles", return_value=None),
+        # get_ensemble_members is a SECOND ensemble fetch, separate from
+        # get_ensemble_temps above (it feeds the ensemble_cdf blend source);
+        # patching only the latter still leaves a live
+        # ensemble-api.open-meteo.com call.
+        patch("weather_markets.get_ensemble_members", return_value=None),
     ]
 
 
@@ -78,23 +101,25 @@ def test_analyze_trade_logs_consensus_failure(caplog):
     """If _get_consensus_probs raises, it must be logged — not silently defaulted."""
     from weather_markets import analyze_trade
 
-    patches = _patch_analyze_prereqs()
-    with caplog.at_level(logging.WARNING):
-        with patch(
-            "weather_markets._get_consensus_probs",
-            side_effect=RuntimeError("api timeout"),
-        ):
-            with (
-                patches[0],
-                patches[1],
-                patches[2],
-                patches[3],
-                patches[4],
-                patches[5],
-                patches[6],
-                patches[7],
-            ):
-                analyze_trade(_make_enriched())
+    with caplog.at_level(logging.WARNING), contextlib.ExitStack() as stack:
+        for p in _patch_analyze_prereqs():
+            stack.enter_context(p)
+        # Entered last so it wins over any same-target patch in the baseline.
+        # Asserted below, not just commented: with the two entered the other
+        # way round the baseline's own stub wins, the log line never appears,
+        # and this test would fail for a reason that looks nothing like
+        # "wrong ordering" (opus-review-caught).
+        boom = stack.enter_context(
+            patch(
+                "weather_markets._get_consensus_probs",
+                side_effect=RuntimeError("api timeout"),
+            )
+        )
+        analyze_trade(_make_enriched())
+        assert boom.call_count == 1, (
+            "the raising override never ran -- the baseline's own stub won, "
+            f"so this assertion proves nothing (call_count={boom.call_count})"
+        )
 
     assert any("api timeout" in r.message for r in caplog.records), (
         "_get_consensus_probs failure must be logged, not silently swallowed.\n"
@@ -109,57 +134,25 @@ def test_analyze_trade_logs_nws_prob_failure(caplog):
     """If nws_prob raises, the failure must be logged."""
     from weather_markets import analyze_trade
 
-    with caplog.at_level(logging.WARNING):
-        with patch(
-            "weather_markets._parse_market_condition",
-            return_value={"type": "above", "threshold": 82.0, "var": "max"},
-        ):
-            with patch(
-                "weather_markets.get_ensemble_temps",
-                return_value=[
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                ],
-            ):
-                with patch(
-                    "weather_markets.nws_prob", side_effect=RuntimeError("nws down")
-                ):
-                    with patch(
-                        "weather_markets._get_consensus_probs",
-                        return_value=(None, None, None, None, None),
-                    ):
-                        with patch(
-                            "weather_markets.climatological_prob", return_value=None
-                        ):
-                            with patch(
-                                "weather_markets.temperature_adjustment",
-                                return_value=0.0,
-                            ):
-                                with patch(
-                                    "weather_markets.get_live_observation",
-                                    return_value=None,
-                                ):
-                                    with patch(
-                                        "weather_markets.obs_prob", return_value=None
-                                    ):
-                                        with patch(
-                                            "weather_markets._metar_lock_in",
-                                            return_value=(False, 0.0, {}),
-                                        ):
-                                            analyze_trade(_make_enriched())
+    with caplog.at_level(logging.WARNING), contextlib.ExitStack() as stack:
+        for p in _patch_analyze_prereqs():
+            stack.enter_context(p)
+        stack.enter_context(
+            patch(
+                "weather_markets._get_consensus_probs",
+                return_value=(None, None, None, None, None),
+            )
+        )
+        # Entered last so it wins over the baseline's nws_prob -> None.
+        # See the ordering note in the consensus test above.
+        boom = stack.enter_context(
+            patch("weather_markets.nws_prob", side_effect=RuntimeError("nws down"))
+        )
+        analyze_trade(_make_enriched())
+        assert boom.call_count == 1, (
+            "the raising override never ran -- the baseline's own stub won, "
+            f"so this assertion proves nothing (call_count={boom.call_count})"
+        )
 
     assert any("nws down" in r.message for r in caplog.records), (
         "nws_prob failure must be logged, not silently swallowed.\n"
@@ -174,52 +167,28 @@ def test_analyze_trade_logs_climatological_failure(caplog):
     """If climatological_prob raises, the failure must be logged."""
     from weather_markets import analyze_trade
 
-    with caplog.at_level(logging.WARNING):
-        with patch(
-            "weather_markets._parse_market_condition",
-            return_value={"type": "above", "threshold": 82.0, "var": "max"},
-        ):
-            with patch(
-                "weather_markets.get_ensemble_temps",
-                return_value=[
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                    83.0,
-                    84.0,
-                    85.0,
-                    86.0,
-                    87.0,
-                ],
-            ):
-                with patch("weather_markets.nws_prob", return_value=None):
-                    with patch(
-                        "weather_markets._get_consensus_probs",
-                        return_value=(None, None, None, None, None),
-                    ):
-                        with patch(
-                            "weather_markets.climatological_prob",
-                            side_effect=RuntimeError("clim error"),
-                        ):
-                            with patch(
-                                "weather_markets.get_live_observation",
-                                return_value=None,
-                            ):
-                                with patch(
-                                    "weather_markets.obs_prob", return_value=None
-                                ):
-                                    with patch(
-                                        "weather_markets._metar_lock_in",
-                                        return_value=(False, 0.0, {}),
-                                    ):
-                                        analyze_trade(_make_enriched())
+    with caplog.at_level(logging.WARNING), contextlib.ExitStack() as stack:
+        for p in _patch_analyze_prereqs():
+            stack.enter_context(p)
+        stack.enter_context(
+            patch(
+                "weather_markets._get_consensus_probs",
+                return_value=(None, None, None, None, None),
+            )
+        )
+        # Entered last so it wins over the baseline's climatological_prob -> None.
+        # See the ordering note in the consensus test above.
+        boom = stack.enter_context(
+            patch(
+                "weather_markets.climatological_prob",
+                side_effect=RuntimeError("clim error"),
+            )
+        )
+        analyze_trade(_make_enriched())
+        assert boom.call_count == 1, (
+            "the raising override never ran -- the baseline's own stub won, "
+            f"so this assertion proves nothing (call_count={boom.call_count})"
+        )
 
     assert any("clim error" in r.message for r in caplog.records), (
         "climatological_prob failure must be logged, not silently swallowed.\n"

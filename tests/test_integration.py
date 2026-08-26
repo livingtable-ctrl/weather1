@@ -21,6 +21,27 @@ from unittest.mock import patch
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _stub_nbm_quantiles(monkeypatch):
+    """Stub mos.fetch_nbm_quantiles for every test in this file.
+
+    analyze_trade's nbm_quantile_prob block calls ``mos.fetch_nbm_quantiles``
+    through a call-time ``import mos``, so none of the
+    ``weather_markets.*``-targeted patches below reach it. Unmocked it fetches
+    a real NBP bulletin from mesonet.agron.iastate.edu, which tests/conftest.py's
+    block_outbound_network guard now refuses. The value is track-only (logged,
+    never blended) and no test in this file asserts on it, so a blanket None is
+    the right default here rather than a per-test decorator.
+    """
+    monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
+
+
+# NOTE for anyone adding a test here: the autouse fixture above stubs
+# mos.fetch_nbm_quantiles for EVERY test in this file. A test that wants real
+# quantiles has to override it explicitly.
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -79,7 +100,7 @@ REQUIRED_KEYS = {
 class TestAnalyzePipeline:
     """Integration tests for analyze_trade() (#112)."""
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
     @patch(
         "weather_markets._get_consensus_probs",
         return_value=(None, None, None, None, None),
@@ -142,7 +163,7 @@ class TestAnalyzePipeline:
         # edge = forecast_prob - market_prob (no hard sign constraint, just finite)
         assert isinstance(result["edge"], float)
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
     @patch("weather_markets.nws_prob", side_effect=Exception("NWS unavailable"))
     @patch("weather_markets.climatological_prob", return_value=None)
     @patch("weather_markets.temperature_adjustment", return_value=0.0)
@@ -165,7 +186,7 @@ class TestAnalyzePipeline:
         result = analyze_trade(enriched)
         assert result is None
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
     @patch("weather_markets.nws_prob", return_value=None)
     @patch("weather_markets.climatological_prob", return_value=None)
     @patch("weather_markets.temperature_adjustment", return_value=0.0)
@@ -250,7 +271,19 @@ class TestAnalyzePipeline:
 class TestAnalyzePipelineExtra:
     """Additional integration tests for below + precip conditions (#112)."""
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
+    # Both fetchers unmocked reached mesonet/Open-Meteo for a live reading that
+    # then fed the model probability; None exercises analyze_trade's
+    # no-NBM/no-ECMWF path deterministically instead. Same for the consensus
+    # and member fetches, which each issue their own ensemble-api.open-meteo.com
+    # request -- matching the (None, ...) baseline the tests above already use.
+    @patch(
+        "weather_markets._get_consensus_probs",
+        return_value=(None, None, None, None, None),
+    )
+    @patch("weather_markets.get_ensemble_members", return_value=None)
+    @patch("weather_markets.fetch_temperature_nbm", return_value=None)
+    @patch("weather_markets.fetch_temperature_ecmwf", return_value=None)
     @patch("weather_markets.nws_prob", return_value=0.45)
     @patch("weather_markets.climatological_prob", return_value=0.40)
     @patch("weather_markets.temperature_adjustment", return_value=0.0)
@@ -272,7 +305,16 @@ class TestAnalyzePipelineExtra:
         ],
     )
     def test_analyze_trade_below_condition(
-        self, mock_ens, mock_temp_adj, mock_clim, mock_nws, mock_obs
+        self,
+        mock_ens,
+        mock_temp_adj,
+        mock_clim,
+        mock_nws,
+        mock_ecmwf,
+        mock_nbm,
+        mock_members,
+        mock_consensus,
+        mock_obs,
     ):
         """analyze_trade handles a LOW market (below condition) correctly."""
         from weather_markets import analyze_trade
@@ -298,7 +340,7 @@ class TestAnalyzePipelineExtra:
         assert 0.0 <= result["forecast_prob"] <= 1.0
         assert result["condition"]["type"] == "below"
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
     @patch(
         "weather_markets._analyze_precip_trade",
         return_value={
@@ -346,7 +388,7 @@ class TestAnalyzePipelineExtra:
         assert result["condition"]["type"] == "precip_any"
         assert "forecast_prob" in result
 
-    @patch("weather_markets.get_live_observation", return_value=None)
+    @patch("nws.get_live_observation", return_value=None)
     @patch(
         "weather_markets._get_consensus_probs",
         return_value=(None, None, None, None, None),

@@ -1867,7 +1867,6 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
     monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
     monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
-    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
 
@@ -1941,7 +1940,6 @@ def _consensus_disagree_setup(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
     monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
     monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
-    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
 
@@ -2242,8 +2240,9 @@ def _hrrr_wiring_test_enriched(target_date, yes_bid=0.62, yes_ask=0.72):
     because it did not come from the multi-source blend at all. Section 5's
     obs-override branch REPLACES the blend outright when a live observation
     is available, and _mock_hrrr_wiring_common was patching only
-    `nws.get_live_observation`, which does not rebind weather_markets' own
-    module-level import of it (see that helper's comment). So section 5 was
+    `nws.get_live_observation`, which at the time did not rebind
+    weather_markets' own module-level import of it (that import has since been
+    removed -- see that helper's comment). So section 5 was
     fetching NYC's real current temperature over the network and 0.402 was
     simply what that day's weather produced; on a later day the same code
     gave 0.525 against a 0.255 market -- a 0.27 gap -- and both tests went
@@ -2287,24 +2286,18 @@ def _mock_hrrr_wiring_common(monkeypatch, wm, mos):
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
-    # BOTH bindings, deliberately -- get_live_observation is reached two ways
-    # and only one of them sees a patch of the source module.
-    # weather_markets.py's module header does `from nws import ...
-    # get_live_observation ...`, so analyze_trade's section-5 obs-override call
-    # site (weather_markets.get_live_observation) is a SEPARATE binding that
-    # `setattr("nws.get_live_observation", ...)` never rebinds;
-    # _compute_persistence_prob's call-time `from nws import
-    # get_live_observation as _get_live_obs` does see it. Patching only the
-    # source module left section 5 issuing a real api.weather.gov request, so
-    # the two SAME-DAY tests below blended the live NYC temperature into
-    # obs_override and their model probability moved with real weather --
-    # measured at 0.525 against a 0.255 market, a 0.27 gap that trips the
-    # >0.25 model-market gap gate and returns None. The multi-day test in the
-    # same group never saw it: section 5 is gated on days_out == 0. Same
-    # both-bindings fix as test_model_consensus_false_when_models_disagree
-    # above, whose own comment already names this exact gap-gate failure mode.
+    # One patch reaches BOTH call sites now. It used to need two: while
+    # weather_markets.py's header still did `from nws import ...
+    # get_live_observation ...`, analyze_trade's section-5 obs-override site was
+    # a separate binding that `setattr("nws.get_live_observation", ...)` did not
+    # rebind, so section 5 issued a real api.weather.gov request and the two
+    # SAME-DAY tests below blended the live NYC temperature into obs_override --
+    # measured at 0.525 against a 0.255 market, a 0.27 gap that trips the >0.25
+    # model-market gap gate and returns None. The multi-day test in the same
+    # group never saw it: section 5 is gated on days_out == 0. That binding is
+    # gone (weather_markets.py now calls nws.get_live_observation directly), so
+    # the source module is the only target there is.
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
@@ -4160,6 +4153,11 @@ class TestPastDateGateCityLocal:
         # (which runs well before _metar_lock_in) fired, so a deterministic
         # not-locked result is all that's needed here.
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        # Everything downstream of the past_date gate is irrelevant to this
+        # test but not free: unmocked it fetched Open-Meteo ensembles, NBM
+        # bulletins, NWS gridpoints and the CPC climate indices for all four
+        # cities on every run.
+        _analyze_trade_base_mocks(monkeypatch, wm)
 
         for city, series in self._CITIES:
             local_today = frozen_instant.astimezone(ZoneInfo(wm._CITY_TZ[city])).date()
@@ -4344,7 +4342,15 @@ def test_analyze_trade_accepts_today_and_future(monkeypatch):
     """analyze_trade does NOT filter out today's or future markets."""
     from datetime import date, timedelta
 
+    import weather_markets as wm
     from weather_markets import analyze_trade
+
+    # This test only asserts that analyze_trade doesn't raise on a today/
+    # tomorrow target, so every forecast source can be pinned. Unmocked, the
+    # delta==0 pass ran _metar_lock_in against real aviationweather.gov METAR
+    # (and the rest of the blend against Open-Meteo/NWS), which made a
+    # date-gate test depend on live weather being reachable.
+    _analyze_trade_base_mocks(monkeypatch, wm)
 
     for delta in (0, 1):
         target = date.today() + timedelta(days=delta)
@@ -5004,6 +5010,11 @@ class TestBatchPrewarmForecastsMonthKeying:
             return resp
 
         monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        # _forecast_model_weights consults _get_enso_phase, which fetches three
+        # real index files from www.cpc.ncep.noaa.gov. This class is about
+        # per-date month keying, not ENSO, so pin it -- same convention as
+        # TestForecastModelWeights elsewhere in the suite.
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda *a, **kw: "neutral")
 
         real_weights = wm._forecast_model_weights
         calls = []
@@ -5066,6 +5077,11 @@ class TestBatchPrewarmForecastsMonthKeying:
             return resp
 
         monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        # _forecast_model_weights consults _get_enso_phase, which fetches three
+        # real index files from www.cpc.ncep.noaa.gov. This class is about
+        # per-date month keying, not ENSO, so pin it -- same convention as
+        # TestForecastModelWeights elsewhere in the suite.
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda *a, **kw: "neutral")
 
         written = wm.batch_prewarm_forecasts({("NYC", dec_date), ("NYC", jul_date)})
         assert written == 2
@@ -6645,6 +6661,12 @@ class TestMemberQuarantineBlendHooks:
             return [70.0, 71.0]
 
         monkeypatch.setattr(wm, "_fetch_model_ensemble", _fake_fetch)
+        # get_ensemble_temps' _persist_member_values step calls
+        # get_model_run_init, which GETs api.open-meteo.com/data/{ds}/static/
+        # meta.json once per model. Track-only metadata, irrelevant to this
+        # test -- pinned so it doesn't leave the process (see
+        # tests/test_batch64_forward_writers.py for its own coverage).
+        monkeypatch.setattr(wm, "get_model_run_init", lambda *a, **kw: None)
 
         from datetime import date as _date
 
@@ -6669,6 +6691,12 @@ class TestMemberQuarantineBlendHooks:
             wm, "CITY_COORDS", {"NYC": (40.7, -74.0, "America/New_York")}
         )
         monkeypatch.setattr(wm, "_fetch_model_ensemble", lambda *a, **k: [70.0])
+        # get_ensemble_temps' _persist_member_values step calls
+        # get_model_run_init, which GETs api.open-meteo.com/data/{ds}/static/
+        # meta.json once per model. Track-only metadata, irrelevant to this
+        # test -- pinned so it doesn't leave the process (see
+        # tests/test_batch64_forward_writers.py for its own coverage).
+        monkeypatch.setattr(wm, "get_model_run_init", lambda *a, **kw: None)
 
         from datetime import date as _date
 
@@ -6954,6 +6982,12 @@ class TestGetEnsembleTempsBiasCorrection:
         monkeypatch.setattr(
             wm, "_model_bias", lambda city, var, **kw: dict(bias) if var else {}
         )
+        # get_ensemble_temps' _persist_member_values step calls
+        # get_model_run_init, which GETs api.open-meteo.com/data/{ds}/static/
+        # meta.json once per model. Track-only metadata, irrelevant to bias
+        # correction -- pinned so it doesn't leave the process (see
+        # tests/test_batch64_forward_writers.py for its own coverage).
+        monkeypatch.setattr(wm, "get_model_run_init", lambda *a, **kw: None)
 
     def test_bias_subtracted_from_raw_members_before_blend(self, monkeypatch):
         from datetime import date, timedelta
@@ -7980,7 +8014,7 @@ class TestMosBlendNoCrossVariableFallback:
             patch("weather_markets.get_ensemble_members", return_value=[]),
             patch("weather_markets.climatological_prob", return_value=0.5),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
@@ -7989,7 +8023,6 @@ class TestMosBlendNoCrossVariableFallback:
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
             patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-            patch("nws.get_live_observation", return_value=None),
             patch("climatology.persistence_prob", return_value=0.3),
             patch("mos.get_mos_station", _fake_mos.get_mos_station),
             patch("mos.fetch_mos_best", _fake_mos.fetch_mos_best),
@@ -9095,6 +9128,21 @@ class TestTornadoConditionParsing:
         # And the end-to-end path must reach a decision (None or a result)
         # rather than raising: `naive < datetime.now(UTC)` is a TypeError no
         # caller catches.
+        #
+        # The tornado branch prices off SPC's per-year climatology, which on a
+        # cold cache downloads ~20 years of www.spc.noaa.gov summaries -- this
+        # test is about close_time parsing, not the model, so pin both reads
+        # the same way TestTornadoLadderGates._patch_climatology does.
+        import tornado_climatology as tc
+
+        monkeypatch.setattr(tc, "month_to_date", lambda y, m, *, today: 40)
+        monkeypatch.setattr(
+            tc,
+            "conditioned_month_totals",
+            lambda month, as_of_day, count_to_date, **k: [
+                float(count_to_date + 30 + i) for i in range(21)
+            ],
+        )
         wm.analyze_trade(_tornado_market(close_time="2026-10-01T03:59:00"))
 
     def test_december_ticker_crossing_the_year_boundary_is_accepted(self):

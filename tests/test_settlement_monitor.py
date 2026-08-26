@@ -1289,6 +1289,13 @@ class TestSettlementMonitorPollingErrorVisibility:
         monkeypatch.setattr(sm, "_CITY_SERIES_TICKER", {"NYC": "KXHIGHNY"})
         monkeypatch.setattr(sm, "_MONITOR_START_HOUR", 0)
         monkeypatch.setattr(sm, "_MONITOR_END_HOUR", 24)
+        # check_city_settlement's first act is a live aviationweather.gov METAR
+        # fetch (via a call-time `from metar import fetch_metar`). These tests
+        # are about the loop's ERROR LOGGING, and a falsy obs makes
+        # check_city_settlement return [] immediately. Only the market-fetch
+        # test actually reaches it -- the sibling replaces
+        # check_city_settlement wholesale -- so this stub is a no-op there.
+        monkeypatch.setattr("metar.fetch_metar", lambda *a, **kw: None)
 
     @staticmethod
     def _stop_after_one_pass(monkeypatch, sm):

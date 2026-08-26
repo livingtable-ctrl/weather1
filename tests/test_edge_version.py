@@ -3,8 +3,6 @@
 from datetime import date, timedelta
 from unittest.mock import patch
 
-import pytest
-
 import weather_markets as wm
 from weather_markets import EDGE_CALC_VERSION, analyze_trade
 
@@ -74,7 +72,7 @@ def test_analyze_trade_returns_edge_version():
         ),
         patch("weather_markets.climatological_prob", return_value=0.6),
         patch("weather_markets.nws_prob", return_value=None),
-        patch("weather_markets.get_live_observation", return_value=None),
+        patch("nws.get_live_observation", return_value=None),
         patch("weather_markets.temperature_adjustment", return_value=0.0),
         patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
         patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
@@ -86,7 +84,9 @@ def test_analyze_trade_returns_edge_version():
             wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
         ),
         patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
-        patch("nws.get_live_observation", return_value=None),
+        # Called through a call-time `import mos`, so no weather_markets.*
+        # patch reaches it; unmocked it fetches a real NBP bulletin.
+        patch("mos.fetch_nbm_quantiles", return_value=None),
         patch("climatology.persistence_prob", return_value=0.3),
     ):
         result = analyze_trade(_enriched())
@@ -149,15 +149,35 @@ def test_precip_fast_path_stamps_edge_version():
                 72.0,
             ],
         ),
+        # BOTH bindings for each of these: weather_markets.py imports
+        # climatological_prob, nws_prob and temperature_adjustment into its own
+        # namespace at module scope, so patching only the source module leaves
+        # analyze_trade's own call sites live.
         patch("climatology.climatological_prob", return_value=0.5),
+        patch.object(wm, "climatological_prob", return_value=0.5),
         patch("nws.nws_prob", return_value=None),
+        patch.object(wm, "nws_prob", return_value=None),
         patch("nws.get_live_observation", return_value=None),
         patch("climate_indices.temperature_adjustment", return_value=0.0),
+        patch.object(wm, "temperature_adjustment", return_value=0.0),
+        # The precip fast path runs its own ensemble fetch, independent of the
+        # get_ensemble_temps patch above -- unmocked it hits
+        # ensemble-api.open-meteo.com. 6 of 12 members over the 0.1in
+        # threshold, against this fixture's 0.45 market mid, leaves the model
+        # well inside the 0.25 model_mkt_gap gate.
+        patch.object(
+            wm, "_fetch_ensemble_precip", lambda *a, **kw: [0.02] * 6 + [0.30] * 6
+        ),
     ):
         result = analyze_trade(enriched)
 
-    if result is None:
-        pytest.skip("No precip trade signal for this input")
+    # Asserted, not skipped. Every input above is pinned, so the only way this
+    # comes back None now is a GATE regression -- exactly the case that must
+    # fail rather than quietly skip and take both assertions with it
+    # (opus-review-caught: the old `pytest.skip` here had become a trapdoor).
+    assert result is not None, (
+        f"precip fast path returned no result; gate counts: {wm.get_gate_counts()}"
+    )
     assert "edge_calc_version" in result, (
         "Precip fast-path must stamp edge_calc_version"
     )

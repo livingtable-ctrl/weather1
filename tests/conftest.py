@@ -1,12 +1,15 @@
 """Shared pytest fixtures for the Kalshi weather markets test suite."""
 
+import contextlib
 import copy
 import json
+import socket
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests.adapters
 
 # Import main here, at collection time, so its module-level load_dotenv() call
 # (main.py:41) fires exactly once, before any fixture or test runs. Module code
@@ -16,6 +19,334 @@ import pytest
 # env-cleanup fixtures already ran, silently re-polluting os.environ for just
 # that one test (e.g. TRADING_PAUSED reappearing after being explicitly cleared).
 import main as _main  # noqa: F401
+
+
+class BlockedNetworkCall(BaseException):
+    """Raised when a test attempts a real outbound network call.
+
+    Deliberately derived from ``BaseException``, not ``Exception``. Almost
+    every network call in this codebase sits inside a ``try/except Exception:
+    log-and-continue`` resilience wrapper (analyze_trade alone has one around
+    nws_prob, one around the nbm_quantile_prob block, one around
+    temperature_adjustment, ...). An ``Exception`` subclass would be swallowed
+    by those handlers, the test would still pass, and the missing mock would
+    stay exactly as invisible as it is today -- which is the entire failure
+    mode this guard exists to end. backlog.txt's 2026-08-07 entry recorded
+    this the hard way: a raise-on-call stub "falsely passes even with a mock
+    removed" for precisely that reason. ``BaseException`` sails through
+    ``except Exception`` and fails the test with the offending URL attached.
+    """
+
+
+class _OfflineStationSource:
+    """A nearby_station_obs.StationSource double that never leaves the machine.
+
+    Both methods return None, the module's documented "discovery/observation
+    failed" signal, so record_shadow_sample() counts the cycle and records no
+    sample instead of fetching real stations. See
+    isolate_cron_generated_files below for why this is a suite-wide
+    default.
+    """
+
+    def discover(self, lat: float, lon: float, limit: int) -> None:
+        return None
+
+    def observe(self, station_ids: list[str]) -> None:
+        return None
+
+
+#: Addresses a test may still connect to. Loopback only: a test that stands up
+#: its own local server (or talks to one pytest started) is doing something
+#: hermetic; anything else is leaving the machine.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "0.0.0.0", "::", ""})
+
+#: The real callables, captured at import before anything is patched.
+_REAL_ADAPTER_SEND = requests.adapters.HTTPAdapter.send
+_REAL_SOCKET_CONNECT = socket.socket.connect
+_REAL_SOCKET_CONNECT_EX = socket.socket.connect_ex
+
+#: Nodeid of the test currently running, for the error message. Set by
+#: pytest_runtest_setup below rather than captured in a fixture closure,
+#: because the guard itself is installed once per SESSION (see
+#: _install_network_guard).
+_CURRENT_NODEID = "<session>"
+
+#: Every block recorded during the current test. Read by
+#: pytest_runtest_makereport to catch a block that something swallowed --
+#: see _install_network_guard's docstring.
+_BLOCKED_THIS_TEST: list[str] = []
+
+
+def _blocked_network_message(what: str) -> str:
+    return (
+        f"outbound network is blocked by default in tests -- {what} was "
+        f"attempted by {_CURRENT_NODEID}. Mock the function that makes this "
+        "call. Patch it on the module that CALLS it, not only on the module "
+        "that DEFINES it: a `from x import y` binding in the caller is a "
+        "separate object that patching `x.y` does not rebind, so those sites "
+        "need BOTH (see _mock_hrrr_wiring_common in "
+        "tests/test_weather_markets.py for the convention). If this test "
+        "genuinely needs the real network, mark it @pytest.mark.allow_network "
+        "(or @pytest.mark.integration)."
+    )
+
+
+def _block(what: str) -> BlockedNetworkCall:
+    message = _blocked_network_message(what)
+    _BLOCKED_THIS_TEST.append(message)
+    return BlockedNetworkCall(message)
+
+
+def _blocked_send(self, prepared_request, *args, **kwargs):
+    raise _block(f"{prepared_request.method} {prepared_request.url}")
+
+
+def _check_socket_address(address) -> None:
+    # AF_UNIX/AF_PIPE addresses are plain strings, not (host, port), and
+    # AF_NETLINK's first element is an int -- none of those leave the machine,
+    # so let them through untouched.
+    if not isinstance(address, tuple) or not address:
+        return
+    host = address[0]
+    if isinstance(host, str) and host not in _LOOPBACK_HOSTS:
+        raise _block(f"a socket connection to {address}")
+
+
+def _blocked_connect(self, address):
+    _check_socket_address(address)
+    return _REAL_SOCKET_CONNECT(self, address)
+
+
+def _blocked_connect_ex(self, address):
+    _check_socket_address(address)
+    return _REAL_SOCKET_CONNECT_EX(self, address)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _install_network_guard():
+    """Default-deny every outbound network call, for every test.
+
+    Before this fixture, tests/conftest.py blocked exactly ONE module --
+    climatology._session.get (see isolate_climatology_data_dir below, and the
+    note there about why that one deliberately raises a plain Exception
+    instead). Every other path out of the process was open, so any test that
+    forgot a mock, or aimed one at the wrong binding, silently made a real
+    request and let live weather decide its assertions. On a cold cache --
+    which is EVERY CI run, since data/ is gitignored --
+    tests/test_weather_markets.py alone reached api.weather.gov,
+    aviationweather.gov, mesonet.agron.iastate.edu, www.cpc.ncep.noaa.gov,
+    www.spc.noaa.gov and both Open-Meteo hosts. The concrete damage:
+    weather_markets.py's section-5 obs override was fetching NYC's real
+    temperature and driving the model probability through the >0.25
+    model-market gap gate on some days and not others (fixed in df7cd97f).
+
+    Two chokepoints, because the codebase has two kinds of caller:
+
+    * ``requests.adapters.HTTPAdapter.send`` catches everything routed through
+      ``requests`` -- every module-level ``requests.get(...)`` plus all ~13
+      module-level ``requests.Session()`` singletons (nws, mos, metar,
+      climatology, acis_*, tornado_climatology, hurricane_climatology,
+      nearby_station_obs, nws_afd, weather_markets._om_session,
+      kalshi_client's retry session). Patching the adapter CLASS rather than
+      each session means a new module is covered the day it is written, every
+      already-constructed session is covered too, and it is the only layer
+      that still knows the URL. Verified in review: this repo has no
+      BaseAdapter subclass and no custom adapter, so every
+      ``session.mount(...)`` site mounts the real HTTPAdapter.
+    * ``socket.socket.connect``/``connect_ex`` catches callers that never
+      touch requests: notify.py's urllib.request Pushover/ntfy posts and its
+      smtplib path (both verified blocked), and asyncio's SelectorEventLoop,
+      which kalshi_ws.py's websocket runs on under Linux/CI. Loopback stays
+      open so a test with its own local server still works.
+
+    SESSION-scoped on purpose, for two reasons found in review:
+      - A function-scoped autouse fixture is ordered ALPHABETICALLY among its
+        peers, not by definition order, so anything sorting before
+        "block_outbound_network" would have set up outside the guard.
+      - Three tests call ``monkeypatch.undo()`` mid-body
+        (test_backtest.py:393, test_batch64_forward_writers.py:1426,
+        test_settlement_monitor.py:68). That reverts every setattr the shared
+        function-scoped ``monkeypatch`` has recorded, which would have
+        stripped the guard for the rest of those tests. A session-scoped
+        MonkeyPatch instance is out of their reach.
+    ``_lift_network_guard_for_marked_tests`` below re-installs the real
+    callables for a test that opts in.
+
+    Known boundaries, all deliberate:
+      - DNS is not intercepted. requests traffic dies at HTTPAdapter.send,
+        before resolution, so nothing is fetched; a urllib/smtplib leak would
+        resolve the hostname for real before reaching connect. That is a
+        lookup, not a data fetch, and blocking getaddrinfo risks breaking
+        legitimate localhost/hostname resolution.
+      - On WINDOWS, asyncio's default ProactorEventLoop connects via
+        ``_overlapped.ConnectEx`` and never calls socket.socket.connect, so an
+        async fetch would escape this guard on a Windows dev machine (it is
+        caught on Linux/CI's SelectorEventLoop). No async fetch exists in the
+        repo today, and tests/test_kalshi_ws.py patches ``websockets.connect``
+        directly.
+      - A daemon thread outliving its test (main.py's auto_settle/auto_backtest
+        threads, kalshi_ws.py's reader) can still be in flight when the next
+        test starts. Its request is blocked, but attributed to whichever test
+        is running at the time.
+      - notify.py's Pushover/ntfy/SMTP paths are env-gated and sit inside
+        ``except Exception``. With a populated .env, a test reaching
+        send_system_alert would now fail where it previously posted for real.
+        None of those vars are set in CI. Mock the send, don't blame the guard.
+    """
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(requests.adapters.HTTPAdapter, "send", _blocked_send)
+        mp.setattr(socket.socket, "connect", _blocked_connect)
+        mp.setattr(socket.socket, "connect_ex", _blocked_connect_ex)
+        yield
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _lift_network_guard_for_marked_tests(request):
+    """Restore the real network for a test that opts in explicitly.
+
+    ``@pytest.mark.allow_network`` is the opt-out; the pre-existing
+    ``integration`` marker (live Kalshi demo tests, deselected by default via
+    pyproject's addopts) is honoured too. Both are read from
+    ``request.keywords``, which includes markers applied at function, class
+    and module (``pytestmark``) scope -- verified for all three.
+    """
+    if (
+        "allow_network" not in request.keywords
+        and "integration" not in request.keywords
+    ):
+        yield
+        return
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(requests.adapters.HTTPAdapter, "send", _REAL_ADAPTER_SEND)
+        mp.setattr(socket.socket, "connect", _REAL_SOCKET_CONNECT)
+        mp.setattr(socket.socket, "connect_ex", _REAL_SOCKET_CONNECT_EX)
+        yield
+    finally:
+        mp.undo()
+
+
+@contextlib.contextmanager
+def expect_blocked_network():
+    """Assert the body triggers the guard, without tripping the swallow check.
+
+    pytest_runtest_makereport below fails any test that recorded a block yet
+    still reported success, because that means something ate the exception.
+    A test that deliberately provokes the guard and catches it itself is the
+    one legitimate case, so it acknowledges the block here instead of leaving
+    it on the log. Yields the pytest ExceptionInfo, same as pytest.raises.
+
+    Only tests/test_conftest_network_guard.py should ever need this. In any
+    other test a blocked call means a missing mock -- fix the mock.
+    """
+    with pytest.raises(BlockedNetworkCall) as excinfo:
+        yield excinfo
+    _BLOCKED_THIS_TEST.clear()
+
+
+def pytest_runtest_setup(item):
+    """Name the running test in the guard's error, and reset its block log."""
+    global _CURRENT_NODEID
+    _CURRENT_NODEID = item.nodeid
+    _BLOCKED_THIS_TEST.clear()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Fail a test that blocked a request but reported success anyway.
+
+    BlockedNetworkCall derives from BaseException so ``except Exception``
+    cannot eat it, but two things still can: an unhandled exception inside a
+    plain ``threading.Thread`` target becomes a
+    PytestUnhandledThreadExceptionWarning rather than a failure (main.py's
+    auto_settle/auto_backtest threads and kalshi_ws.py's reader all qualify),
+    and a rare deliberate ``except BaseException`` swallows it outright.
+    Either way the leak is invisible again, which is the whole thing this
+    guard exists to end -- so a passing test that recorded a block becomes a
+    failure here.
+
+    Deliberately NOT done by promoting PytestUnhandledThreadExceptionWarning
+    to an error suite-wide: tests/test_live_execution.py already emits one
+    from plyer's Windows balloon-tip backend, a real, separately filed,
+    Windows-only bug in a file this change has no business touching.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call" and report.passed and _BLOCKED_THIS_TEST:
+        report.outcome = "failed"
+        report.longrepr = (
+            "This test reported success, but an outbound network call was "
+            "blocked during it and something swallowed the failure -- a "
+            "thread target, or an `except BaseException`. Blocked call(s):"
+            "\n\n" + "\n\n".join(_BLOCKED_THIS_TEST)
+        )
+
+
+@pytest.fixture(autouse=True)
+def isolate_fee_monitor_cadence(tmp_path, monkeypatch):
+    """Redirect cron's two fee-monitor cadence markers to per-test temp files,
+    pre-seeded as "already ran today".
+
+    _check_fee_schedule_page() (cron.py:930) is gated behind a once-a-week
+    marker in the real data/ directory. On any machine where that marker is
+    absent -- a fresh clone, and therefore EVERY CI run -- the gate opens and
+    the function GETs kalshi.com/fee-schedule. That made ~65 cmd_cron tests
+    across test_cron_integration.py, test_main_cron_smoke.py,
+    test_trade_cycle_engine.py and friends issue a real request to a third
+    party's Cloudflare-protected page, none of which is anything those tests
+    are about. The sibling daily gate in _check_fee_change() has the same
+    shape, so both are seeded here.
+
+    Seeded rather than merely redirected: an empty tmp_path would leave the
+    gate permanently open, which is the failing state, not the fixed one. This
+    also stops the real data/fee_schedule_scrape_check.json from being
+    rewritten by unrelated tests -- both functions write the marker back on
+    every path they take, including the failure paths.
+
+    Tests that exercise the monitors themselves (tests/test_fee_change_monitor.py)
+    already point these constants at their own temp files per test, and
+    monkeypatch's last-setattr-wins ordering leaves them in control.
+
+    Two consequences worth stating, both opus-review-caught:
+      - No cmd_cron test now exercises the monitor wiring at cron.py:3545-3546
+        beyond the early return, so a regression that made either monitor
+        crash cmd_cron would be invisible to the ~65 tests that call it.
+        test_fee_change_monitor.py covers both functions directly; the
+        integration seam is what is uncovered.
+      - It stays on the SHARED `monkeypatch`, unlike the network guard above.
+        Review suggested giving it its own pytest.MonkeyPatch too, to survive a
+        test's monkeypatch.undo(); reproduced, and it is the wrong move for a
+        FUNCTION-scoped fixture. When the fixture patches on its own instance
+        and the test then patches the same attribute on the shared one, the
+        test's undo restores the FIXTURE's temp path, the fixture's undo has
+        already run, and the module attribute is left pointing at a deleted
+        tmp_path for every later test. On the shared instance both entries
+        unwind LIFO to the real value. (The guard above is safe because it is
+        SESSION-scoped -- its undo runs after every test's monkeypatch has
+        already unwound.)
+      - Seeding is defeated by a frozen clock. _check_fee_change gates on
+        exact date equality and _check_fee_schedule_page on
+        (today - last).days < 7, both via utils.utc_today() -- so a test that
+        patched utc_today forward by a week would reopen the gate. No cmd_cron
+        test does today (checked), and the failure would be a loud
+        BlockedNetworkCall rather than a silent fetch. Stubbing the two
+        functions outright would be clock-proof but is not an option:
+        test_fee_change_monitor.py calls them through the module attribute.
+    """
+    import cron
+    from utils import utc_today as _utc_today
+
+    seeded = json.dumps({"date": str(_utc_today())})
+    for attr, filename in (
+        ("FEE_CHECK_PATH", "fee_change_check.json"),
+        ("FEE_SCHEDULE_SCRAPE_PATH", "fee_schedule_scrape_check.json"),
+    ):
+        marker = tmp_path / filename
+        marker.write_text(seeded, encoding="utf-8")
+        monkeypatch.setattr(cron, attr, marker)
 
 
 @pytest.fixture(autouse=True)
@@ -661,6 +992,15 @@ def isolate_climatology_data_dir(tmp_path, monkeypatch):
 
     monkeypatch.setattr(climatology, "DATA_DIR", tmp_path)
 
+    # Deliberately a plain RuntimeError, NOT the BaseException-derived
+    # BlockedNetworkCall that _install_network_guard raises -- the two blockers
+    # want opposite things and the difference is load-bearing, so don't
+    # "fix" one to match the other. This one's whole point is that
+    # fetch_historical's own `except Exception` SHOULD catch it and take the
+    # log-and-return-None fail-safe path, which is what makes climatological
+    # inputs deterministic across the suite. The guard's point is that nothing
+    # may catch it. (The guard would also block this call, one layer lower and
+    # with a different outcome; this fixture just gets there first.)
     def _blocked_get(*args, **kwargs):
         raise RuntimeError(
             "climatology._session.get() is blocked by default in tests -- "
@@ -1136,6 +1476,16 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
         "_SHADOW_PATH",
         tmp_path / "nearby_station_shadow.json",
     )
+    # ...and the same call reaches the network on the way there: with a cold
+    # in-memory station cache (every one-shot test process) discover() GETs
+    # api.weather.gov/points/{lat},{lon} and observe() GETs
+    # aviationweather.gov. DEFAULT_SOURCE is the seam the module already
+    # documents for swapping backends -- get_nearby_stations() and
+    # blend_nearby_observation() both fall back to it only when their caller
+    # passes no `source=`, which is exactly the cron path and never
+    # test_nearby_station_obs.py's own tests (they inject their own fake, and
+    # the one test that needs the real default sets DEFAULT_SOURCE itself).
+    monkeypatch.setattr(nearby_station_obs, "DEFAULT_SOURCE", _OfflineStationSource())
 
     # kalshi_weather_index._STATE_PATH -- _cmd_cron_body() calls
     # check_miami_index_config_version(client) on every cycle. With a

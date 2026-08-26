@@ -1677,7 +1677,7 @@ class TestTimeDecayEdgeScope:
             patch("weather_markets.get_ensemble_members", return_value=[]),
             patch("weather_markets.climatological_prob", return_value=0.60),
             patch("weather_markets.nws_prob", return_value=None),
-            patch("weather_markets.get_live_observation", return_value=None),
+            patch("nws.get_live_observation", return_value=None),
             patch("weather_markets.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
@@ -1685,6 +1685,12 @@ class TestTimeDecayEdgeScope:
             patch.object(
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
+            # Same-day market, so _metar_lock_in fires and fetches live METAR
+            # from aviationweather.gov. This class is about how time decay
+            # scales the edge metrics, and the lock-in fast path bypasses the
+            # blend it decays, so pin it not-locked.
+            patch.object(wm, "_metar_lock_in", return_value=(False, 0.0, {})),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
         ):
             return wm.analyze_trade(enriched)
 

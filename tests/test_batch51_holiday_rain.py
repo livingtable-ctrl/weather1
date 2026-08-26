@@ -285,7 +285,47 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         close_time = (target + timedelta(days=1)).isoformat() + "T03:59:59Z"
         return ticker, target, close_time
 
-    def test_holiday_tmax_reaches_the_real_daily_temp_model(self):
+    @staticmethod
+    def _pin_external_fetches(monkeypatch, wm, *, temps):
+        """Pin every source analyze_trade would otherwise fetch live.
+
+        These two tests are about ROUTING -- that a real enriched dict from
+        the real producer reaches the daily temperature model rather than a
+        gate -- so the model's inputs may be fixed. Unpinned they reached
+        aviationweather.gov (via _metar_lock_in), Open-Meteo and
+        mesonet.agron.iastate.edu, which made a routing assertion depend on
+        live weather. `temps` is chosen per test so the resulting BLEND (not the
+        raw member fraction -- the Gaussian widens it) sits near that test's
+        own market price, keeping the >0.25 model_mkt_gap gate well out of the
+        way. Each caller records its own measured gap.
+        """
+        monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+        monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: temps)
+        monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
+        )
+        monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+        # Pinned explicitly, not left to conftest: climatological_prob returns
+        # None today only because isolate_climatology_data_dir blocks
+        # climatology's session, which drops climatology from the blend
+        # entirely. Relying on that made the margin below depend on an
+        # unrelated fixture -- with a live SF winter climatology the TMIN
+        # blend moved far enough to trip the model_mkt_gap gate
+        # (opus-review-caught, reproduced).
+        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
+        # A second, independent METAR fetch: the dew-point coastal correction
+        # (weather_markets.py:15776) fires for _DEW_POINT_SENSITIVE_CITIES,
+        # which includes SanFrancisco, and is not reached through
+        # _metar_lock_in.
+        monkeypatch.setattr("metar.fetch_metar", lambda *a, **kw: None)
+
+    def test_holiday_tmax_reaches_the_real_daily_temp_model(self, monkeypatch):
         import weather_markets as wm
 
         ticker, target_date, close_time = self._near_future_ticker_and_close(
@@ -318,6 +358,11 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         # fetch itself works (covered elsewhere).
         enriched["_forecast"] = {"high_f": 74.0, "low_f": 60.0, "precip_in": 0.0}
 
+        # 6 of 19 members above the 75 threshold. Measured blend: 0.348
+        # against the 0.31 market mid -- a 0.038 gap.
+        self._pin_external_fetches(
+            monkeypatch, wm, temps=[73.0] * 7 + [74.5] * 6 + [76.0] * 6
+        )
         wm.reset_gate_counts()
         result = wm.analyze_trade(enriched)
 
@@ -329,7 +374,7 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         assert "forecast_prob" in result
         assert "edge" in result
 
-    def test_holiday_tmin_reaches_the_real_daily_temp_model(self):
+    def test_holiday_tmin_reaches_the_real_daily_temp_model(self, monkeypatch):
         import weather_markets as wm
 
         ticker, target_date, close_time = self._near_future_ticker_and_close(
@@ -356,6 +401,13 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         assert enriched.get("_date") == target_date
         enriched["_forecast"] = {"high_f": 74.0, "low_f": 60.0, "precip_in": 0.0}
 
+        # 3 of 19 members below the 50 threshold. Measured blend: 0.163
+        # against this fixture's 0.21 market mid -- a 0.047 gap, 0.20 clear of
+        # the model_mkt_gap gate. The earlier pin sat at a 0.197 gap, i.e.
+        # 0.053 from tripping it, which is not margin worth relying on.
+        self._pin_external_fetches(
+            monkeypatch, wm, temps=[46.0] * 3 + [54.0] * 9 + [58.0] * 7
+        )
         wm.reset_gate_counts()
         result = wm.analyze_trade(enriched)
 

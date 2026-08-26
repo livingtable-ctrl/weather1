@@ -129,8 +129,12 @@ def test_cmd_cron_logs_state_snapshot(tmp_path, monkeypatch, repatch_paper_paths
 
         client = MagicMock()
         main.cmd_cron(client)
-    except BaseException:
+    except SystemExit:
         pass  # cron ends with sys.exit(0) — that's fine
+        # Narrowed from `except BaseException` (opus-review-caught): that also
+        # ate tests/conftest.py's BlockedNetworkCall, which is a BaseException
+        # precisely so no handler can swallow it. SystemExit is all this ever
+        # needed to catch.
     finally:
         main_logger.removeHandler(handler)
         main_logger.setLevel(logging.NOTSET)

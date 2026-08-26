@@ -5,6 +5,7 @@ addopts = "-m 'not integration'"
 markers = [
     "integration: live API tests (some require KALSHI_ENV=demo, e.g. Kalshi client calls) — excluded from normal pytest runs by default, run with '-m integration'",
     "cron_integration: cmd_cron() orchestration tests that use only mocks — CI-safe, run by default like any other test",
+    "allow_network: opt out of tests/conftest.py's default-deny network guard (block_outbound_network) — for a test that genuinely needs a real outbound request",
 ]
 
 [tool.coverage.run]
