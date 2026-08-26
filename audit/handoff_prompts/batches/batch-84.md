@@ -37,6 +37,25 @@ Batch-80 fixed `useData.js`'s `apiFetch` but did not own these files. Operator-i
 
 Read `C:\Users\thesa\.claude\projects\C--Users-thesa-claude-kalshi\memory\feedback_implementation_workflow.md` and follow it.
 
-(1) Re-verify every claim below against live code first — these were measured 2026-08-26 and the repo moved fast that day. (3) `AskUserQuestion` for any item marked as needing a decision. (7) Mutation-test via the **Edit** tool, never a string-replace script — a scripted revert has left a silent third state in this repo before. Pair every absence-assertion with a positive control. (8) Scoped tests only — **never the bare full suite**. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
+(1) Re-verify every claim below against live code first — these were measured 2026-08-26 and the repo moved fast that day. (3) `AskUserQuestion` for any item marked as needing a decision. (7) Mutation-test via the **Edit** tool, never a string-replace script — a scripted revert has left a silent third state in this repo before. Pair every absence-assertion with a positive control. (8) Scoped tests only — **never the bare full suite**.
+
+> **CORRECTED SCOPE for this batch.** An earlier revision listed only `tests/test_notify.py` plus frontend unit tests. All four of these reference `send_system_alert` / `check_halt_transition`, which is precisely the contract item 1 changes:
+>
+> `tests/test_notify.py`, `tests/test_batch24_alerting.py`, `tests/test_batch33_reliability.py`, `tests/test_batch69_alerting_correlation.py`
+>
+> Frontend: `frontend/src/shared.test.js` **and `frontend/src/useData.test.js`** — the latter covers the `apiFetch` timeout batch-80 added, whose shape item 3 reuses.
+>
+> Re-run `grep -rln "<symbol>" tests/*.py` for each symbol you touch rather than trusting a hand-written list.
+
+> **CORRECTED LINE NUMBERS.** An earlier revision cited `notify.py` positions that predate batch-80's truncation fix and are ~145 lines stale. Verified against master:
+>
+> | What | Actual |
+> |---|---|
+> | `alert_strong_signal` | `def` at **`:594`**, its `successes.append(True)` at **`:654`** |
+> | `send_system_alert_detailed` | `def` at **`:692`**, its `successes.append(True)` at **`:789`** |
+> | "all N channel(s) failed" warnings | **`:683`** and **`:830`** |
+> | `NOTIFY_CHANNELS` default | `:51` |
+>
+> Re-locate by symbol regardless — batch-80 changed this file recently and these will move again. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
 
 **Two standing hazards.** Scripts run outside pytest bypass conftest's real-`data/`-write blocker and its default-deny network guard — redirect `safe_io.project_root()` or the specific `paths.py` constant before running any scratch script. And do not run `git restore .` or `git checkout -- data/`.

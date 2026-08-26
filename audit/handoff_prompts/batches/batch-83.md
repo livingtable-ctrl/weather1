@@ -39,6 +39,19 @@ Beware the interaction with item 1: if you change what `isolate_tracker_db` does
 
 Read `C:\Users\thesa\.claude\projects\C--Users-thesa-claude-kalshi\memory\feedback_implementation_workflow.md` and follow it.
 
-(1) Re-verify every claim below against live code first — these were measured 2026-08-26 and the repo moved fast that day. (3) `AskUserQuestion` for any item marked as needing a decision. (7) Mutation-test via the **Edit** tool, never a string-replace script — a scripted revert has left a silent third state in this repo before. Pair every absence-assertion with a positive control. (8) Scoped tests only — **never the bare full suite**. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
+(1) Re-verify every claim below against live code first — these were measured 2026-08-26 and the repo moved fast that day. (3) `AskUserQuestion` for any item marked as needing a decision. (7) Mutation-test via the **Edit** tool, never a string-replace script — a scripted revert has left a silent third state in this repo before. Pair every absence-assertion with a positive control. (8) Scoped tests only — **never the bare full suite**.
+
+> **CORRECTED SCOPE for this batch.** An earlier revision listed only `tests/test_weather_markets.py`, `tests/test_prod_data_guard.py` and `tests/test_infrastructure.py`. That list omits the dedicated guards for the two things item 3 actually edits. Use:
+>
+> | File | Why it must be in scope |
+> |---|---|
+> | `tests/test_conftest_tracker_db_isolation.py` | **The dedicated guard for `isolate_tracker_db`** — the exact fixture item 3 changes. Its docstring documents the 63–207 ms → 0.5 ms template-copy optimisation this item continues. Omitting it was the worst of the miss. |
+> | `tests/test_circuit_breaker.py` | Item 3 edits `circuit_breaker.py` (`_save_state`, `record_success`). |
+> | `tests/test_circuit_breaker_registry.py` | Same. |
+> | `tests/test_prod_data_guard.py` | Item 1; includes `TestConftestWiring` at `:666`. |
+> | `tests/test_weather_markets.py` | Item 2. |
+> | `tests/test_infrastructure.py` | Also exercises `CircuitBreaker`. |
+>
+> Before trusting any scoped list, re-run `grep -rln "<symbol>" tests/*.py` for each symbol you touch — a well-named file can still be missed, and that is exactly what happened here. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
 
 **Two standing hazards.** Scripts run outside pytest bypass conftest's real-`data/`-write blocker and its default-deny network guard — redirect `safe_io.project_root()` or the specific `paths.py` constant before running any scratch script. And do not run `git restore .` or `git checkout -- data/`.
