@@ -58,6 +58,23 @@ repeated here, because its scan reads this file too and would flag the
 quotation as an offence.) Relative paths are still normalised via abspath()
 for safety; they are simply not the expected case.
 
+Directory creation is deliberately NOT guarded
+----------------------------------------------
+mkdir/makedirs are left alone entirely. An empty directory holds no
+production data, and every write INTO one is blocked on its own merits by
+the open/Path.open/sqlite/copy guards -- so guarding mkdir buys nothing.
+
+It also actively broke a fresh clone. An earlier version blocked only a
+mkdir that would CREATE a directory (allowing an idempotent
+``exist_ok=True`` re-assertion of one already present). That passed on a
+developer machine, where data/archive_cache already existed, and failed
+every test in CI, where a fresh checkout has a gitignored, empty data/:
+backtest.py and ab_test.py both mkdir their cache subdirectory at MODULE
+IMPORT, so the block fired during collection and took out ~90 tests at
+setup. The "already exists" carve-out looked like precision and was really
+a dependency on the developer's own filesystem state -- exactly the class
+of environment-coupling this module exists to remove.
+
 Known limitations, disclosed in the same spirit as
 test_paths_bypass_guard.py's own:
 
@@ -178,38 +195,6 @@ def _under_real_data(p) -> bool:
         if s == prefix or s.startswith(prefix + os.sep):
             return True
     return False
-
-
-def _creates_a_real_data_dir(p) -> bool:
-    """True only for a mkdir that would actually CREATE a directory in data/.
-
-    mkdir needs its own predicate because idempotent re-assertion of an
-    existing directory is not a mutation, and this codebase does it
-    constantly: paths.py runs ``_DATA.mkdir(parents=True, exist_ok=True)``
-    at import, backtest.py and ab_test.py each mkdir their cache subdir at
-    module scope (so *every* test pays it, via conftest's autouse
-    isolate_walk_forward_params_dir), and most persistence helpers do
-    ``<CONST>.parent.mkdir(exist_ok=True)`` before an atomic write.
-    Failing those would mean thousands of false positives protecting
-    nothing -- the write that follows is blocked on its own merits.
-
-    Creating a directory that does not yet exist IS a mutation, and stays
-    blocked. The extra stat() this costs is irrelevant: mkdir is rare,
-    unlike open().
-    """
-    try:
-        s = os.fspath(p)
-    except TypeError:
-        return False
-    if isinstance(s, bytes):
-        s = os.fsdecode(s)
-    if not s:
-        return False
-    normalised = _norm(s)
-    inside = any(normalised.startswith(prefix + os.sep) for prefix in _data_prefixes)
-    if not inside:
-        return False
-    return not os.path.isdir(s)
 
 
 def _sqlite_target(database) -> tuple[object, str]:
@@ -364,11 +349,9 @@ def _move_guard(original, operation):
     return guarded
 
 
-def _target_guard(original, operation, *, strict=False):
-    predicate = _creates_a_real_data_dir if strict else _under_real_data
-
+def _target_guard(original, operation):
     def guarded(path, *args, **kwargs):
-        if predicate(path):
+        if _under_real_data(path):
             _block(operation, path)
         return original(path, *args, **kwargs)
 
@@ -394,12 +377,6 @@ def _g_path_touch(self, *args, **kwargs):
     if _under_real_data(self):
         _block("Path.touch", self)
     return _o_path_touch(self, *args, **kwargs)
-
-
-def _g_path_mkdir(self, *args, **kwargs):
-    if _creates_a_real_data_dir(self):
-        _block("Path.mkdir", self)
-    return _o_path_mkdir(self, *args, **kwargs)
 
 
 def _bound_dst_guard(original, operation, *, also_check_src=False):
@@ -437,8 +414,6 @@ def install(data_dir) -> None:
     os.rmdir = _target_guard(_o_rmdir, "os.rmdir")
     os.truncate = _target_guard(_o_truncate, "os.truncate")
     os.utime = _target_guard(_o_utime, "os.utime")
-    os.mkdir = _target_guard(_o_mkdir, "os.mkdir", strict=True)
-    os.makedirs = _target_guard(_o_makedirs, "os.makedirs", strict=True)
     shutil.rmtree = _target_guard(_o_rmtree, "shutil.rmtree")
     shutil.copyfile = _dst_guard(_o_copyfile, "shutil.copyfile -> ")
     shutil.copy = _dst_guard(_o_copy, "shutil.copy -> ")
@@ -453,7 +428,6 @@ def install(data_dir) -> None:
     pathlib.Path.unlink = _g_path_unlink
     pathlib.Path.rmdir = _g_path_rmdir
     pathlib.Path.touch = _g_path_touch
-    pathlib.Path.mkdir = _g_path_mkdir
     if _o_path_copy is not None:
         pathlib.Path.copy = _bound_dst_guard(_o_path_copy, "Path.copy -> ")
     if _o_path_copy_into is not None:
@@ -517,8 +491,6 @@ def uninstall() -> None:
     os.rmdir = _o_rmdir
     os.truncate = _o_truncate
     os.utime = _o_utime
-    os.mkdir = _o_mkdir
-    os.makedirs = _o_makedirs
     shutil.rmtree = _o_rmtree
     shutil.copyfile = _o_copyfile
     shutil.copy = _o_copy
@@ -528,7 +500,6 @@ def uninstall() -> None:
     pathlib.Path.unlink = _o_path_unlink
     pathlib.Path.rmdir = _o_path_rmdir
     pathlib.Path.touch = _o_path_touch
-    pathlib.Path.mkdir = _o_path_mkdir
     if _o_path_copy is not None:
         pathlib.Path.copy = _o_path_copy
     if _o_path_copy_into is not None:

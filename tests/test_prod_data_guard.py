@@ -83,6 +83,23 @@ def _sweep_probe_residue():
     )
 
 
+def _remove_tree_unguarded(path: str) -> None:
+    """Recursively delete `path` using only UN-patched primitives.
+
+    shutil.rmtree is not usable here even via prod_data_guard._o_rmtree:
+    rmtree calls os.rmdir internally, and that lookup resolves to the
+    PATCHED os.rmdir, so the original rmtree blocks itself on exactly the
+    paths this sweep exists to clean. Walking it by hand with the captured
+    originals is the only version that works while the guard is armed.
+    """
+    for entry in os.scandir(path):
+        if entry.is_dir(follow_symlinks=False):
+            _remove_tree_unguarded(entry.path)
+        else:
+            prod_data_guard._o_remove(entry.path)
+    prod_data_guard._o_rmdir(path)
+
+
 def _sweep_probe_artefacts() -> list[str]:
     """Delete every GUARD_PROBE_* artefact; return any that survived."""
     data_dir = _real_data_dir_unguarded()
@@ -95,8 +112,8 @@ def _sweep_probe_artefacts() -> list[str]:
         if not entry.name.startswith(_PROBE_PREFIX):
             continue
         try:
-            if entry.is_dir():
-                prod_data_guard._o_rmtree(entry.path)
+            if entry.is_dir(follow_symlinks=False):
+                _remove_tree_unguarded(entry.path)
             else:
                 prod_data_guard._o_remove(entry.path)
         except OSError:  # pragma: no cover -- only on a locked file
@@ -257,16 +274,36 @@ class TestMutationsAreBlocked:
             lambda: sqlite3.connect(paths.DB_PATH), op_contains="sqlite3.connect"
         )
 
-    def test_creating_a_subdirectory_of_data_is_blocked(self):
-        target = _real_data_dir() / "GUARD_PROBE_subdir"
-        _expect_blocked(target.mkdir, op_contains="Path.mkdir")
-        assert not target.exists()
+    def test_creating_a_subdirectory_of_data_is_allowed(self):
+        """mkdir is deliberately unguarded -- see the module docstring.
+
+        An earlier version blocked creating a NEW subdirectory while
+        allowing an exist_ok re-assertion of an existing one. That passed
+        locally only because data/archive_cache happened to exist, and
+        failed ~90 tests on a fresh CI checkout, where backtest.py and
+        ab_test.py mkdir their cache subdirs at module import. An empty
+        directory holds no production data; what matters is that writes
+        into it are still refused, which the next test asserts.
+        """
+        target = _real_data_dir() / f"{_PROBE_PREFIX}subdir"
+        target.mkdir(exist_ok=True)
+        assert target.is_dir()
+        assert not prod_data_guard._violations
+        # _sweep_probe_residue removes it (it rmtree's GUARD_PROBE_* dirs).
+
+    def test_a_write_into_a_created_subdirectory_is_still_blocked(self):
+        """The reason not guarding mkdir is safe: the directory is inert,
+        the write is what carries data, and the write is refused."""
+        target = _real_data_dir() / f"{_PROBE_PREFIX}subdir_write"
+        target.mkdir(exist_ok=True)
+        inner = target / "payload.json"
+        _expect_blocked(lambda: inner.write_text("{}"), op_contains="Path.open(mode=")
+        assert not inner.exists()
 
     def test_recreating_the_data_dir_itself_is_allowed(self):
         """paths.py does _DATA.mkdir(parents=True, exist_ok=True) at import,
         and several modules do <CONST>.parent.mkdir(exist_ok=True) before an
-        atomic write. Those must not be treated as leaks, or the guard would
-        fail every test that imports a module doing so."""
+        atomic write."""
         _real_data_dir().mkdir(parents=True, exist_ok=True)
         assert not prod_data_guard._violations
 
