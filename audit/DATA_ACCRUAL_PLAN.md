@@ -44,6 +44,23 @@ has not been done and is the cheapest item on this list.
 
 ### 1. Settle `analysis_attempts` — ~6× the scoring rate
 
+> **CORRECTED 2026-08-26. This is already BUILT and already RUNNING — the task
+> is to UNBLOCK it, not to write it.** The first draft of this document
+> described it as work to be done. It is not.
+> `tracker.settle_pending_attempt_tickers()` exists, is called from
+> `sync_outcomes()` under `ATTEMPT_SETTLE_CAP_PER_SYNC` every cron cycle, and
+> has a one-time drain command: `py main.py backfill-attempt-outcomes`.
+>
+> What it produced on the 2026-08-26 00:28 UTC cycle:
+> `analysis_attempts sweep settled=0 skipped=0 failed=25` — every attempt
+> failed on `Circuit open for source 'kalshi_api_read'`, which had tripped
+> after five `401 Unauthorized` responses caused by a 41 s clock skew. So the
+> lever has been running and silently returning nothing.
+>
+> **The action is therefore: fix the clock (done 2026-08-26), then run the
+> drain command once.** Everything below still describes the size of the prize
+> correctly; only the "cost" line's framing was wrong.
+
 Already filed HIGH in `backlog.txt` as *"the only real lever on the graduation
 timeline"*. Re-verified 2026-08-25:
 
@@ -52,7 +69,8 @@ timeline"*. Re-verified 2026-08-25:
 - Cost is a one-time ~501-call settlement backfill plus ~22/day steady state
   (measured: 22.03 distinct tickers analysed per day over 30 days). Settlement
   is once per ticker, not once per cycle — the old "~2,000 calls per cron
-  cycle" objection was the wrong shape.
+  cycle" objection was the wrong shape. **The per-cycle half already runs;
+  only the one-time drain is outstanding.**
 - Scoring rate moves from **3.21/day** (321 settled rows over 100 days) to
   **~22/day**. A 3¢ edge goes from **1.6 years to 0.2 years**; 2¢ from 3.7
   years to 0.5.

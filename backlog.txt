@@ -37983,3 +37983,74 @@ When to revisit:
   Next time anyone touches the entry-side-edge / model_mkt_gap area, and
   before trusting "test_weather_markets.py is green" as evidence that the
   P0-14 NO-side fix still holds.
+
+[OPEN 2026-08-26 -- observed live in the 00:28 UTC cron run, whose log shows
+  the whole cascade end to end. Found while analysing that run line by line.]
+  ONE SHARED 'kalshi_api_read' CIRCUIT BREAKER LETS AUTH FAILURES ON PRIVATE
+  ENDPOINTS DISABLE PUBLIC MARKET-DATA READS -- WHICH SILENTLY LEAVES EVERY
+  OPEN POSITION WITHOUT STOP-LOSS PROTECTION
+Priority: HIGH -- this is a risk-control path. On the observed run it left
+  8 of 8 open positions unprotected for a full cycle, and the trigger was a
+  fault that could not have affected the endpoint it disabled.
+Files: kalshi_client.py (:93 the single CircuitBreaker(name="kalshi_api_read",
+  failure_threshold=5); :588 _get(auth=False|True) -- both routes share it;
+  :732 get_market public; :1088 get_balance authenticated),
+  paper.py (:1998-2030 the stop-loss quote loop and its M-1 warning)
+
+Problem:
+  kalshi_client.py declares ONE circuit breaker for every read, and _get()
+  routes both authenticated and unauthenticated calls through it. So a fault
+  that only affects PRIVATE endpoints trips the breaker for PUBLIC ones.
+
+  Observed 2026-08-26 00:28 UTC. A 41s clock skew (W32Time was stopped and
+  Manual, ~0.35s/day RTC drift over 118 days) made Kalshi reject signed
+  requests:
+    401 ... /portfolio/positions      <- authenticated
+    401 ... /portfolio/balance  x6    <- authenticated
+    Circuit 'kalshi_api_read' OPEN after 5 failures
+  and then, for the rest of the cycle:
+    get_unrealized_pnl_paper: ticker <8 tickers> failed: Circuit open
+    [StopLoss] got a usable quote for 0/8 open position(s) this cycle -- the
+      rest fall back to entry_price and are effectively unprotected
+    sync_outcomes: failed to fetch/record <~48 tickers>: Circuit open
+    sync_outcomes: analysis_attempts sweep settled=0 skipped=0 failed=25
+    check_fee_change call failed: Circuit open
+
+  The critical part: paper.py's stop-loss loop calls client.get_market(),
+  which is PUBLIC (_get with auth=False, no signature). A clock skew CANNOT
+  make that endpoint 401. It was disabled purely because it shares a breaker
+  with the portfolio endpoints that did fail. With no quote, every position
+  falls back to entry_price -- unrealized P&L reads 0.00, so no stop can ever
+  trigger.
+
+  The M-1 WARNING at paper.py:2028 is working exactly as designed and is how
+  this was caught -- the problem is not visibility, it is that a WARNING is
+  the only consequence of losing price-based protection on every open
+  position.
+
+  Compounding: the breaker's 60s recovery_timeout never elapses inside one
+  cron cycle (this one ran 00:28:28-00:32:49, and the breaker opened at
+  00:32:39), so once it opens the entire remainder of the cycle is degraded.
+
+Plan (design decision, wants the user):
+  1. SPLIT the breaker at minimum into public-read vs authenticated-read.
+     An auth fault must not be able to disable unauthenticated market data.
+     Check every _get(auth=...) call site when doing this.
+  2. Consider not counting 401 toward the breaker at all: a 401 is a
+     credential/clock fault, not the overload condition a breaker exists to
+     protect against. Retrying will not fix it and backing off does not help
+     -- it needs a different signal entirely.
+  3. Decide what SHOULD happen when stop-loss cannot price a position. Silent
+     fallback to entry_price is the least safe option available: it reports
+     "no loss" precisely when the bot is blind. Candidates: refuse to open new
+     positions while blind, escalate past WARNING, or treat an unpriceable
+     position as at-risk rather than at-breakeven.
+  4. A startup/periodic clock-skew assertion against a server Date header
+     would have caught the root cause before any of this. Note the machine is
+     used intermittently -- it was powered off May-August -- so the check
+     belongs at STARTUP, where a long shutdown shows up as a large offset.
+
+When to revisit:
+  Before live trading. In paper mode this costs simulated money; the same
+  cascade with LIVE_TRADING_ENABLED leaves real positions unprotected, and
+  the same run's banner read "REAL MONEY TRADES ENABLED".
