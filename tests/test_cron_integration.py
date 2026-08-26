@@ -3289,7 +3289,7 @@ class TestBatch78MondaySweepWindows:
     """batch-78 item 2: the retention WINDOWS are the decision this item made,
     and they live at the call site rather than in the pruners' defaults.
 
-    Found by mutation testing: swapping `_prune_member_values(days=365)` and
+    Found by mutation testing: swapping `_prune_member_values(days=730)` and
     `_prune_depth(days=30)` at the call site left every other test in this
     batch green, while destroying 11 months of the corpus A15b is waiting on
     at the very next Monday sweep. The pruners' own behaviour is covered by
@@ -3340,17 +3340,40 @@ class TestBatch78MondaySweepWindows:
         # per-window assertions below are not vacuously passing on a sweep
         # branch that never fired.
         assert set(calls) == {"member_values", "depth", "scan_runs"}
-        # A15b's rank histogram needs a full seasonal cycle.
-        assert calls["member_values"] == 365
+        # A15b's rank histogram, on the shared long-retention constant.
+        assert calls["member_values"] == 730
         # A4/A17 replay is short-horizon, and this table has no dedup at all.
         assert calls["depth"] == 30
-        # Outage history, matching purge_old_predictions' retention.
+        # Outage history, same long constant.
         assert calls["scan_runs"] == 730
         # The windows must not be interchangeable: keeping depth as long as
         # member values, or member values as short as depth, is the specific
         # mutation this test exists to kill.
         assert calls["member_values"] > calls["depth"]
-        assert calls["scan_runs"] > calls["member_values"]
+        # The two long-retention tables share ONE constant on purpose (730,
+        # matching purge_old_predictions). Pinned as equality so that moving
+        # one without the other is a failure rather than a silent divergence.
+        assert calls["scan_runs"] == calls["member_values"]
+
+    def test_the_call_site_windows_match_the_pruners_own_defaults(self):
+        """cron passes every window explicitly, so a default drifting away
+        from its call site would be invisible in production AND would make
+        the two disagree for any other caller. Pinned rather than left to
+        chance -- the defaults are what a REPL or a future caller gets.
+        """
+        import inspect
+
+        import tracker
+
+        defaults = {
+            name: inspect.signature(fn).parameters["days"].default
+            for name, fn in (
+                ("member_values", tracker.prune_ensemble_member_values),
+                ("depth", tracker.prune_orderbook_depth_snapshots),
+                ("scan_runs", tracker.prune_scan_runs),
+            )
+        }
+        assert defaults == {"member_values": 730, "depth": 30, "scan_runs": 730}
 
     def test_the_sweep_does_not_run_on_a_non_monday(self, cron_env):
         """Positive control for the test above: the windows it asserts are

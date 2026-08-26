@@ -1239,12 +1239,35 @@ Resolution (2026-08-26, batch-78 item 2):
 
   WINDOWS (AskUserQuestion, deliberately asked per table -- these are not
   the same question):
-  - ensemble_member_values: 365 days. A15b's rank histogram is a WEATHER
-    statistic; summer and winter ensemble spread are different populations,
-    so a full seasonal cycle is the shortest horizon that lets the panel
-    compare like with like. The choice is also asymmetric: these rows are
-    forward-only and not backfillable, so shortening the window later is
-    free while lengthening it cannot recover what was deleted.
+  - ensemble_member_values: 730 days, matching purge_old_predictions and
+    prune_scan_runs, so ONE long-retention constant governs all three.
+    Shipped first at 365 (a full seasonal cycle -- summer and winter
+    ensemble spread are different populations, and that clears
+    INDEX-PANEL-BACKENDS.md's "months, not days" bar with room), then
+    raised on the opus reviewer's argument (A#3) after the user asked for
+    the trade-off explicitly. Three things decided it:
+      * prune_old_analysis_attempts' docstring records this module already
+        learning the harder version of the lesson -- an unconditional
+        rolling DELETE silently capped an evaluation corpus, and its fix
+        note says to "add a much longer second cutoff (730 days would match
+        purge_old_predictions' retention) rather than restoring the
+        unconditional delete". Same class of corpus, same shape of pruner.
+      * Sample count was NOT the reason, and was checked rather than
+        assumed: at ~2,400 rows/day even 365 gives ~4,400 samples per
+        (city, model, var) cell, so neither window is sample-starved. What
+        730 buys is the YEAR-OVER-YEAR axis, which 365 structurally cannot
+        -- by July 2027 a 365-day window has dropped July 2026, and model
+        version changes (AIFS/GFS upgrades) land on roughly annual cycles.
+      * The asymmetry. Too long costs ~640 MB instead of ~320 MB, accruing
+        gradually and visibly over two years; too short costs data silently
+        and permanently. And nothing is deleted either way until
+        2027-08-25, so the two choices were behaviourally identical for a
+        full year -- the decision was only ever about which default is
+        safer if nobody revisits it.
+    Recorded as a reversal of this session's own earlier call, not as the
+    original plan. New test pins the pruners' DEFAULT arguments against
+    cron's call-site values, since cron passes every window explicitly and
+    a drifting default would otherwise be invisible in production.
   - orderbook_depth_snapshots: 30 days (user's pick). A4's ladder walk and
     A17's counterfactual replay are short-horizon by design, and this table
     has no dedup key at all. Still 0 rows, so its volume remains a

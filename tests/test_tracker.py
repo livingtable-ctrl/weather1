@@ -12463,10 +12463,10 @@ class TestBatch78Pruners(_IsolatedDbBase):
         return (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     def test_member_values_older_than_the_window_are_deleted(self):
-        self._add_member_values(self._ago(366), city="old")
-        self._add_member_values(self._ago(364), city="fresh")
+        self._add_member_values(self._ago(731), city="old")
+        self._add_member_values(self._ago(729), city="fresh")
 
-        deleted = tracker.prune_ensemble_member_values(days=365)
+        deleted = tracker.prune_ensemble_member_values(days=730)
 
         self.assertEqual(deleted, 1)
         with tracker._conn() as con:
@@ -12479,14 +12479,14 @@ class TestBatch78Pruners(_IsolatedDbBase):
         self.assertEqual(surviving, ["fresh"])
 
     def test_member_values_boundary_is_exclusive_on_the_cutoff_side(self):
-        """365 days minus a minute stays; 365 days plus a minute goes. Pins
+        """730 days minus a minute stays; 730 days plus a minute goes. Pins
         the comparison direction -- flipping < to > deletes exactly the rows
         the window was chosen to keep.
         """
-        self._add_member_values(self._ago(365 - 1 / 1440), city="inside")
-        self._add_member_values(self._ago(365 + 1 / 1440), city="outside")
+        self._add_member_values(self._ago(730 - 1 / 1440), city="inside")
+        self._add_member_values(self._ago(730 + 1 / 1440), city="outside")
 
-        self.assertEqual(tracker.prune_ensemble_member_values(days=365), 1)
+        self.assertEqual(tracker.prune_ensemble_member_values(days=730), 1)
 
         with tracker._conn() as con:
             surviving = [
@@ -12518,7 +12518,7 @@ class TestBatch78Pruners(_IsolatedDbBase):
         self._add_member_values(self._ago(90))
         self._add_depth(self._ago(90))
 
-        tracker.prune_ensemble_member_values(days=365)
+        tracker.prune_ensemble_member_values(days=730)
         tracker.prune_orderbook_depth_snapshots(days=30)
 
         self.assertEqual(self._rows("ensemble_member_values"), 1)
@@ -12528,11 +12528,11 @@ class TestBatch78Pruners(_IsolatedDbBase):
         """A DELETE aimed at the wrong table is the failure mode that would
         silently destroy the corpus these panels are waiting on.
         """
-        self._add_member_values(self._ago(400))
-        self._add_depth(self._ago(400))
-        tracker.log_scan_run(self._ago(800))
+        self._add_member_values(self._ago(800))
+        self._add_depth(self._ago(800))
+        tracker.log_scan_run(self._ago(900))
 
-        tracker.prune_ensemble_member_values(days=365)
+        tracker.prune_ensemble_member_values(days=730)
         self.assertEqual(self._rows("ensemble_member_values"), 0)
         self.assertEqual(self._rows("orderbook_depth_snapshots"), 1)
         self.assertEqual(self._rows("scan_runs"), 1)
@@ -12544,10 +12544,10 @@ class TestBatch78Pruners(_IsolatedDbBase):
         tracker.prune_scan_runs(days=730)
         self.assertEqual(self._rows("scan_runs"), 0)
 
-    def test_scan_runs_retention_outlives_both_other_tables(self):
-        """730 days, matching purge_old_predictions. A row that both other
-        pruners would have dropped long ago must still be here -- the outage
-        history is the one thing worth keeping longest.
+    def test_scan_runs_shares_the_long_retention_constant(self):
+        """730 days, the same constant purge_old_predictions and
+        prune_ensemble_member_values use. A row the SHORT-window table
+        (depth, 30 days) would have dropped long ago must still be here.
         """
         tracker.log_scan_run(self._ago(400))
 
@@ -12560,7 +12560,7 @@ class TestBatch78Pruners(_IsolatedDbBase):
         self.assertEqual(self._rows("scan_runs"), 0)
 
     def test_pruning_an_empty_table_is_a_no_op(self):
-        self.assertEqual(tracker.prune_ensemble_member_values(days=365), 0)
+        self.assertEqual(tracker.prune_ensemble_member_values(days=730), 0)
         self.assertEqual(tracker.prune_orderbook_depth_snapshots(days=30), 0)
         self.assertEqual(tracker.prune_scan_runs(days=730), 0)
 

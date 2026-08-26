@@ -1655,8 +1655,8 @@ def _cmd_cron_body(
                 # predictions/outcomes, and a grep for DELETE against either
                 # of these found nothing. Windows differ per table on
                 # purpose: ensemble_member_values feeds A15b's rank
-                # histogram, a weather statistic that needs a full seasonal
-                # cycle to compare like with like, while
+                # histogram and shares the 730-day long-retention constant
+                # with purge_old_predictions and prune_scan_runs, while
                 # orderbook_depth_snapshots feeds A4/A17's short-horizon
                 # replay and has no dedup key at all. See each pruner's own
                 # docstring for the measurements behind its number.
@@ -1675,7 +1675,7 @@ def _cmd_cron_body(
                 # failure surface added ahead of the VACUUM, so they must not
                 # be able to take the rest of the sweep down with them.
                 for _pruner, _days, _what in (
-                    (_prune_member_values, 365, "ensemble_member_values"),
+                    (_prune_member_values, 730, "ensemble_member_values"),
                     (_prune_depth, 30, "orderbook_depth_snapshots"),
                 ):
                     try:

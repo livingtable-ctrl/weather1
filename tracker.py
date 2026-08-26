@@ -586,22 +586,24 @@ _MIGRATIONS = [
     # AND THAT NUMBER IS NOT THE COST. cloud_backup.backup_data copies every
     # data/*.db into a NEW dated folder per run and prunes folders older than
     # 30 days, so the steady state is 31 full uncompressed copies of
-    # predictions.db. The 365-day retention below therefore costs ~320 MB in
-    # the DB and ~10 GB in the sync folder -- and CLOUD_BACKUP_PATH being
+    # predictions.db. The 730-day retention below therefore costs ~640 MB in
+    # the DB and ~21 GB in the sync folder -- and CLOUD_BACKUP_PATH being
     # unset means _find_sync_folder() falls through to %ONEDRIVE%, so that is
     # paid against a cloud quota. Measured 2026-08-26: OneDrive/KalshiBot/
     # data held 2 folders / 94.1 MB, on its way to 31. Filed as its own
     # backlog entry ("EVERY BYTE KEPT IN predictions.db IS PAID 31 TIMES
     # OVER"); cloud_backup.py was outside batch-78's scope.
     #
-    # Retention: prune_ensemble_member_values(days=365), wired into cron's
-    # Monday sweep (batch-78 item 2). 365 rather than a shorter window
-    # because A15b's rank histogram is a WEATHER statistic -- summer and
-    # winter ensemble spread differ systematically, so a full seasonal cycle
-    # is the shortest horizon that lets the panel compare like with like --
-    # and because these rows are forward-only and not backfillable, making
-    # the window asymmetric: shortening it later is free, lengthening it
-    # cannot recover what was already deleted.
+    # Retention: prune_ensemble_member_values(days=730), wired into cron's
+    # Monday sweep (batch-78 item 2). 730 matches purge_old_predictions and
+    # prune_scan_runs, so one long-retention constant governs all three.
+    # A full seasonal cycle (365) would clear A15b's stated bar, but only
+    # 730 keeps the YEAR-OVER-YEAR axis -- a 365-day window has dropped
+    # July 2026 by July 2027, and model version changes land on roughly
+    # annual cycles. The rows are forward-only and not backfillable, so the
+    # window is asymmetric: too long costs storage that accrues visibly
+    # over two years, too short costs data silently and permanently. See
+    # prune_ensemble_member_values' docstring for the full reasoning.
     #
     # values_json holds the RAW members: pre-bias-correction and, critically,
     # pre-weight-replication. get_ensemble_temps()/batch_prewarm_ensemble()
@@ -655,7 +657,7 @@ _MIGRATIONS = [
     #
     # Retention: prune_orderbook_depth_snapshots(days=30), wired into cron's
     # Monday sweep (batch-78 item 2). Much shorter than
-    # ensemble_member_values' 365 because A4's ladder walk and A17's
+    # ensemble_member_values' 730 because A4's ladder walk and A17's
     # counterfactual replay are short-horizon by design, and because a
     # projection that has never seen a row is exactly the kind of number
     # that was already wrong once on the table above.
@@ -11060,7 +11062,7 @@ def prune_scan_runs(days: int = 730) -> int:
     """Drop scan_runs rows older than `days`. Mirrors prune_old_alert_deliveries.
 
     730 days matches purge_old_predictions' retention rather than the shorter
-    windows batch-78 gave ensemble_member_values (365) and
+    windows batch-78 gave ensemble_member_values (730) and
     orderbook_depth_snapshots (30). One row per cron cycle at ~200 B is
     ~0.3 MB/year -- three orders of magnitude below either of those -- and a
     long uptime baseline is the entire purpose of the table, so there is
@@ -11083,26 +11085,51 @@ def prune_scan_runs(days: int = 730) -> int:
     return n
 
 
-def prune_ensemble_member_values(days: int = 365) -> int:
+def prune_ensemble_member_values(days: int = 730) -> int:
     """Drop ensemble_member_values rows older than `days`. batch-78 item 2.
 
     Cuts on `logged_at`, not `target_date`, matching every sibling pruner in
     this module. The two differ by at most the forecast horizon (a few days),
-    which is immaterial against a 365-day window, and logged_at is the column
+    which is immaterial against a 730-day window, and logged_at is the column
     this table is reasoned about by. NOT an indexed scan: the table's only
     index is idx_emv_dedup on (city, model, target_date, var, cycle), so this
     weekly DELETE is a full table scan. Acceptable at ~876k rows once a week
     inside the Monday sweep that already runs VACUUM; add an index on
     logged_at if the sweep ever shows up in cron's runtime.
 
-    365 days is a full seasonal cycle. A15b's rank histogram is a weather
-    statistic: ensemble spread in July and in January are different
-    populations, so anything shorter would let the panel compare unlike with
-    unlike, or show only one of them. INDEX-PANEL-BACKENDS.md's own bar is
-    "needs months, not days", which 365 clears with room.
+    730 days, matching purge_old_predictions and prune_scan_runs, so this
+    module carries ONE long-retention constant rather than two.
+
+    Chosen over the 365 this shipped with first (opus review, reviewer A #3).
+    365 is a full seasonal cycle, which is the natural horizon for a weather
+    statistic and clears INDEX-PANEL-BACKENDS.md's "needs months, not days"
+    bar with room -- but prune_old_analysis_attempts' own docstring records
+    this module already learning the harder version of this lesson: an
+    unconditional rolling DELETE silently capped an evaluation corpus, and
+    the fix note says to "add a much longer second cutoff (730 days would
+    match purge_old_predictions' retention) rather than restoring the
+    unconditional delete". This table is the same class of corpus with the
+    same shape of pruner.
+
+    Sample count is NOT the reason. At ~2,400 rows/day even 365 days gives
+    ~4,400 samples per (city, model, var) cell; neither window is
+    sample-starved. What 730 buys is the YEAR-OVER-YEAR axis, which 365
+    structurally cannot: by July 2027 a 365-day window has already dropped
+    July 2026, and model version changes (AIFS/GFS upgrades) land on roughly
+    annual cycles, so before/after is exactly the comparison that becomes
+    impossible.
+
+    The asymmetry decided it. These rows are forward-only and not
+    backfillable, the storage difference (~640 MB vs ~320 MB) accrues
+    gradually over two years and is visible the whole way, and nothing is
+    deleted at all until 2027-08-25 -- so the cost of being too long is
+    slow and correctable while the cost of being too short is silent and
+    permanent.
 
     Measured cost at this window (see the migration comment): ~2,400 rows/day
-    at 367 B/row on disk, so ~876k rows and ~320 MB steady state.
+    at 367 B/row on disk, so ~1.75M rows and ~640 MB steady state -- and
+    ~21 GB across cloud_backup's 31 dated folders, which is the dominant
+    term and has its own backlog entry.
     """
     if days <= 0:
         # A non-positive window puts the cutoff at or after "now", so the
@@ -11132,7 +11159,7 @@ def prune_ensemble_member_values(days: int = 365) -> int:
 def prune_orderbook_depth_snapshots(days: int = 30) -> int:
     """Drop orderbook_depth_snapshots rows older than `days`. batch-78 item 2.
 
-    Much shorter than prune_ensemble_member_values' 365: A4's ladder walk and
+    Much shorter than prune_ensemble_member_values' 730: A4's ladder walk and
     A17's counterfactual replay are short-horizon by design, and this table
     has no dedup at all -- one row per subscribed ticker per
     DEPTH_SNAPSHOT_INTERVAL_SECS, with cron subscribing every scanned market.
