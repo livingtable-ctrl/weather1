@@ -41012,7 +41012,74 @@ halves, and only one of them was ever a mystery:
   reasoning batch-76 later built section 10b on -- and it is very likely
   what took the rate from 51% to 27%.
 
-  STILL UNEXPLAINED, and this is what remains open: that veto is scoped to
+  RESOLVED 2026-08-26 (same session, second pass). The paragraph below was
+  written before the per-family numbers existed and is WRONG in two ways;
+  both corrections are stated here rather than by deleting it.
+
+  CORRECTION 1 -- the max veto is NOT missing. It exists, at
+  weather_markets.py ~:15052, `elif not _is_low_mkt and _lockout.get(
+  "locked")`, the exact mirror of the LOW block. It was added by batch-59
+  item 1 (`d65decff`, 2026-08-25) against a backlog entry titled
+  "_metar_lock_in's above/below branch has no monotonic-safety veto for
+  HIGH markets". It carries its own measurement: over 22,799 real
+  station-days, P(running max still rises >=3F after the stated local hour)
+  = 26.9% at 14:00 and never below ~2.8% even at 21:00.
+
+  CORRECTION 2 -- the "1 in 10,000" statistic above is WRONG. It pooled
+  above+below into one rate, but the two ticker families are governed by
+  DIFFERENT gates (the LOW veto is `_is_low_mkt`-scoped), so pooling them
+  mixes populations with different code. Note also that condition_type
+  above/below is the strike DIRECTION, not the market's variable: every
+  August same-day "above" row is a KXLOWT (daily-minimum) ticker. Split by
+  ticker family, non-'between' only:
+
+    family     2026-06        2026-07        2026-08
+    KXLOWT     15/25  60.0%    9/22  40.9%    0/11   0.0%
+    KXHIGH      5/22  22.7%    4/27  14.8%    0/14   0.0%
+
+  Binomial, against each family's OWN July rate:
+    KXLOWT   P(0 of 11 | 0.409) = 0.591^11 = 0.0031   -- significant
+    KXHIGH   P(0 of 14 | 0.148) = 0.852^14 = 0.104    -- NOT significant
+
+  So the answer differs by family:
+
+   * KXLOWT (min markets): REAL, and the cause is dated. The LOW
+     monotone-safety veto in `3e6af667` (2026-07-10) rejects exactly the
+     unsafe-direction min lock. Split July at the 15th: 11 non-'between'
+     locks in 07-01..15, 2 in 07-16..31, 0 thereafter. Date, mechanism and
+     significance all agree.
+
+   * KXHIGH (max markets): NOT ESTABLISHED, and there is no second gate to
+     find. 0 of 14 at July's own 14.8% rate is p=0.10 -- ordinary
+     small-sample variation. The KXHIGH rate had already fallen to 22.7% in
+     June and 14.8% in July, and August's zero is consistent with it. The
+     HIGH veto that WOULD zero this family landed 2026-08-25, after every
+     row in this table.
+
+  Two hypotheses tested and eliminated rather than assumed:
+   - NOT the `_daily_ext is None` hard gate above both vetoes. Called
+     `metar.fetch_metar_daily_extreme(station, city_tz, target_date,
+     extreme)` live for KMDW/KDFW/KATL/KSEA/KPHL on 2026-08-26: every
+     station returned real max and min values. That gate is not firing.
+   - NOT a var-derivation regression from `276af72a` (2026-08-01).
+     `_var_from_ticker_prefix` returns 'min' for every KXLOWT ticker and
+     None for KXTEMP hourly, which is correct; no max ticker is
+     misclassified as a min market.
+
+  WHAT THIS MEANS GOING FORWARD, and it is the part worth acting on. Both
+  vetoes are correct -- each rejects a direction that genuinely is not
+  monotone-safe, and the HIGH one is backed by a 22,799-station-day
+  measurement. But together, and with the HIGH veto live only since
+  2026-08-25, the non-'between' METAR lock is now closed by design in the
+  unsafe direction for BOTH families. The lock's remaining live surface is
+  effectively the 'between' path. That is a deliberate outcome of two
+  correctness fixes, not a bug -- but nothing records it, and it means
+  batch-75's and batch-76's non-'between' work governs a path current code
+  has largely closed. Say so explicitly somewhere the next person will
+  look, and re-measure the lock rate after 2026-09-25 to see where it
+  settles with both vetoes live for a full month.
+
+  (Superseded text follows, kept for auditability:) that veto is scoped to
   `_is_low_mkt`, so it cannot by itself explain ZERO `above` (max-market)
   locks across 14 August opportunities. Either a second narrowing landed
   after 2026-07-10, or the veto's scope is wider in effect than its
