@@ -248,3 +248,100 @@ def test_reset_fixture_does_not_persist_during_reset():
     )
     assert "finally:" in block, "the _persist toggle is not restored in a finally"
     assert "cb._persist = _prev_persist" in block
+
+
+# ── batch-77: anti-drift for conftest's hand-maintained breaker-reset list ───
+
+
+def test_every_module_level_breaker_is_in_the_conftest_reset_list():
+    """conftest's reset_open_meteo_circuit_breaker hand-lists the breakers it
+    clears before each test, and its own docstring records the
+    missed-until-added pattern EIGHT times (acis_precip, acis_snow,
+    acis_temps, climatology, kalshi_client, nws, tornado_climatology, and
+    batch-77's _kalshi_cb_private_read).
+
+    Every miss has the same consequence: these are import-time singletons that
+    load the real main-clone data/.cb_state.json at construction, so once a
+    production run persists one open, every later suite run in every worktree
+    starts with it open and any test touching that source fails looking like a
+    product bug. isolate_circuit_breaker_state only redirects future SAVES.
+
+    test_circuit_breaker_registry.py above guards weather_markets'
+    CIRCUIT_BREAKERS registry; nothing guarded this second hand-maintained
+    list. A source-text check rather than a behavioural one because the
+    fixture has already run by the time any test body executes, so a missing
+    entry is invisible from inside a test unless something already dirtied it.
+    """
+    import inspect
+
+    import tests.conftest as conftest_mod
+    from circuit_breaker import CircuitBreaker
+
+    source = inspect.getsource(conftest_mod.reset_open_meteo_circuit_breaker)
+
+    # The modules the fixture itself imports -- read from its source so this
+    # test cannot drift from the fixture in the other direction either.
+    module_names = [
+        name
+        for name in (
+            "acis_precip",
+            "acis_snow",
+            "acis_temps",
+            "climatology",
+            "hurricane_climatology",
+            "kalshi_client",
+            "kalshi_weather_index",
+            "nearby_station_obs",
+            "nws",
+            "tornado_climatology",
+        )
+        if f"    import {name}\n" in source
+    ]
+    # Positive control: if the fixture is ever restructured so these imports
+    # move, the list above silently empties and every assertion below passes
+    # vacuously.
+    assert len(module_names) >= 9, (
+        "could not find the fixture's module imports -- this test has drifted "
+        f"from the fixture it guards (found {module_names})"
+    )
+
+    missing = []
+    checked = 0
+    for module_name in module_names:
+        module = __import__(module_name)
+        for attr, obj in vars(module).items():
+            breakers = []
+            if isinstance(obj, CircuitBreaker):
+                breakers = [obj]
+            elif isinstance(obj, dict) and any(
+                isinstance(v, CircuitBreaker) for v in obj.values()
+            ):
+                breakers = [v for v in obj.values() if isinstance(v, CircuitBreaker)]
+            if not breakers:
+                continue
+            checked += 1
+            if attr not in source:
+                missing.append(f"{module_name}.{attr}")
+
+    # Positive control: prove the introspection actually found breakers, so an
+    # empty `missing` cannot mean "nothing was examined".
+    assert checked >= 10, f"introspection found only {checked} module-level breakers"
+    assert not missing, (
+        "module-level CircuitBreaker(s) missing from conftest's "
+        "reset_open_meteo_circuit_breaker list: " + ", ".join(sorted(missing))
+    )
+
+
+def test_the_three_kalshi_breakers_are_distinct_objects():
+    """batch-77 split the single shared read breaker. If two of these names
+    ever alias the same object, the split silently stops existing while every
+    routing test still passes."""
+    import kalshi_client as kc
+
+    trio = [
+        kc._kalshi_cb_read,
+        kc._kalshi_cb_private_read,
+        kc._kalshi_cb_write,
+    ]
+    assert len({id(cb) for cb in trio}) == 3
+    assert len({cb.name for cb in trio}) == 3

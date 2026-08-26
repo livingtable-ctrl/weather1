@@ -72,6 +72,19 @@ class TestCircuitBreakerExecute:
 # ── P3-5: Separate read/write circuit breakers in kalshi_client ───────────────
 
 
+# batch-77: these URLs must be on a Kalshi host. _select_breaker() now
+# returns None for any other host (weather_markets' Pirate Weather fetch
+# shares this helper and has its own breaker), so an example.com URL is
+# unguarded, so the spied-open breaker never short-circuits and the request
+# reaches conftest's default-deny network guard instead (raising
+# BlockedNetworkCall, a BaseException). Repointing does not weaken these: each
+# still pins the routing via its own "*_cb_checked" spy assertion, which is
+# what does the real work -- `"read" in exc.source` alone would also be
+# satisfied by the new kalshi_api_private_read.
+_KALSHI_FAKE_GET = "https://api.elections.kalshi.com/trade-api/v2/markets"
+_KALSHI_FAKE_POST = "https://api.elections.kalshi.com/trade-api/v2/portfolio/orders"
+
+
 class TestKalshiCircuitBreakerSplit:
     """P3-5: Read failures must not block write operations."""
 
@@ -123,7 +136,7 @@ class TestKalshiCircuitBreakerSplit:
         monkeypatch.setattr(_kalshi_cb_read, "is_open", _spy_is_open)
 
         with pytest.raises(CircuitOpenError) as exc_info:
-            _request_with_retry("GET", "https://example.com/fake")
+            _request_with_retry("GET", _KALSHI_FAKE_GET)
 
         assert "read" in exc_info.value.source.lower() or "read" in str(exc_info.value)
         assert "read_cb_checked" in seen
@@ -145,7 +158,7 @@ class TestKalshiCircuitBreakerSplit:
         monkeypatch.setattr(_kalshi_cb_write, "is_open", _spy_is_open)
 
         with pytest.raises(CircuitOpenError):
-            _request_with_retry("POST", "https://example.com/fake")
+            _request_with_retry("POST", _KALSHI_FAKE_POST)
 
         assert "write_cb_checked" in seen
 
@@ -163,7 +176,7 @@ class TestKalshiCircuitBreakerSplit:
 
         monkeypatch.setattr(_kalshi_cb_write, "is_open", _spy_is_open)
         with pytest.raises(CircuitOpenError):
-            _request_with_retry("DELETE", "https://example.com/fake")
+            _request_with_retry("DELETE", _KALSHI_FAKE_POST)
         assert "write_cb_checked" in seen
 
 

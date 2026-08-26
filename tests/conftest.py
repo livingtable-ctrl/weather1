@@ -486,6 +486,28 @@ def isolate_member_quarantine(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def suppress_startup_clock_skew_probe(monkeypatch):
+    """Mark kalshi_client's once-per-process clock-skew probe as already done.
+
+    batch-77 made KalshiClient.__init__ measure local-vs-server clock skew via
+    one unauthenticated GET whenever a private key is loaded. Any test that
+    constructs a client with a real KALSHI_PRIVATE_KEY_PATH therefore attempts
+    outbound network, which the default-deny guard above correctly blocks.
+
+    Worse than the failure itself, the flag is a MODULE global: whichever test
+    happens to run first consumes it and every later one silently no-ops. That
+    makes the failure order-dependent, and this suite randomizes order. Pinning
+    it True per-test makes the behaviour deterministic. TestClockSkew in
+    tests/test_kalshi_client.py monkeypatches it back to False to exercise the
+    real thing (and stubs measure_clock_skew, so it still never touches the
+    network).
+    """
+    import kalshi_client
+
+    monkeypatch.setattr(kalshi_client, "_clock_skew_checked", True)
+
+
+@pytest.fixture(autouse=True)
 def isolate_circuit_breaker_state(tmp_path, monkeypatch):
     """Redirect circuit_breaker._CB_STATE_PATH to a per-test temp file.
 
@@ -863,6 +885,22 @@ def reset_open_meteo_circuit_breaker():
         climatology._clim_cb,
         kalshi_client._kalshi_cb_read,
         kalshi_client._kalshi_cb_write,
+        # batch-77: the third Kalshi breaker, splitting /portfolio/* reads off
+        # the public market-data ones. Same import-time singleton that loads
+        # the real main-clone .cb_state.json at construction, so once a
+        # production run persists it open, every later suite run in every
+        # worktree starts with it open. This is the EIGHTH time this loop's
+        # own history records the missed-until-added pattern -- now guarded
+        # by test_circuit_breaker_registry's introspective backstop.
+        kalshi_client._kalshi_cb_private_read,
+        # batch-77: the third Kalshi breaker, splitting /portfolio/* reads off
+        # the public market-data ones. Same import-time singleton that loads
+        # the real main-clone .cb_state.json at construction, so once a
+        # production run persists it open, every later suite run in every
+        # worktree starts with it open. This is the EIGHTH time this loop's
+        # own history records the missed-until-added pattern -- see the
+        # introspective backstop test that now guards it (this list is still
+        # hand-maintained, but no longer silently).
         nws._nws_cb,
         kalshi_weather_index._index_cb,
         # batch-56: nearby_station_obs._obs_cb, same proactive add as

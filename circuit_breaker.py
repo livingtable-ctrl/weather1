@@ -237,6 +237,44 @@ class CircuitBreaker:
                     )
             self._save_state()
 
+    def record_reachable(self) -> None:
+        """Record that the source ANSWERED, without judging its health.
+
+        For a response that proves the source is reachable but is no evidence
+        it is healthy -- a 4xx client/auth/permission error. Two distinct
+        jobs, and the split is the whole point:
+
+        (a) When this call was the HALF-OPEN probe, CLOSE the circuit. The
+            probe asked "is the source back?" and got an application-level
+            answer, so it is. Not closing would strand the probe outright:
+            `_half_open` is cleared ONLY here and in record_failure()/
+            record_success(), and is_open()'s `if self._half_open: return
+            True` has no other exit, so a probe that recorded nothing leaves
+            the circuit blocking every caller forever. batch-77 introduced
+            exactly that when _request_with_retry stopped calling
+            record_success() on a 4xx -- invisible in the one-shot `cron`
+            process (nothing persists `_half_open`), permanent in the
+            long-lived `main.py loop` and web_app.py.
+
+        (b) When the circuit is CLOSED, do NOTHING -- in particular do not
+            zero _failure_count. That is the other half of batch-77's fix:
+            a 401 interleaved with a genuine 5xx outage must not keep
+            resetting the streak, or the breaker can never reach
+            failure_threshold at all.
+        """
+        with self._lock:
+            if not self._half_open:
+                return
+            self._half_open = False
+            self._failure_count = 0
+            self._opened_at = None
+            self._wall_opened_at = None
+            _log.info(
+                "Circuit '%s' CLOSED — probe reached the source (non-5xx answer)",
+                self.name,
+            )
+            self._save_state()
+
     def record_success(self) -> None:
         with self._lock:
             was_half_open = self._half_open

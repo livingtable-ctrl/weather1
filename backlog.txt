@@ -39252,7 +39252,7 @@ When to revisit:
   before trusting "test_weather_markets.py is green" as evidence that the
   P0-14 NO-side fix still holds.
 
-[OPEN 2026-08-26 -- observed live in the 00:28 UTC cron run, whose log shows
+[RESOLVED 2026-08-26 (batch-77) -- observed live in the 00:28 UTC cron run, whose log shows
   the whole cascade end to end. Found while analysing that run line by line.]
   ONE SHARED 'kalshi_api_read' CIRCUIT BREAKER LETS AUTH FAILURES ON PRIVATE
   ENDPOINTS DISABLE PUBLIC MARKET-DATA READS -- WHICH SILENTLY LEAVES EVERY
@@ -39322,6 +39322,166 @@ When to revisit:
   Before live trading. In paper mode this costs simulated money; the same
   cascade with LIVE_TRADING_ENABLED leaves real positions unprotected, and
   the same run's banner read "REAL MONEY TRADES ENABLED".
+
+RESOLUTION 2026-08-26 (batch-77) -- all four options shipped, and the entry's
+  own stated REASON was wrong while its conclusion was right:
+
+  THE REASON, CORRECTED. This entry (and batch-77.md) said get_market() is
+  "PUBLIC (_get with auth=False, no signature)". It is not: kalshi_client.py
+  passes auth=True on every market-data read, since 18997527 (2026-04-13,
+  "Add auth=True to public market endpoints that now require
+  authentication"). The only auth=False call site in the whole file is
+  get_live_weather_index. A second session traced the same fact and drew the
+  natural inference -- signed, therefore the skew would have 401'd it
+  directly, therefore splitting the breaker fixes nothing. That inference is
+  ALSO wrong.
+
+  What settled it was data/predictions.db's api_requests table (method,
+  endpoint, status_code, latency_ms, logged_at) -- written by
+  _request_with_retry itself. Over the incident window 00:28:00-00:33:00 UTC:
+      /markets*     83 requests -> 83x 200
+      /portfolio*    8 requests ->  8x 401
+  interleaved inside 484ms of one process on one expired timestamp:
+      00:32:39.187  401  /portfolio/balance
+      00:32:39.236  200  /markets/KXHIGHTHOU-26AUG24-T99
+      00:32:39.274  200  /markets/KXLOWTSEA-26AUG24-T56
+      00:32:39.315  200  /markets/KXLOWTDAL-26AUG24-T85
+      00:32:39.403  200  /markets/KXLOWTPHIL-26AUG25-T64
+      00:32:39.486-.671  401 x5  /portfolio/balance   <- breaker opens
+      (nothing at all until 01:01:29, the next process)
+  Kalshi ignores an expired KALSHI-ACCESS-TIMESTAMP on market data and
+  enforces it only on /portfolio/. Those four 200s ARE the stop-loss quote
+  fetches; they were succeeding until the breaker opened 268ms later and
+  stopped only because it opened. So the collateral-damage diagnosis holds
+  and the breaker split IS the main fix -- the entry was right for a reason
+  it did not state.
+
+  GENERAL LESSON, worth more than this entry: api_requests answers "what did
+  the exchange actually do" and no amount of source reading can. Two sessions
+  independently reasoned from code to a wrong conclusion about a remote
+  service's behaviour. Start there for any API incident.
+
+  HOW THE 401s REACHED THE BREAKER. Not the status-code branch --
+  `_is_failure = status >= 500` already exempted 4xx (since 39e08a6d,
+  refined by 555bf1e0). The bypass was check_error_body, whose guard was
+  `if not _is_failure`, i.e. every non-5xx, while its own docstring said "a
+  200 response". Confirmed live rather than deduced: GET /portfolio/balance
+  with a deliberately stale KALSHI-ACCESS-TIMESTAMP (no real credentials)
+  returns
+      401  {"error":{"code":"header_timestamp_expired",
+                     "message":"header timestamp expired"}}
+  -- a top-level "error" key, so _is_failure flipped to True and the
+  documented exemption two lines above was defeated. That literal is now the
+  test fixture.
+
+  WHAT SHIPPED
+  1. Breaker split by PATH PREFIX (not by the auth kwarg, which would have
+     protected only get_live_weather_index): _kalshi_cb_private_read for
+     /portfolio/*, _kalshi_cb_read for market data, _kalshi_cb_write for
+     writes. _select_breaker(method, url) checks host, then method, then the
+     marker. A non-Kalshi host gets NO breaker -- weather_markets' Pirate
+     Weather fetch imports this same helper and has its own _pirate_cb, so
+     the two were cross-contaminating in both directions (a Pirate 5xx
+     counted against Kalshi's read breaker; an open Kalshi breaker raised
+     into Pirate's except and became a _pirate_cb failure).
+  2. check_error_body gated to 2xx only, matching its own contract. A 4xx now
+     records NEITHER failure nor success -- it used to record_success(),
+     which zeroed an in-progress 5xx streak, so an outage interleaved with
+     auth errors could never reach failure_threshold. EXCEPT 429, which trips
+     like a 5xx: that is the exemption's own reasoning applied honestly (a
+     401 is exempt because backing off cannot fix a credential fault; 429 is
+     exactly where backing off IS the remedy).
+     Separately, 401/403 DO count as failures -- but only on
+     _kalshi_cb_private_read, never on the public or write breakers. Decided
+     explicitly after the reviews: backing off still cannot fix a credential
+     fault, but it stops the hammering, and _resolve_live_balance caches only
+     successes so without it a skew emits ~60 futile 401s per cycle forever.
+     The old shared breaker capped the observed incident at 6 -- at the cost
+     of taking market data down too. This keeps the cap and drops the cost,
+     which is only safe BECAUSE of the split above. Verified nothing catches
+     CircuitOpenError by type, so the changed exception is transparent to
+     callers. The signal that actually diagnoses the fault is the clock-skew
+     probe, not the breaker.
+  3. Stop-loss/daily-loss blindness is no longer indistinguishable from
+     breakeven. get_unrealized_pnl_paper returns n_open/n_markable/blind;
+     is_daily_loss_halted(client) FAILS CLOSED when open positions exist and
+     none can be marked, with its own alert (cooldown_key
+     "daily_loss_blind") because every caller otherwise renders a True as
+     "Daily loss limit reached ($0.00 incl. MTM)". check_paper_position_exits
+     escalates a 0-of-N cycle to ERROR + alert. Exits are NOT gated:
+     pre_live_exit_check deliberately excludes is_daily_loss_halted.
+  4. Startup clock-skew probe: one unauthenticated GET /exchange/status,
+     Date-header comparison over the round-trip INTERVAL (a slow response can
+     only shrink reported skew, never manufacture it), once per process, only
+     when a private key is loaded. ERROR + alert past 15s; never blocks,
+     never raises.
+
+  NOTE ON THE ENTRY'S OWN WORDING: "every position falls back to entry_price"
+  was also imprecise. check_stop_losses gets None from liquidation_price and
+  `continue`s -- the position is SKIPPED. The entry_price fallback only sets
+  the exit price after a stop has already fired. Same net effect (no stop can
+  trigger), different fix surface. The $0.00 came from get_unrealized_pnl_paper,
+  which likewise `continue`s -- and that value feeds the daily-loss placement
+  gate, so the bot kept ENTERING while blind. That second gate was not in the
+  entry at all.
+
+  FOUR ROUNDS OF OPUS REVIEW, and rounds 2 caught more than round 1:
+  - A 4xx recording nothing STRANDED a HALF-OPEN probe forever (_half_open is
+    cleared only inside record_failure/record_success). Fixed with a new
+    CircuitBreaker.record_reachable(): closes iff it was the probe, no-op
+    otherwise. Both halves mutation-tested separately.
+  - The test helper's importlib.reload leaked paper's _LOSS_OVERRIDE_PATH to
+    the REAL data/ -- the same leak backlog L24334 and batch-62 each fixed
+    once before. is_daily_loss_halted short-circuits on that file, so the
+    regression guard for a risk-control path would have inverted for a whole
+    UTC day whenever the operator used reset_daily_loss_limit(). The
+    prod-data guard cannot catch it (it does not count Path.exists()).
+  - `blind` counted positions whose market had already CLOSED, so one stuck
+    unsettled position would halt every new entry permanently. Live at the
+    time of writing: 3 of 8 open trades (247/248/249, close_time 2026-08-25)
+    were already past close. Now only markable positions count; a missing or
+    unparseable close_time still counts, so an empty-close_time ledger cannot
+    mask a real outage.
+  - has_quote (mid > 0) and liquidation_price (rejects a 0 side) disagreed,
+    so a one-sided overnight book read as "1/1 priced" while the stop was
+    inoperative and nothing above DEBUG said so.
+  - _kalshi_cb_private_read was missing from conftest's hand-maintained
+    breaker-reset list -- the EIGHTH time that loop's own docstring records
+    the missed-until-added pattern. Added, plus an introspective anti-drift
+    test so a ninth is caught automatically.
+  - 429 both never tripped the breaker and CLOSED an overload-opened one via
+    the probe. Reproduced, then fixed (see 2).
+
+  TESTS: +76 (test_kalshi_client 106 -> 150, test_paper 178 -> 208,
+  test_circuit_breaker_registry 10 -> 12), counts re-derived at the moment of
+  writing. Scoped run across 30 files: 1647 passed, 1 pre-existing error
+  (test_live_execution's plyer balloon-tip thread writing data/crash.log --
+  reproduced identically on unmodified origin/master, so not from this
+  change). Randomized-order run clean. 21 mutations applied via the Edit tool
+  and every one caught, including the 8 that a round-2 reviewer demonstrated
+  were surviving (the trailing-slash argument, parsed.path vs raw URL, the
+  host-check ordering, the skew attempt bound, the retry-on-unmeasurable
+  rule, the no-retry skew session, the 5s timeout, and the naive-tz guard).
+
+  STILL OPEN, deliberately, and filed separately rather than stretched into
+  this batch:
+  - Nothing monitors any Kalshi breaker. /api/circuit-status and cron's
+    newly-opened-circuit alerter both derive from
+    weather_markets.CIRCUIT_BREAKERS, which holds only weather sources, so an
+    open kalshi_api_read/_private_read/_write produces no dashboard row and
+    no alert -- a log line is the only signal. Pre-existing, but this batch
+    adds a third such breaker and it gates the daily-loss inputs.
+  - main.py's unrealized panel reads "total_unrealized_pnl"/"unrealized_pnl";
+    the real keys are total_unrealized/mark_pnl, so it has always printed
+    $0.00. Pre-existing and in a file this batch does not own.
+  - In `main.py loop`/web_app.py the clock-skew probe's retry path is nearly
+    dead: one client is built at startup and reused, so a single failed probe
+    means no check for that process's life. A periodic re-check would close
+    it; the root cause (W32Time stopped) is an OS-level fix.
+  - positions.liquidation_price guards ask == 0 but not ask == 1.0, so a NO
+    position on a yes_ask=1.0 book returns 0.0 rather than None and would be
+    closed at $0.00. Pre-existing; this batch now leans on that function as
+    the definition of "protectable", so it inherits the gap.
 
 [OPEN 2026-08-26 -- narrowed down across three parallel sessions while tracing
   how a MagicMock repr reached a live settlement guard. Filed here by the

@@ -69,8 +69,11 @@ from safe_io import atomic_write_json as _atomic_write_json
 _log = logging.getLogger(__name__)
 
 # Own dedicated circuit breaker, deliberately NOT kalshi_client.py's shared
-# _kalshi_cb_read: that breaker is shared across every Kalshi read call in
-# the bot (get_markets, get_events, get_fills, ...), so if this endpoint
+# _kalshi_cb_read: that breaker is shared across every Kalshi PUBLIC read call
+# in the bot (get_markets, get_events, get_trades, ... — batch-77 moved the
+# /portfolio/* reads such as get_fills onto their own
+# _kalshi_cb_private_read, but this endpoint is /live_data/ and so still
+# shares the public one), so if this endpoint
 # alone degrades (the "could become gated" risk this batch's docstring
 # names), its failures must not be able to trip a breaker that would also
 # block unrelated market-fetching. failure_threshold=3 is deliberately
@@ -95,6 +98,15 @@ _log = logging.getLogger(__name__)
 # failures across the whole bot's Kalshi traffic with zero successes in
 # between -- by which point Kalshi itself is broadly down, not just this
 # one endpoint.
+#
+# batch-77 narrowed that margin, and the paragraph above overstates it now.
+# A 4xx no longer zeroes _kalshi_cb_read's failure count (that is half the
+# batch-77 fix: an auth error interleaved with a real 5xx outage must not
+# keep resetting the streak), and routine 404s on settled tickers are common
+# in this account's own api_requests history. So "5 consecutive failures
+# with zero successes" is really "5 with zero 2xx", and a 4xx in between no
+# longer breaks the streak. The isolation argument still holds -- it is just
+# thinner than it reads.
 _index_cb = CircuitBreaker(
     name="miami_weather_index", failure_threshold=3, recovery_timeout=180
 )

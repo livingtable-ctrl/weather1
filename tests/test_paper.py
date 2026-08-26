@@ -3012,7 +3012,16 @@ class TestGetUnrealizedPnlPaper:
         self._write_open_trades([])
         client = _FakeMarketClient({})
         result = paper.get_unrealized_pnl_paper(client)
-        assert result == {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+        # batch-77 added n_open/blind. Kept as exact equality rather than a
+        # subset check so an accidental extra key still fails here.
+        assert result == {
+            "total_unrealized": 0.0,
+            "by_trade": [],
+            "n": 0,
+            "n_open": 0,
+            "n_markable": 0,
+            "blind": False,
+        }
 
     def test_client_none_returns_zero_even_with_open_trades(self):
         import paper
@@ -3030,7 +3039,18 @@ class TestGetUnrealizedPnlPaper:
             ]
         )
         result = paper.get_unrealized_pnl_paper(None)
-        assert result == {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+        # batch-77: blind is False here even though n_open is 1. client=None is
+        # a caller deliberately asking for the settled-only figure (cron.py's
+        # F6 observer), not a failure to price -- and is_daily_loss_halted's
+        # client=None branch never consults this dict at all.
+        assert result == {
+            "total_unrealized": 0.0,
+            "by_trade": [],
+            "n": 0,
+            "n_open": 1,
+            "n_markable": 0,
+            "blind": False,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -3147,3 +3167,661 @@ class TestLoadLedgerSnapshot:
 
         with pytest.raises(paper.CorruptionError):
             paper.load_ledger_snapshot()
+
+
+# ── batch-77: an unpriceable position must not read as breakeven ─────────────
+#
+# Observed live 2026-08-26: an open circuit breaker failed every
+# client.get_market() call, so check_paper_position_exits priced 0 of 8 open
+# positions and get_unrealized_pnl_paper summed nothing into $0.00 -- which
+# order_executor.auto_place_trades' gate then read as "no daily loss" and kept
+# trading on.
+
+
+class _BlindClient:
+    """Every get_market() raises, exactly as it did with the read breaker
+    open."""
+
+    def __init__(self, exc=None):
+        from circuit_breaker import CircuitOpenError
+
+        self._exc = exc or CircuitOpenError("kalshi_api_read")
+        self.calls = 0
+
+    def get_market(self, ticker):
+        self.calls += 1
+        raise self._exc
+
+
+class _QuotingClient:
+    """Returns a real two-sided quote for every ticker."""
+
+    def __init__(self, yes_bid=0.40, yes_ask=0.42):
+        self._q = {"yes_bid": yes_bid, "yes_ask": yes_ask}
+        self.calls = 0
+
+    def get_market(self, ticker):
+        self.calls += 1
+        return {"ticker": ticker, **self._q}
+
+
+def _fresh_paper(monkeypatch):
+    """The `paper` module with the two risk constants pinned.
+
+    Deliberately NO importlib.reload. The autouse `isolate_paper_data` fixture
+    already points DATA_PATH, _LOSS_OVERRIDE_PATH and
+    _ACCURACY_HALT_OVERRIDE_PATH at a per-test tmp dir via conftest's
+    `_point_paper_at`, and a reload re-executes paper.py's module body,
+    recomputing all three from safe_io.project_root() -- which resolves to the
+    MAIN CLONE, not this worktree -- and silently discarding every patch.
+
+    An earlier draft of this helper reloaded and then re-patched only
+    DATA_PATH, which is precisely the leak backlog L24334 and batch-62 have
+    each already fixed once. It matters more here than at the older sites: it
+    left _LOSS_OVERRIDE_PATH pointing at the real
+    data/loss_limit_override.json, and is_daily_loss_halted short-circuits
+    `return False` on that file before ever reaching the blind branch. So
+    these tests -- the regression guard for a risk-control path -- would have
+    silently inverted for a whole UTC day whenever the operator ran
+    reset_daily_loss_limit(), which is the one escape hatch from the very halt
+    they exist to pin. The prod-data guard cannot catch it either: it does not
+    count Path.exists(), and the override check is an .exists().
+
+    The reload also bought nothing. _load() has no module-level cache, and
+    both constants below are read at call time -- the same reasoning already
+    written up in conftest's `mock_balance_1000`, where the reload was removed
+    for this identical bug.
+
+    MAX_DAILY_LOSS_PCT/STARTING_BALANCE are module-level, read from env at
+    import; setenv cannot reach them and .env only loads via main.py, so their
+    value under pytest depends on how the process started. Pinned by attribute
+    so the halt threshold here is a known $30 on a $1000 book.
+    """
+    import paper as paper_mod
+
+    monkeypatch.setattr(paper_mod, "MAX_DAILY_LOSS_PCT", 0.03)
+    monkeypatch.setattr(paper_mod, "STARTING_BALANCE", 1000.0)
+    return paper_mod
+
+
+def _paper_with_one_open_trade(monkeypatch, entry_price=0.40, qty=10):
+    paper_mod = _fresh_paper(monkeypatch)
+    paper_mod.place_paper_order("KXHIGHNY-26AUG26-T87", "yes", qty, entry_price)
+    assert len(paper_mod.get_open_trades()) == 1
+    return paper_mod
+
+
+class TestUnrealizedPnlBlindMarker:
+    def test_all_fetches_failing_sets_blind(self, monkeypatch):
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        client = _BlindClient()
+
+        out = paper_mod.get_unrealized_pnl_paper(client)
+
+        # Positive control: the fetch path was actually reached, so `blind`
+        # isn't True merely because the loop never ran.
+        assert client.calls == 1
+        assert out["blind"] is True
+        assert out["n"] == 0
+        assert out["n_open"] == 1
+        assert out["total_unrealized"] == 0.0
+
+    def test_a_working_quote_is_not_blind(self, monkeypatch):
+        """Discriminating control: same ledger, same call count, opposite
+        verdict -- so `blind` tracks pricing success, not merely 'has open
+        positions'."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        client = _QuotingClient(yes_bid=0.30, yes_ask=0.32)
+
+        out = paper_mod.get_unrealized_pnl_paper(client)
+
+        assert client.calls == 1
+        assert out["blind"] is False
+        assert out["n"] == 1
+        assert out["n_open"] == 1
+        # YES marked at bid: (0.30 - 0.40) * 10 = -1.00
+        assert out["total_unrealized"] == pytest.approx(-1.00)
+
+    def test_no_open_positions_is_not_blind(self, monkeypatch):
+        """Nothing to price is not the same as unable to price."""
+        paper_mod = _fresh_paper(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+        assert out["blind"] is False
+        assert out["n_open"] == 0
+
+    def test_partial_pricing_is_not_blind(self, monkeypatch):
+        """Deliberately total blindness only: with some positions priced the
+        figure is understated but still grounded in real quotes."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        paper_mod.place_paper_order("KXHIGHCHI-26AUG26-T90", "yes", 10, 0.40)
+        assert len(paper_mod.get_open_trades()) == 2
+
+        from circuit_breaker import CircuitOpenError
+
+        class _Half:
+            def get_market(self, ticker):
+                if ticker.startswith("KXHIGHNY"):
+                    return {"ticker": ticker, "yes_bid": 0.30, "yes_ask": 0.32}
+                raise CircuitOpenError("kalshi_api_read")
+
+        out = paper_mod.get_unrealized_pnl_paper(_Half())
+        assert out["blind"] is False
+        assert out["n"] == 1
+        assert out["n_open"] == 2
+
+
+class TestDailyLossHaltFailsClosedWhenBlind:
+    def test_blind_halts_new_entries(self, monkeypatch):
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        # _alert_spy is mandatory now that the blind branch sends its own
+        # alert: without it this reaches the real notify, whose channels ARE
+        # live under pytest (conftest imports main, which load_dotenv()s them).
+        _alert_spy(monkeypatch)
+        assert paper_mod.is_daily_loss_halted(_BlindClient()) is True
+
+    def test_a_working_quote_at_the_same_pnl_does_not_halt(self, monkeypatch):
+        """The control that makes the test above mean something: identical
+        ledger, a tiny unrealized loss nowhere near the cap, no halt. Without
+        this, 'returns True' could just mean the loss cap was already
+        breached."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        client = _QuotingClient(yes_bid=0.39, yes_ask=0.41)
+        assert paper_mod.get_unrealized_pnl_paper(client)["blind"] is False
+        assert paper_mod.is_daily_loss_halted(client) is False
+
+    def test_client_none_branch_never_consults_mtm_at_all(self, monkeypatch):
+        """cron.py's per-cycle observer passes client=None deliberately (its
+        F6 note). That branch was never MTM-aware, so blindness must not reach
+        it.
+
+        Asserting only `is False` would be vacuous: get_unrealized_pnl_paper
+        returns blind=False for a None client by construction, so deleting the
+        `if client is None` guard entirely leaves that assertion green. The
+        real claim is that the MTM path is never entered -- forced here by
+        making it report blind=True and recording whether it is called."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        calls = []
+
+        def _blind_mtm(client):
+            calls.append(client)
+            return {"total_unrealized": 0.0, "n": 0, "n_open": 1, "blind": True}
+
+        monkeypatch.setattr(paper_mod, "get_unrealized_pnl_paper", _blind_mtm)
+        _alert_spy(monkeypatch)
+
+        assert paper_mod.is_daily_loss_halted(None) is False
+        assert calls == []
+
+        # Positive control: the same stub DOES halt when a client is passed,
+        # so the absence above is the guard working, not a broken stub.
+        assert paper_mod.is_daily_loss_halted(_QuotingClient()) is True
+
+    def test_mtm_raising_falls_back_rather_than_halting(self, monkeypatch):
+        """An exception inside get_unrealized_pnl_paper is this function
+        failing, not evidence about the positions -- matches get_daily_pnl's
+        own except. Only a SUCCESSFUL call that priced nothing halts."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+
+        def _boom(client):
+            raise RuntimeError("mtm exploded")
+
+        monkeypatch.setattr(paper_mod, "get_unrealized_pnl_paper", _boom)
+        assert paper_mod.is_daily_loss_halted(_QuotingClient()) is False
+
+    def test_real_mtm_loss_still_halts(self, monkeypatch):
+        """Positive control for the whole gate: the pre-existing behaviour
+        (a genuine MTM loss past the cap halts) survives the refactor that
+        inlined get_daily_pnl's unrealized term."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch, entry_price=0.90, qty=100)
+        # 100 @ $0.90 = $90 cost (just under the 10% single-ticker exposure
+        # cap on a $1000 book), marked down to $0.10 = -$80 unrealized --
+        # well past the $30 threshold MAX_DAILY_LOSS_PCT=0.03 sets.
+        client = _QuotingClient(yes_bid=0.10, yes_ask=0.12)
+        assert paper_mod.get_unrealized_pnl_paper(client)["blind"] is False
+        assert paper_mod.is_daily_loss_halted(client) is True
+
+    def test_mtm_is_fetched_only_once_per_call(self, monkeypatch):
+        """A forward guard, not evidence about this change.
+
+        The refactor exists to avoid double-fetching -- the pre-refactor
+        `get_daily_pnl(client)` also produced calls == 1, so this test would
+        have passed before it too. What it pins is the next naive
+        re-implementation that calls get_unrealized_pnl_paper for the blind
+        check and then get_daily_pnl(client) for the number, which is exactly
+        the shape the first draft of this fix had."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        client = _QuotingClient()
+        paper_mod.is_daily_loss_halted(client)
+        assert client.calls == 1
+
+
+def _alert_spy(monkeypatch):
+    """Replace the `notify` module so send_system_alert is recorded, not sent.
+
+    Returns the list of (args, kwargs) captured. Returns True from the stub so
+    the caller's "alert reached no channel" branch is not taken.
+    """
+    import sys
+    from unittest.mock import MagicMock
+
+    sent = []
+
+    def _record(*a, **kw):
+        sent.append((a, kw))
+        return True
+
+    monkeypatch.setitem(sys.modules, "notify", MagicMock(send_system_alert=_record))
+    return sent
+
+
+class TestStopLossBlindEscalation:
+    def test_zero_of_n_alerts(self, monkeypatch, caplog):
+        import logging
+
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        sent = _alert_spy(monkeypatch)
+        client = _BlindClient()
+
+        with caplog.at_level(logging.ERROR, logger="paper"):
+            closed = paper_mod.check_paper_position_exits(client)
+
+        # Positive control: the loop ran and the quote path was reached.
+        assert client.calls == 1
+        assert closed == []
+        assert any("priced 0/1" in r.getMessage() for r in caplog.records)
+        assert len(sent) == 1
+        assert sent[0][1]["cooldown_key"] == "stoploss_blind"
+
+    def test_partial_failure_does_not_alert(self, monkeypatch, caplog):
+        """A routine thin-book miss on one ticker must not page anyone -- the
+        M-1 WARNING still covers it."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        paper_mod.place_paper_order("KXHIGHCHI-26AUG26-T90", "yes", 10, 0.40)
+        sent = _alert_spy(monkeypatch)
+
+        from circuit_breaker import CircuitOpenError
+
+        class _Half:
+            def get_market(self, ticker):
+                if ticker.startswith("KXHIGHNY"):
+                    return {"ticker": ticker, "yes_bid": 0.39, "yes_ask": 0.41}
+                raise CircuitOpenError("kalshi_api_read")
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            paper_mod.check_paper_position_exits(_Half())
+        assert sent == []
+        # Pins the WARNING's own counter, not just the alert's: reverting it
+        # to len(current_prices) while leaving the alert on `protectable`
+        # would otherwise pass.
+        assert any(
+            "usable closing quote for 1/2" in r.getMessage() for r in caplog.records
+        )
+
+    def test_all_quotes_working_does_not_alert(self, monkeypatch):
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        sent = _alert_spy(monkeypatch)
+        paper_mod.check_paper_position_exits(_QuotingClient(0.39, 0.41))
+        assert sent == []
+
+    def test_no_open_positions_does_not_alert(self, monkeypatch):
+        paper_mod = _fresh_paper(monkeypatch)
+        sent = _alert_spy(monkeypatch)
+
+        assert paper_mod.check_paper_position_exits(_BlindClient()) == []
+        assert sent == []
+
+    def test_alert_failure_does_not_break_the_exit_check(self, monkeypatch):
+        """The alert is best-effort: a notify failure must not propagate.
+
+        Deliberately not phrased as "must not abort the pass for the positions
+        that DID price" -- the alert only fires at 0-of-N, so there are none.
+        The real risk it guards is placement: the alert block sits ABOVE
+        `store = PaperPositionStore()`, so an escaping exception would skip
+        the peak-profit update and both exit checks for the whole cycle."""
+        import sys
+        from unittest.mock import MagicMock
+
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+
+        def _boom(*a, **kw):
+            raise RuntimeError("discord down")
+
+        monkeypatch.setitem(sys.modules, "notify", MagicMock(send_system_alert=_boom))
+        assert paper_mod.check_paper_position_exits(_BlindClient()) == []
+
+
+def _assert_override_path_is_isolated(paper_mod):
+    """Fail loudly if paper's override path escaped to the real data dir."""
+    import safe_io
+
+    real = safe_io.project_root() / "data" / "loss_limit_override.json"
+    assert paper_mod._LOSS_OVERRIDE_PATH != real, (
+        "paper._LOSS_OVERRIDE_PATH points at production: "
+        f"{paper_mod._LOSS_OVERRIDE_PATH}"
+    )
+
+
+class TestBlindOnAOneSidedBook:
+    """Round-2 review, M-1. The two blindness criteria used to disagree:
+    check_paper_position_exits counted a ticker as priced on
+    parse_market_price's has_quote (mid > 0), while get_unrealized_pnl_paper
+    counted it only when positions.liquidation_price returned non-None -- and
+    that returns None for a side priced at 0, which a one-sided overnight book
+    legitimately produces.
+
+    The gap was silent AND inverted: a single NO position on a book with no
+    resting asks was reported "1/1 priced" (no WARNING, no alert) while
+    is_daily_loss_halted saw blind=True and halted every new entry. The only
+    ERROR emitted blamed the loss cap.
+    """
+
+    @staticmethod
+    def _one_sided_client():
+        class _OneSided:
+            """yes_ask=0 -- an empty ask side. mid = yes_bid > 0, so
+            has_quote is True, but a NO holder realizes (1 - yes_ask) and
+            liquidation_price rejects a <= 0 side."""
+
+            calls = 0
+
+            def get_market(self, ticker):
+                _OneSided.calls += 1
+                return {"ticker": ticker, "yes_bid": 0.01, "yes_ask": 0.0}
+
+        _OneSided.calls = 0
+        return _OneSided()
+
+    def test_has_quote_true_but_unpriceable_side_is_blind(self, monkeypatch):
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order("KXHIGHNY-26AUG26-T87", "no", 10, 0.40)
+        client = self._one_sided_client()
+
+        # Positive control on the premise: parse_market_price really does say
+        # has_quote here, so this is the has_quote/liquidation_price gap and
+        # not merely a fetch failure in disguise.
+        from weather_markets import parse_market_price
+
+        quote = parse_market_price(client.get_market("KXHIGHNY-26AUG26-T87"))
+        assert quote["has_quote"] is True
+        assert quote["yes_ask"] == 0.0
+
+        out = paper_mod.get_unrealized_pnl_paper(client)
+        assert out["blind"] is True
+        assert out["n_open"] == 1
+
+    def test_the_same_book_also_fires_the_stoploss_alert(self, monkeypatch, caplog):
+        """The half that was broken: get_unrealized_pnl_paper already called
+        this blind, but check_paper_position_exits said 1/1 and stayed
+        silent."""
+        import logging
+
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order("KXHIGHNY-26AUG26-T87", "no", 10, 0.40)
+        sent = _alert_spy(monkeypatch)
+
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            paper_mod.check_paper_position_exits(self._one_sided_client())
+
+        assert any("priced 0/1" in r.getMessage() for r in caplog.records)
+        assert len(sent) == 1
+        assert sent[0][1]["cooldown_key"] == "stoploss_blind"
+
+    def test_a_two_sided_book_on_the_same_position_is_not_blind(self, monkeypatch):
+        """Discriminating control: same NO position, same code path, a real
+        ask -- not blind, no alert."""
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order("KXHIGHNY-26AUG26-T87", "no", 10, 0.40)
+        sent = _alert_spy(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_QuotingClient(0.39, 0.41))
+        assert out["blind"] is False
+        assert out["n"] == 1
+
+        paper_mod.check_paper_position_exits(_QuotingClient(0.39, 0.41))
+        assert sent == []
+
+
+class TestBlindHaltOperatorSurface:
+    """Round-2 review, M-2/M-3/L-6. is_daily_loss_halted returning True is
+    indistinguishable to every caller from a real cap breach -- order_executor
+    prints "Daily loss limit reached ($0.00 incl. MTM)" and trading_gates
+    returns "Daily loss limit reached". The blind case needs its own signal,
+    on its own cooldown key, or the only thing that ever reaches the operator
+    is a message that contradicts itself."""
+
+    def test_blind_halt_emits_its_own_alert_and_error(self, monkeypatch, caplog):
+        import logging
+
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        sent = _alert_spy(monkeypatch)
+
+        with caplog.at_level(logging.ERROR, logger="paper"):
+            assert paper_mod.is_daily_loss_halted(_BlindClient()) is True
+
+        assert any(
+            "[DailyLoss]" in r.getMessage()
+            and "could not price any of 1" in r.getMessage()
+            for r in caplog.records
+        )
+        assert len(sent) == 1
+        # Its own key, so the shared "halt_daily_loss" cooldown -- and the
+        # shared "daily_loss" transition flag order_executor writes -- cannot
+        # swallow it.
+        assert sent[0][1]["cooldown_key"] == "daily_loss_blind"
+
+    def test_a_real_cap_breach_does_not_use_the_blind_key(self, monkeypatch):
+        """Positive control: the dedicated alert is specific to blindness, not
+        fired on every True."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch, entry_price=0.90, qty=100)
+        sent = _alert_spy(monkeypatch)
+        assert paper_mod.is_daily_loss_halted(_QuotingClient(0.10, 0.12)) is True
+        assert sent == []
+
+
+class TestLossWaiverStillEscapesTheBlindHalt:
+    """Round-2 review, M-4a. reset_daily_loss_limit() is the operator's only
+    escape hatch from the blind halt, so it must short-circuit BEFORE the
+    blind branch. Also the test that proves _LOSS_OVERRIDE_PATH is isolated:
+    it writes the override file, which under the reload-based helper this
+    replaced would have landed in the real data/ directory."""
+
+    def test_waiver_beats_blindness(self, monkeypatch):
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        # Guard the isolation before writing anything: a leaked path here
+        # would create a real production override file.
+        _assert_override_path_is_isolated(paper_mod)
+        sent = _alert_spy(monkeypatch)
+
+        # Positive control: blind and halting before the waiver exists.
+        assert paper_mod.is_daily_loss_halted(_BlindClient()) is True
+        assert len(sent) == 1
+
+        paper_mod.reset_daily_loss_limit(reason="batch-77 regression test")
+        assert paper_mod.is_daily_loss_halted(_BlindClient()) is False
+        # The waiver short-circuits before the blind branch, so no second
+        # alert -- proving the escape hatch reaches the alert too, not just
+        # the return value.
+        assert len(sent) == 1
+
+
+class TestPaperPathIsolationHolds:
+    """Round-2 review, H-1. The batch-77 helper originally called
+    importlib.reload(paper), which recomputes all three path constants from
+    safe_io.project_root() (the MAIN CLONE, not this worktree) and discards
+    conftest's isolation. Re-patching only DATA_PATH left
+    _LOSS_OVERRIDE_PATH/_ACCURACY_HALT_OVERRIDE_PATH aimed at production --
+    the same leak backlog L24334 and batch-62 each fixed once before. The
+    prod-data guard cannot catch it: it does not count Path.exists(), and the
+    override check is an .exists()."""
+
+    def test_fresh_paper_leaves_all_three_paths_isolated(self, monkeypatch):
+        paper_mod = _fresh_paper(monkeypatch)
+        _assert_override_path_is_isolated(paper_mod)
+
+        import safe_io
+
+        real_dir = safe_io.project_root() / "data"
+        assert paper_mod.DATA_PATH.parent != real_dir
+        assert paper_mod._ACCURACY_HALT_OVERRIDE_PATH.parent != real_dir
+
+    def test_helper_with_a_trade_leaves_all_three_paths_isolated(self, monkeypatch):
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        _assert_override_path_is_isolated(paper_mod)
+
+
+def _failing_alert_spy(monkeypatch):
+    """Like _alert_spy, but the stub reports total delivery failure (False),
+    which is what notify.send_system_alert returns when every configured
+    channel failed or none is configured."""
+    import sys
+    from unittest.mock import MagicMock
+
+    sent = []
+
+    def _record(*a, **kw):
+        sent.append((a, kw))
+        return False
+
+    monkeypatch.setitem(sys.modules, "notify", MagicMock(send_system_alert=_record))
+    return sent
+
+
+class TestBlindAlertDeliveryFailureIsVisible:
+    """Round-2b review, L-5. send_system_alert returns False ONLY for
+    "failed" -- "suppressed by cooldown" returns True -- so a False genuinely
+    means the operator got nothing, on the one branch where bot.log is then
+    the sole record."""
+
+    def test_failed_delivery_logs_a_warning(self, monkeypatch, caplog):
+        import logging
+
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        sent = _failing_alert_spy(monkeypatch)
+
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            paper_mod.check_paper_position_exits(_BlindClient())
+
+        # Positive control: the alert really was attempted, so the warning is
+        # about a failed send and not about the send being skipped.
+        assert len(sent) == 1
+        assert any("reached no channel" in r.getMessage() for r in caplog.records)
+
+    def test_successful_delivery_logs_no_such_warning(self, monkeypatch, caplog):
+        """Discriminating control: identical path, delivery succeeds, no
+        warning -- so the assertion above tracks the boolean, not merely the
+        blind branch being entered."""
+        import logging
+
+        paper_mod = _paper_with_one_open_trade(monkeypatch)
+        sent = _alert_spy(monkeypatch)
+
+        with caplog.at_level(logging.WARNING, logger="paper"):
+            paper_mod.check_paper_position_exits(_BlindClient())
+
+        assert len(sent) == 1
+        assert not any("reached no channel" in r.getMessage() for r in caplog.records)
+
+
+class TestClosedMarketsDoNotCauseAPermanentHalt:
+    """Round-2b review, M-3. `blind` used to be computed over every open
+    trade. A market that has already closed cannot be quoted (has_quote needs
+    mid > 0) or stopped, so a stuck unsettled position made the bot look blind
+    forever -- halting EVERY new entry for as long as it sat there.
+
+    Live on 2026-08-26: 3 of the 8 open paper trades (ids 247/248/249,
+    close_time 2026-08-25) were already past close and still unsettled.
+    """
+
+    @staticmethod
+    def _trade_closing(hours_from_now):
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) + timedelta(hours=hours_from_now)).isoformat()
+
+    def test_a_closed_market_is_not_counted_as_blindness(self, monkeypatch):
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order(
+            "KXHIGHTHOU-26AUG24-T99",
+            "yes",
+            10,
+            0.40,
+            close_time=self._trade_closing(-24),
+        )
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+
+        assert out["n_open"] == 1
+        assert out["n_markable"] == 0
+        assert out["blind"] is False
+        assert paper_mod.is_daily_loss_halted(_BlindClient()) is False
+
+    def test_a_still_open_market_IS_counted(self, monkeypatch):
+        """Discriminating control: same unpriceable client, same ledger shape,
+        a close_time in the future -- blind, and halting. Without this the
+        test above would pass if _is_past_close simply returned True always."""
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order(
+            "KXHIGHTHOU-26AUG26-T99",
+            "yes",
+            10,
+            0.40,
+            close_time=self._trade_closing(+26),
+        )
+        _alert_spy(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+
+        assert out["n_markable"] == 1
+        assert out["blind"] is True
+        assert paper_mod.is_daily_loss_halted(_BlindClient()) is True
+
+    def test_a_mix_stays_blind_on_the_still_open_one(self, monkeypatch):
+        """One stuck closed position must not mask genuine blindness on a
+        live one."""
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order(
+            "KXHIGHTHOU-26AUG24-T99",
+            "yes",
+            10,
+            0.40,
+            close_time=self._trade_closing(-24),
+        )
+        paper_mod.place_paper_order(
+            "KXLOWTPHIL-26AUG26-T64",
+            "yes",
+            10,
+            0.40,
+            close_time=self._trade_closing(+26),
+        )
+        _alert_spy(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+        assert out["n_open"] == 2
+        assert out["n_markable"] == 1
+        assert out["blind"] is True
+
+    def test_missing_close_time_still_counts_toward_blindness(self, monkeypatch):
+        """_is_past_close fails toward COUNTING the trade. We cannot prove a
+        market with no close_time has closed, and defaulting the other way
+        would let a ledger with no close_times at all mask a real outage --
+        the exact failure this batch exists to end."""
+        paper_mod = _paper_with_one_open_trade(monkeypatch)  # no close_time
+        _alert_spy(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+        assert out["n_markable"] == 1
+        assert out["blind"] is True
+
+    def test_unparseable_close_time_also_still_counts(self, monkeypatch):
+        paper_mod = _fresh_paper(monkeypatch)
+        paper_mod.place_paper_order(
+            "KXHIGHTHOU-26AUG26-T99", "yes", 10, 0.40, close_time="not-a-date"
+        )
+        _alert_spy(monkeypatch)
+
+        out = paper_mod.get_unrealized_pnl_paper(_BlindClient())
+        assert out["n_markable"] == 1
+        assert out["blind"] is True

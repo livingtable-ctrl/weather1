@@ -2018,18 +2018,91 @@ def check_paper_position_exits(client) -> list[dict]:
                 exc,
             )
 
+    # batch-77: count what is actually PROTECTABLE, not what merely has a
+    # quote. `current_prices` holds an entry whenever parse_market_price said
+    # has_quote (mid > 0), but check_stop_losses/check_breakeven_stops reach a
+    # verdict only when _liquidation_price() returns non-None -- and that
+    # returns None for a side priced at 0, which a one-sided overnight book
+    # legitimately produces (see positions.liquidation_price's own comment).
+    # Counting `current_prices` therefore over-reported protection: a single
+    # NO position on a book with no resting asks was "1/1 priced" while its
+    # stop was in fact inoperative, so neither the WARNING below nor the alert
+    # under it ever fired. This is also the criterion get_unrealized_pnl_paper
+    # uses, so the two now agree about what "blind" means.
+    # t.get("ticker", "") not t["ticker"]: this is the one unguarded ticker
+    # read on the path -- the fetch loop above sits inside except Exception and
+    # _trade_to_position uses .get(). A KeyError here escapes
+    # check_paper_position_exits entirely, and cron.py only logs "stop-loss
+    # protection inactive this cycle", so one malformed record would disable
+    # stops for EVERY position. "" maps to None in _liquidation_price, i.e.
+    # correctly not protectable.
+    protectable = [
+        t
+        for t in open_trades
+        if _liquidation_price(current_prices, t.get("ticker", ""), t.get("side", "yes"))
+        is not None
+    ]
+    # Deliberately NOT also filtered through _passes_exit_gates. A position
+    # inside EXIT_SETTLEMENT_GATE_HOURS (24h, and these are daily weather
+    # markets) is un-stoppable by DELIBERATE POLICY, not by a fault -- letting
+    # that count here would fire this warning, and the alert below, on almost
+    # every normal cycle. The two conditions need different names, not one
+    # merged counter, which is why the message says "usable closing quote"
+    # rather than claiming the counted positions are protected.
+
     # M-1: a fetch-failure rate high enough to leave positions effectively
     # unprotected must be visible at WARNING, not just per-ticker DEBUG —
     # otherwise a sustained API outage silently disables price-based
     # protection for every open position with zero trace in bot.log.
-    if len(current_prices) < len(open_trades):
+    if len(protectable) < len(open_trades):
         _log.warning(
-            "[StopLoss] got a usable quote for %d/%d open position(s) this "
-            "cycle — the rest fall back to entry_price and are effectively "
-            "unprotected until their next successful fetch",
-            len(current_prices),
+            "[StopLoss] have a usable closing quote for %d/%d open "
+            "position(s) this cycle — the rest cannot be priced at all, so "
+            "check_stop_losses/check_breakeven_stops skip them outright and "
+            "they are unprotected until their next usable quote",
+            len(protectable),
             len(open_trades),
         )
+
+    # batch-77: total blindness gets more than a bot.log line. M-1's WARNING
+    # did its job on 2026-08-26 -- it is how this was found -- but a WARNING
+    # was the ONLY consequence of losing price-based protection on every open
+    # position at once, and nothing reached the operator while it was
+    # happening. Fires only at 0-of-N, so a routine thin-book miss on one
+    # ticker of several still can't page anyone.
+    if not protectable and open_trades:
+        _log.error(
+            "[StopLoss] priced 0/%d open position(s) — stop-loss and "
+            "breakeven-stop are inoperative for ALL of them this cycle",
+            len(open_trades),
+        )
+        try:
+            from notify import send_system_alert as _sl_alert
+
+            if not _sl_alert(
+                "Stop-loss blind — no positions priceable",
+                f"Could not obtain a usable closing price for any of "
+                f"{len(open_trades)} open position(s) this cycle. Price-based "
+                f"stop-loss and breakeven-stop cannot fire on any of them "
+                f"until quotes return. Check bot.log for CircuitOpenError or "
+                f"clock-skew errors.",
+                cooldown_key="stoploss_blind",
+            ):
+                # WARNING, not DEBUG: this is the one branch where the
+                # operator gets nothing at all, and DEBUG sits below bot.log's
+                # configured level.
+                _log.warning(
+                    "[StopLoss] blind-cycle alert reached no channel — the "
+                    "0/%d condition above is bot.log-only",
+                    len(open_trades),
+                )
+        except Exception as _alert_exc:
+            _log.warning(
+                "[StopLoss] blind-cycle alert failed, so the 0/%d condition "
+                "above is bot.log-only: %s",
+                len(open_trades),
+                _alert_exc,
+            )
 
     store = PaperPositionStore()
     positions = [_trade_to_position(t) for t in open_trades]
@@ -3471,6 +3544,22 @@ def is_daily_loss_halted(client=None) -> bool:
     scales up naturally as the account grows. Uses get_balance() which reflects
     settled trades and open-position costs already deducted at entry.
     Pass a live client to include unrealized MTM in the check (#46).
+
+    batch-77 -- FAILS CLOSED when a client is passed, open positions exist, and
+    not one of them can be marked to market (get_unrealized_pnl_paper's
+    `blind`). This gate is what order_executor.auto_place_trades and
+    trading_gates consult before opening anything, and its input is
+    settled P&L + unrealized MTM. With every quote failing, the MTM term is
+    0.00 -- not "flat", just absent -- so the gate was reading a fabricated
+    daily loss and letting new entries through at the one moment the bot could
+    neither price nor stop out what it already held (observed live 2026-08-26,
+    0 of 8 positions priceable for a full cron cycle). We cannot assert we are
+    under the loss cap, so we do not open more.
+
+    Only the client-aware branch changes. cron.py's per-cycle observer
+    deliberately calls this with client=None (see its F6 note) and is
+    unaffected; that branch was never MTM-aware to begin with, so there is
+    nothing there for blindness to corrupt.
     """
     # Check for admin override (e.g. after a bug caused phantom losses).
     # The override is date-keyed so it expires automatically at midnight UTC.
@@ -3495,7 +3584,85 @@ def is_daily_loss_halted(client=None) -> bool:
     # resolving that interaction risked a premature halt from temporarily-
     # spent, not lost, capital — left as-is pending a deliberate decision.
     _threshold = MAX_DAILY_LOSS_PCT * max(_balance, STARTING_BALANCE)
-    return get_daily_pnl(client) < -_threshold
+    if client is None:
+        return get_daily_pnl(None) < -_threshold
+
+    # Fetch the MTM once and derive both the blindness verdict and the
+    # unrealized term from it. get_daily_pnl(client) would fetch it a second
+    # time -- one uncached client.get_market() per open position, on a gate
+    # that already runs per placement cycle (the cost cron.py's F6 note calls
+    # out) -- so this is the same arithmetic get_daily_pnl(client) performs,
+    # inlined, not an extra call.
+    try:
+        _mtm = get_unrealized_pnl_paper(client)
+        # Read inside the try, matching where get_daily_pnl(client) did its
+        # own mtm.get(): a stub or a future refactor returning a non-dict must
+        # degrade to settled-only, not raise AttributeError out of a safety
+        # gate. order_executor.auto_place_trades calls this unwrapped, so a
+        # raise there would abort the whole placement step.
+        # `is True`, not bool(): a MagicMock (or any stub) returns a truthy
+        # MagicMock from .get(), which would silently halt trading. Before the
+        # blind branch existed such a stub produced a TypeError that
+        # get_daily_pnl caught and degraded to settled-only.
+        _blind = _mtm.get("blind") is True
+        # float(...) inside the try, not just the .get(): an explicitly-None or
+        # non-numeric total_unrealized used to be absorbed by get_daily_pnl's
+        # own except and degrade to settled-only. Leaving the coercion to the
+        # final addition below would instead raise TypeError out of this
+        # function -- and order_executor.auto_place_trades calls it unwrapped,
+        # so that would abort the entire placement step.
+        _unrealized = float(_mtm.get("total_unrealized", 0.0) or 0.0)
+        try:
+            _n_open = int(_mtm.get("n_open", 0) or 0)
+        except (TypeError, ValueError):
+            # Cosmetic (it only labels the log line). Must not be able to
+            # discard an already-computed _blind=True via the outer except --
+            # that would fail OPEN on the one branch built to fail closed.
+            _n_open = 0
+    except Exception as exc:
+        # Matches get_daily_pnl's own except: fall back to settled-only rather
+        # than halting. An exception here is this function failing, not
+        # evidence about the positions; the blind-halt below is reserved for a
+        # successful call that priced nothing.
+        _log.warning("is_daily_loss_halted: MTM fetch failed: %s", exc)
+        return get_daily_pnl(None) < -_threshold
+
+    if _blind:
+        _log.error(
+            "[DailyLoss] halting new entries — could not price any of %d open "
+            "position(s), so today's P&L cannot be computed and the loss cap "
+            "cannot be verified",
+            _n_open,
+        )
+        # Its own alert, on its own cooldown key. Every caller of this
+        # function treats a True as a cap breach and says so: order_executor
+        # prints "Daily loss limit reached ($0.00 incl. MTM)" and sends a
+        # "Kalshi daily loss halt engaged" alert, trading_gates returns the
+        # reason string "Daily loss limit reached". An operator who
+        # investigates that finds no loss and reasonably dismisses it. This
+        # alert is what actually tells them the truth -- and it survives the
+        # shared "daily_loss" transition flag being occupied, which would
+        # otherwise swallow the generic alert for the rest of the episode.
+        try:
+            from notify import send_system_alert as _dl_blind_alert
+
+            _dl_blind_alert(
+                "Daily loss cap cannot be verified — bot is price-blind",
+                f"None of {_n_open} open position(s) could be marked to "
+                f"market, so today's P&L is unknown. New entries are halted "
+                f"until quotes return (exits are NOT blocked). Any "
+                f"accompanying 'daily loss limit reached' message is this "
+                f"same condition, not a real loss. NOTE: "
+                f"reset_daily_loss_limit() would clear this, but it waives "
+                f"the REAL daily-loss cap too, for the rest of the UTC day -- "
+                f"prefer restoring market data.",
+                cooldown_key="daily_loss_blind",
+            )
+        except Exception as _blind_alert_exc:
+            _log.warning("[DailyLoss] blind-halt alert failed: %s", _blind_alert_exc)
+        return True
+
+    return (get_daily_pnl(None) + _unrealized) < -_threshold
 
 
 def check_aged_positions() -> list[dict]:
@@ -4142,15 +4309,73 @@ def get_expiry_date_clustering() -> list[dict]:
     return result
 
 
+def _is_past_close(trade: dict) -> bool:
+    """True only when this trade's market has DEFINITELY already closed.
+
+    Used to keep a stuck position out of the blindness verdict. A market that
+    has closed cannot be quoted (parse_market_price needs mid > 0) and cannot
+    be stopped, so its unpriceability is not evidence that the bot has gone
+    blind -- but counting it as such would halt every new entry for as long as
+    the position stayed unsettled. Not hypothetical: on 2026-08-26 three of the
+    eight open paper trades (ids 247/248/249) were already past close_time and
+    still unsettled, so once the other five settled the halt would have become
+    permanent.
+
+    Deliberately conservative in the other direction: a MISSING or unparseable
+    close_time returns False, i.e. the trade still counts toward blindness. We
+    cannot prove such a market has closed, and defaulting the other way would
+    let a ledger with no close_times at all mask a genuine outage -- which is
+    the failure this whole batch exists to end. The residual (a close_time-less
+    ticker that 404s forever) is a data-quality problem with its own guard at
+    place_paper_order's validate_target_date_freshness.
+    """
+    close_time = trade.get("close_time")
+    if not close_time:
+        return False
+    try:
+        close_dt = datetime.fromisoformat(str(close_time).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if close_dt.tzinfo is None:
+        close_dt = close_dt.replace(tzinfo=UTC)
+    return close_dt < datetime.now(UTC)
+
+
 def get_unrealized_pnl_paper(client) -> dict:
     """
     Mark-to-market unrealized P&L for open paper positions.
     Fetches current YES bid from Kalshi to estimate position value.
-    Returns {total_unrealized, by_trade: [{id, ticker, mark_pnl, current_price}], n}.
+    Returns {total_unrealized, by_trade: [{id, ticker, mark_pnl, current_price}],
+    n, n_open, blind}.
+
+    batch-77 -- `blind` is True when markable positions exist and NONE of them
+    could be marked to market. "Markable" excludes any position whose market
+    has already closed (see _is_past_close): those cannot be quoted or stopped
+    regardless of the bot's health, so counting them would turn one stuck
+    unsettled position into a permanent trading halt. Every failure branch below is a `continue`, so
+    total_unrealized is a sum over whatever priced; with zero priced that sum
+    is 0.0, which is indistinguishable from "every position is exactly at
+    breakeven". That value feeds get_daily_pnl -> is_daily_loss_halted ->
+    order_executor.auto_place_trades' placement gate, so on 2026-08-26, when
+    an open circuit breaker failed all 8 quotes, the bot read a fabricated
+    $0.00 daily loss and kept entering. `blind` is the flag that lets a
+    consumer tell "no loss" apart from "no data"; n_open is its positive
+    control (blind is only meaningful when n_open > 0).
+
+    Deliberately total blindness (n == 0), not partial: with some positions
+    priced the figure is understated but still grounded in real quotes, and
+    treating that as no-data would halt on any single unlucky ticker.
     """
     open_trades = get_open_trades()
     if not open_trades or client is None:
-        return {"total_unrealized": 0.0, "by_trade": [], "n": 0}
+        return {
+            "total_unrealized": 0.0,
+            "by_trade": [],
+            "n": 0,
+            "n_open": len(open_trades),
+            "n_markable": 0,
+            "blind": False,
+        }
 
     by_trade = []
     total = 0.0
@@ -4199,10 +4424,14 @@ def get_unrealized_pnl_paper(client) -> dict:
             )
             continue
 
+    n_markable = sum(1 for t in open_trades if not _is_past_close(t))
     return {
         "total_unrealized": round(total, 4),
         "by_trade": by_trade,
         "n": len(by_trade),
+        "n_open": len(open_trades),
+        "n_markable": n_markable,
+        "blind": len(by_trade) == 0 and n_markable > 0,
     }
 
 

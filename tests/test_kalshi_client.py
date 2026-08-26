@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 
 class TestToV2SidePrice:
@@ -2189,3 +2190,951 @@ class TestBatchedClientOrderIdLookup:
         assert found["status"] == "resting"
         assert uncertain is False
         client._get_orders_by_status.assert_not_called()
+
+
+# ── batch-77: breaker scoping, 4xx handling, clock skew ──────────────────────
+
+
+def _cb_resp(status, body=None, headers=None):
+    """A requests.Response double with the attributes _request_with_retry
+    actually reads."""
+    import requests
+
+    resp = MagicMock(spec=requests.Response)
+    resp.status_code = status
+    resp.headers = headers or {}
+    if body is None:
+        resp.json.side_effect = ValueError("no json")
+    else:
+        resp.json.return_value = body
+    if status >= 400:
+        resp.raise_for_status.side_effect = requests.HTTPError(str(status))
+    else:
+        resp.raise_for_status.return_value = None
+    return resp
+
+
+@pytest.fixture
+def fresh_breakers(monkeypatch):
+    """Replace all three module breakers with non-persisting instances.
+
+    persist=False matters for the READ half specifically: these singletons are
+    constructed at import and _load_state() the real main-clone
+    data/.cb_state.json at that moment, before any fixture runs, so without
+    fresh instances a test inherits whatever a previous production run left
+    open. The write half is already covered elsewhere -- conftest's
+    isolate_circuit_breaker_state monkeypatches circuit_breaker._CB_STATE_PATH
+    and _save_state reads that global at call time, so saves land in tmp_path
+    either way.
+    """
+    import kalshi_client as kc
+    from circuit_breaker import CircuitBreaker
+
+    made = {}
+    for attr, name in (
+        ("_kalshi_cb_read", "test_public_read"),
+        ("_kalshi_cb_private_read", "test_private_read"),
+        ("_kalshi_cb_write", "test_write"),
+    ):
+        cb = CircuitBreaker(
+            name=name, failure_threshold=5, recovery_timeout=60, persist=False
+        )
+        monkeypatch.setattr(kc, attr, cb)
+        made[attr] = cb
+    return made
+
+
+_PUB_URL = "https://api.elections.kalshi.com/trade-api/v2/markets/KXHIGHNY-26AUG26-T87"
+_PRIV_URL = "https://api.elections.kalshi.com/trade-api/v2/portfolio/balance"
+
+
+class TestBreakerSelection:
+    """batch-77: /portfolio/* must not share a breaker with market data."""
+
+    def test_public_market_path_selects_public_read_breaker(self, fresh_breakers):
+        import kalshi_client as kc
+
+        assert kc._select_breaker("GET", _PUB_URL) is fresh_breakers["_kalshi_cb_read"]
+
+    def test_portfolio_path_selects_private_read_breaker(self, fresh_breakers):
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker("GET", _PRIV_URL)
+            is fresh_breakers["_kalshi_cb_private_read"]
+        )
+
+    def test_write_method_selects_write_breaker_even_on_a_public_path(
+        self, fresh_breakers
+    ):
+        """The method check runs first, so a write to a non-/portfolio/ path
+        still gets the write breaker -- writes must never share with reads
+        regardless of path."""
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker("POST", _PUB_URL) is fresh_breakers["_kalshi_cb_write"]
+        )
+
+    def test_demo_host_is_also_guarded(self, fresh_breakers):
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker("GET", "https://demo-api.kalshi.co/trade-api/v2/markets")
+            is fresh_breakers["_kalshi_cb_read"]
+        )
+
+    def test_non_kalshi_host_is_unguarded(self, fresh_breakers):
+        """weather_markets' Pirate Weather fetch imports this helper and has
+        its own _pirate_cb; routing it through a Kalshi breaker
+        cross-contaminated both directions."""
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker(
+                "GET", "https://api.pirateweather.net/forecast/KEY/40.7,-74.0"
+            )
+            is None
+        )
+
+    def test_kalshi_hosts_derived_from_the_base_urls(self):
+        """Asserts the DERIVATION, not a copy of its output -- re-listing the
+        two literals here would reintroduce exactly the hardcoded second copy
+        that _kalshi_hosts() exists to avoid, and would still pass if the
+        function were replaced by a frozen literal that later went stale."""
+        from urllib.parse import urlparse
+
+        import kalshi_client as kc
+
+        assert kc._kalshi_hosts() == {
+            urlparse(kc.PROD_BASE).hostname,
+            urlparse(kc.DEMO_BASE).hostname,
+        }
+        # _KALSHI_HOSTS is bound at import, so pin that it matches too.
+        assert kc._KALSHI_HOSTS == kc._kalshi_hosts()
+        assert "api.elections.kalshi.com" in kc._KALSHI_HOSTS
+
+
+class TestPrivateFaultDoesNotDisableMarketData:
+    """The batch-77 regression, end to end: the observed failure was six 401s
+    on /portfolio/* taking out every public market-data read for a full cron
+    cycle."""
+
+    def test_open_private_breaker_still_allows_a_public_get(self, fresh_breakers):
+        import kalshi_client as kc
+        from circuit_breaker import CircuitOpenError
+
+        priv = fresh_breakers["_kalshi_cb_private_read"]
+        for _ in range(5):
+            priv.record_failure()
+        assert priv.is_open()
+
+        # Positive control: the private breaker really is refusing calls, so
+        # the public success below is not just "nothing was ever blocked".
+        with patch.object(kc._SESSION, "request") as blocked:
+            with pytest.raises(CircuitOpenError):
+                kc._request_with_retry("GET", _PRIV_URL, check_error_body=True)
+        blocked.assert_not_called()
+
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"market": {}})
+        ) as allowed:
+            resp = kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert resp.status_code == 200
+        allowed.assert_called_once()
+        assert not fresh_breakers["_kalshi_cb_read"].is_open()
+
+    def test_get_market_survives_an_open_private_breaker(self, fresh_breakers):
+        """The exact call paper.check_paper_position_exits makes per open
+        position. Pre-fix this raised CircuitOpenError and every position went
+        unpriced.
+
+        Opens whatever breaker the selector ACTUALLY routes /portfolio/ to,
+        rather than _kalshi_cb_private_read by name. Naming it directly made
+        the test vacuous under the pre-fix single-breaker arrangement: a
+        _select_breaker that ignores the path leaves the private instance
+        unused, so opening it blocks nothing and get_market would have
+        'survived' for the wrong reason."""
+        import kalshi_client as kc
+
+        priv = kc._select_breaker("GET", _PRIV_URL)
+        for _ in range(5):
+            priv.record_failure()
+        assert priv.is_open()
+
+        client = kc.KalshiClient.__new__(kc.KalshiClient)
+        client.base_url = kc.PROD_BASE
+        client.key_id = "k"
+        client._private_key = object()
+        client._sign_headers = lambda *a, **kw: {}
+
+        market = {"ticker": "KXHIGHNY-26AUG26-T87", "yes_bid": 40, "yes_ask": 42}
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"market": market})
+        ):
+            got = client.get_market("KXHIGHNY-26AUG26-T87")
+        assert got["yes_bid"] == 40
+
+
+class TestFourXXDoesNotTouchTheBreaker:
+    """batch-77: a 401 body carries a top-level "error" key, which is the only
+    path by which the observed 401s reached record_failure() -- the
+    status-code branch already exempted 4xx."""
+
+    # The exact body Kalshi returns, captured live 2026-08-26 by sending
+    # GET /trade-api/v2/portfolio/balance with a deliberately stale
+    # KALSHI-ACCESS-TIMESTAMP (no real credentials involved):
+    #   HTTP 401
+    #   {"error":{"code":"header_timestamp_expired",
+    #             "message":"header timestamp expired"}}
+    # The top-level "error" key is the whole mechanism -- not a plausible
+    # shape invented for the test.
+    _KALSHI_401 = {
+        "error": {
+            "code": "header_timestamp_expired",
+            "message": "header timestamp expired",
+        }
+    }
+
+    def test_401s_on_portfolio_never_touch_the_public_breaker(self, fresh_breakers):
+        """THE batch-77 regression. Six 401s from a clock skew opened the one
+        shared read breaker and took every market-data read down with it,
+        blinding stop-loss on all 8 open positions.
+
+        The 401s DO trip the private breaker (a deliberate later decision:
+        backing off cannot fix a credential fault, but it stops
+        _resolve_live_balance emitting ~60 futile calls per cycle). What must
+        never happen again is that reaching the PUBLIC breaker."""
+        import kalshi_client as kc
+        from circuit_breaker import CircuitOpenError
+
+        priv = fresh_breakers["_kalshi_cb_private_read"]
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(401, self._KALSHI_401)
+        ) as sess:
+            for _ in range(5):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PRIV_URL, check_error_body=True)
+            # The 6th is SHED rather than sent -- exactly the load-shedding
+            # this rule exists for. On the real 2026-08-26 run the same six
+            # calls all went out and took market data down with them.
+            with pytest.raises(CircuitOpenError):
+                kc._request_with_retry("GET", _PRIV_URL, check_error_body=True)
+        assert sess.call_count == 5
+
+        # Positive control: the calls really happened and really were auth
+        # failures -- so the public breaker's zero is not a vacuous "nothing
+        # ran".
+        assert priv.is_open()
+        assert pub.failure_count == 0
+        assert not pub.is_open()
+
+        # And the consequence that matters: a market-data read still works.
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"market": {}})
+        ) as allowed:
+            assert (
+                kc._request_with_retry(
+                    "GET", _PUB_URL, check_error_body=True
+                ).status_code
+                == 200
+            )
+        allowed.assert_called_once()
+
+    def test_a_401_on_a_market_path_does_not_trip_the_public_breaker(
+        self, fresh_breakers
+    ):
+        """The auth-failure rule is scoped to the private breaker by the
+        BREAKER, not by the status code. A 401 arriving on a market-data path
+        is still just a client error there."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(401, self._KALSHI_401)
+        ):
+            for _ in range(6):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 0
+        assert not pub.is_open()
+
+    def test_a_2xx_error_body_still_trips(self, fresh_breakers):
+        """Positive control for the test above: check_error_body is still
+        live, just scoped to 2xx. Without this, deleting the whole
+        check_error_body block would leave the previous test green."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(
+            kc._SESSION,
+            "request",
+            return_value=_cb_resp(200, {"error": "internal_degraded"}),
+        ):
+            for _ in range(5):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 5
+        assert pub.is_open()
+
+    def test_5xx_still_trips(self, fresh_breakers):
+        """Positive control: the breaker still opens for the condition it
+        exists for."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            for _ in range(5):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.is_open()
+
+    def test_401_does_not_reset_an_in_progress_failure_streak(self, fresh_breakers):
+        """The second half of the fix: a 4xx records NEITHER outcome. It used
+        to call record_success(), which zeroes failure_count -- so a real 5xx
+        outage interleaved with auth errors could never reach the threshold."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            for _ in range(4):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 4
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(404, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 4, "a 4xx must not zero the failure count"
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.is_open()
+
+    def test_a_real_200_still_resets_the_streak(self, fresh_breakers):
+        """Positive control for the test above -- record_success() must still
+        fire on a genuine success, or that assertion proves only that
+        record_success() was deleted outright."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            for _ in range(4):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 4
+
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"market": {}})
+        ):
+            kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 0
+
+
+class TestClockSkew:
+    """batch-77: the root cause of the observed cascade was a 41.4s local
+    clock offset that made every signed request 401 with
+    header_timestamp_expired. Measured once per process against the server's
+    own Date header."""
+
+    @staticmethod
+    def _date_hdr(epoch: float) -> str:
+        from email.utils import formatdate
+
+        return formatdate(epoch, usegmt=True)
+
+    @staticmethod
+    def _reset(monkeypatch):
+        """Forget that the once-per-process probe already ran.
+
+        conftest's autouse suppress_startup_clock_skew_probe pins
+        _clock_skew_checked True for every test; these are the ones that want
+        the real thing. _clock_skew_attempts must be reset too or an earlier
+        test in the same session could have exhausted the attempt budget.
+        """
+        import kalshi_client as kc
+
+        monkeypatch.setattr(kc, "_clock_skew_checked", False)
+        monkeypatch.setattr(kc, "_clock_skew_attempts", 0)
+
+    def _probe(self, monkeypatch, server_epoch, local_epoch, extra_headers=None):
+        """Drive measure_clock_skew with a pinned local clock and a Date
+        header for `server_epoch`.
+
+        The clock is injected via the `now=` parameter rather than patched
+        onto kc.time -- `kc.time is time`, so patching there replaces
+        time.time process-wide for the test, freezing circuit_breaker's
+        burst-window logic and every log record's timestamp along with it.
+        """
+        import kalshi_client as kc
+
+        headers = {"Date": self._date_hdr(server_epoch)}
+        headers.update(extra_headers or {})
+        resp = MagicMock()
+        resp.headers = headers
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", lambda *a, **kw: resp)
+        return kc.measure_clock_skew(kc.PROD_BASE, now=lambda: local_epoch)
+
+    def test_synced_clock_reports_zero(self, monkeypatch):
+        assert self._probe(monkeypatch, 1_800_000_000, 1_800_000_000.4) == 0.0
+
+    def test_local_clock_ahead_is_positive(self, monkeypatch):
+        """41.4s ahead -- the observed 2026-08-26 offset. The 1s of
+        whole-second Date slack is subtracted, so 41.4 measures as 40.4."""
+        skew = self._probe(monkeypatch, 1_800_000_000, 1_800_000_041.4)
+        assert skew == pytest.approx(40.4)
+
+    def test_local_clock_behind_is_negative(self, monkeypatch):
+        skew = self._probe(monkeypatch, 1_800_000_030, 1_800_000_000)
+        assert skew == pytest.approx(-30.0)
+
+    def test_cloudfront_age_is_added_back(self, monkeypatch):
+        """Defensive, not observed: checked live 2026-08-26, a CloudFront hit
+        on /exchange/status returned a REFRESHED Date and no Age header at
+        all. This pins the compensation for a cache that DOES preserve an
+        origin Date alongside an Age. Age=1 rather than 20 because
+        /exchange/status sends Cache-Control: max-age=1 -- 20 is a value the
+        real endpoint cannot produce."""
+        skew = self._probe(
+            monkeypatch,
+            1_800_000_000,
+            1_800_000_002.0,
+            extra_headers={"Age": "1"},
+        )
+        assert skew == 0.0
+
+    def test_missing_date_header_is_unmeasurable(self, monkeypatch):
+        import kalshi_client as kc
+
+        resp = MagicMock()
+        resp.headers = {}
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", lambda *a, **kw: resp)
+        assert kc.measure_clock_skew(kc.PROD_BASE) is None
+
+    def test_probe_failure_returns_none_and_never_raises(self, monkeypatch):
+        import kalshi_client as kc
+
+        def _boom(*a, **kw):
+            raise OSError("no network")
+
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", _boom)
+        assert kc.measure_clock_skew(kc.PROD_BASE) is None
+
+    def test_probe_bypasses_request_with_retry(self, monkeypatch):
+        """A failed skew probe must not record against any circuit breaker --
+        it goes straight to _SKEW_SESSION.get, never through the guarded
+        _request_with_retry wrapper (which is where breaker accounting
+        lives)."""
+        import kalshi_client as kc
+
+        called = []
+        monkeypatch.setattr(
+            kc,
+            "_request_with_retry",
+            lambda *a, **kw: called.append(a) or MagicMock(),
+        )
+        resp = MagicMock()
+        resp.headers = {"Date": self._date_hdr(1_800_000_000)}
+        session_calls = []
+
+        def _get(*a, **kw):
+            session_calls.append(a)
+            return resp
+
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", _get)
+
+        kc.measure_clock_skew(kc.PROD_BASE, now=lambda: 1_800_000_000.0)
+
+        # Positive control: the probe really did issue a request.
+        assert len(session_calls) == 1
+        assert called == []
+
+    def test_large_skew_logs_error_and_alerts(self, monkeypatch, caplog):
+        import logging
+
+        import kalshi_client as kc
+
+        self._reset(monkeypatch)
+        monkeypatch.setattr(kc, "measure_clock_skew", lambda *a, **kw: 41.4)
+        sent = []
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "notify",
+            MagicMock(send_system_alert=lambda *a, **kw: sent.append((a, kw))),
+        )
+
+        with caplog.at_level(logging.ERROR, logger="kalshi_client"):
+            assert kc.check_clock_skew_once(kc.PROD_BASE) == 41.4
+
+        assert any("CLOCK SKEW" in r.message for r in caplog.records)
+        assert len(sent) == 1
+        assert sent[0][1]["cooldown_key"] == "clock_skew"
+
+    def test_small_skew_does_not_alert(self, monkeypatch):
+        """Positive control pairing: the alert above is conditional, not
+        unconditional."""
+        import kalshi_client as kc
+
+        self._reset(monkeypatch)
+        monkeypatch.setattr(kc, "measure_clock_skew", lambda *a, **kw: 2.0)
+        sent = []
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "notify",
+            MagicMock(send_system_alert=lambda *a, **kw: sent.append((a, kw))),
+        )
+
+        assert kc.check_clock_skew_once(kc.PROD_BASE) == 2.0
+        assert sent == []
+
+    def test_runs_at_most_once_per_process(self, monkeypatch):
+        import kalshi_client as kc
+
+        self._reset(monkeypatch)
+        calls = []
+        monkeypatch.setattr(
+            kc, "measure_clock_skew", lambda *a, **kw: calls.append(a) or 1.0
+        )
+
+        assert kc.check_clock_skew_once(kc.PROD_BASE) == 1.0
+        assert kc.check_clock_skew_once(kc.PROD_BASE) is None
+        assert len(calls) == 1
+
+    def test_never_raises_when_measurement_blows_up(self, monkeypatch):
+        """A client must stay constructible with no network."""
+        import kalshi_client as kc
+
+        self._reset(monkeypatch)
+
+        def _boom(*a, **kw):
+            raise OSError("no network")
+
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", _boom)
+        assert kc.check_clock_skew_once(kc.PROD_BASE) is None
+
+    def test_keyless_client_never_probes(self, monkeypatch, tmp_path):
+        """__init__ gates the probe on a loaded private key: a client that
+        cannot sign has no timestamp to be rejected."""
+        import kalshi_client as kc
+
+        calls = []
+        monkeypatch.setattr(
+            kc, "check_clock_skew_once", lambda *a, **kw: calls.append(a)
+        )
+        monkeypatch.setattr(kc, "_check_env_file_permissions", lambda: None)
+
+        kc.KalshiClient(key_id=None, private_key_path=None, env="demo")
+        assert calls == []
+
+    def test_client_with_a_key_probes_once(self, monkeypatch, tmp_path):
+        """Positive control for the test above."""
+        import kalshi_client as kc
+
+        key_file = tmp_path / "key.pem"
+        key_file.write_bytes(b"unused-mocked-out")
+        calls = []
+        monkeypatch.setattr(
+            kc, "check_clock_skew_once", lambda *a, **kw: calls.append(a)
+        )
+        monkeypatch.setattr(kc, "_check_env_file_permissions", lambda: None)
+        monkeypatch.setattr(kc, "_check_key_permissions", lambda p: None)
+        monkeypatch.setattr(
+            kc.serialization, "load_pem_private_key", lambda *a, **kw: object()
+        )
+
+        kc.KalshiClient(key_id="k", private_key_path=str(key_file), env="demo")
+        assert calls == [(kc.DEMO_BASE,)]
+
+
+class TestFourXXDoesNotStrandTheProbe:
+    """Round-2 review, H-1. `_half_open` is cleared ONLY inside
+    record_failure()/record_success()/record_reachable(), and is_open()'s
+    `if self._half_open: return True` has no other exit. So the first draft of
+    batch-77's "a 4xx records nothing" rule left a 4xx probe stranding the
+    circuit OPEN FOREVER -- the same market-data blackout this batch exists to
+    remove, reached through a different door. Invisible in the one-shot `cron`
+    process (nothing persists `_half_open`) and permanent in `main.py loop`
+    and web_app.py.
+    """
+
+    @staticmethod
+    def _open_then_half_open(cb):
+        """Trip `cb`, then zero its recovery window so the next is_open()
+        designates a probe.
+
+        Zeroes the timeout rather than waiting for it -- a real 60s sleep in a
+        unit test is not worth it. Note the caller must NOT then assert on
+        is_open() to "check": is_open() is itself the mutator that designates
+        the probe caller, so reading it here consumes the probe and the
+        request under test would get CircuitOpenError instead."""
+        for _ in range(5):
+            cb.record_failure()
+        assert cb.is_open()
+        cb.recovery_timeout = 0
+        cb._current_timeout = 0
+
+    def test_a_4xx_probe_does_not_wedge_the_circuit(self, fresh_breakers):
+        import requests
+
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        self._open_then_half_open(pub)
+
+        # The probe gets a 404 -- routine here, e.g. a settled ticker.
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(404, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+
+        # A 4xx answered at the application layer, so the source is reachable
+        # and the circuit must be usable again.
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"market": {}})
+        ) as after:
+            resp = kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert resp.status_code == 200
+        # Positive control: the request actually went out. Without it, a
+        # CircuitOpenError raised before _SESSION.request would have to be
+        # caught to fail this test, and a wedged circuit would look like a
+        # missing assertion rather than a failure.
+        after.assert_called_once()
+        assert not pub.is_open()
+
+    def test_a_5xx_probe_still_reopens(self, fresh_breakers):
+        """Positive control: record_reachable must not have turned every
+        failed probe into a recovery."""
+        import requests
+
+        import kalshi_client as kc
+        from circuit_breaker import CircuitOpenError
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        self._open_then_half_open(pub)
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+
+        # record_failure() re-armed the circuit using _current_timeout, which
+        # the setup above zeroed to force the probe. Restore a real window so
+        # the next call is a normal blocked caller rather than another probe.
+        pub._current_timeout = 60
+        assert pub.is_open()
+        with patch.object(kc._SESSION, "request") as blocked:
+            with pytest.raises(CircuitOpenError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        blocked.assert_not_called()
+
+    def test_a_4xx_on_a_closed_circuit_still_records_nothing(self, fresh_breakers):
+        """record_reachable's other half: while CLOSED it must be a no-op, or
+        it would re-introduce the streak-zeroing this batch removed."""
+        import requests
+
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(503, None)):
+            for _ in range(4):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 4
+        assert not pub.is_open()
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(403, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 4
+
+
+class TestBreakerIsolationIsSymmetric:
+    """Round-2 review, L-6: only private -> public was pinned. The guarantee
+    is meant to hold both ways."""
+
+    def test_open_public_breaker_still_allows_a_private_get(self, fresh_breakers):
+        import kalshi_client as kc
+        from circuit_breaker import CircuitOpenError
+
+        pub = kc._select_breaker("GET", _PUB_URL)
+        for _ in range(5):
+            pub.record_failure()
+        assert pub.is_open()
+
+        # Positive control: the public breaker really is refusing calls.
+        with patch.object(kc._SESSION, "request") as blocked:
+            with pytest.raises(CircuitOpenError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        blocked.assert_not_called()
+
+        with patch.object(
+            kc._SESSION, "request", return_value=_cb_resp(200, {"balance": 1000})
+        ) as allowed:
+            resp = kc._request_with_retry("GET", _PRIV_URL, check_error_body=True)
+        assert resp.status_code == 200
+        allowed.assert_called_once()
+
+
+class TestRateLimitTripsTheBreaker:
+    """Round-2 review, M-2. 429 is the one 4xx that is a real infrastructure
+    signal. Getting it wrong failed BOTH ways: 50 consecutive 429s never
+    tripped the breaker, and one 429 landing on the HALF-OPEN probe CLOSED a
+    breaker a genuine 5xx outage had opened."""
+
+    def test_persistent_429s_trip_the_breaker(self, fresh_breakers):
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(429, None)):
+            for _ in range(5):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        assert pub.failure_count == 5
+        assert pub.is_open()
+
+    def test_a_429_probe_does_not_close_an_open_circuit(self, fresh_breakers):
+        """The dangerous half: a recovering bot being rate-limited must not
+        read the throttle as 'the source is back'."""
+        import kalshi_client as kc
+        from circuit_breaker import CircuitOpenError
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        for _ in range(5):
+            pub.record_failure()
+        pub.recovery_timeout = 0
+        pub._current_timeout = 0
+        # Deliberately NOT calling is_open() to "check" first: is_open() is the
+        # mutator that designates the probe caller, so asserting on it here
+        # would consume the probe and the request below would just get
+        # CircuitOpenError. The request under test must BE the probe.
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(429, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+
+        pub._current_timeout = 60
+        assert pub.is_open()
+        with patch.object(kc._SESSION, "request") as blocked:
+            with pytest.raises(CircuitOpenError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+        blocked.assert_not_called()
+
+    def test_a_404_probe_still_closes(self, fresh_breakers):
+        """Discriminating control: the 429 and auth-failure rules must be
+        specific, not have turned every 4xx back into a failure.
+        record_reachable's whole purpose is that an ordinary 4xx probe -- a
+        404 on a settled ticker is routine here -- still releases the
+        circuit."""
+        import kalshi_client as kc
+
+        pub = fresh_breakers["_kalshi_cb_read"]
+        for _ in range(5):
+            pub.record_failure()
+        pub.recovery_timeout = 0
+        pub._current_timeout = 0
+
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(404, None)):
+            with pytest.raises(requests.HTTPError):
+                kc._request_with_retry("GET", _PUB_URL, check_error_body=True)
+
+        pub._current_timeout = 60
+        assert not pub.is_open()
+
+    def test_persistent_401s_trip_the_private_breaker(self, fresh_breakers):
+        """The deliberate later decision, pinned on its own: five consecutive
+        auth failures shed load on /portfolio/*. Without this the exposure is
+        ~60 futile 401s per cycle, because
+        order_executor._resolve_live_balance caches only successes."""
+        import kalshi_client as kc
+
+        priv = fresh_breakers["_kalshi_cb_private_read"]
+        with patch.object(kc._SESSION, "request", return_value=_cb_resp(403, None)):
+            for _ in range(5):
+                with pytest.raises(requests.HTTPError):
+                    kc._request_with_retry("GET", _PRIV_URL, check_error_body=True)
+        assert priv.failure_count == 5
+        assert priv.is_open()
+
+
+class TestBreakerRoutingEdgeCases:
+    """Round-2 review, M-5: three mutations survived because the stated safety
+    properties had no regression pin -- the trailing slash, the use of
+    parsed.path rather than the raw URL, and the host-before-method ordering.
+    """
+
+    def test_a_city_literally_named_portfolio_stays_on_the_public_breaker(
+        self, fresh_breakers
+    ):
+        """_PRIVATE_PATH_MARKER's trailing slash IS the safety argument.
+        get_live_weather_index validates `city` with [a-zA-Z]{1,32}, which --
+        unlike the uppercase-only _TICKER_RE -- can spell "portfolio". It is
+        safe only because the segment is terminal, so there is no trailing
+        slash to match. Dropping the slash from the marker misroutes it."""
+        import kalshi_client as kc
+
+        url = kc.PROD_BASE + "/live_data/weather/portfolio"
+        assert kc._select_breaker("GET", url) is fresh_breakers["_kalshi_cb_read"]
+
+    def test_portfolio_in_a_query_string_does_not_misroute(self, fresh_breakers):
+        """_select_breaker reads parsed.path, not the raw URL. requests passes
+        params separately so a query cannot normally reach it, but matching
+        against the whole URL would make that a latent misroute."""
+        import kalshi_client as kc
+
+        url = kc.PROD_BASE + "/markets?series_ticker=/portfolio/x"
+        assert kc._select_breaker("GET", url) is fresh_breakers["_kalshi_cb_read"]
+
+    def test_a_post_to_a_non_kalshi_host_is_also_unguarded(self, fresh_breakers):
+        """The docstring claims the host check comes first so no non-Kalshi
+        request is guarded 'on any method'. Only the GET case was pinned, so
+        moving the host check after the method check survived."""
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker("POST", "https://api.pirateweather.net/forecast/K/1,2")
+            is None
+        )
+
+    def test_a_portfolio_path_on_a_non_kalshi_host_is_unguarded(self, fresh_breakers):
+        import kalshi_client as kc
+
+        assert (
+            kc._select_breaker("GET", "https://evil.example/portfolio/balance") is None
+        )
+
+
+class TestClockSkewStateMachine:
+    """Round-2 review, M-4/L-1/L-2: the retry bound, the
+    do-not-consume-the-flag-on-failure rule, the no-retry session, the 5s
+    timeout and the naive-datetime guard were all free parameters."""
+
+    def test_a_failed_probe_does_not_consume_the_once_flag(self, monkeypatch):
+        import kalshi_client as kc
+
+        TestClockSkew._reset(monkeypatch)
+        results = [None, 2.0]
+        calls = []
+
+        def _measure(*a, **kw):
+            calls.append(a)
+            return results.pop(0)
+
+        monkeypatch.setattr(kc, "measure_clock_skew", _measure)
+
+        assert kc.check_clock_skew_once(kc.PROD_BASE) is None  # unmeasurable
+        # The retry is the whole point: a cold start after a long shutdown is
+        # both when skew is largest and when the NIC may not be up yet.
+        assert kc.check_clock_skew_once(kc.PROD_BASE) == 2.0
+        assert len(calls) == 2
+        # Now it IS consumed.
+        assert kc.check_clock_skew_once(kc.PROD_BASE) is None
+        assert len(calls) == 2
+
+    def test_repeated_failures_stop_at_the_attempt_cap(self, monkeypatch):
+        import kalshi_client as kc
+
+        TestClockSkew._reset(monkeypatch)
+        calls = []
+        monkeypatch.setattr(
+            kc, "measure_clock_skew", lambda *a, **kw: calls.append(a) or None
+        )
+
+        for _ in range(10):
+            assert kc.check_clock_skew_once(kc.PROD_BASE) is None
+        assert len(calls) == kc._CLOCK_SKEW_MAX_ATTEMPTS
+
+    def test_skew_session_has_no_retry_budget(self):
+        """_SESSION carries Retry(total=3, backoff_factor=1.0); inheriting it
+        put up to ~46s of blocking inside KalshiClient.__init__."""
+        import kalshi_client as kc
+
+        retries = kc._SKEW_SESSION.get_adapter("https://x").max_retries
+        assert retries.total == 0
+        assert retries.connect == 0
+        assert retries.read == 0
+        # Positive control: the main session deliberately still HAS one, so
+        # this asserts a difference rather than a global absence.
+        assert kc._SESSION.get_adapter("https://x").max_retries.total > 0
+
+    def test_probe_passes_the_short_timeout(self, monkeypatch):
+        import kalshi_client as kc
+
+        seen = {}
+
+        def _get(url, **kw):
+            seen.update(kw)
+            resp = MagicMock()
+            resp.headers = {"Date": TestClockSkew._date_hdr(1_800_000_000)}
+            return resp
+
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", _get)
+        kc.measure_clock_skew(kc.PROD_BASE, now=lambda: 1_800_000_000.0)
+        assert seen["timeout"] == kc._CLOCK_SKEW_TIMEOUT
+        assert kc._CLOCK_SKEW_TIMEOUT <= 10.0
+
+    def test_an_obsolete_minus_zero_zone_is_read_as_utc(self, monkeypatch):
+        """parsedate_to_datetime returns a NAIVE datetime for RFC 5322's
+        obsolete "-0000", and .timestamp() would then read it as LOCAL time --
+        a phantom skew of the machine's whole UTC offset, firing a false
+        operator alert. formatdate(usegmt=True) always emits "GMT", so only a
+        literal header reaches this branch."""
+        import kalshi_client as kc
+
+        resp = MagicMock()
+        resp.headers = {"Date": "Tue, 26 Aug 2026 00:28:00 -0000"}
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", lambda *a, **kw: resp)
+
+        import calendar
+        import time as _t
+
+        epoch = calendar.timegm(_t.strptime("2026-08-26 00:28:00", "%Y-%m-%d %H:%M:%S"))
+        skew = kc.measure_clock_skew(kc.PROD_BASE, now=lambda: epoch + 0.5)
+        assert skew == 0.0
+
+    def test_an_absurd_age_header_is_ignored(self, monkeypatch):
+        """Round-2 L-6: Age was added back unbounded. An intermediary that
+        serves a REFRESHED Date *and* an Age double-counts, so Age=3600 would
+        report the clock an hour behind and alert on it. /exchange/status
+        sends Cache-Control: max-age=1, so any large Age is not a real
+        staleness signal."""
+        import kalshi_client as kc
+
+        resp = MagicMock()
+        resp.headers = {
+            "Date": TestClockSkew._date_hdr(1_800_000_000),
+            "Age": "3600",
+        }
+        monkeypatch.setattr(kc._SKEW_SESSION, "get", lambda *a, **kw: resp)
+        skew = kc.measure_clock_skew(kc.PROD_BASE, now=lambda: 1_800_000_000.5)
+        assert skew == 0.0
+
+
+class TestRecordReachablePersists:
+    """Round-2 review, L-3: dropping record_reachable's _save_state() left the
+    tests green, but a 4xx-probe-closed circuit would then persist opened_at
+    non-null and a restarted process would reload it as OPEN -- the same
+    blackout, one restart later."""
+
+    def test_closing_via_a_probe_is_persisted(self, tmp_path, monkeypatch):
+        import json
+
+        import circuit_breaker as cbmod
+        from circuit_breaker import CircuitBreaker
+
+        state_path = tmp_path / ".cb_state.json"
+        monkeypatch.setattr(cbmod, "_CB_STATE_PATH", state_path)
+
+        cb = CircuitBreaker(
+            name="persist_probe", failure_threshold=5, recovery_timeout=0
+        )
+        for _ in range(5):
+            cb.record_failure()
+        # Positive control: the OPEN state really did reach disk, so the
+        # cleared state below is a second write and not a missing file.
+        assert json.loads(state_path.read_text())["persist_probe"]["opened_at"]
+
+        assert not cb.is_open()  # designates this caller as the probe
+        cb.record_reachable()
+
+        saved = json.loads(state_path.read_text())["persist_probe"]
+        assert saved["opened_at"] is None
+        assert saved["failure_count"] == 0

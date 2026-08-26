@@ -5,7 +5,10 @@ Kalshi API client with RSA-PSS authentication.
 import base64
 import logging
 import re
+import threading
 import time
+from collections.abc import Callable
+from datetime import UTC
 from pathlib import Path
 
 import requests
@@ -88,13 +91,53 @@ def compute_client_order_id(
     return hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
 
 
-# Separate circuit breakers so read failures don't block order placement.
+# Separate circuit breakers so read failures don't block order placement, and
+# so an account-private fault can't disable public market data.
+#
+# batch-77: there used to be ONE read breaker for every GET. Observed live
+# 2026-08-26 00:28 UTC -- a 41.4s clock skew made Kalshi reject signed
+# requests (header_timestamp_expired); the resulting 401s on
+# /portfolio/balance and /portfolio/positions opened 'kalshi_api_read', and
+# for the rest of that cron cycle every market-data read raised CircuitOpen
+# too. paper.check_paper_position_exits could then price 0 of 8 open
+# positions, so no stop-loss could fire on any of them, and
+# get_unrealized_pnl_paper reported $0.00 unrealized into the daily-loss
+# gate -- the bot read "no loss" precisely because it was blind.
+#
+# The split is by PATH PREFIX, not by _get()'s `auth` kwarg. Every
+# market-data read in this file passes auth=True today (18997527,
+# 2026-04-13, "endpoints that now require authentication"), so an auth-flag
+# split would have put get_market on the private breaker and changed nothing
+# about the failure above. /portfolio/ vs not is the axis that actually
+# separates "this account's credentials are bad" from "the exchange's public
+# market data is down".
 _kalshi_cb_read = CircuitBreaker(
     name="kalshi_api_read", failure_threshold=5, recovery_timeout=60
+)
+_kalshi_cb_private_read = CircuitBreaker(
+    name="kalshi_api_private_read", failure_threshold=5, recovery_timeout=60
 )
 _kalshi_cb_write = CircuitBreaker(
     name="kalshi_api_write", failure_threshold=5, recovery_timeout=60
 )
+
+# Account-private REST prefix. Substring rather than startswith because
+# _request_with_retry sees a full URL whose path carries the API-version
+# prefix too (/trade-api/v2/portfolio/balance).
+#
+# No market-data path can contain this by accident, and the guarantee rests
+# on the marker's TRAILING SLASH as much as on charsets. Of this file's four
+# interpolated segments, three (ticker, series_ticker, order_id) go through
+# _validate_ticker_format/_validate_order_id_format, and neither charset
+# admits "/" -- and _TICKER_RE is uppercase-only, so no ticker can spell
+# "portfolio" at all. The fourth is get_live_weather_index's `city`, which
+# has its own inline re.fullmatch(r"[a-zA-Z]{1,32}") and therefore CAN be
+# the literal lowercase "portfolio". It is harmless only because that
+# segment is terminal: "/live_data/weather/portfolio" has no trailing slash,
+# so the marker does not match. A future "/live_data/weather/{city}/hourly"
+# -shaped route would break that, and would need the check tightened to a
+# path-segment comparison.
+_PRIVATE_PATH_MARKER = "/portfolio/"
 
 
 def _check_key_permissions(key_path) -> None:
@@ -268,56 +311,140 @@ def _build_session() -> requests.Session:
 _SESSION = _build_session()
 
 
+def _select_breaker(method: str, url: str) -> CircuitBreaker | None:
+    """Pick the circuit breaker guarding this request, or None for a host this
+    module doesn't own.
+
+    Host first, then method, then path prefix:
+      non-Kalshi host       -> None               (unguarded here)
+      POST/PUT/PATCH/DELETE -> _kalshi_cb_write   (order placement)
+      GET  /portfolio/...   -> _kalshi_cb_private_read
+      GET  everything else  -> _kalshi_cb_read    (public market data)
+
+    The host check comes first so no non-Kalshi request is guarded by a Kalshi
+    breaker on any method. weather_markets.fetch_temperature_pirate_weather
+    imports this helper to reach api.pirateweather.net and already has its own
+    _pirate_cb (is_open() gate on entry, record_failure() in its except), so
+    routing it through a Kalshi breaker only cross-contaminated the two in both
+    directions: a Pirate Weather 5xx counted toward Kalshi's read breaker, and
+    an open Kalshi read breaker blocked the fallback weather source outright.
+    This helper's own docstring already claimed such callers were "unaffected";
+    that was only ever true of check_error_body, never of the breaker.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.hostname not in _KALSHI_HOSTS:
+        return None
+    if method.upper() in ("POST", "PUT", "PATCH", "DELETE"):
+        return _kalshi_cb_write
+    if _PRIVATE_PATH_MARKER in parsed.path:
+        return _kalshi_cb_private_read
+    return _kalshi_cb_read
+
+
 def _request_with_retry(
     method: str, url: str, *, check_error_body: bool = False, **kwargs
 ) -> requests.Response:
     """
     Call _SESSION.request with automatic retry via HTTPAdapter (#67).
     Falls back to latency logging for slow responses (#108).
-    Guarded by per-type circuit breakers: read failures don't block writes.
+    Guarded by per-type circuit breakers (see _select_breaker): read failures
+    don't block writes, an account-private fault doesn't block public market
+    data, and a non-Kalshi host isn't guarded here at all.
 
-    check_error_body: if True, a 200 response whose JSON body is a dict with a
+    check_error_body: if True, a 2xx response whose JSON body is a dict with a
     top-level "error" key counts as a circuit-breaker failure too (Kalshi's own
     convention -- see KalshiClient._check_error_body). Must be decided here,
     before record_success()/record_failure() runs -- record_success() zeroes
     the failure count, so a caller that re-checks the body afterward and calls
     record_failure() itself can never accumulate past 1 failure, and the
     breaker would never trip on a persistent 200-with-error-body degradation.
-    Off by default so other callers of this shared helper (e.g.
-    weather_markets.py's Pirate Weather fetch, which has its own separate
-    breaker) are unaffected.
+    Off by default so other callers of this shared helper don't opt into it
+    accidentally.
     """
     # Apply default timeout if caller didn't specify one
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
 
-    _cb = (
-        _kalshi_cb_write
-        if method.upper() in ("POST", "PUT", "PATCH", "DELETE")
-        else _kalshi_cb_read
-    )
-    if _cb.is_open():
+    _cb = _select_breaker(method, url)
+    if _cb is not None and _cb.is_open():
         raise CircuitOpenError(_cb.name)
 
     _t0 = time.perf_counter()
     try:
         resp = _SESSION.request(method, url, **kwargs)
     except Exception as _exc:
-        _cb.record_failure()
+        if _cb is not None:
+            _cb.record_failure()
         raise
     # 5xx = infrastructure failure → trip the breaker.
-    # 4xx = client/auth error → not an infra failure, don't penalise the breaker.
-    _is_failure = resp.status_code >= 500
-    if not _is_failure and check_error_body:
+    # 4xx = client/auth/permission error → the breaker records NOTHING: it is
+    # neither the overload condition a breaker exists to back off from (so it
+    # must not trip one -- batch-77: six 401s from a clock skew took out every
+    # market-data read for a full cron cycle), nor evidence the source is
+    # healthy (so it must not call record_success(), which zeroes the failure
+    # count and could otherwise keep a genuine 5xx outage interleaved with
+    # auth errors from ever reaching failure_threshold).
+    _status = resp.status_code
+    # 429 is the ONE 4xx that is a genuine infrastructure signal, so it trips
+    # like a 5xx rather than taking the 4xx path below. This is not a
+    # walk-back of the 4xx exemption -- it is that exemption's own reasoning
+    # applied honestly: a 401/403 is exempt because backing off cannot fix a
+    # credential fault, and 429 is the exact case where backing off IS the
+    # remedy. Round-2 review demonstrated both halves of getting this wrong:
+    # 50 consecutive 429s never tripped the breaker, AND a single 429 landing
+    # on the HALF-OPEN probe CLOSED a breaker a real 5xx outage had opened --
+    # so a recovering bot being rate-limited would resume full traffic into
+    # the throttle and could never shed load again.
+    #
+    # By the time a 429 reaches this line, _SESSION's Retry (status_forcelist
+    # includes 429, respect_retry_after_header=True) has already exhausted its
+    # attempts on GET/DELETE, so this is persistent throttling rather than a
+    # single unlucky response. POST is not retried and arrives immediately,
+    # which is correct -- an order must not be auto-retried.
+    _is_failure = _status >= 500 or _status == 429
+    # check_error_body applies to 2xx ONLY, matching this parameter's own
+    # documented contract and _check_error_body's ("a 200 response"). Before
+    # batch-77 the guard was `not _is_failure`, i.e. every non-5xx -- and
+    # Kalshi's 401 body carries a top-level "error" key, which is the exact
+    # path by which the observed six 401s tripped the read breaker even
+    # though the status-code branch above already exempts 4xx.
+    if 200 <= _status < 300 and check_error_body:
         try:
             _body = resp.json()
         except ValueError:
             _body = None
         if isinstance(_body, dict) and "error" in _body:
             _is_failure = True
-    if _is_failure:
-        _cb.record_failure()
-    else:
-        _cb.record_success()
+    # 401/403 count as failures on the PRIVATE breaker only. Nothing about a
+    # credential fault says the exchange's public market data is unhealthy, so
+    # this must never reach _kalshi_cb_read or _kalshi_cb_write -- that
+    # coupling is the entire bug this batch exists to fix.
+    #
+    # Backing off does not FIX a credential or clock fault, which is why these
+    # are exempt everywhere else. What it does is stop hammering:
+    # order_executor._resolve_live_balance caches only successes and refetches
+    # on every exception, so without this a clock skew emits ~60 futile 401s
+    # per cycle indefinitely. The old shared breaker capped the 2026-08-26
+    # incident at 6 -- at the cost of taking market data down with it. This
+    # keeps the cap and drops the cost. The signal that actually diagnoses the
+    # fault is check_clock_skew_once, not this.
+    _auth_failure = _status in (401, 403) and _cb is _kalshi_cb_private_read
+
+    if _cb is not None:
+        if _is_failure or _auth_failure:
+            _cb.record_failure()
+        elif _status < 400:
+            _cb.record_success()
+        else:
+            # 4xx: record_reachable() rather than nothing at all. While the
+            # circuit is closed it IS nothing (the point above). But when this
+            # call was the HALF-OPEN probe, recording neither outcome would
+            # leave CircuitBreaker._half_open set with no code path that ever
+            # clears it -- is_open() would then block every later caller for
+            # the life of the process, which is the same market-data blackout
+            # this batch exists to remove. See record_reachable's docstring.
+            _cb.record_reachable()
     _elapsed = time.perf_counter() - _t0
     # #108: warn on slow API responses so latency issues are visible
     if _elapsed > 5:
@@ -342,6 +469,232 @@ def _request_with_retry(
 
 PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
+
+
+def _kalshi_hosts() -> frozenset[str]:
+    """Hosts _select_breaker() will guard. Derived from the two base URLs
+    above rather than hardcoded, so a base-URL change can't silently leave
+    requests unguarded."""
+    from urllib.parse import urlparse
+
+    return frozenset(
+        h for h in (urlparse(PROD_BASE).hostname, urlparse(DEMO_BASE).hostname) if h
+    )
+
+
+# Bound at import; _select_breaker() reads it at call time, so its definition
+# appearing earlier in the file than this line is fine.
+_KALSHI_HOSTS = _kalshi_hosts()
+
+
+# ── Clock-skew startup check (batch-77) ──────────────────────────────────────
+#
+# Every signed request embeds a millisecond timestamp from the local clock
+# (_sign_headers), and Kalshi rejects one that has drifted too far with
+# {"error": {"code": "header_timestamp_expired", ...}}. On 2026-08-26 that is
+# exactly what happened: W32Time was Stopped and Manual-start, the RTC
+# free-ran ~0.35s/day (~4ppm -- a healthy crystal, simply never corrected)
+# across the 117.7 days since the last good sync, and the resulting 41.4s
+# offset made every authenticated call 401.
+#
+# Drift accrues on CALENDAR time, and this machine runs intermittently (it was
+# powered off May through 2026-08-25), so the exposure is front-loaded to a
+# cold start after a gap rather than creeping up during a run. Hence a
+# once-per-process check at client construction rather than a periodic one.
+#
+# Deliberately does NOT block. It logs at ERROR and alerts. With the breaker
+# split and the 4xx fix above, a skew now costs authenticated calls only --
+# market data, and therefore stop-loss, keeps working -- and this repo has no
+# measurement of Kalshi's real acceptance window, so refusing to sign above a
+# guessed threshold could break authentication that would have succeeded.
+_CLOCK_SKEW_WARN_SECS = 15.0
+_CLOCK_SKEW_TIMEOUT = 5.0
+# A probe that cannot complete is retried on the next keyed construction, but
+# not forever -- a permanently offline machine must not pay for it every time.
+_CLOCK_SKEW_MAX_ATTEMPTS = 3
+# Age compensation is only credible up to this many seconds -- see
+# measure_clock_skew. Generous next to /exchange/status's max-age=1.
+_MAX_TRUSTED_AGE_SECS = 60.0
+_clock_skew_checked = False
+_clock_skew_attempts = 0
+_clock_skew_lock = threading.Lock()
+
+
+def _build_skew_session() -> requests.Session:
+    """A session with NO retry policy, used only by the clock-skew probe.
+
+    _SESSION carries Retry(total=3, backoff_factor=1.0,
+    respect_retry_after_header=True), so a bad day there is 4 attempts x
+    DEFAULT_TIMEOUT plus 0+2+4s of backoff -- tens of seconds of blocking, and
+    unbounded if a 429 carries a large Retry-After. That would run inside
+    KalshiClient.__init__, i.e. before the process does any work at all, and
+    "Kalshi is unreachable" is exactly when it would trigger. Retries buy
+    nothing here: measure_clock_skew's interval arithmetic already tolerates a
+    slow response, and a probe that cannot answer promptly is one this process
+    should simply skip.
+    """
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        max_retries=Retry(total=0, read=0, connect=0, status=0, redirect=0)
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+_SKEW_SESSION = _build_skew_session()
+
+
+def measure_clock_skew(
+    base_url: str,
+    timeout: float | None = None,
+    *,
+    now: Callable[[], float] = time.time,
+) -> float | None:
+    """Return local_clock - server_clock in seconds, or None if unmeasurable.
+
+    Unauthenticated GET /exchange/status (200 on both PROD and DEMO with no
+    credentials, verified 2026-08-26), read purely for its Date header. Goes
+    through _SKEW_SESSION rather than _request_with_retry, so a failed probe
+    can never record against a circuit breaker and never inherits _SESSION's
+    retry/backoff budget.
+
+    The server's instant is only known to lie somewhere in [t0, t1] around the
+    round trip, so the skew reported is the distance from that INTERVAL, not
+    from a single point -- a slow response can only ever shrink the reported
+    skew, never manufacture it. Date is whole-second, so a further 1s of slack
+    is allowed on the late side.
+
+    The Age correction is defensive, not observed: checked live 2026-08-26, a
+    CloudFront hit on this endpoint returned a REFRESHED Date and no Age
+    header at all. If some cache ever does preserve an origin Date alongside
+    an Age, adding it back is the correct compensation; either way
+    /exchange/status sends Cache-Control: max-age=1, which bounds the whole
+    question to about 1s -- far below _CLOCK_SKEW_WARN_SECS.
+
+    `now` is injectable purely so tests can pin the clock without patching the
+    stdlib `time` module process-wide (which would also freeze
+    circuit_breaker's burst-window logic and every log record's timestamp).
+
+    On the cost of being wrong about this: `timeout` is NOT a hard ceiling on
+    wall time. requests applies it separately to connect and to read (so ~2x
+    per attempt) and it does not cover DNS resolution at all -- getaddrinfo is
+    blocking and untimed. The honest bound per attempt is roughly 2x timeout
+    plus the OS resolver's own timeout, and check_clock_skew_once may make
+    _CLOCK_SKEW_MAX_ATTEMPTS of them over a process lifetime. That is a large
+    improvement on inheriting _SESSION's retry budget (4 attempts plus 0+2+4s
+    of backoff, unbounded with a large Retry-After), but KalshiClient.__init__
+    went from zero network to some, which is the real tradeoff.
+    """
+    from email.utils import parsedate_to_datetime
+
+    # Resolved at CALL time, not bound as a def-time default: a default
+    # evaluated at import cannot follow a later patch of the constant, which
+    # is the same attr-vs-value trap that makes env-derived module constants
+    # untestable via setenv elsewhere in this repo.
+    if timeout is None:
+        timeout = _CLOCK_SKEW_TIMEOUT
+
+    try:
+        t0 = now()
+        resp = _SKEW_SESSION.get(base_url + "/exchange/status", timeout=timeout)
+        t1 = now()
+        date_header = resp.headers.get("Date")
+        if not date_header:
+            return None
+        server_dt = parsedate_to_datetime(date_header)
+        if server_dt.tzinfo is None:
+            # RFC 5322 allows the obsolete "-0000" zone, and a zone-less or
+            # -0000 Date makes parsedate_to_datetime return a NAIVE datetime
+            # whose .timestamp() would be read as LOCAL time -- a phantom skew
+            # of the machine's whole UTC offset (4h here). CloudFront sends
+            # "GMT", so this is latent rather than live, but a phantom 4h skew
+            # would fire a false operator alert.
+            server_dt = server_dt.replace(tzinfo=UTC)
+        server_ts = server_dt.timestamp()
+        try:
+            _age = float(resp.headers.get("Age", 0) or 0)
+            # Bounded. Unbounded, an intermediary that serves a REFRESHED Date
+            # *and* an Age (a corporate/ISP proxy may; CloudFront was measured
+            # to refresh Date and omit Age) double-counts, so Age=3600 would
+            # report the clock an hour behind and fire a false operator alert.
+            # /exchange/status sends Cache-Control: max-age=1, so a large Age
+            # is never a real staleness signal from this endpoint.
+            if 0 <= _age <= _MAX_TRUSTED_AGE_SECS:
+                server_ts += _age
+        except (TypeError, ValueError):
+            pass
+        if t1 < server_ts:
+            return t1 - server_ts  # local clock is behind (negative)
+        if t0 > server_ts + 1.0:
+            return t0 - (server_ts + 1.0)  # local clock is ahead (positive)
+        return 0.0
+    except Exception as exc:
+        _log.debug("measure_clock_skew: probe failed: %s", exc)
+        return None
+
+
+def check_clock_skew_once(base_url: str) -> float | None:
+    """Run measure_clock_skew() at most once per process; ERROR + alert past
+    _CLOCK_SKEW_WARN_SECS. Returns the measured skew, or None if it was
+    already checked or could not be measured.
+
+    Never raises: a client must still be constructible with no network, which
+    is also what keeps this inert under the test suite's outbound-network
+    guard.
+
+    "Retried on the next keyed construction" is load-bearing for `cron` (one
+    process per run, so the next run retries) but nearly vacuous for the
+    long-lived modes: `main.py loop` and web_app.py build one client at
+    startup and reuse it, so a single failed probe there means no skew check
+    for the life of that process. tracker's settlement client offers at most
+    one more chance, and only if settlement runs. A periodic re-check for
+    loop mode is a reasonable follow-up; it is deliberately not in this batch,
+    whose scope is the blast radius rather than the root cause.
+    """
+    global _clock_skew_checked, _clock_skew_attempts
+    with _clock_skew_lock:
+        if _clock_skew_checked or _clock_skew_attempts >= _CLOCK_SKEW_MAX_ATTEMPTS:
+            return None
+        _clock_skew_attempts += 1
+
+    skew = measure_clock_skew(base_url)
+    if skew is None:
+        # Deliberately does NOT consume the once-flag. The headline case this
+        # check exists for is a cold start after a long shutdown (117 days, in
+        # the 2026-08-26 incident) -- both when skew is largest and when the
+        # NIC is most likely not up yet. Burning the single attempt on a probe
+        # that never reached the network would silently disable the feature in
+        # exactly its own worst case. _CLOCK_SKEW_MAX_ATTEMPTS still bounds it.
+        _log.debug("check_clock_skew_once: unmeasurable, will retry once more")
+        return None
+    with _clock_skew_lock:
+        _clock_skew_checked = True
+    if abs(skew) < _CLOCK_SKEW_WARN_SECS:
+        _log.debug("Clock skew vs Kalshi: %+.1fs", skew)
+        return skew
+
+    msg = (
+        f"Local clock is {abs(skew):.1f}s "
+        f"{'ahead of' if skew > 0 else 'behind'} Kalshi's. Signed requests "
+        f"may be rejected with header_timestamp_expired, which disables every "
+        f"authenticated call (balance, positions, fills, order placement). "
+        f"Fix: start the w32time service and resync (Windows: "
+        f"`w32tm /resync`)."
+    )
+    _log.error("CLOCK SKEW: %s", msg)
+    try:
+        from notify import send_system_alert
+
+        send_system_alert(
+            "Kalshi clock skew detected",
+            msg,
+            cooldown_key="clock_skew",
+        )
+    except Exception as exc:
+        _log.debug("check_clock_skew_once: alert failed: %s", exc)
+    return skew
+
 
 # AUD-0076: ticker/series_ticker strings get interpolated straight into REST
 # path segments (get_market, get_orderbook, get_candlesticks). No SSRF risk
@@ -547,6 +900,17 @@ class KalshiClient:
                     f.read(), password=None
                 )
 
+        # batch-77: only when this client can actually sign -- a keyless client
+        # never sends a timestamp, so its clock cannot be rejected. Gated on
+        # _private_key rather than run unconditionally so every test that
+        # constructs a keyless client skips the probe entirely; for the ones
+        # that do carry a key (main.build_client()'s 6 AST-counted call sites,
+        # plus tracker.py's settlement client and web_app.py's standalone
+        # client) check_clock_skew_once() collapses the rest to a single
+        # measurement per process.
+        if self._private_key is not None:
+            check_clock_skew_once(self.base_url)
+
     def _sign_headers(self, method: str, path: str) -> dict:
         """Build signed auth headers for authenticated endpoints."""
         if not self._private_key or not self.key_id:
@@ -629,7 +993,23 @@ class KalshiClient:
                 actual,
             )
 
-    # ── Public endpoints (no auth needed) ────────────────────────────────────
+    # ── Market-data endpoints (public data, but sent SIGNED) ─────────────────
+    #
+    # The header here used to read "Public endpoints (no auth needed)", which
+    # has been false since 18997527 (2026-04-13) switched these to auth=True.
+    # Everything below returns public market data, and all of it still returns
+    # 200 to a completely unauthenticated request (checked live 2026-08-26) --
+    # but this client signs it anyway, so `auth=False` describes exactly one
+    # method in this file, get_live_weather_index.
+    #
+    # batch-77: the stale header is worth calling out because it produced a
+    # wrong root-cause twice. Signing these does NOT expose them to a clock
+    # skew: Kalshi ignores an expired KALSHI-ACCESS-TIMESTAMP on market data
+    # and only enforces it on /portfolio/. Measured in the 2026-08-26 00:28
+    # incident from data/predictions.db.api_requests -- across the skew
+    # window, /markets* returned 200 on all 83 requests while /portfolio*
+    # returned 401 on all 8, interleaved within the same 250ms. That is also
+    # why _select_breaker splits on the PATH, not on this `auth` flag.
 
     def get_markets(self, **params) -> list[dict]:
         """Fetch every open market page via cursor pagination.
@@ -969,6 +1349,20 @@ class KalshiClient:
             return None
         return data
 
+    # ── Account-private endpoints (/portfolio/*) ─────────────────────────────
+    #
+    # The market-data header above ends HERE, not at the "Authenticated
+    # endpoints" divider further down. get_fills, get_order_queue_position and
+    # get_bulk_queue_positions are all /portfolio/* — account-private, not
+    # public, and _select_breaker routes them to _kalshi_cb_private_read.
+    #
+    # batch-77 (round-2 review, M-3): the previous header spanned this far and
+    # claimed everything beneath it "returns 200 to a completely
+    # unauthenticated request", which is false for these three. The
+    # mis-scoping is older than this batch — the original "Public endpoints (no
+    # auth needed)" header had the same boundary — but the rewritten text is
+    # the rationale a future reader will use to decide which breaker a new
+    # endpoint belongs on, so a wrong boundary there is worse than a vague one.
     def get_fills(self, **params) -> list[dict]:
         """GET /portfolio/fills -- every fill (partial or full match) on this
         account, cursor-paginated same as get_trades/get_positions/etc.
