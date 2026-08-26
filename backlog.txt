@@ -42327,7 +42327,7 @@ When to revisit:
 [OPEN 2026-08-26 -- the live decision list, consolidating the two measurement
   entries above. Kept as one entry so the options and the evidence for each do
   not drift apart. Update this entry rather than re-deriving it.]
-  PROJECT DIRECTION AFTER THE NO-EDGE RESULT -- THE FIVE REMAINING OPTIONS
+  PROJECT DIRECTION AFTER THE NO-EDGE RESULT -- THE REMAINING OPTIONS
 Priority: HIGH -- this is the decision every other open item now hangs off.
   Nothing in the backlog aimed at "improving edge" should start before it is
   taken.
@@ -42345,7 +42345,7 @@ re-proposed:
     needs. Its only real case was the user's own attention cost, and option 1
     covers that at the same price while preserving the option value.
 
-THE FIVE THAT REMAIN
+THE FOUR THAT REMAIN
 
  1. STOP DEVELOPMENT, KEEP MEASURING.
     For: zero risk, near-zero cost, data keeps accruing so the seasonal
@@ -42370,13 +42370,21 @@ THE FIVE THAT REMAIN
       0 rows, so there is ZERO measurement on the thing it depends on; needs
       real capital to test.
 
- 4. THIN / LESS-EFFICIENT MARKETS.
-    For: the no-edge finding is specific to daily temperature ladders where the
-      crowd is sharp; shadow models already exist for rain, snow, hurricane
-      count, storm order, tornado.
-    Against: wide spreads and low size make profit hard even with real edge,
-      and verification is glacial -- rain has 17 settled rows after months. A
-      year per family per answer.
+ [4. THIN / LESS-EFFICIENT MARKETS -- REMOVED by the user 2026-08-26, and the
+     data is more damning than the original "against" said. Measured on
+     analysis_attempts: ALL non-temperature families together hold 46 settled
+     rows, and 18 of those are KXTEMP (hourly temperature, not a different
+     family). The genuinely different families have 28 settled observations
+     between them -- rain 27, hurricane 1 -- and snow, tornado and storm-order
+     have ZERO. Against the 112-row floor batch-81 derived for a single
+     signal, this is not a slow path, it is not a path.
+     The deeper objection, which applies even if the data existed: the failure
+     measured on temperature was in the MODEL, not the market -- probabilities
+     compressed toward 0.5 (slope 1.233 vs the market's 1.107). The shadow
+     models were built by the same approach on far less data. There is no
+     reason to expect them better calibrated, and far less ability to detect
+     that they are not. The one family with any settled data points the same
+     way: rain model 0.1536 vs market 0.1405.]
 
  5. MODEL-FREE FAVOURITE-LONGSHOT CAPTURE.   <-- the only positive result
     For: needs no weather model at all. b = 1.4871 (z = +3.03 vs 1); held-out
