@@ -44,7 +44,26 @@ Landed 2026-08-25 (schema **v67**). The four writers and where their data goes:
 2. **`n_members` is not a member count.** `get_ensemble_temps()`/`batch_prewarm_ensemble()` replicate each model's members `repeats` times to express blend weights, so stored values read 138/238/258. A rank histogram built on it would be weight-distorted. Use `ensemble_member_values` instead.
 3. **`forecast_run_inits` is only populated when a fetch was actually observed.** An all-cache-hit scan records nothing rather than guessing a run time — that is deliberate, and 71 should filter on presence rather than assume every row has it.
 
-**Check real row counts before starting 70/71** rather than assuming a rate — A15b's half needs months, not days.
+**Check real row counts before starting 70/71** rather than assuming a rate.
+
+> **MEASURED 2026-08-26, and the answer changed twice in one day — do not trust any
+> rate estimate in this file, including this one, without re-querying.**
+>
+> Batch-64 landed 2026-08-25 08:46 UTC but **no scan ran until 2026-08-26 00:30 UTC**,
+> so for a full day all four writers held nothing and `ensemble_member_values` contained
+> only synthetic test rows leaked from outside pytest. Both are fixed. Current state:
+>
+> | writer | rows | usable for |
+> |---|---|---|
+> | W2 `ensemble_member_values` | **605 real**, 20 cities × 5 models, **4 distinct target_dates** | not yet A15b |
+> | W1 `predictions.forecast_run_inits` | **4** | A18's x-axis, thinly |
+> | W3 `predictions.blend_exclusions` | **4** | A3's staleness rule |
+> | W4 `orderbook_depth_snapshots` | **0** | nothing — needs the WS listener, i.e. live trading |
+>
+> So **batch 70 (A3 + A7) is startable** and **71's A18 half has an x-axis**, but
+> **71's A15b rank histogram is not** — 4 target_dates is days, and A15b needs months.
+> W1's low count is correct behaviour, not a bug: it records a run init only when a
+> fetch was actually observed, so an all-cache-hit scan writes nothing. — A15b's half needs months, not days.
 
 ## Parallel structure
 

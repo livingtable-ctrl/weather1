@@ -28272,8 +28272,6 @@ RESOLVED 2026-08-25 (batch-58 item 2):
   fail on it.
   Files: kalshi_ws.py, tests/test_kalshi_ws.py.
 
-[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix) while cross-checking the new ticker regex against every real ticker value in data/*.db, unrelated to any code in this batch's diff] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
-
 [RESOLVED 2026-08-24 -- batch-62 item 2; see resolution below.] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
 
 Priority: INFO -- data hygiene, not a code bug; confirmed these values are never passed to kalshi_client.get_market/get_orderbook/get_candlesticks (they'd fail the new ticker-format validation if they were). Round-2 review (F7) found the "no functional impact" framing was too strong, though: tracker.get_price_improvement_stats() (tracker.py:6600) runs `SELECT improvement FROM price_improvement` with no ticker filter at all, so these 6 rows DO skew the mean/median/count/positive_pct it surfaces to the dashboard -- confirmed by reading that function directly.
@@ -37200,9 +37198,12 @@ When to revisit:
   Before any signal is wired live on the strength of a cleared floor. If
   that is about to happen, this entry is the blocker.
 
-[OPEN 2026-08-25 -- found while answering "how long until this could
+[RESOLVED 2026-08-26 -- found while answering "how long until this could
   graduate to live trading?". The answer is dominated by one number, and
-  this entry is that number.] SETTLE analysis_attempts.outcome -- THE
+  this entry is that number. DRAINED 2026-08-26; see the RESOLUTION block at
+  the end of this entry. The title's "NEVER SCORED" was true when filed and
+  is now false -- 584 of 709 are scored. Kept verbatim for history.]
+  SETTLE analysis_attempts.outcome -- THE
   UNBIASED EVALUATION POPULATION IS ALREADY BEING LOGGED AND NEVER SCORED,
   WHICH IS THE ONLY REAL LEVER ON THE GRADUATION TIMELINE
 Priority: HIGH -- not a correctness bug; nothing is wrong in production.
@@ -37312,6 +37313,48 @@ When to revisit:
   Before any further work aimed at proving or improving edge. Every such
   measurement is currently running on the biased tail at 3.5 rows/day, and
   this is the single change that fixes both properties at once.
+
+RESOLUTION 2026-08-26 -- and the finding is that NO CODE WAS EVER NEEDED:
+  The sweep was ALREADY BUILT and ALREADY RUNNING.
+  tracker.settle_pending_attempt_tickers() is called from sync_outcomes()
+  every cron cycle under ATTEMPT_SETTLE_CAP_PER_SYNC, with a one-time drain
+  at `py main.py backfill-attempt-outcomes` (which defaults to a DRY RUN and
+  needs --run). This entry, and the audit/DATA_ACCRUAL_PLAN.md written from
+  it, both described it as work to be done. It was work being BLOCKED.
+
+  What blocked it: a 41.4s clock skew (W32Time Stopped and Manual-start, RTC
+  free-running ~0.35s/day over the 117.7 days since the last good sync, ~4ppm
+  -- a healthy crystal, simply never corrected). Kalshi rejected the signed
+  requests with header_timestamp_expired; five 401s tripped the SHARED
+  'kalshi_api_read' circuit breaker; and every settlement fetch after that
+  failed. The 00:28 UTC cron run reported exactly that:
+    sync_outcomes: analysis_attempts sweep settled=0 skipped=0 failed=25
+
+  After the clock was corrected, with no code change at all:
+    01:07 UTC cron cycle   -> settled=25 skipped=0 failed=0
+    one-time drain (--run) -> settled 469, skipped 9, failed 0, of 478
+  analysis_attempts scored rows went 115 -> 584 (82% of 709), a 5.1x
+  increase in about ten minutes. The 9 skipped are not-yet-finalized,
+  finalized <1h ago, or voided (voided is terminal and is not retried).
+
+  THE POINT OF THE ENTRY IS NOW DELIVERED, and it is the unbiased half that
+  matters more than the rate. Measured on the scored set after the drain:
+    min |forecast_prob - market_prob| = 0.0011   (predictions: 0.0984)
+    scored rows below the 0.08 edge floor = 138  (predictions: structurally 0)
+  Those 138 are markets the bot analysed and DECLINED to trade, now carrying
+  outcomes. Every model-vs-market statistic this repo has ever computed --
+  A14's headline included -- was computed on the high-conviction tail only.
+  It is now possible to ask whether the model has any skill on markets it did
+  not like, which is the question that separates "no edge anywhere" from
+  "edge exists but selection destroys it".
+
+  Remaining, and small: 125 attempts still unscored, mostly not yet settled.
+  The per-cycle sweep drains those on its own cadence; no further one-off.
+
+  Also fix while nearby (unchanged by this): get_model_vs_market_brier's
+  docstring caveat is BACKWARDS -- it warns the statistic is diluted by
+  markets where we broadly agreed with the mid, but `predictions` contains no
+  such rows at all. That correction is still outstanding.
 
 [OPEN 2026-08-25 -- reproduced on unmodified master while regression-testing the isolate_tracker_db change] tests/test_kelly_property.py has a hypothesis DeadlineExceeded flake under machine load
 Priority: LOW -- a timing-sensitive test, not a logic defect. Fails intermittently in local runs; would also fail intermittently in CI.
@@ -37556,8 +37599,11 @@ Plan:
   observation-labelled-as-a-forecast confusion batch-75 removed.
 
 
-[OPEN 2026-08-25 -- found by batch-75 while checking whether batch-64's
-  writers had accumulated any rows yet.] THE PRODUCTION predictions.db HOLDS
+[RESOLVED 2026-08-26 -- filed by batch-75 while checking whether batch-64's
+  writers had accumulated any rows yet; closed the next day by three sessions
+  working in parallel. See the RESOLUTION block at the end. The title's
+  "100% OF THAT TABLE" was true when filed and is now false -- kept verbatim
+  for history.] THE PRODUCTION predictions.db HOLDS
   SYNTHETIC TEST ROWS IN ensemble_member_values, AND THEY ARE 100% OF THAT
   TABLE
 Priority: Medium -- small today, but batches 70/71 are specified to read this
@@ -37595,6 +37641,31 @@ Plan:
   Related but separately owned: several TESTS also write into the real data/
   dir (including one that creates the production .kill_switch) -- that is its
   own spun-off task, not this entry.
+
+RESOLUTION 2026-08-26:
+  1. THE SYNTHETIC ROWS ARE GONE. The prod-data-guard session removed 30 and
+     kept 604, sqlite-backup snapshot first. Verified independently here:
+     ensemble_member_values holds 605 rows, 0 matching any synthetic
+     signature (run_init='RUN-X', arithmetic member arrays of step 1.0, or
+     values outside -70..140F).
+     METHOD NOTE WORTH KEEPING: that session's opus review recommended
+     deleting 37 rows by grouping on logged_at. Seven were GENUINE
+     SanFrancisco rows (n_members 30-50, real run_init) that merely shared a
+     batch with test rows. tracker.py's INSERT OR IGNORE against a unique key
+     means a real cron flush can insert as few as 3 rows, so batch size
+     carries NO signal. Separate on CONTENT, never on logged_at.
+  2. THE WRITERS ARE PRODUCING REAL DATA. The 00:30 UTC cron run wrote 597
+     genuine rows (e.g. Austin/gem_global, 20 members, [101.3, 99.9, ...],
+     real run_init), member counts 17-50 averaging 31.3, 20 cities, 5 models.
+     W1 forecast_run_inits and W3 blend_exclusions populated too (4 rows each
+     -- W1 only records when a fetch was observed, so an all-cache-hit scan
+     legitimately records nothing). W4 orderbook_depth_snapshots stays 0: it
+     is written from the WS listener thread, which needs live trading.
+  3. THE INDEX FILES were corrected in the same pass.
+  NOT closed by this, filed separately: the out-of-pytest write vector that
+  produced the rows (see the audit/reproductions/ entry). pytest itself is
+  now measured hermetic -- 10,324-file snapshot across 205 cmd_cron tests,
+  zero diffs, run twice.
 
 [OPEN 2026-08-25 -- surfaced while answering "how do we get more data faster".
   Full reasoning and the measured tables live in audit/DATA_ACCRUAL_PLAN.md.]
