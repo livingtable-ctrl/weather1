@@ -8314,6 +8314,7 @@ def cmd_walkforward(client: KalshiClient) -> None:
     # the original merged query since it isn't part of the multiday/sameday split.
     try:
         import sqlite3 as _sql
+        from contextlib import closing as _closing
 
         from tracker import DB_PATH as _DB_PATH
 
@@ -8326,25 +8327,58 @@ def cmd_walkforward(client: KalshiClient) -> None:
         # bucket and nothing is pooled -- the shadow exclusion would remove
         # rows without fixing any contamination.
         #
-        # Its 'between' drop IS questionable on its own terms: this is billed
-        # as a per-condition Brier breakdown, yet it omits one of the three
-        # temperature conditions, so 'between' never appears in a comparison
-        # whose whole purpose is per-condition. Left unchanged here (it alters
-        # `py main.py walkforward` output) and filed in backlog.txt as
-        # "CMD_WALKFORWARD'S PER-CONDITION BRIER SILENTLY DROPS 'BETWEEN'".
-        _calib_rows = (
-            _sql.connect(str(_DB_PATH))
-            .execute(
+        # 'between' is deliberately INCLUDED here, unlike every pooled Brier
+        # query in this codebase (batch-79 item 3). The shared exclusion in
+        # tracker._ALWAYS_EXCLUDED_CONDITION_TYPES exists for one stated
+        # reason: between-brackets carry a structurally larger calibration
+        # gap than above/below, which would distort a SHARED AGGREGATE Brier
+        # meant to stand for overall model quality. That reason cannot apply
+        # to this query, which groups by condition_type -- every family lands
+        # in its own bucket and no number is shared, so there is nothing for
+        # between's gap to distort. What the exclusion did instead was hide
+        # the finding. Measured 2026-08-26 over this exact query's rows,
+        # between is n=114 (33% of all settled rows, the second-largest
+        # bucket) at Brier 0.2794 -- worse than above (0.2498, n=131) and
+        # below (0.2657, n=78).
+        #
+        # Do NOT quote that 0.2794 as evidence about the CURRENT between
+        # implementation. 69 of those 114 rows are metar_lockout rows
+        # predicted before the 2026-08-09 re-enable
+        # (tracker._BETWEEN_METAR_REENABLED_AT), i.e. exactly the population
+        # batch-40's handoff said not to cite because it measures deleted
+        # code. The finding survives the split, which is why the predicate is
+        # gone rather than merely re-scoped: on the 45 rows that are NOT that
+        # population, between is Brier 0.2848 -- still the worst of the three
+        # -- predicting 28.4% against a 42.2% actual rate. The panel shows the
+        # unsplit number, so read it as "between is the weak one", never as a
+        # measurement of today's formula.
+        #
+        # This is not the only between-calibration surface in the CLI, and an
+        # earlier draft of this comment wrongly said it was.
+        # tracker.check_sameday_condition_type_weakness() emits a
+        # "SAMEDAY CONDITION-TYPE WEAKNESS: condition_type=between" line from
+        # cron.py, i.e. from `py main.py cron` -- and it filters the pre-
+        # re-enable rows that this panel deliberately does not. The two are
+        # complementary: that one is the clean-rows alert, this one is the
+        # whole-history comparison across conditions.
+        #
+        # This is the opposite call from tracker.get_station_bias_by_lead's,
+        # which keeps 'between' for a different reason (a °F error is an
+        # equally valid sample whatever the bracket shape). The two agree on
+        # the principle even though the quantities differ: apply the shared
+        # exclusion only where its own stated reason actually holds.
+        # closing(): this used to be a bare _sql.connect(...).execute(...)
+        # .fetchall() chain, which never closed the connection -- the handle
+        # was only reclaimed whenever CPython happened to collect it.
+        with _closing(_sql.connect(str(_DB_PATH))) as _calib_con:
+            _calib_rows = _calib_con.execute(
                 """
             SELECT p.our_prob, p.condition_type, o.settled_yes
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL OR p.condition_type != 'between')
             """
-            )
-            .fetchall()
-        )
+            ).fetchall()
 
         if len(_calib_rows) >= 10:
             from collections import defaultdict
@@ -8354,6 +8388,17 @@ def cmd_walkforward(client: KalshiClient) -> None:
                 _cond[_ct or "unknown"].append((float(_p), int(_a)))
             if len(_cond) > 1:
                 print(bold("\n  Per-condition Brier:"))
+                # The calibration curves above exclude 'between' and the
+                # shadow-only families (they go through tracker's shared
+                # exclusion); this panel includes both. The N columns are
+                # therefore not meant to reconcile between the two blocks,
+                # and without this line the difference just looks like a bug.
+                print(
+                    dim(
+                        "    (all condition types, including 'between' and "
+                        "shadow-only families — the curves above exclude both)"
+                    )
+                )
                 for _ct, _items in sorted(
                     _cond.items(),
                     key=lambda x: -sum((p - a) ** 2 for p, a in x[1]) / len(x[1]),
@@ -8369,7 +8414,10 @@ def cmd_walkforward(client: KalshiClient) -> None:
                         else green(f"{_b_ct:.4f}")
                     )
                     print(
-                        f"    {_ct:10s}  Brier={_b_str}  pred={_avg_p_ct:.1%}  actual={_avg_a_ct:.1%}  N={len(_items)}"
+                        # 18s, not 10s: 'precip_month_total' is 18 characters
+                        # and used to push every following column out of
+                        # alignment on its own row.
+                        f"    {_ct:18s}  Brier={_b_str}  pred={_avg_p_ct:.1%}  actual={_avg_a_ct:.1%}  N={len(_items)}"
                     )
     except Exception as _cal_exc2:
         _log.debug("cmd_walkforward: per-condition breakdown failed: %s", _cal_exc2)

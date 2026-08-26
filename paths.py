@@ -6,6 +6,9 @@ Path(__file__).parent so that paths resolve correctly when running from a
 git worktree (the worktree dir has no data/ files — only the main project does).
 """
 
+import os
+from pathlib import Path
+
 from safe_io import project_root as _project_root
 
 _ROOT = _project_root()
@@ -175,3 +178,107 @@ CRON_WEB_LOG_PATH = _DATA / "cron_web.log"
 # caught by tests/test_paths_bypass_guard.py's own tightened regex after a
 # bug in that guard's directory-exclusion logic was fixed.
 NWS_STATION_CACHE_PATH = _DATA / ".nws_station_cache.json"
+
+
+# ── First-run seeds ───────────────────────────────────────────────────────────
+# Five calibration files used to be force-tracked in git (`git add -f`, since
+# data/ is gitignored) purely so a fresh clone would have something to start
+# from. That made a routine `git restore .` or `git checkout -- data/` revert
+# learned calibration to the committed values with no warning, no error, and
+# nothing downstream noticing it was now running on a stale snapshot -- and
+# these files change on a normal cadence (the 2026-08-26 cron wrote
+# seasonal_weights.json via F3 auto-calibration). batch-79 item 2 untracked
+# them and moved the fresh-clone copies here instead: git no longer knows
+# about anything under data/, so no git command can revert live calibration.
+#
+# seeds/ is a frozen snapshot of what data/ held in git at untracking time,
+# byte for byte -- deliberately NOT a curated set of neutral defaults, so the
+# untracking commit changed only WHERE the bytes live and WHEN they are
+# applied, never what a fresh clone actually starts with. It is not
+# maintained: nothing writes back to it, and a running bot's calibration
+# diverges from it immediately and correctly.
+SEEDS_DIR = _ROOT / "seeds"
+
+_SEEDED_FILENAMES: tuple[str, ...] = (
+    "city_weights.json",
+    "condition_weights.json",
+    "metar_lockout_calibration.json",
+    "seasonal_weights.json",
+    "temperature_scale.json",
+)
+
+
+def materialize_missing_seeds(
+    seeds_dir: Path | None = None, data_dir: Path | None = None
+) -> list[str]:
+    """Copy each seed whose data/ counterpart is absent. Returns names copied.
+
+    Called once at import below, which is what gives this its coverage: every
+    module that READS one of these five files reaches paths.py at module
+    scope (calibration.py, ml_bias.py, weather_markets.py and web_app.py all
+    do `from paths import ...`), so no reader can run without this having run
+    first. That matters because the two loaders furthest from this file live
+    in weather_markets.py and ml_bias.py; seeding centrally here means none
+    of the five loaders needed changing, and none can be missed later.
+
+    Not every script in the repo imports paths -- backlog_index.py and
+    migrate_backup.py do not (measured; the earlier claim here that "every
+    entry point" does was simply wrong). Neither reads calibration, so the
+    coverage that matters is over READERS, not over entry points.
+
+    Never overwrites. An existing data/ file always wins, so this cannot
+    clobber learned calibration -- including on the merge that first lands
+    the untracking commit, where git removes the previously-tracked files
+    from the working tree and the next process restores them from seeds
+    byte-identically. (git refuses that merge outright if a file has local
+    modifications, so a genuinely diverged file is never silently dropped;
+    see LIVE_TRADING_RUNBOOK.md for the one-time operator step.)
+
+    Writes are ATOMIC, via a temp file plus os.link() onto the target rather
+    than open(dst, "xb") + write. That earlier form was exclusive but not
+    atomic, and the gap was not academic: the file exists from the moment of
+    open(), so a crash between open() and close() leaves a zero-length or
+    partial data/*.json that is never repaired, because materialization
+    never overwrites -- a silent, PERMANENT calibration loss, the exact
+    failure class this whole change exists to remove. A concurrent reader
+    could also observe the half-written file in that window. os.link raises
+    FileExistsError when the target is already there, so it provides the
+    exclusivity and the atomicity in one step, and the target only ever
+    appears fully-formed. Verified on NTFS (this machine) and on both CI
+    runners (ubuntu-latest and windows-latest, .github/workflows/ci.yml).
+
+    Every failure is per-file and swallowed -- a missing seeds/ dir, a
+    read-only data/, a concurrent creator, a filesystem without hard links,
+    a test guard that blocks writes under the real data/ -- because the
+    whole point of these files is to be optional. The catch is `Exception`,
+    not `OSError`: tests/prod_data_guard.py raises ProdDataWriteError, which
+    derives from RuntimeError, and letting that escape would fail the whole
+    suite at COLLECTION rather than reporting one violation. All five
+    loaders already treat an absent file as "uncalibrated" and return {} or
+    None, so the degraded outcome of this function doing nothing at all is a
+    correct, already-supported state, and never a reason to fail an import.
+    """
+    src_dir = SEEDS_DIR if seeds_dir is None else seeds_dir
+    dst_dir = DATA_DIR if data_dir is None else data_dir
+    copied: list[str] = []
+    for name in _SEEDED_FILENAMES:
+        tmp = dst_dir / f".{name}.seed-{os.getpid()}.tmp"
+        try:
+            payload = (src_dir / name).read_bytes()
+            with open(tmp, "wb") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.link(tmp, dst_dir / name)
+        except Exception:
+            continue  # seed absent, target already present, or write refused
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        copied.append(name)
+    return copied
+
+
+materialize_missing_seeds()

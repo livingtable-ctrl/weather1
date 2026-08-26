@@ -256,12 +256,17 @@ def required_gross_edge(
     screen does importlib.reload(utils), and tests monkeypatch it. It also
     matches kalshi_fee_rate_at, which reads its rate constants per call.
 
-    Separately, and NOT fixed here: a standalone `py web.py` server never calls
-    load_dotenv, so utils.MIN_EDGE is the 0.07 code default there while the
-    operator's .env sets 0.15 -- any panel rendering this default in that
-    process understates the requirement about 2x. That affects every
-    env-derived constant in that process, not just this one, so it is filed as
-    its own backlog entry rather than papered over here. Pass min_edge
+    That import-time freeze used to leave the dashboard process holding the
+    0.07 code default while the operator's .env set 0.15. Be precise about
+    what that did and did NOT do: nobody ever saw the 2x-understated number,
+    because a standalone `python web_app.py` raised RuntimeError out of
+    _build_app()'s auth gate before registering a single route -- see
+    web_app.py's load_dotenv() comment. The constant was wrong; the panel
+    rendering it never ran. FIXED at the bootstrap, not here (batch-79 item 1):
+    web_app.py now calls load_dotenv() before its first local import, the way
+    main.py:41 does, so both processes bind the same values. The freeze itself
+    is unchanged and still the thing to respect -- a load_dotenv() added
+    anywhere downstream of `import utils` remains a no-op. Pass min_edge
     explicitly if the caller knows the operative floor.
 
     Position note: this function sits ABOVE MIN_EDGE's own definition in this

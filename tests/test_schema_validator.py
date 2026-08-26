@@ -1,6 +1,6 @@
 """Tests for schema_validator.validate_weight_file /
 validate_temperature_scale_file -- batch-38 item L-6(schema): no schema
-validation existed for the tracked data/*.json weight files
+validation existed for the data/*.json weight files
 (city_weights/condition_weights/seasonal_weights/temperature_scale)."""
 
 from __future__ import annotations
@@ -228,8 +228,11 @@ class TestValidateTemperatureScaleFile:
 
 
 class TestLiveWeightFilesPassValidation:
-    """The actual purpose of item L-6(schema): assert the real, currently-
-    tracked data/*.json weight files pass the new validator. paths.py's
+    """The actual purpose of item L-6(schema): assert the real live
+    data/*.json weight files pass the new validator. (They were git-tracked
+    when this was written; batch-79 untracked them and paths.py now seeds
+    them from seeds/ on first import, so they are still present here and on
+    a fresh CI checkout.) paths.py's
     DATA_DIR resolves to the main clone's data/ regardless of which
     worktree this test runs in (project_root()'s worktree-detection), so
     this exercises the genuine production files, not a stale worktree

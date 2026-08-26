@@ -17,10 +17,51 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import request as _flask_request
 from markupsafe import escape as _html_escape
 
-from paths import (
+# Load .env HERE, before the first local import, exactly as main.py:41 does.
+# This module has a real standalone entry point (the __main__ block at the
+# bottom, `python web_app.py`) that does not go through main.py, and therefore
+# used to run with .env never read at all.
+#
+# Why the position matters more than the call: utils.py binds ~50 constants
+# with module-level float(os.getenv(...)) at import, and config.get_config()
+# caches its BotConfig singleton on first call. Both freeze for the life of
+# the process, so a load_dotenv() placed after them is a no-op that merely
+# looks like a fix -- measured 2026-08-26: load_dotenv() after `import utils`
+# leaves utils.MIN_EDGE at the 0.07 code default; before it, 0.15 from .env.
+# `import web_app` pulls in only paths + safe_io at module scope (utils and
+# config are imported lazily inside functions), so this call does precede
+# every env-derived binding today; tests/test_web_app.py's
+# TestStandaloneDotenvBootstrap pins that ordering so a future module-scope
+# `import utils` here cannot silently reintroduce the bug.
+#
+# What this changed for a standalone run. In utils and config specifically,
+# 15 constants moved off their code defaults onto the operator's configured
+# values (MIN_EDGE .07->.15, MAX_DAYS_OUT 5->3, MAX_DAILY_SPEND 500->200,
+# MAX_SAME_DAY_SPEND 500->400, BREAKEVEN_TRIGGER_PCT .30->.75, the KALSHI_*
+# credentials, and DASHBOARD_PASSWORD). Those two modules are NOT the whole
+# process, and the review of this change measured the rest: counting the
+# modules the dashboard imports lazily, at least 24 module-level constants
+# across 5 modules and 13 distinct settings move, adding alerts'
+# BLACK_SWAN_BRIER_* pair, weather_markets' MAX_MODEL_SPREAD_F (8.0->5.5),
+# MAX_DAYS_OUT and WEATHERAPI_KEY, and order_executor's re-exports. Two
+# call-time reads also go from empty to populated and are behaviourally
+# significant: MODEL_HMAC_SECRET (ml_bias.py) stops skipping bias-model
+# loading, and PIRATE_WEATHER_API_KEY / WEATHERAPI_KEY let this process make
+# keyed third-party calls it previously could not.
+#
+# DASHBOARD_PASSWORD is why `python web_app.py` did not merely display stale
+# numbers -- _build_app()'s auth gate reads it and raises RuntimeError when it
+# is unset, so the standalone server never started at all. It now starts,
+# authenticated, on the operator's real configuration. `py main.py web`
+# already behaved this way; nothing about that path changes, since
+# load_dotenv() does not override an already-set var.
+load_dotenv()
+
+from paths import (  # noqa: E402 — must follow load_dotenv(), see above
     CRON_HEARTBEAT_PATH,
     CRON_LAST_RUN_PATH,
     CRON_LOG_PATH,
@@ -293,7 +334,22 @@ def _build_app(client):
     # Enforce password requirement in prod — the dashboard exposes kill switch
     # and trade control endpoints that must never be unauthenticated in production.
 
-    if not os.getenv("DASHBOARD_PASSWORD"):
+    # Read the SAME value _check_auth enforces below (utils.DASHBOARD_PASSWORD),
+    # not os.getenv. These are not interchangeable: utils binds the constant at
+    # import, so in any process that imports utils BEFORE this module, a
+    # load_dotenv() populates os.environ while the constant stays "". This gate
+    # would then pass -- silently, since the DASHBOARD_UNPROTECTED branch below
+    # is not taken either, so nothing is logged -- while _check_auth's `if not
+    # pwd: return None` opens every route, kill switch and halt included.
+    # Reproduced during batch-79's review: unauthenticated POST /api/halt
+    # returned 200. Reading the constant makes the gate fail CLOSED in that
+    # ordering, and makes it impossible for the check and its enforcement to
+    # disagree at all. DASHBOARD_UNPROTECTED stays an os.getenv read: it is a
+    # deliberate operator escape hatch with no frozen counterpart, and it is
+    # only ever consulted once the password has already been found empty.
+    import utils as _utils_gate
+
+    if not _utils_gate.DASHBOARD_PASSWORD:
         if os.getenv("DASHBOARD_UNPROTECTED", "").lower() == "true":
             _log.warning(
                 "DASHBOARD_UNPROTECTED=true — dashboard running without password protection. "
@@ -3928,9 +3984,16 @@ setInterval(() => {{
         # close_time=None disabled the 24h settlement gate and stop-loss/breakeven
         # exits, and (d) log_prediction (below) skips city=None rows so the trade
         # never registers in tracker — the exact "stuck open forever" failure that
-        # call exists to prevent. A Kalshi API blip, a typo'd ticker, or (standalone
-        # `py web.py` runs, which never call load_dotenv) unloaded env keys would
+        # call exists to prevent. A Kalshi API blip or a typo'd ticker would
         # otherwise silently sail every order through this path.
+        #
+        # This comment used to name a third cause, unloaded env keys in a
+        # standalone `py web.py` run. Two corrections (batch-79 item 1): there
+        # is no web.py in this repo and never has been — the standalone entry
+        # point is this module's own __main__ block — and that process now
+        # calls load_dotenv() at import, so the KALSHI_* keys read above are
+        # the operator's, not empty strings. The fail-closed guard below is
+        # unchanged and still load-bearing for the two remaining causes.
         if not (city and target_date):
             return jsonify(
                 {
@@ -4708,11 +4771,34 @@ def start_web(client, port: int = 5000, open_browser: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    # Run the dashboard standalone (no live Kalshi client — read-only paper mode)
+    # Build the client exactly as main.build_client() does (main.py:1442), so
+    # `python web_app.py` and `py main.py web` are the same process in every
+    # respect. This used to be a bare KalshiClient() -- no key_id, no private
+    # key, env defaulting to "demo" -- described as "read-only paper mode".
+    #
+    # That description stopped being accurate the moment this module started
+    # loading .env (batch-79 item 1). The two manual-order endpoints build
+    # their OWN clients from os.getenv("KALSHI_ENV", "demo"), which now
+    # resolves to prod, while the analyze and positions panels used this one
+    # and read DEMO markets -- and /api/status's is_live, which reads the same
+    # env var, painted a red "● LIVE" badge over that demo data. A dashboard
+    # whose panels disagree with its own order path about which exchange it is
+    # looking at is worse than either one alone.
+    #
+    # This is not new live-order exposure: web_app.py places no orders at all
+    # (both inline clients only call get_market), the server binds 127.0.0.1,
+    # and every route sits behind the password plus the X-Requested-With CSRF
+    # check. What it does add is that the authenticated panels now work.
+    import os as _os
+
     from kalshi_client import KalshiClient
 
     try:
-        _standalone_client = KalshiClient()
+        _standalone_client = KalshiClient(
+            key_id=_os.getenv("KALSHI_KEY_ID"),
+            private_key_path=_os.getenv("KALSHI_PRIVATE_KEY_PATH"),
+            env=_os.getenv("KALSHI_ENV", "demo"),
+        )
     except Exception:
         _standalone_client = None  # type: ignore[assignment]
 

@@ -359,7 +359,8 @@ regime.py             — Market regime detection
 cloud_backup.py       — OneDrive/Google Drive backup
 colors.py             — Terminal colour helpers
 utils.py              — Shared constants and helpers
-data/                 — Local SQLite databases (trades, signals, forecasts) and calibration files
+data/                 — Local SQLite databases (trades, signals, forecasts) and calibration files. Gitignored, and nothing in it is tracked
+seeds/                — First-run copies of the five calibration files, copied into data/ only when absent (see seeds/README.md)
 static/               — Dashboard JS and CSS
 templates/            — Dashboard HTML
 ```

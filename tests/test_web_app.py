@@ -3058,3 +3058,315 @@ class TestCircuitStatusEndpoint:
         # And an untouched breaker is still reported closed, so the assertion
         # above isn't passing because everything reads 'open'.
         assert body["open_meteo_forecast"]["state"] == "closed"
+
+
+# Keys the child processes below must never inherit from this pytest process.
+# conftest.py imports main, which calls load_dotenv(), so the real .env is
+# already in os.environ here -- and load_dotenv() does NOT override an
+# already-set variable, so an inherited MIN_EDGE would beat the child's own
+# .env and every assertion would be measuring the operator's config instead
+# of the test's. DASHBOARD_UNPROTECTED is scrubbed because this module's
+# autouse _force_demo_env fixture sets it, which would stop _build_app from
+# ever raising.
+_B79_SCRUBBED_ENV_KEYS = frozenset(
+    {
+        "MIN_EDGE",
+        "MAX_DAYS_OUT",
+        "DASHBOARD_PASSWORD",
+        "DASHBOARD_UNPROTECTED",
+        # The KALSHI_* trio matters as much as the rest: without scrubbing,
+        # the standalone-client test read the operator's REAL key id and prod
+        # env out of the inherited environment and passed for the wrong
+        # reason. Every key any child .env sets must appear here.
+        "KALSHI_ENV",
+        "KALSHI_KEY_ID",
+        "KALSHI_PRIVATE_KEY_PATH",
+    }
+)
+
+
+class TestStandaloneDotenvBootstrap:
+    """batch-79 item 1: `python web_app.py` must read .env the way main.py does.
+
+    Every assertion here runs in a CHILD process, and has to. utils.py binds
+    ~50 constants with module-level ``float(os.getenv(...))`` at import time
+    and config.get_config() caches its singleton on first call; conftest.py
+    imports main before any test runs, so by the time a test body executes
+    the pytest process has already frozen all of them. Nothing in-process can
+    still observe the import-time binding this fix is about.
+
+    How the child's .env is controlled. python-dotenv's find_dotenv() nor-
+    mally walks up from the CALLING frame's file -- for a real script that is
+    web_app.py's own directory, which would find this repo's live .env and
+    make the test non-hermetic. In a ``python -c`` child, __main__ has no
+    __file__, dotenv's _is_interactive() check returns True, and the search
+    starts from the working directory instead. Running the child with
+    cwd=tmp_path and a .env written there therefore gives fully controlled
+    configuration. Verified 2026-08-26 against python-dotenv's find_dotenv.
+
+    The two value-carrying tests are parametrized over two DIFFERENT
+    configured values, neither of them utils.py's code default, so a pass
+    cannot come from a constant, a default, or a leaked real .env.
+    """
+
+    @staticmethod
+    def _child(tmp_path, env_body: str, body: str) -> dict:
+        """Run `body` in a child with `env_body` as its .env. Returns its JSON."""
+        import json as _json
+        import os as _os
+        import subprocess
+        import sys as _sys
+        from pathlib import Path as _Path
+
+        import web_app as _wa
+
+        (tmp_path / ".env").write_text(env_body, encoding="utf-8")
+        repo = str(_Path(_wa.__file__).resolve().parent)
+
+        # Step 21: redirect project_root() before paths.py is imported, so the
+        # child's DATA_DIR (and paths.materialize_missing_seeds) can never
+        # reach the real data/ directory. The child bypasses conftest's
+        # prod_data_guard entirely, exactly like any other standalone script.
+        #
+        # The root is computed ONCE and lives under tmp_path, not per-call via
+        # tempfile.mkdtemp(). A `lambda: mkdtemp()` returns a DIFFERENT path on
+        # every call, which both leaks a directory per invocation and diverges
+        # from production semantics — paths.py binds _ROOT once, but safe_io's
+        # emergency-write fallbacks call project_root() again and would each
+        # land somewhere else. tmp_path is cleaned up by pytest.
+        root = tmp_path / "root"
+        root.mkdir(exist_ok=True)
+        preamble = (
+            "import json, os, pathlib, sys\n"
+            f"sys.path.insert(0, {repo!r})\n"
+            "import safe_io\n"
+            f"_ROOT = pathlib.Path({str(root)!r})\n"
+            "safe_io.project_root = lambda: _ROOT\n"
+        )
+        env = {k: v for k, v in _os.environ.items() if k not in _B79_SCRUBBED_ENV_KEYS}
+        env["PYTHONIOENCODING"] = "utf-8"
+        proc = subprocess.run(
+            [_sys.executable, "-c", preamble + body],
+            cwd=str(tmp_path),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        assert proc.returncode == 0, (
+            f"child exited {proc.returncode}\n"
+            f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
+        )
+        return _json.loads(proc.stdout.strip().splitlines()[-1])
+
+    @pytest.mark.parametrize("configured", ["0.42", "0.31"])
+    def test_configured_env_value_reaches_the_dashboard_process(
+        self, tmp_path, configured
+    ):
+        """A value set in .env -- not merely a load_dotenv() call -- lands on
+        the module constant the dashboard renders."""
+        out = self._child(
+            tmp_path,
+            f"MIN_EDGE={configured}\nMAX_DAYS_OUT=9\n",
+            "import web_app\n"
+            "import utils\n"
+            "print(json.dumps({'min_edge': utils.MIN_EDGE,"
+            " 'max_days_out': utils.MAX_DAYS_OUT}))\n",
+        )
+        assert out["min_edge"] == float(configured)
+        assert out["max_days_out"] == 9
+
+    def test_importing_utils_before_web_app_defeats_it(self, tmp_path):
+        """The ordering, not the call, is what does the work.
+
+        Positive control for the two tests above: this child reads the SAME
+        .env and proves it arrived (os.environ carries the configured value),
+        yet utils.MIN_EDGE is still the 0.07 code default because utils froze
+        first. That is what makes the 0.42/0.31 assertions above meaningful --
+        they are not matching a default, and the default is reachable.
+        """
+        out = self._child(
+            tmp_path,
+            "MIN_EDGE=0.42\n",
+            "import utils\n"
+            "import web_app\n"
+            "print(json.dumps({'min_edge': utils.MIN_EDGE,"
+            " 'environ': os.getenv('MIN_EDGE')}))\n",
+        )
+        assert out["environ"] == "0.42", "the child's .env was never read at all"
+        assert out["min_edge"] == 0.07, (
+            "utils.MIN_EDGE is supposed to be frozen at its code default here"
+        )
+
+    def test_standalone_build_app_starts_with_a_configured_password(self, tmp_path):
+        """The user-visible fix: `python web_app.py` used to raise before it
+        served anything, because the auth gate reads DASHBOARD_PASSWORD and
+        .env was never loaded."""
+        out = self._child(
+            tmp_path,
+            "DASHBOARD_PASSWORD=hunter2\nMIN_EDGE=0.42\n",
+            "import web_app\n"
+            "import utils\n"
+            "app = web_app._build_app(None)\n"
+            "print(json.dumps({'app': type(app).__name__,"
+            " 'pwd': utils.DASHBOARD_PASSWORD, 'min_edge': utils.MIN_EDGE}))\n",
+        )
+        assert out["app"] == "Flask"
+        assert out["pwd"] == "hunter2"
+        assert out["min_edge"] == 0.42
+
+    def test_build_app_still_refuses_when_the_password_is_genuinely_unset(
+        self, tmp_path
+    ):
+        """Paired control for the test above, and a guard on the auth gate.
+
+        This child's .env exists and is read -- MIN_EDGE proves it -- but sets
+        no DASHBOARD_PASSWORD, and _build_app must still refuse. Without this,
+        the previous test would pass just as happily if someone "fixed" the
+        standalone crash by weakening the gate instead of loading .env.
+        """
+        out = self._child(
+            tmp_path,
+            "MIN_EDGE=0.42\n",
+            "import web_app\n"
+            "import utils\n"
+            "try:\n"
+            "    web_app._build_app(None)\n"
+            "    res = {'raised': None}\n"
+            "except RuntimeError as exc:\n"
+            "    res = {'raised': str(exc)[:80]}\n"
+            "res['min_edge'] = utils.MIN_EDGE\n"
+            "print(json.dumps(res))\n",
+        )
+        assert out["min_edge"] == 0.42, "the child's .env was never read at all"
+        assert out["raised"] is not None, "_build_app must not run unauthenticated"
+        assert "DASHBOARD_PASSWORD" in out["raised"]
+
+    def test_web_app_module_scope_imports_no_local_module_but_paths(self, tmp_path):
+        """Completeness half of the proof: load_dotenv() covers EVERY moved
+        constant, not just the ones asserted above.
+
+        It can only do that if no env-binding module reaches import before it.
+        The assertion is the whole set difference, not an allowlist of names:
+        an earlier version checked only `utils` and `config`, which would have
+        stayed green if someone added a module-scope `import weather_markets`,
+        `alerts`, `order_executor` or `ml_bias` ABOVE load_dotenv() — each of
+        which binds env constants of its own (weather_markets alone contributes
+        MAX_MODEL_SPREAD_F, MAX_DAYS_OUT and WEATHERAPI_KEY). Asserting the set
+        covers every current and future module without needing to enumerate
+        them.
+
+        `paths` is the one permitted entry: it reads no env vars, and web_app
+        genuinely needs its constants. If a future change legitimately needs
+        another module-scope local import, it must go BELOW load_dotenv() —
+        and this test is the tripwire that forces that to be a decision rather
+        than an accident.
+
+        Not a guard on load_dotenv itself: removing that call leaves this test
+        green (mutation-confirmed). The value-carrying tests above protect the
+        call; this one protects its sufficiency.
+        """
+        out = self._child(
+            tmp_path,
+            "MIN_EDGE=0.42\n",
+            "_repo = pathlib.Path(sys.path[0])\n"
+            "_local = lambda: sorted(\n"
+            "    m for m in sys.modules\n"
+            "    if (_repo / (m.split('.')[0] + '.py')).exists()\n"
+            ")\n"
+            "import web_app\n"
+            "before = _local()\n"
+            "import config\n"
+            "import utils\n"
+            "import weather_markets\n"
+            "print(json.dumps({'before': before, 'after': _local()}))\n",
+        )
+        assert set(out["before"]) == {"paths", "safe_io", "web_app"}, (
+            f"web_app pulled in an unexpected local module at import scope: "
+            f"{sorted(set(out['before']) - {'paths', 'safe_io', 'web_app'})}"
+        )
+        # Positive control: the probe can see local modules when they ARE
+        # imported, so the assertion above isn't vacuously true (e.g. passing
+        # because the repo-root heuristic matched nothing at all).
+        assert {"utils", "config", "weather_markets"} <= set(out["after"])
+
+    def test_startup_gate_fails_closed_when_utils_is_imported_first(self, tmp_path):
+        """The startup gate and the auth hook must read the SAME value.
+
+        Found by batch-79's review. The gate used to read
+        os.getenv("DASHBOARD_PASSWORD") while _check_auth enforces
+        utils.DASHBOARD_PASSWORD, which utils freezes at import. Import utils
+        first and the two disagree: load_dotenv() fills os.environ so the gate
+        passes silently (the DASHBOARD_UNPROTECTED branch isn't taken either,
+        so nothing is even logged), while the auth hook sees "" and its
+        `if not pwd: return None` opens every route — kill switch and halt
+        included. An unauthenticated POST /api/halt returned 200 in that state.
+
+        This ordering has no reachable caller in-repo today, which is exactly
+        why it needs a test: nothing else would notice it coming back.
+        """
+        out = self._child(
+            tmp_path,
+            "DASHBOARD_PASSWORD=hunter2\n",
+            "import utils\n"  # freezes DASHBOARD_PASSWORD at ""
+            "import web_app\n"  # load_dotenv() now fills os.environ
+            "res = {'frozen': utils.DASHBOARD_PASSWORD,"
+            " 'environ': os.getenv('DASHBOARD_PASSWORD')}\n"
+            "try:\n"
+            "    web_app._build_app(None)\n"
+            "    res['raised'] = None\n"
+            "except RuntimeError as exc:\n"
+            "    res['raised'] = str(exc)[:60]\n"
+            "print(json.dumps(res))\n",
+        )
+        # Positive control for the divergence itself: this is the exact state
+        # that used to open the dashboard — env populated, constant empty.
+        assert out["environ"] == "hunter2"
+        assert out["frozen"] == ""
+        # ...and the gate must now refuse rather than build an open app.
+        assert out["raised"] is not None, (
+            "_build_app built an app whose auth hook would accept every "
+            "unauthenticated request"
+        )
+        assert "DASHBOARD_PASSWORD" in out["raised"]
+
+    def test_standalone_client_matches_the_configured_environment(self, tmp_path):
+        """The __main__ block must build its client the way main.build_client()
+        does, so `python web_app.py` and `py main.py web` are one process.
+
+        It used to be a bare KalshiClient() — demo, no credentials — while the
+        two manual-order endpoints built prod clients from KALSHI_ENV and
+        /api/status reported is_live=true. The panels and the order path
+        disagreed about which exchange they were looking at.
+
+        Runs the REAL __main__ block via runpy with flask's blocking
+        `Flask.run` neutered, then reads the client back out of the resulting
+        namespace (start_web assigns it to the module-global `_client`).
+        Stubbing web_app.start_web does NOT work here and silently hangs the
+        suite: runpy re-executes the module under a fresh namespace, so the
+        patched attribute on the already-imported copy is never consulted and
+        the real server binds a port.
+        """
+        out = self._child(
+            tmp_path,
+            "KALSHI_ENV=prod\nKALSHI_KEY_ID=test-key-id\nDASHBOARD_PASSWORD=x\n",
+            "import runpy\n"
+            "import flask\n"
+            "flask.Flask.run = lambda self, *a, **kw: None\n"
+            "ns = runpy.run_module('web_app', run_name='__main__')\n"
+            "_c = ns['_client']\n"
+            "seen = {'base_url': _c.base_url, 'key_id': _c.key_id}\n"
+            "seen['is_live'] = os.getenv('KALSHI_ENV', 'demo').lower() == 'prod'\n"
+            "print(json.dumps(seen))\n",
+        )
+        assert "demo" not in out["base_url"], (
+            f"standalone client still points at demo ({out['base_url']}) while "
+            f"KALSHI_ENV=prod — the LIVE badge would lie about the market feed"
+        )
+        assert out["key_id"] == "test-key-id", (
+            "standalone client got no credentials, so every authenticated "
+            "panel fails closed while /api/status still reports is_live"
+        )
+        # Positive control: is_live is computed from the same env var, so this
+        # pins that the badge and the client now agree rather than diverging.
+        assert out["is_live"] is True

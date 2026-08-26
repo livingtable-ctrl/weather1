@@ -10,6 +10,16 @@ __pycache__/
 .env
 .env.*
 !.env.example
+# Nothing under data/ is tracked, and nothing under it may be re-tracked.
+# Five calibration files (city_weights, condition_weights,
+# metar_lockout_calibration, seasonal_weights, temperature_scale) used to be
+# force-added past this rule so a fresh clone had a starting point. The cost
+# was that `git restore .` or `git checkout -- data/` silently reverted
+# learned calibration to whatever was last committed -- no warning, no error,
+# and nothing downstream noticing. The fresh-clone copies now live in seeds/
+# and paths.materialize_missing_seeds() copies them in when, and only when,
+# data/ does not already have them. Do NOT `git add -f` anything here again;
+# tests/test_paths.py::TestNothingUnderDataIsTracked fails the build if you do.
 data/
 .claude/
 .mypy_cache/

@@ -297,6 +297,67 @@ sed -i '/LIVE_TRADING_ENABLED/d' .env
 
 `LiveTradingGate.check()` blocks the live-order path whenever `KALSHI_ENV != "prod"` or `LIVE_TRADING_ENABLED != "true"` — with either unset, `watch --auto --live` falls back to paper trades.
 
+### Rolling back code without rolling back calibration
+
+`git restore .` and `git checkout -- .` are safe for calibration state again,
+and this was not always true. Until batch-79, five learned-calibration files
+were force-tracked inside the gitignored `data/` directory, so either command
+silently reverted them to whatever was last committed — no warning, no error,
+and nothing downstream noticing the bot was now running on a stale snapshot.
+Nothing under `data/` is tracked any more, so no git command can reach it.
+Fresh-clone copies live in `seeds/` and are applied by
+`paths.materialize_missing_seeds()` only when `data/` does not already have
+the file, so they can never overwrite learned values.
+
+**One-time step when the untracking commit first lands in a clone.** Git
+removes the five files from the working tree as part of that checkout,
+because they were tracked in the parent commit. Two cases:
+
+- A file identical to its committed version is removed and then recreated
+  byte-identically from `seeds/` by the next process that imports `paths.py`.
+  Nothing is lost and no action is needed.
+- A file that has diverged (i.e. real learned calibration) makes git **refuse
+  the merge outright** — `error: Your local changes to the following files
+  would be overwritten by merge`. It fails loudly rather than deleting
+  anything, so nothing is at risk until you act.
+
+Back up **the whole directory** first, and do not delete anything until you
+have confirmed the backup exists. Git's abort message lists *every* diverged
+file, which may be more than one — copying the directory means you do not
+have to get that list right:
+
+```cmd
+xcopy /E /I /Y data "%TEMP%\data-backup-before-untrack"
+dir "%TEMP%\data-backup-before-untrack"
+```
+
+**Confirm that listing shows your files before continuing.** (Run this in
+`cmd`, not PowerShell — PowerShell does not expand `%TEMP%`, so step 1 would
+fail while a later step still ran.) Then let git discard its copies, merge,
+and put the learned values back:
+
+```cmd
+git checkout -- data
+git merge --ff-only <branch>
+xcopy /E /I /Y "%TEMP%\data-backup-before-untrack" data
+```
+
+Verifying afterwards: `git ls-files data/` must print nothing. Do **not**
+treat "all five files are present" as confirmation — it is not. If you skip
+the copy-back, `paths.materialize_missing_seeds()` recreates all five from
+`seeds/` on the next run and both of those checks still pass, while the
+learned values are gone. That is exactly the silent reversion this change
+exists to prevent, so check the **contents**:
+
+```cmd
+fc data\seasonal_weights.json "%TEMP%\data-backup-before-untrack\seasonal_weights.json"
+```
+
+A seeded `seasonal_weights.json` has every season at `0.3333…` with
+`"_uncalibrated": true`; a learned one does not. Note the files only reappear
+once some process imports `paths.py` — run `python -c "import paths"` from the
+clone if `data/` looks empty immediately after the merge.
+
 ---
 
 ## Part 5 — Reboot / Power-Loss Recovery

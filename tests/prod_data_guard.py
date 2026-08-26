@@ -35,7 +35,8 @@ Scope
 -----
 MUTATIONS are blocked (the operation raises before touching the filesystem)
 and fail the owning test phase. READS are deliberately left alone -- some
-are legitimate, e.g. the five git-tracked data/*.json calibration files --
+are legitimate, e.g. the five data/*.json calibration files (until batch-79
+these were force-tracked in git; they are now seeded from seeds/ instead) --
 but every one is counted and reported in the run summary, so that
 tightening the guard later can be a data-driven decision rather than a
 guess.

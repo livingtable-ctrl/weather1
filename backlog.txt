@@ -35668,7 +35668,8 @@ Why not now: changing it re-fits a value consumed by
   then verify a "between" key actually appears in temperature_scale.json
   and compare the fitted T against the ~6.8 the docstring predicts.
 
-[OPEN 2026-08-25 -- opus-review finding M5 during batch-57's own review]
+[RESOLVED 2026-08-26 (batch-79 item 3) -- opus-review finding M5 during
+  batch-57's own review, filed 2026-08-25]
   CMD_WALKFORWARD'S PER-CONDITION BRIER SILENTLY DROPS 'BETWEEN'
 Priority: Low -- display-only (`py main.py walkforward`), no gate or
   pricing consumer.
@@ -35695,6 +35696,114 @@ Why not now: it changes `py main.py walkforward` output, which is a
   Whoever picks it up should decide whether 'between' belongs in a
   per-condition breakdown (probably yes, clearly labelled) rather than
   simply deleting the predicate.
+
+Resolution (2026-08-26, batch-79 item 3): 'between' is INCLUDED. The
+  predicate is deleted and the in-code comment now records the reasoning
+  rather than the doubt.
+
+  The decision was made from the exclusion's own stated reason, not by
+  default. tracker._ALWAYS_EXCLUDED_CONDITION_TYPES excludes 'between'
+  because between-brackets carry a structurally larger calibration gap
+  (T~=6.8 vs global/above/below's much smaller correction) that would
+  distort a SHARED AGGREGATE Brier meant to stand for overall model quality.
+  That reason cannot apply to this query, which GROUPs BY condition_type:
+  every family lands in its own bucket and no number is shared, so there is
+  nothing for between's gap to distort.
+
+  What the drop was actually doing, measured 2026-08-26 against the live DB
+  over this exact query's rows:
+    above    n=131  Brier=0.2498  pred=52.4%  actual=54.2%
+    between  n=114  Brier=0.2794  pred=20.4%  actual=40.4%
+    below    n= 78  Brier=0.2657  pred=53.5%  actual=52.6%
+  'between' is the second-largest bucket (33% of all settled rows) and the
+  WORST-calibrated of the three temperature conditions. A panel named
+  "Per-condition Brier" was hiding it.
+
+  TWO CORRECTIONS from this batch's own review, both now carried in the code
+  comment as well:
+
+  (i) That 0.2794 must NOT be quoted as evidence about the CURRENT between
+      implementation. 69 of the 114 rows are metar_lockout rows predicted
+      before the 2026-08-09 re-enable (tracker._BETWEEN_METAR_REENABLED_AT)
+      -- exactly the population batch-40's handoff said not to cite because
+      it measures deleted code. The finding survives the split, which is why
+      the predicate is deleted rather than merely re-scoped. Re-measured on
+      the correct axis (metar_lockout AND predicted_at < 2026-08-09 is the
+      dead population; the 40 ensemble/days_out=1 rows are a different code
+      path, not dead code):
+        dead-code rows      n=69  Brier=0.2758  pred=15.2%  actual=39.1%
+        ALL OTHER between   n=45  Brier=0.2848  pred=28.4%  actual=42.2%
+      So on clean rows between is still the worst of the three (0.2848 vs
+      below 0.2657 vs above 0.2498) and still under-predicts, by ~14 points
+      rather than 20. The panel shows the unsplit number by design -- it is
+      a whole-history comparison -- and the comment now says to read it as
+      "between is the weak one", never as a measurement of today's formula.
+
+ (ii) "the only CLI display that would have surfaced that gap" was FALSE.
+      tracker.check_sameday_condition_type_weakness() emits a
+      "SAMEDAY CONDITION-TYPE WEAKNESS: condition_type=between" line from
+      cron.py, i.e. from `py main.py cron`, and it FILTERS the pre-re-enable
+      rows this panel deliberately does not. The two are complementary, not
+      duplicative: that one is the clean-rows alert, this one is the
+      whole-history cross-condition comparison. Corrected in the comment.
+
+  This is the opposite call from tracker.get_station_bias_by_lead's, which
+  keeps 'between' for a different reason (a degF error is an equally valid
+  sample whatever the bracket shape). The two agree on the principle even
+  though the quantities differ: apply the shared exclusion only where its
+  own stated reason actually holds. Both halves are now recorded at the
+  site.
+
+  batch-57's other conclusion stands unchanged and is still in the comment:
+  this query is deliberately NOT wired to the shared registry, because the
+  shadow-family exclusion it provides would remove rows without fixing any
+  contamination in a grouped query.
+
+  Tests: tests/test_walk_forward.py::TestPerConditionBrierIncludesBetween,
+  2 tests, against a tmp sqlite DB with hand-computed expected values --
+  6 'above' rows (Brier 0.0400), 6 'below' (0.2600), 6 'between' (0.4400,
+  pred 20.0%, actual 66.7%). The above/below rows exist so that the panel's
+  own >=10-row and >1-group thresholds are cleared WITHOUT any 'between'
+  row: re-adding the predicate therefore still renders the panel, and the
+  test fails on 'between' being missing from it rather than on the whole
+  block being skipped. Mutation-tested via Edit revert both before and after
+  that fixture change -- the first version failed for the weaker reason,
+  which is why the fixture grew a third condition.
+
+  Three adjacent fixes in the same block, all from the review:
+    - a dim() line under the panel header saying it includes 'between' and
+      the shadow-only families while the calibration curves printed directly
+      above exclude both. Their N columns were never going to reconcile and
+      nothing on screen said why.
+    - the row format went from {_ct:10s} to {_ct:18s}. 'precip_month_total'
+      is 18 characters and used to push every following column out of
+      alignment on its own row.
+    - the block's `_sql.connect(...).execute(...).fetchall()` chain never
+      closed its connection; it now goes through contextlib.closing. (Raised
+      independently by a parallel session reviewing this batch's handoff.)
+
+  Two review findings DELIBERATELY not changed, each a reasoned decision
+  rather than a silent drop:
+    - the sort is descending Brier with no per-bucket sample floor, so the
+      top line is now `unknown` at Brier 0.3525 on n=8 (June-2026 legacy rows
+      with condition_type IS NULL, a mix of families).
+      tracker.check_sameday_condition_type_weakness skips that bucket as a
+      data-hygiene artifact. Left visible here: this panel is a diagnostic
+      census rather than an alert, and hiding a bucket because it is small is
+      how the 'between' omission this item fixes came about in the first
+      place. The new header line names what the panel includes.
+    - precip_month_total renders GREEN (0.1759, under the 0.18 threshold)
+      despite being a shadow-only family, so a reader could take it for the
+      best-calibrated live family. Not recoloured: the thresholds are a
+      property of the Brier value, not of trading status, and special-casing
+      the palette per family would make the panel harder to read than the
+      header note that already says shadow families are included.
+
+  NOT fixed here, filed below: tracker.py:2680's cross-reference comment
+  still says this drop was "filed as its own backlog entry rather than
+  changed here". tracker.py is owned by batch-78 and read-only for this
+  batch. The review also found a second, unrelated false premise in the same
+  file, filed with it.
 
 
 [RESOLVED 2026-08-26 by batch-76 item 1 -- resolution at the end of this
@@ -37591,7 +37700,7 @@ Recommendation:
   same default-deadline exposure.
 
 
-[OPEN -- filed 2026-08-25 by batch-66 item 2 (surfaced by a round-2 opus review of that batch's own fix)] A standalone `py web.py` server never calls load_dotenv, so every env-derived constant in the dashboard process silently shows the CODE DEFAULT rather than the operator's configured value
+[RESOLVED 2026-08-26 (batch-79 item 1) -- filed 2026-08-25 by batch-66 item 2 (surfaced by a round-2 opus review of that batch's own fix)] A standalone `py web.py` server never calls load_dotenv, so every env-derived constant in the dashboard process silently shows the CODE DEFAULT rather than the operator's configured value
 Priority: Medium -- display-only today (the dashboard process places no
   autonomous trades), but it makes the console disagree with the bot about
   its own configuration, which is exactly the kind of thing an operator
@@ -37633,8 +37742,181 @@ Why not now:
   deserves its own scoped verification rather than riding along with an
   analytics batch. Batch-66 corrected the false docstring that claimed late
   binding solved this, and left the underlying gap documented here.
-[OPEN 2026-08-25 -- found during a new-PC migration audit, while working out
-  which files a fresh clone would and would not carry.] `git restore .` OR
+
+Resolution (2026-08-26, batch-79 item 1):
+  web_app.py now calls load_dotenv() immediately after its third-party
+  imports and BEFORE its first local import (`from paths import ...`, which
+  carries a `# noqa: E402` naming the reason), matching main.py:41's
+  convention. utils.py's stale cross-reference in
+  effective_min_edge_threshold's docstring was rewritten to point at the fix
+  instead of at this entry.
+
+  Two corrections to this entry's own premises, both verified against live
+  code before designing anything:
+
+  (a) THERE IS NO web.py, and there never has been -- `git log --all --
+      web.py` is empty and the name appears nowhere outside backlog/audit
+      prose. The standalone entry point is web_app.py's own `__main__` block
+      at the bottom of the file. (An earlier draft of this note cited
+      "web_app.py:4713"; that was wrong -- the block was at :4710 in the
+      pre-change file and moves with every edit above it, so no line number
+      is cited here.) That block used to build a bare KalshiClient() -- no
+      key_id, no private_key_path, env defaulting to "demo" -- described in
+      its own comment as "read-only paper mode". Review of this change found
+      that description had stopped being true; see the MEDIUM-2 entry in the
+      review section below for what it now does instead.
+
+  (b) config.py does NOT bind credentials as module constants at import.
+      Its fields are `field(default_factory=lambda: os.getenv(...))`,
+      evaluated when a BotConfig is CONSTRUCTED. The real freeze is
+      get_config()'s `_CONFIG` singleton, which caches the first
+      construction for the process lifetime. Measured in an isolated child
+      (project_root() redirected): after get_config() then load_dotenv(),
+      cfg.kalshi_env is still 'demo' while .env sets prod. The practical
+      consequence is identical -- ordering, not the presence of the call,
+      decides -- but the mechanism matters for where the call has to go.
+
+  What actually happened on a standalone run, which is worse than this entry
+  describes and is why "display-only" understated it: _build_app()'s auth
+  gate reads DASHBOARD_PASSWORD, which is itself env-derived, and raises
+  RuntimeError("DASHBOARD_PASSWORD must be set") when it is unset. So
+  `python web_app.py` did not render stale numbers -- it never started at
+  all, unless DASHBOARD_UNPROTECTED=true was set in the real OS environment.
+  Confirmed both ways in an isolated child: _build_app(None) raises without
+  .env and returns a Flask app with it.
+
+  The measured delta, produced by diffing every uppercase utils constant and
+  every BotConfig field across two child processes (one with load_dotenv,
+  one without) rather than by reading .env: EXACTLY 15 constants move, 9
+  distinct settings --
+    utils.MIN_EDGE / config.min_edge                 0.07  -> 0.15
+    utils.MAX_DAYS_OUT / config.max_days_out         5     -> 3
+    utils.MAX_DAILY_SPEND / config.max_daily_spend   500.0 -> 200.0
+    utils.MAX_SAME_DAY_SPEND / .max_same_day_spend   500.0 -> 400.0
+    utils.BREAKEVEN_TRIGGER_PCT / config.*           0.30  -> 0.75
+    utils.DASHBOARD_PASSWORD / config.*              ''    -> (set)
+    config.kalshi_env                                demo  -> prod
+    config.kalshi_key_id                             ''    -> (set)
+    config.kalshi_private_key_path                   ''    -> (set)
+  This entry's guess at the affected set (STRONG_EDGE, MED_EDGE, KELLY_CAP,
+  the KALSHI_* fee rates) was wrong in both directions. Those four are not
+  set in .env, so they were already reading their code defaults in BOTH
+  processes -- but 15 undercounts the real blast radius, because utils and
+  config are not the whole process. Counting the modules the dashboard
+  imports lazily, the review measured at least 24 module-level constants
+  across 5 modules and 13 distinct settings: the 15 above plus alerts'
+  BLACK_SWAN_BRIER_THRESHOLD (0.30->0.35) and _MIN_SAMPLES (10->30),
+  weather_markets' MAX_MODEL_SPREAD_F (8.0->5.5), MAX_DAYS_OUT and
+  WEATHERAPI_KEY, and order_executor's re-exports. Two call-time reads also
+  go from empty to populated and are behaviourally significant:
+  MODEL_HMAC_SECRET (ml_bias.py) stops skipping bias-model loading, and
+  PIRATE_WEATHER_API_KEY / WEATHERAPI_KEY let the dashboard process make
+  keyed third-party API calls it previously could not. The code comment
+  carries the wider set; "15" is now stated as utils-and-config only.
+
+  Write paths, per this entry's own request to confirm them: the manual
+  paper-order endpoint builds its market-lookup client from
+  os.getenv("KALSHI_ENV", "demo"), so it now points at prod rather than
+  demo. That is intentionally affected -- it is what `py main.py web` (the
+  supported launch path, which has always had .env loaded) already did, and
+  the fail-closed guard below it is unchanged. The stale comment at that
+  guard, which cited `py web.py` as a cause of empty env keys, was rewritten.
+
+  Why the call sits where it does, and how that is protected. `import
+  web_app` pulls in exactly paths + safe_io at module scope; utils and config
+  are imported lazily inside functions, i.e. strictly after load_dotenv().
+  tests/test_web_app.py::TestStandaloneDotenvBootstrap (6 tests) pins the
+  whole chain in CHILD processes, because the pytest process has already
+  frozen every constant via conftest importing main:
+    - a value set in the child's .env reaches utils.MIN_EDGE, parametrized
+      over two different configured values (0.42, 0.31), neither of them the
+      code default, so a pass cannot come from a constant or a leaked .env;
+    - importing utils BEFORE web_app leaves MIN_EDGE at 0.07 while
+      os.environ carries 0.42 -- the positive control proving the .env WAS
+      read and that ordering alone is what does the work;
+    - _build_app returns a Flask app with a configured DASHBOARD_PASSWORD,
+      and still refuses when one is genuinely unset (paired control, so a
+      future "fix" that weakens the auth gate instead of loading .env fails);
+    - `import web_app` adds exactly {paths, safe_io, web_app} to sys.modules
+      and no other local module (completeness: this is what makes the fix
+      cover EVERY moved constant, not just the asserted ones), with an
+      `after` assertion proving the probe can see local modules when they
+      are imported. Asserted as the whole set difference rather than an
+      allowlist of names -- an earlier version checked only utils and
+      config, and would have stayed green if someone added a module-scope
+      `import weather_markets` above load_dotenv();
+    - the startup gate fails CLOSED in the utils-first ordering (MEDIUM-1);
+    - the __main__ block's client matches the configured environment
+      (MEDIUM-2).
+  Env keys under test are scrubbed from the child's inherited environment --
+  load_dotenv() does not override an already-set variable, so an inherited
+  value would silently make an assertion measure the operator's real config.
+  That is not theoretical: the MEDIUM-2 test initially passed while reading
+  the operator's REAL KALSHI_KEY_ID, and only failed once the assertion got
+  specific enough to notice. KALSHI_ENV / KALSHI_KEY_ID /
+  KALSHI_PRIVATE_KEY_PATH joined the scrub set as a result.
+  Mutation-tested via Edit revert, four separately: removing load_dotenv()
+  fails 5 of the value-carrying tests; reverting the gate to os.getenv fails
+  the fail-closed test; reverting the client to a bare KalshiClient() fails
+  the parity test. The module-scope probe stays green under the load_dotenv
+  mutation by design and its docstring says so -- it is a sufficiency
+  tripwire, not a guard on the call.
+
+  THREE INDEPENDENT OPUS REVIEWS (effort:high, one per subsystem) ran against
+  the finished diff. Every finding was addressed; the two that changed
+  behaviour:
+
+  MEDIUM-1, a fail-OPEN auth path this change would have created. _build_app's
+  startup gate read os.getenv("DASHBOARD_PASSWORD") while _check_auth enforces
+  utils.DASHBOARD_PASSWORD, which utils freezes at import. Those are the same
+  value only if utils is imported after web_app. In the other ordering,
+  load_dotenv() fills os.environ so the gate PASSES -- silently, since the
+  DASHBOARD_UNPROTECTED branch is not taken either, so nothing is logged --
+  while the auth hook sees "" and its `if not pwd: return None` opens every
+  route. The reviewer reproduced an unauthenticated POST /api/halt returning
+  200, i.e. the kill switch. No in-repo caller has that ordering today, which
+  is precisely why it needed a test. The gate now reads the same constant the
+  hook enforces, so the two cannot disagree at all; DASHBOARD_UNPROTECTED
+  stays an os.getenv read (deliberate operator escape hatch, no frozen
+  counterpart, consulted only after the password is already empty).
+
+  MEDIUM-2, the standalone process was left half-configured. The __main__
+  block built a bare KalshiClient() -- demo, no credentials -- while the two
+  manual-order endpoints build their own from os.getenv("KALSHI_ENV"), which
+  after this change resolves to prod, and /api/status's is_live (same env var)
+  painted a red "LIVE" badge over demo market data. The panels and the order
+  path disagreed about which exchange they were looking at. Confirmed with
+  the user, then fixed by building the client exactly as main.build_client()
+  does, so `python web_app.py` and `py main.py web` are one process. This is
+  not new live-order exposure: web_app.py places no orders at all (both
+  inline clients only call get_market), the server binds 127.0.0.1, and every
+  route sits behind the password plus the X-Requested-With CSRF check.
+
+  Also from the reviews, non-behavioural: the "15 constants" figure scoped to
+  utils+config with the wider 24-across-5-modules set recorded (MEDIUM-3);
+  the completeness tripwire rewritten as a sys.modules set-difference so it
+  cannot stay green when a future module-scope import of weather_markets /
+  alerts / order_executor / ml_bias lands above load_dotenv() (MEDIUM-4);
+  a conftest note that `import web_app` is now an os.environ mutation point
+  (MEDIUM-5); the tripwire docstring corrected to describe what it actually
+  enforces (LOW-6); utils.py's docstring corrected -- it still framed this as
+  a display error, when _build_app raised before rendering anything, so the
+  2x-understated number was never shown to anyone (LOW-7); the test harness's
+  per-call tempfile.mkdtemp() replaced with a single root under tmp_path (it
+  leaked one directory per child and returned a different path on every
+  project_root() call, unlike production's bind-once) (LOW-8); and the
+  find_dotenv note now cites python-dotenv 1.2.2's private _is_interactive()
+  by name, since requirements.txt pins only >=1.0.0 (LOW-9).
+
+  Not fixed, no impact today: watchdog.py has its own `__main__` block, does
+  not call load_dotenv either, and reads NTFY_TOPIC at call time in
+  send_alert(). NTFY_TOPIC is not set in this deployment's .env, so `py
+  watchdog.py` behaves identically with and without the fix. Filed as its own
+  entry below rather than changed here -- watchdog.py is outside batch-79's
+  file scope and the gap is latent, not live.
+[RESOLVED 2026-08-26 (batch-79 item 2) -- found 2026-08-25 during a new-PC
+  migration audit, while working out which files a fresh clone would and
+  would not carry.] `git restore .` OR
   `git checkout -- data/` SILENTLY RESETS FIVE LEARNED-CALIBRATION FILES TO
   THEIR UNCALIBRATED SEED VALUES, WITH NO WARNING AND NO ERROR
 Priority: Medium -- destroys learned model state, but only when someone runs
@@ -37729,6 +38011,177 @@ When to revisit:
   Before the machine move if convenient -- the restore-order trap is live
   during exactly that operation. Otherwise, next time anyone touches
   calibration.py's write path.
+
+Resolution (2026-08-26, batch-79 item 2): option (a), as this entry
+  recommends. Confirmed with the user before implementing, since the entry
+  correctly framed "where do the seeds live" as the open question.
+
+  All five files are untracked (`git rm --cached`; `git ls-files data/` is
+  now empty). Their fresh-clone copies live in a new tracked seeds/ directory
+  with a README documenting each file's writer and reader.
+  paths.materialize_missing_seeds() copies a seed into data/ only when data/
+  does not already have that file, and is called once at import.
+
+  Why paths.py rather than a per-loader first-run path, which is what this
+  entry assumed the cost would be ("touches five loaders"): it does not have
+  to touch any of them. Every module that READS one of the five reaches
+  paths.py at module scope (calibration.py, ml_bias.py, weather_markets.py
+  and web_app.py all do `from paths import ...`), so one call there covers
+  every reader, including the two furthest away --
+  weather_markets._load_metar_calibration and ml_bias's temperature-scale
+  reader. (An earlier draft claimed "every entry point in the project"
+  reaches paths.py. That is false and the review caught it: backlog_index.py
+  and migrate_backup.py import paths not at all. Neither reads calibration,
+  so the coverage that matters is over READERS, not entry points -- but the
+  claim as written was wrong, and it was the sole stated justification for
+  the placement.) All five loaders ALREADY return {} or
+  None for a missing file, so nothing needed a new absent-file branch; the
+  degraded outcome of this function doing nothing is an already-supported
+  state, which is why every failure in it is per-file and swallowed.
+
+  Creation is ATOMIC: a temp file in data/, fsync'd, then os.link() onto the
+  target. The first implementation used open(dst, "xb") + write, which is
+  exclusive but NOT atomic, and the review showed the gap is not academic --
+  the file exists from the moment of open(), so a crash between open() and
+  close() leaves a zero-length or partial data/*.json that is NEVER repaired,
+  because materialization does not overwrite. Reproduced: an empty
+  city_weights.json stays empty forever and load_city_weights() returns {}
+  behind a log warning, i.e. permanent silent uncalibrated operation -- the
+  same failure class this entry exists to remove, reintroduced by its own
+  fix. A concurrent reader could also observe the half-written file in that
+  window. os.link raises FileExistsError when the target already exists, so
+  it supplies the exclusivity AND the atomicity in one step and the target
+  only ever appears fully-formed. Verified on NTFS and on both CI runners
+  (ubuntu-latest, windows-latest).
+
+  The catch is `Exception`, not `OSError`. tests/prod_data_guard.py raises
+  ProdDataWriteError, which derives from RuntimeError: if the guard were ever
+  armed before `import paths` (a `-p` plugin's module scope does run that
+  early, and this repo already uses that pattern), an OSError-only catch
+  would fail the entire suite at COLLECTION rather than reporting one
+  violation. Not reachable today -- verified that conftest imports main, and
+  therefore paths, before pytest_configure() installs the guard -- and
+  conftest's pytest_configure docstring now records that the ordering is
+  load-bearing for five file creations, not just one idempotent mkdir.
+
+  The one-time landing step, verified in a throwaway repo rather than assumed.
+  git removes a previously-tracked path from the working tree on checkout, so
+  the merge that lands this commit does touch data/. Two cases, both safe:
+    - file identical to HEAD (4 of the 5 today): removed, then recreated
+      byte-identically from seeds/ by the next process that imports paths.py;
+    - file diverged (seasonal_weights.json today, whose summer weights are
+      really learned): git REFUSES the merge -- "error: Your local changes to
+      the following files would be overwritten by merge". It fails loudly
+      rather than deleting anything.
+  LIVE_TRADING_RUNBOOK.md gained a "Rolling back code without rolling back
+  calibration" section carrying that procedure.
+
+  "Also fix regardless of which option is taken" (the migrate_backup.py
+  restore-ORDER trap): option (a) removes the trap rather than needing it
+  documented. The clone now brings no data/ files at all, and seeds only ever
+  fill in an ABSENT file, so a seed can never overwrite a value from the
+  backup bundle whichever is put down first. migrate_backup.py's step 2 now
+  says exactly that, including what the old behaviour was.
+
+  ONE CONTENT REPAIR, not a byte-for-byte copy, and not a new judgment call.
+  seeds/seasonal_weights.json's "summer" entry gained the
+  "_uncalibrated": true flag its three siblings already carried. This is
+  batch-37 item 5(a)'s own fix applied to the copy that predates it:
+  _best_weights' brier-improvement-gate rejection path used to return uniform
+  1/3 weights WITHOUT the flag, commit fa183f65 committed exactly that output
+  for summer, and batch-37 fixed the code path on 2026-08-24 after confirming
+  the LIVE file had self-healed -- so no data repair looked needed. The git
+  blob still held the pre-fix output, and that blob is what would have become
+  this seed. Left as found, it tells weather_markets._blend_weights that
+  summer IS calibrated at uniform weights, suppressing the hardcoded days-out
+  schedule for every summer trade on a fresh clone. (Generalizes the
+  "a source fix leaves frozen copies stale" pattern.) The other four seeds
+  are byte-identical to their committed blobs, verified by git hash-object.
+
+  Tests: tests/test_paths.py, new, 13 tests. Copy-when-absent; NEVER
+  overwrite an existing file (with a positive control in the same test
+  proving the call is not simply inert); all five copied; absent seeds/ and
+  unwritable data/ are silent no-ops; seeds/ holds exactly the declared
+  filenames and each is valid JSON; the declared names match the five path
+  constants the loaders actually open; every uniform weight entry carries
+  _uncalibrated (with a positive control that the flag and the uniform shape
+  travel together, so the scan is not skipping every entry vacuously);
+  import-time materialization seeds a fresh clone, with a seedless-clone
+  control proving the files come from seeds/ and not from anywhere else; and
+  `git ls-files data/` is empty, with a `git ls-files seeds/` positive
+  control so an empty result cannot mean "git returned nothing". The
+  import-time tests use a child process rather than importlib.reload(paths),
+  which would rebind DATA_DIR for the rest of the pytest session and re-run
+  materialization against the REAL data/ on the way back out.
+
+  Mutation-tested via Edit revert, three separately: "xb" -> "wb" fails the
+  never-overwrite test; removing the import-time call fails the fresh-clone
+  test; `git add -f data/city_weights.json` fails the tracking test.
+
+  Consequences 1 and 2 from the problem statement are gone with it: the
+  working tree is no longer permanently dirty from calibration runs, and a
+  fresh clone still starts from the same seeds it always did.
+
+  Docstring corrections made necessary by the untracking:
+  tests/prod_data_guard.py, tests/test_prod_data_guard.py (including a test
+  method still NAMED ...tracked_production_file...) and
+  tests/test_schema_validator.py (two places) all described these as "tracked"
+  or "currently-tracked" data/*.json files. All now say the files are seeded
+  from seeds/ instead. README.md's project-layout block gained seeds/ and a
+  note that nothing under data/ is tracked. (tests/conftest.py:635's claim
+  that temperature_scale.json "is not git-tracked" was FALSE when written and
+  is now true -- fixed for free, left alone.)
+
+  REVIEW FINDINGS (independent opus review, effort:high). Beyond the atomicity
+  and exception-breadth fixes recorded above:
+
+  The runbook procedure as first written was itself dangerous, which is a poor
+  look for a durability fix. It copied ONE file to %TEMP%, then ran
+  `git checkout --` on it with no check that the copy had succeeded -- and the
+  block is fenced ```cmd while this repo's sessions run PowerShell, where
+  %TEMP% does not expand, so step 1 could fail silently while step 2 destroyed
+  the only copy. It also hardcoded seasonal_weights.json although git's abort
+  message lists EVERY diverged file. Worst, its stated verification ("git
+  ls-files data/ prints nothing, and all five files are present") PASSES in
+  the exact failure case: skip the copy-back and the seed re-materializes, so
+  both checks succeed while the learned values are gone -- the very silent
+  reversion this entry is about. Rewritten to back up the whole directory
+  first, require the operator to confirm the listing before deleting
+  anything, and verify by CONTENT (fc against the backup; a seeded
+  seasonal_weights.json has every season at 0.3333 with "_uncalibrated").
+
+  migrate_backup.py's new note claimed "order no longer matters" because
+  materialize_missing_seeds() never overwrites. That reasoning is wrong --
+  step 2 is a manual file copy by the operator, which the never-overwrite
+  property does not touch at all. What actually makes it safe is only that
+  the clone brings no data/ files; run ANY entry point between clone and copy
+  and the seeds materialize, turning the copy into an overwrite prompt whose
+  decline silently keeps the seed. The note now states that precondition
+  instead of the false mechanism.
+
+  Test additions/corrections: a test pinning
+  _SEEDED_FILENAMES is a subset of main._PERMANENT_DATA_FILES. That invariant
+  already held, but it CHANGED MEANING with this commit -- before, cleanup_
+  data_dir() deleting a calibration file meant "uncalibrated until the next
+  fit"; now it means "silently restored to the frozen seed on the next
+  import", and metar_lockout_calibration.json's seed is real fitted
+  coefficients that pass _load_metar_calibration's validity gates and would
+  reach live pricing. The uniform-weights test was rewritten to derive its
+  file list from _SEEDED_FILENAMES rather than hardcoding a pair: one of the
+  two named files is literally {} so that arm was entirely vacuous, and the
+  list omitted condition_weights.json even though _blend_weights' tier 2
+  applies the same _uncalibrated semantics. It now also asserts how many
+  weight vectors it actually scanned, so it cannot pass by skipping
+  everything. Deriving the list also means the files batch-82 plans to add
+  are covered without anyone extending it; seeds/README.md documents the
+  two-step process for adding one.
+
+  Documented, not changed: from a worktree, SEEDS_DIR resolves through
+  safe_io.project_root() to the MAIN CLONE, so materialization is a silent
+  no-op in a worktree until this lands on master. That is consistent with how
+  DATA_DIR already behaves and is deliberate; tests/test_paths.py now says so
+  where it uses the worktree's own seeds/ for content assertions and a
+  redirected child for the runtime path.
 
 
 [OPEN 2026-08-25 -- surfaced by batch-75 while tracing every consumer of the
@@ -38653,3 +39106,86 @@ Recommendation: read `recommended_side` (falling back to the existing
   exactly this consumer. Audit the other display sites that recompute a side
   the same way (main.py's runner-up lines and market table both do).
   Full record: none -- surfaced by batch-76.
+
+[OPEN 2026-08-26 -- adjacency from batch-79 item 3, which made the comment
+  wrong.] tracker.py's CROSS-REFERENCE TO cmd_walkforward's 'between' DROP IS
+  NOW STALE
+Priority: Low -- a comment, not behaviour. Filed rather than fixed because
+  tracker.py was read-only for batch-79 (owned by batch-78 in the same
+  parallel batch set), not because it is hard.
+Files: tracker.py (~:2680, the block comment above
+  _GATE_COUPLED_EXCLUDED_CONDITION_TYPES)
+
+Problem:
+  The comment ends "Its 'between' drop is a separate question (a
+  per-condition breakdown that omits one of the three conditions), filed as
+  its own backlog entry rather than changed here (opus-review finding M5)."
+  batch-79 item 3 resolved that entry: the predicate is gone and 'between'
+  now appears in the breakdown. The rest of the comment -- that this query is
+  deliberately NOT wired to the shared registry, because it GROUPs BY
+  condition_type and pools nothing -- remains correct and should be kept.
+
+What it would look like:
+  Replace the final sentence with a pointer to the resolution: 'between' is
+  now included there, on the grounds that the shared exclusion's own reason
+  (distorting a pooled aggregate) cannot apply to a grouped query. One
+  sentence; no code change.
+
+SECOND, UNRELATED FALSE PREMISE IN THE SAME FILE (found by the same review,
+  filed here rather than as its own entry because both are tracker.py comment
+  fixes for whoever next owns that file):
+  tracker.py ~:7544 and ~:2513 both assert that "a between trade only ever
+  exists via a same-day METAR lock" / that a between condition only ever
+  produces a days_out=0 row. Measured 2026-08-26 against the live DB: there
+  are 41 between rows with days_out=1 (40 method='ensemble' + 1
+  'normal_dist', May-June 2026) out of 114 between rows total. So the premise
+  is false for 36% of the between population, and the practical consequence
+  is that check_sameday_condition_type_weakness() structurally cannot see
+  those rows even though its docstring claims to cover the condition type.
+  Pre-existing, not introduced by batch-79 -- but batch-79's per-condition
+  panel now displays the whole 114, so the two surfaces disagree about how
+  many between rows exist, and only this comment explains why.
+  Verify: SELECT method, days_out, COUNT(*) FROM predictions p JOIN
+  outcomes_valid o ON p.ticker=o.ticker WHERE p.condition_type='between'
+  GROUP BY 1,2.
+
+When to revisit: next time anyone edits tracker.py's exclusion registry or
+  its sameday condition-type alert.
+
+
+[OPEN 2026-08-26 -- adjacency found by batch-79 item 1 while sweeping every
+  __main__ block in the repo for the same load_dotenv gap.] `py watchdog.py`
+  NEVER CALLS load_dotenv, SO ITS ntfy PUSH ALERT CANNOT BE CONFIGURED FROM
+  .env
+Priority: Low, and currently ZERO impact -- NTFY_TOPIC is not set in this
+  deployment's .env, so `py watchdog.py` behaves identically with and without
+  the fix. Filed because it is a dead-man-switch alert path where the failure
+  mode is silence, and because it becomes live the moment anyone sets
+  NTFY_TOPIC and reasonably expects it to work.
+Files: watchdog.py (`__main__` block; send_alert() at ~:32 reads NTFY_TOPIC)
+
+Problem:
+  watchdog.py is documented in its own module docstring as a standalone
+  command ("run manually to check bot health: py watchdog.py") and has a
+  __main__ block. It never calls load_dotenv. send_alert() reads
+  os.getenv("NTFY_TOPIC") at CALL time, which does not help: without
+  load_dotenv the variable was never placed in os.environ at all, so the
+  function takes its no-topic branch and prints/logs locally instead of
+  sending the push. A dead-man switch whose alert silently degrades to a log
+  line is the one place that degradation is least likely to be noticed.
+
+  Verified 2026-08-26: watchdog.py's only local module-scope import is `from
+  paths import LAST_HEARTBEAT_PATH`, which reads no env, so the fix is the
+  same one-liner batch-79 applied to web_app.py -- load_dotenv() above that
+  import. The other repo-root __main__ blocks were swept at the same time and
+  none reads an env var directly: param_sweep.py and sigma_audit.py import
+  paths at module scope, while backlog_index.py and migrate_backup.py import
+  it not at all (an earlier draft of this sweep said all four imported paths;
+  measured, they do not).
+
+Why not now: watchdog.py is outside batch-79's file scope, and with
+  NTFY_TOPIC unset there is nothing to verify a fix against -- the test would
+  assert on a code path this deployment does not exercise.
+
+When to revisit: whenever NTFY_TOPIC is actually set, or next time anyone
+  touches watchdog.py or the notification path.

@@ -826,10 +826,16 @@ class TestAtexitFlushersAreAllDrained:
 
 
 class TestReadsAreAllowedButCounted:
-    def test_reading_a_tracked_production_file_is_allowed_and_recorded(self):
-        """The five git-tracked data/*.json calibration files are legitimate
-        reads today. They stay legal, but must show up in the summary so the
-        list can be tightened deliberately rather than by accident."""
+    def test_reading_a_live_production_file_is_allowed_and_recorded(self):
+        """The five data/*.json calibration files are legitimate reads today.
+        They stay legal, but must show up in the summary so the list can be
+        tightened deliberately rather than by accident.
+
+        They were force-tracked in git until batch-79 untracked them; the
+        fresh-clone copies now live in seeds/ and paths.py materializes them
+        on first import, so they are still present on a CI checkout and this
+        test still exercises a real read. The skip below remains the honest
+        guard for a clone where that has not happened."""
         if not paths.SEASONAL_WEIGHTS_PATH.exists():
             pytest.skip("data/seasonal_weights.json not present in this clone")
         content = paths.SEASONAL_WEIGHTS_PATH.read_text()

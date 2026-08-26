@@ -309,3 +309,130 @@ def test_walkforward_prints_no_data_message_when_empty(monkeypatch, capsys):
         or "no settled" in out.lower()
         or "0 windows" in out.lower()
     ), f"Should print a clear no-data message, got:\n{out}"
+
+
+class TestPerConditionBrierIncludesBetween:
+    """batch-79 item 3: the per-condition Brier breakdown must not drop 'between'.
+
+    The shared exclusion in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES exists so
+    that between-brackets' structurally larger calibration gap cannot distort a
+    POOLED Brier standing for overall model quality. This query groups by
+    condition_type, so nothing is pooled and that reason cannot apply -- while
+    the drop did hide the finding: measured 2026-08-26 against the live DB,
+    between was n=114 (33% of settled rows) at Brier 0.2794, worse than above
+    (0.2498) and below (0.2657), predicting 20.4% against a 40.4% actual rate.
+    """
+
+    @staticmethod
+    def _seed_db(path):
+        import sqlite3
+
+        con = sqlite3.connect(str(path))
+        con.execute(
+            "CREATE TABLE predictions (ticker TEXT, our_prob REAL, condition_type TEXT)"
+        )
+        con.execute("CREATE TABLE outcomes_valid (ticker TEXT, settled_yes INTEGER)")
+        rows = []
+        # 'above' and 'below' between them clear the block's own >=10-row and
+        # >1-group thresholds WITHOUT any 'between' row. That is deliberate:
+        # it means re-adding the `condition_type != 'between'` predicate still
+        # renders the panel, so the test below fails on 'between' being
+        # missing from it rather than on the whole block being skipped.
+        #
+        # 6 'above' rows, all p=0.8 and all resolved YES.
+        #   Brier = (0.8 - 1)^2 = 0.0400
+        for i in range(6):
+            rows.append((f"A{i}", 0.8, "above", 1))
+        # 6 'below' rows, all p=0.6, three resolved YES and three NO.
+        #   Brier = (3*(0.6-1)^2 + 3*(0.6-0)^2) / 6
+        #         = (3*0.16 + 3*0.36) / 6 = 1.56 / 6 = 0.2600
+        #   pred = 60.0%, actual = 50.0%
+        for i in range(6):
+            rows.append((f"C{i}", 0.6, "below", 1 if i < 3 else 0))
+        # 6 'between' rows, all p=0.2, four resolved YES and two NO.
+        #   Brier = (4*(0.2-1)^2 + 2*(0.2-0)^2) / 6
+        #         = (4*0.64 + 2*0.04) / 6 = 2.64 / 6 = 0.4400
+        #   pred = 20.0%, actual = 4/6 = 66.7%
+        for i in range(6):
+            rows.append((f"B{i}", 0.2, "between", 1 if i < 4 else 0))
+        for ticker, prob, cond, settled in rows:
+            con.execute("INSERT INTO predictions VALUES (?,?,?)", (ticker, prob, cond))
+            con.execute("INSERT INTO outcomes_valid VALUES (?,?)", (ticker, settled))
+        con.commit()
+        con.close()
+
+    @staticmethod
+    def _run(monkeypatch, tmp_path, capsys):
+        from unittest.mock import MagicMock
+
+        import main
+        import tracker
+
+        TestPerConditionBrierIncludesBetween._seed_db(tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        # The calibration-curve block above the per-condition one runs its own
+        # tracker queries against the same DB; stub them to "no data" so this
+        # test exercises only the breakdown it is about.
+        monkeypatch.setattr(
+            tracker, "get_multiday_calibration_cli", lambda *a, **kw: {"n": 0}
+        )
+        monkeypatch.setattr(
+            tracker, "get_sameday_calibration_cli", lambda *a, **kw: {"n": 0}
+        )
+        monkeypatch.setattr(
+            "backtest.run_walk_forward",
+            lambda *a, **kw: {
+                "windows": [{"n": 12}],
+                "avg_brier": 0.24,
+                "avg_win_rate": 0.5,
+                "stability_score": 0.8,
+                "trend": "stable",
+                "city_win_rates": {},  # keeps cmd_walkforward off its input() prompt
+            },
+        )
+        main.cmd_walkforward(MagicMock())
+        out = capsys.readouterr().out
+        return {
+            line.strip().split()[0]: line
+            for line in out.splitlines()
+            if line.strip().startswith(("above", "below", "between"))
+        }
+
+    def test_between_appears_with_its_own_hand_computed_brier(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        lines = self._run(monkeypatch, tmp_path, capsys)
+
+        assert "between" in lines, (
+            "'between' is missing from a breakdown named 'Per-condition Brier'"
+        )
+        between = lines["between"]
+        assert "0.4400" in between, between
+        assert "pred=20.0%" in between, between
+        assert "actual=66.7%" in between, between
+        assert "N=6" in between, between
+
+    def test_the_other_conditions_keep_their_own_separate_buckets(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Positive control: the panel renders and every condition keeps its
+        own bucket, so the test above cannot pass on a change that pooled all
+        18 rows into a single row that merely happens to be labelled
+        'between'. These two rows are also what make the panel survive the
+        `!= 'between'` predicate, which is what lets that test fail for the
+        right reason."""
+        lines = self._run(monkeypatch, tmp_path, capsys)
+
+        assert "above" in lines
+        above = lines["above"]
+        assert "0.0400" in above, above
+        assert "pred=80.0%" in above, above
+        assert "actual=100.0%" in above, above
+        assert "N=6" in above, above
+
+        assert "below" in lines
+        below = lines["below"]
+        assert "0.2600" in below, below
+        assert "pred=60.0%" in below, below
+        assert "actual=50.0%" in below, below
+        assert "N=6" in below, below

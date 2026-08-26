@@ -19,6 +19,15 @@ import requests.adapters
 # body) would trigger that load_dotenv() call mid-test, AFTER that test's own
 # env-cleanup fixtures already ran, silently re-polluting os.environ for just
 # that one test (e.g. TRADING_PAUSED reappearing after being explicitly cleared).
+#
+# batch-79: web_app.py now has a module-level load_dotenv() of its own, for
+# the standalone `python web_app.py` entry point (see its comment). Importing
+# main here defuses that too — load_dotenv() does not override an already-set
+# variable, so by the time any test imports web_app there is nothing left for
+# it to re-pollute. Two consequences worth knowing before moving this line:
+# a test that monkeypatch.delenv()s a .env key and THEN imports web_app for
+# the first time would see the key restored, and web_app's import is now an
+# os.environ mutation point rather than an inert one.
 import main as _main  # noqa: F401
 from tests import prod_data_guard
 
@@ -27,9 +36,21 @@ def pytest_configure(config):
     """Arm the production-data write guard for the whole session.
 
     Installed here rather than at conftest import so that paths.py's own
-    module-level ``_DATA.mkdir(parents=True, exist_ok=True)`` (which runs
-    during `import main` above) is not itself reported. Everything from
-    test-module collection onwards is covered.
+    module-level writes (which run during `import main` above) are not
+    themselves reported. Everything from test-module collection onwards is
+    covered.
+
+    That ordering is now load-bearing for five file CREATIONS, not just one
+    idempotent mkdir: batch-79 added ``materialize_missing_seeds()`` to
+    paths.py's module body, which on a fresh clone (i.e. every CI run, since
+    data/ is gitignored and no longer carries the calibration files) copies
+    seeds/*.json into data/. Arming the guard any earlier — e.g. from a `-p`
+    plugin's module scope, which does run before conftest imports paths —
+    would turn that into a blocked write. materialize_missing_seeds catches
+    Exception, not just OSError, precisely so that ProdDataWriteError (a
+    RuntimeError) could not escape and fail the whole suite at collection;
+    but the right fix if this ever moves is to keep the ordering, not to lean
+    on that catch.
 
     See tests/prod_data_guard.py for why an always-on structural guard
     replaced the growing list of per-constant isolate_* fixtures below.
