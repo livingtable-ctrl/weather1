@@ -6,12 +6,12 @@
     "source_commit": "e8d178f1",
     "method": "Derived from the 61 open backlog.txt entries by filtering for items completable in a single session, then grouped so that no two batches share a touched file. Every entry was verified against its own body text rather than its title -- three entries in the same pass proved to be already resolved and were closed.",
     "counts": {
-      "total": 14,
+      "total": 15,
       "HIGH": 2,
-      "MEDIUM": 6,
+      "MEDIUM-HIGH": 1,
+      "MEDIUM": 7,
       "LOW": 5,
-      "needing_user_decision": 10,
-      "MEDIUM-HIGH": 1
+      "needing_user_decision": 11
     },
     "batches": {
       "76": "weather_markets.py, metar.py",
@@ -19,7 +19,8 @@
       "78": "tracker.py, cron.py, trade_cycle.py, kalshi_ws.py",
       "79": "web.py, web_app.py, config.py, utils.py, calibration.py, ml_bias.py, paths.py, main.py",
       "80": "frontend/src/*, notify.py, tests/test_trade_improvements.py, tests/test_kelly_property.py, order_executor.py",
-      "81": "weather_markets.py, main.py, tracker.py, cron.py, order_executor.py (BLOCKED on 76-80)"
+      "81": "weather_markets.py, main.py, tracker.py, cron.py, order_executor.py (BLOCKED on 76-80)",
+      "82": "calibration.py, weather_markets.py, ml_bias.py, main.py, tracker.py (BLOCKED on 76, 78, 79)"
     },
     "deferred": [
       {
@@ -345,6 +346,35 @@
       "evidence": "Back-solving from n=20 -> 27% power gives effect 0.3012, hence n=86 for 80% power. Measured 2026-08-26: gated_edge 110 (clear), implied_mean 82 (2 days), ecmwf_consensus_gap 77 (4 days), run_trend_delta 40 (41 days), nbm_quantile_prob 27 (68 days). analysis_attempts columns contain no signal values; signal rows accrue at 0.87-1.13/day against the unbiased population's ~22/day.",
       "financial_risk": "A noise signal can be wired into live pricing on the strength of a bar that cannot distinguish it from noise. nbm_quantile_prob -- the signal that cleared the floor and fired the alert -- is the furthest from measurable.",
       "decision_required": "The replacement number and one-floor-vs-two; plus whether to log signal values onto analysis_attempts (JSON blob vs typed columns), which would cut time-to-86 from months to ~4 days and make the rows unbiased."
+    },
+    {
+      "id": "REM-0015",
+      "batch": 82,
+      "severity": "MEDIUM",
+      "scope": "live pricing / calibration",
+      "title": "Same-day trades are priced with blend weights fitted exclusively on multi-day rows, though separate calibration was the original design",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-measured",
+      "files": [
+        "calibration.py",
+        "weather_markets.py",
+        "ml_bias.py",
+        "main.py",
+        "tracker.py"
+      ],
+      "symbols": [
+        "_load_rows",
+        "calibrate_seasonal_weights",
+        "calibrate_condition_weights",
+        "calibrate_city_weights",
+        "_SEASONAL_WEIGHTS",
+        "_CONDITION_WEIGHTS"
+      ],
+      "root_cause": "calibration.py's _load_rows() selects FROM multiday_predictions (days_out >= 1 OR NULL) and its outputs carry no horizon dimension, yet weather_markets loads them into module-level constants applied regardless of days_out. Temperature scaling implements the same-day separation correctly (a dedicated 'sameday' T with an explicit no-fallback rule); blend-weight calibration never did.",
+      "evidence": "Measured 2026-08-26. temperature_scale.json has sameday T=3.829 (n=102) vs global T=4.601 (n=68). seasonal_weights.json keys are winter/spring/summer/fall, condition_weights.json above/below/between, city_weights.json empty -- no horizon level anywhere. D+0 is 196/348 = 56% of the settled population. Rows able to support a fit (all three of ensemble_prob/nws_prob/clim_prob + settled): 204 total, 77 D+0 (all method='ensemble'), 127 D+1+. metar_lockout carries none of the three probs (0 of 106) -- structural, since the ensemble block sits behind `if not metar_locked:`.",
+      "financial_risk": "The majority regime (56% of settled volume) is priced with weights derived from the minority. D+0 is dominated by metar_lockout, a structurally different problem from 24h-ahead ensemble/NWS/climatology disagreement.",
+      "decision_required": "What same-day uses when its own fit is too thin -- neutral defaults (consistent with temperature scaling's explicit no-fallback rule) vs falling back to the multi-day fit (which re-creates the pooling this removes). Plus whether the boundary is days_out=0 or same-day/next-day/multi-day. Seasonal is fittable today at 77 rows; condition (needs 60/condition) and city (50/city) are not."
     }
   ]
 }

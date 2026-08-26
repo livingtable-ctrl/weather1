@@ -10,13 +10,13 @@ Handoff prompts: `audit/handoff_prompts/batches/batch-76.md` … `batch-80.md`
 | Metric | Count |
 |---|---|
 | Open `backlog.txt` entries at time of audit | 61 |
-| Selected as completable in a single session | 14 |
+| Selected as completable in a single session | 15 |
 | HIGH | 2 |
-| MEDIUM | 6 |
+| MEDIUM | 7 |
 | MEDIUM-HIGH | 1 |
 | LOW | 5 |
-| Requiring an explicit user design decision | 10 |
-| Batches produced | 6 (81 blocked on 76-80) |
+| Requiring an explicit user design decision | 11 |
+| Batches produced | 7 (81, 82 blocked on the parallel set) |
 | Cross-batch file conflicts | **0** (verified programmatically) |
 | Deferred by file contention | 1 |
 
@@ -55,6 +55,7 @@ A scan of every entry for this pattern — an `[OPEN|PARTIALLY RESOLVED]` header
 | **[79](handoff_prompts/batches/batch-79.md)** | Process bootstrap & config durability | 3 | `web.py`, `web_app.py`, `config.py`, `utils.py`, `calibration.py`, `ml_bias.py`, `paths.py`, `main.py` |
 | **[80](handoff_prompts/batches/batch-80.md)** | Frontend, alerting, two vacuous tests | 4 | `frontend/src/*`, `notify.py`, `tests/test_trade_improvements.py`, `tests/test_kelly_property.py`, `order_executor.py` |
 | **[81](handoff_prompts/batches/batch-81.md)** | Graduation floor + unbiased signal logging | 2 | `weather_markets.py`, `main.py`, `tracker.py`, `cron.py`, `order_executor.py` — **BLOCKED on 76–80** |
+| **[82](handoff_prompts/batches/batch-82.md)** | Same-day blend weights fitted separately | 1 | `calibration.py`, `weather_markets.py`, `ml_bias.py`, `main.py`, `tracker.py` — **BLOCKED on 76, 78, 79** |
 
 **Suggested order if run serially: 77, 76, then any.** 77 is a risk-control path and its fix is well-specified. 76 is the highest-value single item but has the largest design surface.
 
@@ -87,6 +88,18 @@ Written after the set above, once the 2026-08-26 `analysis_attempts` drain (scor
 The ordering flip worth remembering: `nbm_quantile_prob` is the signal that cleared the floor and fired the activation alert, and at 27 rows it is the *furthest* from measurable. It looked ready because the bar was wrong.
 
 **It also corrects three factual errors in its own source entry** (verified by enumerating the registry): ten of twelve entries use `sample_floor=20`, not nine of eleven; `richer_ml_features` is `None`, not 20; `rain_forecast_blend` is 20, not `None`.
+
+## Batch 82 — added 2026-08-26, completing an original design intent
+
+Not a new proposal. Separate calibration for single-day and multi-day was the original design; temperature scaling implements it and blend-weight calibration never did.
+
+**Where it holds:** `temperature_scale.json` carries a dedicated `sameday` key (T=3.829, n=102) beside `global` (T=4.601, n=68), and `ml_bias.py` states an explicit **"no fallback to global/multi-day T"** rule. The gap between the two fitted values shows the separation is doing real work.
+
+**Where it does not:** `calibration.py`'s `_load_rows()` selects `FROM multiday_predictions` (days_out >= 1), and its three outputs carry no horizon dimension — `seasonal_weights.json` is keyed by season, `condition_weights.json` by condition, `city_weights.json` is empty. `weather_markets.py` loads them into module-level constants applied regardless of `days_out`. **D+0 is 56% of the settled population (196/348)**, so the majority regime is priced by a fit derived from the minority.
+
+**Measured supply**, rows carrying all three of `ensemble_prob`/`nws_prob`/`clim_prob` and settled: 204 total, **77 D+0** (all `method='ensemble'`), 127 D+1+. `metar_lockout` carries **none** of the three (0 of 106) — structural, since the ensemble block sits behind `if not metar_locked:`. So the lockout path was never a blend-weight candidate and must not be counted when sizing the fit.
+
+That makes **seasonal fittable today** (77 rows against a 10-validation-row floor) while **condition** (60/condition) and **city** (50/city) are not — which is precisely why the batch's one real decision is what same-day reads when its own fit is too thin. Neutral defaults are consistent with the temperature-scaling precedent; falling back to the multi-day fit would re-create the pooling the batch exists to remove.
 
 ## Deferred by file contention
 
