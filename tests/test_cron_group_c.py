@@ -8,6 +8,39 @@ from __future__ import annotations
 import json
 import time
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_live_config(tmp_path, monkeypatch):
+    """Redirect main._LIVE_CONFIG_PATH for every test in this module.
+
+    cmd_cron reaches _poll_pending_orders -> main._load_live_config(), which
+    reads data/live_config.json and CREATES it on FileNotFoundError. That file
+    is untracked and gitignored, so it exists on a developer machine and does
+    NOT exist on a fresh clone -- CI took the create branch and wrote into the
+    real data/ dir.
+
+    The failure is silent at the call site and only surfaces afterwards:
+    cron.py:1805 catches the guard's ProdDataWriteError and logs
+    "_poll_pending_orders failed", the test body then passes, and
+    conftest's post-test prod_data_guard.assert_clean() fails on the recorded
+    violation. That is exactly the case assert_clean's own docstring exists
+    for -- "this codebase wraps most persistence in try/except Exception: log,
+    so the call-site raise is routinely swallowed".
+
+    Module-scoped autouse rather than per class: cmd_cron is invoked from
+    several classes here, and any test added later inherits the gap silently.
+
+    NOTE: this is a per-file patch for a suite-wide gap. 53 test files reach
+    _load_live_config without isolating _LIVE_CONFIG_PATH; only five isolate
+    it. The systemic fix belongs in tests/conftest.py alongside the other
+    isolate_* fixtures -- see backlog.txt and batch-83, which owns that file.
+    """
+    import main
+
+    monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", tmp_path / "live_config.json")
+
 
 class TestManualOverrideFailsClosed:
     def test_corrupt_override_file_is_treated_as_active(self, tmp_path, monkeypatch):
