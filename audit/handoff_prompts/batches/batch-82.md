@@ -24,7 +24,16 @@ Repo: weather1. Written 2026-08-26 against master `c9cd4426` — **re-verify cur
 | `condition_weights.json` | `above`, `below`, `between` |
 | `city_weights.json` | *(empty)* |
 
-And `weather_markets.py` (~`:1340-1341`) loads them into module-level `_SEASONAL_WEIGHTS` / `_CONDITION_WEIGHTS` applied **regardless of `days_out`**. So same-day trades are priced with weights fitted exclusively on multi-day rows.
+`weather_markets.py` (~`:1340-1341`) loads them into module-level `_SEASONAL_WEIGHTS` / `_CONDITION_WEIGHTS`, so same-day trades are priced with weights fitted exclusively on multi-day rows.
+
+**Precise wording matters here, because the code IS `days_out`-aware — just not in the way that helps.** `_nws_days_out_scale(weights, days_out)` (~`:9848`) decays the NWS weight at longer horizons, and its own docstring says: *"Scale factor: 1.0x at days_out=1 (no change — **calibration data is at d=1**), decaying 10% per day beyond that."* Its first guard is:
+
+```python
+if w_nws == 0.0 or days_out <= 0:
+    return weights          # days_out=0 -> the d=1 weights, unmodified
+```
+
+So the system already knows its calibration is d=1-based, handles d≥2 by decay, and passes **d=0 straight through untouched**. Same-day is not overlooked by accident; it falls into the one branch that applies the multi-day fit verbatim.
 
 **D+0 is 56% of the settled population** (196 of 348), so the majority regime is being weighted by a fit derived from the minority.
 
@@ -40,32 +49,55 @@ Rows with all three of `ensemble_prob` / `nws_prob` / `clim_prob` populated and 
 
 **`metar_lockout` carries none of the three probs: 0 of 106 rows.** That is structural, not missing data — the ensemble/Gaussian block sits behind `if not metar_locked:` and `blended_prob` comes from `_metar_blended_prob`. The lockout path was never a blend-weight candidate and must not be counted as one when sizing this.
 
-Against the existing floors, that gives a clear split of what is available now:
+Against the existing floors:
 
 | Fit | Current floor | D+0 supply | Verdict |
 |---|---|---|---|
-| seasonal | 10 validation rows | 77 → ~15 validation at the existing holdout | **fittable today** |
+| seasonal | see caveat below | 77 rows | plausibly fittable |
 | condition | 60 per condition | 77 across above/below/between | not yet |
 | city | 50 per city | 77 across ~20 cities | not for a long time |
+
+**Re-derive the seasonal floor yourself — do not trust a number from this file.** The cron log's `"only 7 validation rows (need 10)"` belongs to `calibrate_blend_weights`, which is a *different* calibrator from `calibrate_seasonal_weights`; an earlier draft of this batch conflated them. Read each calibrator's own floor in `calibration.py` before sizing anything.
+
+## ⚠ THE TRAP THAT MAKES THE OBVIOUS PLAN A NO-OP
+
+**Fitting same-day seasonal weights alone would change nothing.** `_blend_weights`'s precedence is:
+
+```
+city  ->  condition  ->  seasonal  ->  hardcoded
+```
+
+Each tier returns early if its calibration is present and not `_uncalibrated`. And `condition_weights.json` currently holds **real fitted values**, not neutral placeholders:
+
+```json
+{"above":   {"ensemble": 0.60, "climatology": 0.05,  "nws": 0.35},
+ "below":   {"ensemble": 0.05, "climatology": 0.75,  "nws": 0.20},
+ "between": {"ensemble": 0.093, "climatology": 0.004, "nws": 0.903}}
+```
+
+So a same-day row reaches the **condition** tier and returns there, having never consulted seasonal. Fitting the one tier the sample supports would be dead code while the tier above it still answers from multi-day data.
+
+**This is what makes the batch's decision a chain-level question, not a per-tier one.** Do not implement tier by tier.
 
 ## The item
 
 Add a horizon dimension to blend-weight calibration so same-day is fitted from same-day rows.
 
-**The decision that matters, and it is the whole batch — `AskUserQuestion`:** what should same-day use when its own fit is too thin, which is the case for city and condition today?
+**The decision that matters, and it is the whole batch — `AskUserQuestion`:** does same-day get its **own precedence chain**, and what sits at the bottom of it?
 
-- **(a) Neutral defaults.** This is what "completely separate" actually implies, and it is the rule temperature scaling already follows ("no fallback to global/multi-day T"). Consistent with existing precedent; costs predictive power while the sample is thin.
-- **(b) Fall back to the multi-day fit.** Preserves whatever signal the multi-day weights carry, but it re-creates exactly the pooling this batch exists to remove, just with extra steps.
+- **(a) A separate same-day chain that never consults a multi-day tier.** Same-day resolves `city_sameday -> condition_sameday -> seasonal_sameday -> hardcoded`, skipping any tier it cannot fit rather than borrowing the multi-day one. Today that means it would use same-day *seasonal* and fall to *hardcoded* for city/condition. This is what "completely separate" actually implies, and it is the rule temperature scaling already follows verbatim ("no fallback to global/multi-day T"). It is also the only option under which fitting same-day seasonal has any effect at all.
+- **(b) Per-tier fallback to the multi-day fit.** Preserves whatever signal the multi-day weights carry — but a same-day row would still resolve at the multi-day *condition* tier, so the same-day seasonal fit stays unreachable and the split is cosmetic.
 
-**(a) is the consistent answer** — it is the same rule already applied one layer up, and a fallback that silently reinstates multi-day weights would make the split cosmetic. But it is the user's call, because it means same-day condition/city weights sit at neutral for months.
+**(a) is the only option that does anything**, which is a strong argument for it, but it is still the user's call because it means same-day gives up the fitted `above`/`below`/`between` weights and falls to hardcoded until it has 60 rows per condition of its own. Quantify that cost before asking: compare the hardcoded weights against the current condition weights so the question is concrete rather than abstract.
 
-Note `calibration.py` already logs its own thin-sample behaviour (`"only 7 validation rows (need 10) — returning uncalibrated so calibrate_and_save preserves existing weights"`), so the machinery for "declined to fit" exists; the question is only what the same-day path reads when that happens.
+Note `calibration.py` already has machinery for "declined to fit" — it logs a thin-sample refusal and returns uncalibrated so `calibrate_and_save` preserves existing weights. Reuse that shape rather than inventing one; the open question is only what the same-day path *reads* when a tier declines.
 
 **Second, smaller decision:** whether `days_out=0` is the right boundary, or whether the split should be same-day / next-day / multi-day. The existing `multiday_predictions` view draws it at `>= 1`, and temperature scaling's `sameday` key uses the same line, so consistency argues for `days_out=0` — but D+1 is 135 of 348 settled rows and is arguably its own regime.
 
 ## Implementation notes
 
 - `calibration.py`'s `_load_rows()` is shared by all three calibrators; parameterise the horizon rather than forking it. Read its `_LOAD_ROWS_COND_CLAUSE` / `_LOAD_ROWS_COND_PARAMS` handling first — there is an existing condition-type exclusion that must survive.
+- **`_nws_days_out_scale`'s `days_out <= 0` early return needs revisiting as part of this.** Today it is the line that hands the d=1 fit to same-day unchanged. Once same-day has its own weights, that guard means something different and may be wrong — decide explicitly rather than leaving it.
 - The output files gain a horizon level. Decide the shape deliberately: nesting (`{"sameday": {"winter": {...}}}`) versus sibling files (`seasonal_weights_sameday.json`). **Whichever you pick, note that these five calibration files are force-tracked in git despite `data/` being gitignored, and a `git restore .` silently reverts them to uncalibrated seeds** — that is its own open backlog entry, and adding files makes it worse. Coordinate with batch 79, which owns that entry.
 - `weather_markets.py`'s module-level `_SEASONAL_WEIGHTS` / `_CONDITION_WEIGHTS` are loaded once at import. A horizon-aware read must not turn into a per-call file read on the pricing path.
 - Do **not** fold `metar_lockout` rows into any of this. They carry none of the three inputs, and batch-75 spent a session removing exactly this kind of population mixing from `forecast_temp_f`.
