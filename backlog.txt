@@ -43093,3 +43093,87 @@ Plan:
 When to revisit:
   Before any blend-membership or weight change, and alongside the quantisation
   entry above -- they are the same area and a session in one should read both.
+
+
+[OPEN 2026-08-26 -- prompted by another session reporting "same-day losses are
+  the majority of lifetime losses". That is literally true and directionally
+  inverted; chasing it produced this, which is the P&L counterpart of the
+  no-edge entries above and agrees with them in dollars rather than Brier.]
+  EVERY DOLLAR THIS BOT HAS EVER MADE CAME FROM THE METAR LOCK. THE ENSEMBLE
+  FORECASTING PATH IS -$213 ACROSS ITS ENTIRE LIFE
+Priority: HIGH as a decision input. No code implied. This is the single
+  clearest statement of what does and does not work, and it should be read
+  before any further investment in the forecasting path.
+Files: none (measurement). Source: paper.get_all_trades(), settled rows with a
+  non-null pnl (247 of 254), joined to predictions.method by ticker.
+
+First, the claim that prompted it -- true, and misleading on its own:
+
+    days_out    n     wins      losses      NET    win%   avg win  avg loss
+       0      138   1569.69   -1420.13   +149.56    59%    19.14    -25.36
+       1       54    160.40    -168.78     -8.38    43%     6.97     -5.44
+     NULL      55     95.45    -277.71   -182.26    35%     5.02     -7.71
+
+  D+0 is 76.1% of all losing dollars -- and 86% of all winning dollars, and
+  the only net-positive bucket. It is the high-variance bucket (avg win and
+  avg loss both 3-5x the others), not the losing one. Cutting D+0 on the
+  strength of the loss column alone would remove the profit.
+
+  (The NULL-horizon bucket is legacy, not a live data-quality problem: 51 of
+  its 55 trades are 2026-05.)
+
+Second, and this is the finding. Split by MONTH and by predictions.method:
+
+    month     method                  n     net P&L
+    2026-05   ensemble               51    -165.63
+    2026-06   metar_lockout          89    +119.36
+    2026-06   (no prediction row)     8     +71.30
+    2026-06   ensemble               48     +41.51
+    2026-06   normal_dist             2     -18.57
+    2026-08   ensemble               49     -89.05
+                                          --------
+                                     247    -41.07
+
+  ENSEMBLE, the forecasting path, by month: -165.63, +41.51, -89.05.
+  **Lifetime ensemble P&L = -$213.17.** Negative in two of the three months
+  it has run, and negative now.
+
+  METAR LOCKOUT: +$119.36 over 89 trades, never a losing month -- but it only
+  ever ran in June. It has produced 4 predictions in August, all 'between'.
+
+  So the bot has been profitable exactly once, in June, and June is exactly
+  when the METAR lock was firing at 60.5% of all predictions (see the entry
+  "THE METAR LOCK HAS STOPPED FIRING"). Since two monotone-safety vetoes
+  closed the non-'between' lock path -- 3e6af667 on 2026-07-10 for min
+  markets, d65decff on 2026-08-25 for max -- the remaining engine is the
+  ensemble path, and it loses.
+
+Why this does NOT say "reopen the lock":
+  Both vetoes are correct and each rejects a genuinely unsafe direction --
+  evening cooling can still reverse a min lock, and the day's true peak
+  typically lands 15:00-17:00, after the 14:00 gate. The HIGH veto carries a
+  22,799-station-day measurement behind it. The lock's profitable period ran
+  WITHOUT those protections, so some part of that +119.36 was very likely
+  paid for by risk that has since been correctly removed. Do not read this
+  entry as an argument for undoing them.
+
+What it does say:
+  The one thing that ever made money here was an OBSERVATIONAL edge -- seeing
+  the running daily extreme before settlement -- not a FORECASTING edge. That
+  is the same conclusion the no-edge entries reach from Brier scores on the
+  unbiased population, arrived at independently from realised P&L.
+
+Caveats, all load-bearing:
+  - Paper trading, not real money.
+  - 49 August ensemble trades is a thin sample for "it loses now".
+  - The +71.30 "no prediction row" bucket is 8 June trades and is unexplained;
+    worth its own look before it is counted as anything.
+  - metar_lockout's +119.36 is one month, one regime (June heat), and
+    pre-veto. It is not proven to persist even if the path reopened.
+
+When to revisit:
+  Before any further work on the ensemble/forecasting path, including the
+  recalibration batch -- that batch improves a path with a lifetime P&L of
+  -$213.17, which does not make it wrong to do, but does set what success can
+  look like. And before any decision that treats D+0 as the problem: D+0 is
+  where both the wins and the losses are.
