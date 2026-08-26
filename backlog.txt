@@ -40614,8 +40614,63 @@ What this invalidates right now:
   should say so rather than render an authoritative table under a
   reassuring verdict.
 
+ANSWERED 2026-08-26 -- IT IS A GATE CHANGE, NOT SEASONAL. Two separable
+halves, and only one of them was ever a mystery:
+
+  HALF 1 -- 'between' (69 of June's 89 rows). A deliberate, documented
+  toggle. between locks ran 69 in June, ZERO for all of July, and 4 in
+  August. `bded3d6a` (2026-08-09, "re-enable between-bucket METAR lock-in
+  on the daily extreme, not instantaneous temp") is the re-enable. Nothing
+  to investigate; this half is fully explained and correct.
+
+  HALF 2 -- above/below. THIS is the real finding. Expressed as a lock RATE
+  over same-day above/below predictions rather than as a count:
+
+    month     locked   same-day above/below preds   lock rate
+    2026-06     20                39                  51.3%
+    2026-07     13                49                  26.5%
+    2026-08      0                28                   0.0%
+
+  Market supply went UP, not down: analysis_attempts at days_out=0 for
+  above/below went 90 (July) -> 224 (August). There were more chances in
+  August than ever, and the lock took none of them.
+
+  This is not consistent with seasonality. If August's true lock rate were
+  even July's already-reduced 26.5%, the probability of observing 0 locks
+  in 28 opportunities is 0.735^28 ~= 1 in 10,000. A weather-driven decline
+  produces a thin tail, not an exact zero.
+
+  Dated cause, with the cliff inside a single month: splitting July in
+  half, non-'between' locks ran 11 in 2026-07-01..15 and 2 in
+  2026-07-16..31. The commit on the boundary is `3e6af667` (2026-07-10,
+  "Fix ~35 bugs in weather_markets.py found by a full-file Fable
+  adversarial review"), which added a monotone-safety veto that UNLOCKS an
+  already-locked market when the branch check_metar_lockout used is not
+  monotone-safe:
+
+    + if _is_low_mkt and _lockout.get("locked"):
+    +     # "min already fell below threshold - margin" is monotone-safe
+    +     # threshold + margin" is NOT safe -- evening cooling can still...
+    +     _margin = 3.0  # matches check_metar_lockout's own default
+
+  That veto is correct on its own terms -- it is the same monotone-safety
+  reasoning batch-76 later built section 10b on -- and it is very likely
+  what took the rate from 51% to 27%.
+
+  STILL UNEXPLAINED, and this is what remains open: that veto is scoped to
+  `_is_low_mkt`, so it cannot by itself explain ZERO `above` (max-market)
+  locks across 14 August opportunities. Either a second narrowing landed
+  after 2026-07-10, or the veto's scope is wider in effect than its
+  condition reads. Candidate commits touching this area after the cliff:
+  `276af72a` (08-01, var-derivation consolidation across 7 files),
+  `0100bffe` (08-11, target_date vs city-local today), `9eb2f154` (08-21,
+  batch-08 METAR audit fixes). Start by instrumenting a single live
+  above-market same-day scan and logging which branch declines to lock --
+  that is one cron cycle's worth of evidence and settles it outright.
+
 Plan:
-  1. `git log -L` `_metar_lock_in` over the window; diff the gate conditions.
+  1. DONE -- see ANSWERED above. Remaining: find what zeroes the `above`
+     half, per the paragraph directly above.
   2. Decide seasonal-vs-regression on clearance/margin distributions across
      the three months, not counts.
   3. Independently of the answer: make the calibration panel state its
