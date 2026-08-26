@@ -111,7 +111,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 76  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 78  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -564,17 +564,44 @@ _MIGRATIONS = [
     # predictions.forecast_run_inits, captured at the moment of the fetch
     # rather than inferred later.
     #
-    # VOLUME (corrected by an opus review -- an earlier estimate here of
-    # "~24 rows/day" was derived from settled predictions and was roughly 50x
-    # low). The real driver is batch_prewarm_ensemble's combine loop:
-    # cities x target_dates x 2 vars x ~6 fetched models, times 4 cycle
-    # windows/day. At ~21 cities that is of order 1,200 rows/day, ~440k/year,
-    # at ~0.3-1 KB of values_json each -- a few hundred MB/year, in a
-    # predictions.db that cloud_backup pushes after every cron run. There is
-    # no retention sweep for this table yet; purge_old_predictions covers
-    # only predictions/outcomes. See backlog.txt "BATCH-64 FORWARD-ONLY
-    # TABLES HAVE NO RETENTION SWEEP" -- that must land before this has been
-    # writing for long.
+    # VOLUME. Two earlier estimates here were both wrong, in opposite
+    # directions, so this one is MEASURED rather than derived: an original
+    # "~24 rows/day" (from settled-prediction counts, ~50x low) and an
+    # opus-review correction to "~1,200 rows/day at ~0.3-1 KB each".
+    #
+    # Measured 2026-08-26 against the live table (batch-78): 605 rows, one
+    # full cycle window contributing 600 of them = 20 cities x 5 models x
+    # 2 vars x 3 target dates. Mean values_json is 191 B and the mean total
+    # payload 294 B, not 0.3-1 KB. On-disk cost including this table's
+    # UNIQUE index, measured on a VACUUMed scratch DB carrying this exact
+    # schema, is 367 B/row.
+    #
+    # The driver is batch_prewarm_ensemble's combine loop, once per cycle
+    # window: cron runs at 02:15/08:15/14:15/20:15 UTC and _ensemble_cycle_tag
+    # buckets on the 02/08/14/20 availability boundaries, so each run lands in
+    # a distinct window and none of the four collapse under idx_emv_dedup.
+    # ~2,400 rows/day, ~0.86 MB/day, ~320 MB/year -- up to ~4,000 rows/day
+    # when 5 target dates are in scope instead of the 3 measured.
+    #
+    # AND THAT NUMBER IS NOT THE COST. cloud_backup.backup_data copies every
+    # data/*.db into a NEW dated folder per run and prunes folders older than
+    # 30 days, so the steady state is 31 full uncompressed copies of
+    # predictions.db. The 365-day retention below therefore costs ~320 MB in
+    # the DB and ~10 GB in the sync folder -- and CLOUD_BACKUP_PATH being
+    # unset means _find_sync_folder() falls through to %ONEDRIVE%, so that is
+    # paid against a cloud quota. Measured 2026-08-26: OneDrive/KalshiBot/
+    # data held 2 folders / 94.1 MB, on its way to 31. Filed as its own
+    # backlog entry ("EVERY BYTE KEPT IN predictions.db IS PAID 31 TIMES
+    # OVER"); cloud_backup.py was outside batch-78's scope.
+    #
+    # Retention: prune_ensemble_member_values(days=365), wired into cron's
+    # Monday sweep (batch-78 item 2). 365 rather than a shorter window
+    # because A15b's rank histogram is a WEATHER statistic -- summer and
+    # winter ensemble spread differ systematically, so a full seasonal cycle
+    # is the shortest horizon that lets the panel compare like with like --
+    # and because these rows are forward-only and not backfillable, making
+    # the window asymmetric: shortening it later is free, lengthening it
+    # cannot recover what was already deleted.
     #
     # values_json holds the RAW members: pre-bias-correction and, critically,
     # pre-weight-replication. get_ensemble_temps()/batch_prewarm_ensemble()
@@ -615,9 +642,23 @@ _MIGRATIONS = [
     # background-thread writer is safe, but a write per delta would not be.
     #
     # VOLUME: plain INSERT, no dedup, one row per subscribed ticker per
-    # DEPTH_SNAPSHOT_INTERVAL_SECS (default 60s). N tickers x 1,440 rows/day.
-    # Like ensemble_member_values above, this has no retention sweep yet --
-    # same backlog entry.
+    # DEPTH_SNAPSHOT_INTERVAL_SECS (default 60s). N tickers x 1,440 rows/day
+    # for as long as the listener is up.
+    #
+    # Still 0 rows as of 2026-08-26, so unlike ensemble_member_values above
+    # this figure is a PROJECTION and has never been checked against a real
+    # row. cron subscribes every scanned ticker (~590) and stops the WS at
+    # the end of cmd_cron, so a cron-only day is bounded by the subscribe
+    # burst plus the cycle's own duration -- of order 2,400-10,000 rows/day
+    # across 4 cycles. A `watch --auto --live` session holds the listener up
+    # continuously and is unbounded by comparison.
+    #
+    # Retention: prune_orderbook_depth_snapshots(days=30), wired into cron's
+    # Monday sweep (batch-78 item 2). Much shorter than
+    # ensemble_member_values' 365 because A4's ladder walk and A17's
+    # counterfactual replay are short-horizon by design, and because a
+    # projection that has never seen a row is exactly the kind of number
+    # that was already wrong once on the table above.
     "CREATE TABLE IF NOT EXISTS orderbook_depth_snapshots ("
     "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
     "  ticker      TEXT NOT NULL,"
@@ -707,6 +748,60 @@ _MIGRATIONS = [
     # without that measurement would trade a known contamination for an
     # unmeasured one.
     "ALTER TABLE predictions ADD COLUMN model_forecast_temp_f REAL",
+    # v77: batch-78 item 1. Nothing persisted recorded per-day that a scan
+    # RAN, so an outage and a fully-gated day were indistinguishable --
+    # get_scan_activity() had to report both as "no output" and said so in
+    # its own docstring. Neither candidate table can answer it:
+    # analysis_attempts only receives a row for a market that survived every
+    # SCAN_GATES check (0-45/day against ~590 scanned), and `predictions`
+    # only for one that reached the placement loop. The 2026-08-25 06:36
+    # scan rejected 549 of 590 at the gates; a calm, well-priced day
+    # plausibly rejects all of them and writes nothing anywhere.
+    #
+    # Not hypothetical: batch-64 landed 2026-08-25 08:46 UTC and its four
+    # forward-only writers produced nothing until 00:30 UTC the next day
+    # because no scan ran in between. That was invisible for a full day and
+    # led a downstream session to conclude the writers were broken.
+    #
+    # Deliberately carries COUNTS, not a bare ran/did-not-run flag. A row
+    # saying only "a scan ran" still cannot separate "ran and gated
+    # everything" from "ran and analysed 40 markets that all missed the edge
+    # threshold" -- reached_analysis is what makes the distinction, and it is
+    # recorded per SCAN rather than per market precisely because
+    # analysis_attempts upserts on (ticker, target_date) and therefore
+    # undercounts a re-analysed market.
+    #
+    # Written unconditionally by cron.py in a `finally`, so a scan that
+    # crashes or trips the kill switch mid-cycle still leaves a row
+    # (scan_completed = 0) rather than looking identical to a scan that never
+    # started. NULLable count columns, not DEFAULT 0: on the crash path the
+    # counts are genuinely unknown, and storing 0 there would assert
+    # "scanned nothing" -- the exact false certainty this table exists to
+    # remove.
+    #
+    # VOLUME: one row per cron cycle, 4 cycles/day (02:15/08:15/14:15/20:15
+    # UTC per main.cmd_schedule_cycles), ~200 B/row -- ~0.3 MB/year. Pruned
+    # by prune_scan_runs() at the same 730-day retention purge_old_predictions
+    # uses, rather than the shorter windows batch-78's other two tables got:
+    # this is the outage HISTORY, it is three orders of magnitude smaller
+    # than either of them, and a long baseline is the whole point of it.
+    #
+    # APPENDED, never inserted -- see the analysis_attempts block above and
+    # _run_migrations' own comment for why _MIGRATIONS is append-only.
+    "CREATE TABLE IF NOT EXISTS scan_runs ("
+    "  id               INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  started_at       TEXT NOT NULL,"
+    "  finished_at      TEXT NOT NULL,"
+    "  markets_fetched  INTEGER,"
+    "  markets_scanned  INTEGER,"
+    "  reached_analysis INTEGER,"
+    "  scan_completed   INTEGER NOT NULL DEFAULT 0,"
+    "  mode             TEXT,"
+    "  halted_reason    TEXT"
+    ")",
+    # v78: get_scan_activity() groups on DATE(started_at) over a rolling
+    # window, and prune_scan_runs() deletes on the same column.
+    "CREATE INDEX IF NOT EXISTS idx_scan_runs_started ON scan_runs(started_at)",
 ]
 
 
@@ -10858,6 +10953,220 @@ def log_orderbook_depth(
         return False
 
 
+def log_scan_run(
+    started_at: str,
+    finished_at: str | None = None,
+    *,
+    markets_fetched: int | None = None,
+    markets_scanned: int | None = None,
+    reached_analysis: int | None = None,
+    scan_completed: bool = False,
+    mode: str | None = None,
+    halted_reason: str | None = None,
+) -> bool:
+    """Record that one scan cycle happened. batch-78 item 1.
+
+    This is the row whose ABSENCE means "no scan ran that day". Everything
+    else this module persists is conditional on a market surviving something:
+    `analysis_attempts` needs a market past every SCAN_GATES check,
+    `predictions` needs one past the placement gate. A scan that gates out
+    all ~590 markets writes to neither and used to be indistinguishable from
+    the cron job being dead -- see get_scan_activity() and the scan_runs
+    migration comment.
+
+    The COUNTS are the point, not the row's mere existence. `reached_analysis`
+    is what separates "ran and gated everything" (0) from "ran and analysed 40
+    that all missed the edge threshold" (40); a bare ran/did-not-run flag
+    would collapse those back together.
+
+    Which of these columns are actually READ today, stated plainly so the
+    paragraph above is not mistaken for a description of current behaviour
+    (opus review, batch-78 reviewer A #5): get_scan_activity() consumes
+    `started_at` (day bucketing and the coverage floor), `markets_scanned`
+    (as a NULL/non-NULL boolean, to tell a halted cycle from a real scan) and
+    `reached_analysis` (surfaced per-day as `scan_reached_analysis`). It
+    derives its own day STATE from analysis_attempts and predictions, not
+    from this table's counts, because those two have history predating
+    scan_runs. `markets_fetched`, `scan_completed`, `mode` and
+    `halted_reason` have no reader yet -- they are deliberate forward-only
+    capture for the panels that will need them, on the same
+    not-backfillable reasoning as batch-64's own writers.
+
+    Every count is Optional and defaults to None rather than 0, deliberately.
+    The caller writes this from a `finally`, so on a crash or a mid-cycle kill
+    switch the counts are genuinely unknown -- storing 0 would assert
+    "scanned nothing", which is the same false certainty this table exists to
+    remove, just pointed the other way.
+
+    `scan_completed` mirrors the flag trade_cycle computes for
+    snapshot_scan_funnel(): False means the analysis loop did not run to
+    completion, so the counts cover only part of the market universe.
+
+    `started_at` is the start of the whole CRON BODY, not of the scan itself
+    -- cron stamps it once at the top of _cmd_cron_body so the two early
+    halts can share it, and settlement/prewarm/WS setup all run before the
+    scan begins. So (finished_at - started_at) is cycle duration, not scan
+    duration. Correct for the DATE() bucketing get_scan_activity does with
+    it; do not derive a scan latency from it.
+
+    `started_at` must be an ISO-8601 timestamp. A malformed value would be
+    doubly invisible: SQLite's DATE() returns NULL for it, so the row drops
+    out of get_scan_activity()'s counts AND out of the coverage floor's
+    MIN(), while prune_scan_runs' lexicographic cutoff can never delete it
+    (e.g. "now" sorts above any "20xx-.." cutoff). Rejected here rather than
+    stored, since a row that is neither readable nor prunable is worse than
+    no row.
+
+    Returns True on insert. Every failure is swallowed and logged: this is a
+    write-only observation and must never fail a scan.
+    """
+    try:
+        datetime.fromisoformat(started_at)
+    except (TypeError, ValueError):
+        _log.warning(
+            "log_scan_run: started_at=%r is not ISO-8601 — refusing to write "
+            "a row that could be neither counted nor pruned",
+            started_at,
+        )
+        return False
+    try:
+        init_db()
+        with _conn() as con:
+            con.execute(
+                """
+                INSERT INTO scan_runs
+                  (started_at, finished_at, markets_fetched, markets_scanned,
+                   reached_analysis, scan_completed, mode, halted_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    started_at,
+                    finished_at or datetime.now(UTC).isoformat(),
+                    markets_fetched,
+                    markets_scanned,
+                    reached_analysis,
+                    1 if scan_completed else 0,
+                    mode,
+                    halted_reason,
+                ),
+            )
+        return True
+    except Exception as exc:
+        _log.warning("log_scan_run failed (started_at=%s): %s", started_at, exc)
+        return False
+
+
+def prune_scan_runs(days: int = 730) -> int:
+    """Drop scan_runs rows older than `days`. Mirrors prune_old_alert_deliveries.
+
+    730 days matches purge_old_predictions' retention rather than the shorter
+    windows batch-78 gave ensemble_member_values (365) and
+    orderbook_depth_snapshots (30). One row per cron cycle at ~200 B is
+    ~0.3 MB/year -- three orders of magnitude below either of those -- and a
+    long uptime baseline is the entire purpose of the table, so there is
+    nothing to buy by cutting it shorter.
+    """
+    if days <= 0:
+        # A non-positive window puts the cutoff at or after "now", so the
+        # DELETE below would match EVERY row. These three tables are
+        # forward-only and not backfillable, so a caller typo must fail
+        # loudly rather than silently empty the corpus. The sibling pruners
+        # this mirrors share the hole; their tables are reconstructable,
+        # these are not.
+        raise ValueError(f"prune_scan_runs: days must be positive, got {days!r}")
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        cur = con.execute("DELETE FROM scan_runs WHERE started_at < ?", (cutoff,))
+        n = cur.rowcount
+    _log.info("pruned %d old scan_runs (older than %d days)", n, days)
+    return n
+
+
+def prune_ensemble_member_values(days: int = 365) -> int:
+    """Drop ensemble_member_values rows older than `days`. batch-78 item 2.
+
+    Cuts on `logged_at`, not `target_date`, matching every sibling pruner in
+    this module. The two differ by at most the forecast horizon (a few days),
+    which is immaterial against a 365-day window, and logged_at is the column
+    this table is reasoned about by. NOT an indexed scan: the table's only
+    index is idx_emv_dedup on (city, model, target_date, var, cycle), so this
+    weekly DELETE is a full table scan. Acceptable at ~876k rows once a week
+    inside the Monday sweep that already runs VACUUM; add an index on
+    logged_at if the sweep ever shows up in cron's runtime.
+
+    365 days is a full seasonal cycle. A15b's rank histogram is a weather
+    statistic: ensemble spread in July and in January are different
+    populations, so anything shorter would let the panel compare unlike with
+    unlike, or show only one of them. INDEX-PANEL-BACKENDS.md's own bar is
+    "needs months, not days", which 365 clears with room.
+
+    Measured cost at this window (see the migration comment): ~2,400 rows/day
+    at 367 B/row on disk, so ~876k rows and ~320 MB steady state.
+    """
+    if days <= 0:
+        # A non-positive window puts the cutoff at or after "now", so the
+        # DELETE below would match EVERY row. These three tables are
+        # forward-only and not backfillable, so a caller typo must fail
+        # loudly rather than silently empty the corpus. The sibling pruners
+        # this mirrors share the hole; their tables are reconstructable,
+        # these are not.
+        raise ValueError(
+            f"prune_ensemble_member_values: days must be positive, got {days!r}"
+        )
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        cur = con.execute(
+            "DELETE FROM ensemble_member_values WHERE logged_at < ?", (cutoff,)
+        )
+        n = cur.rowcount
+    _log.info(
+        "pruned %d old ensemble_member_values (older than %d days)",
+        n,
+        days,
+    )
+    return n
+
+
+def prune_orderbook_depth_snapshots(days: int = 30) -> int:
+    """Drop orderbook_depth_snapshots rows older than `days`. batch-78 item 2.
+
+    Much shorter than prune_ensemble_member_values' 365: A4's ladder walk and
+    A17's counterfactual replay are short-horizon by design, and this table
+    has no dedup at all -- one row per subscribed ticker per
+    DEPTH_SNAPSHOT_INTERVAL_SECS, with cron subscribing every scanned market.
+
+    It also held 0 rows when this window was chosen, so its volume is a
+    projection rather than a measurement. The sibling table's estimate was
+    already wrong by ~50x once while it WAS measurable; a table nobody has
+    ever seen a row from gets the conservative window.
+    """
+    if days <= 0:
+        # A non-positive window puts the cutoff at or after "now", so the
+        # DELETE below would match EVERY row. These three tables are
+        # forward-only and not backfillable, so a caller typo must fail
+        # loudly rather than silently empty the corpus. The sibling pruners
+        # this mirrors share the hole; their tables are reconstructable,
+        # these are not.
+        raise ValueError(
+            f"prune_orderbook_depth_snapshots: days must be positive, got {days!r}"
+        )
+    init_db()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    with _conn() as con:
+        cur = con.execute(
+            "DELETE FROM orderbook_depth_snapshots WHERE snapshot_at < ?", (cutoff,)
+        )
+        n = cur.rowcount
+    _log.info(
+        "pruned %d old orderbook_depth_snapshots (older than %d days)",
+        n,
+        days,
+    )
+    return n
+
+
 def get_member_accuracy(days_back: int = 60) -> dict:
     """
     Per-model MAE filtered to recent predictions, used by learn_seasonal_weights().
@@ -13316,17 +13625,60 @@ def get_scan_activity(days: int = 30) -> dict:
                           because a halt or cap stopped them), from
                           `predictions`
 
-    **This cannot tell an outage from a fully-gated day, and does not claim
-    to.** Neither table gets a row when the scanner runs and every market is
-    rejected at, say, `extreme_price` -- which is a routine outcome, not a
+    A third count, added by batch-78, is what lets a zero day be diagnosed
+    rather than merely reported:
+
+      scans           -- cron cycles that ran at all, from `scan_runs`.
+                         Written unconditionally by cron.py -- including on
+                         the kill-switch and black-swan halts that return
+                         before scanning -- so it is the only one of the
+                         three that is not conditional on a market surviving
+                         something. `scans_reaching_scan` is the subset that
+                         actually reached the market scan (markets_scanned
+                         non-NULL); the difference is halted or crashed
+                         cycles
+
+    **`scans` is CRON-only.** `main.py`'s `watch --auto` loop calls
+    run_trade_cycle() directly and writes no scan_runs row, so a day on which
+    the operator ran watch but no cron cycle fired reads as "no scan". That
+    state is a claim about the CRON SCHEDULER, not about the process as a
+    whole. The `mode` column exists to let a future writer distinguish
+    itself; wiring watch up is filed as its own backlog entry rather than
+    done here (main.py is outside batch-78's file scope).
+
+    NOTE on `reached_analysis`: the per-day value here counts
+    `analysis_attempts` rows, while `scan_runs.reached_analysis` counts
+    `len(all_results)` for one scan. They are different quantities and will
+    legitimately disagree, because analysis_attempts upserts on
+    (ticker, target_date). Do not compare them.
+
+    Neither of the first two tables gets a row when the scanner runs and every
+    market is rejected at, say, `extreme_price` -- a routine outcome, not a
     hypothetical: the 2026-08-25 06:36 scan rejected 549 of 590 markets at the
-    gates. A day with both counts at zero is therefore reported as
-    "no output", NOT as "no scan". Calling it an outage would be the exact
-    inversion this function exists to prevent, and nothing currently persisted
-    records per-day that a scan happened at all (backlog.txt "NOTHING RECORDS
-    PER-DAY THAT A SCAN RAN"). For the CURRENT scan, weather_markets'
-    snapshot_scan_funnel() artifact answers it directly: a non-zero
-    total_rejected proves the scanner ran.
+    gates. Before `scan_runs` existed, such a day was reported as "no output"
+    and could not be told apart from the cron job being dead; calling it an
+    outage would have been the exact inversion this function exists to
+    prevent. A day whose scan_runs rows reached the scan, with both other
+    counts at zero, is now reported as "scanned, nothing survived"; a day
+    whose rows all halted before scanning as "cron ran, no scan"; and a day
+    with no scan_runs row at all as "no scan".
+
+    **The "no scan" verdict is floored at `scan_coverage_from`, the date of
+    the earliest scan_runs row, and this is load-bearing.** `scan_runs` is
+    forward-only: it starts empty, so every day before the table's first row
+    has no scan record for a reason that says nothing about whether a scan
+    ran. Labelling those "no scan" would manufacture an outage history that
+    never happened -- strictly worse than the honest ambiguity it replaced.
+    Days strictly before that boundary keep the original "no output" state
+    are counted in `no_output_days`, whose meaning is therefore unchanged
+    from batch-65: an observed zero of unknown cause. `scan_coverage_from` is
+    None when the table is empty, in which case no day in the window can be
+    called "no scan" at all and this function behaves exactly as it did
+    before batch-78.
+
+    For the CURRENT scan, weather_markets' snapshot_scan_funnel() artifact
+    also answers it directly: a non-zero total_rejected proves the scanner
+    ran.
 
     `reached_analysis` is also NOT a superset of `signals`, so the two must
     not be drawn as one funnel. `analysis_attempts` upserts on
@@ -13380,6 +13732,51 @@ def get_scan_activity(days: int = 30) -> dict:
             "GROUP BY d",
             (start_s,),
         ).fetchall()
+        # `scanned` counts only the cycles that actually reached the market
+        # scan. A cycle halted at the kill switch or a black-swan check
+        # records a row with markets_scanned NULL -- it RAN, so the day is
+        # not an outage, but it did not scan either, and collapsing the two
+        # would report "scanned, nothing survived" for a day nothing was
+        # scanned on.
+        scan_rows = con.execute(
+            "SELECT DATE(started_at) AS d, COUNT(*) AS n, "
+            "       SUM(CASE WHEN markets_scanned IS NOT NULL THEN 1 ELSE 0 END)"
+            "         AS scanned, "
+            "       COALESCE(SUM(reached_analysis), 0) AS reached "
+            "FROM scan_runs "
+            "WHERE started_at IS NOT NULL AND DATE(started_at) >= ? "
+            "GROUP BY d",
+            (start_s,),
+        ).fetchall()
+        # Read over the WHOLE table, not the window: the floor's job is to
+        # say when scan recording began, which is usually long before
+        # `start`. Scoping it to the window would re-arm the false-outage
+        # bug on every window that starts after the first row.
+        #
+        # `<= today` keeps a FUTURE-dated row (clock skew, a hand-inserted
+        # fixture) from becoming the reported `scan_coverage_from`. That
+        # matters for the returned value, which a caller may render as "scan
+        # recording began <date>" -- a date in the future is nonsense there.
+        # It does not change any day's STATE, because a future floor makes
+        # every window day uncovered, which is the same outcome as no floor
+        # at all.
+        #
+        # KNOWN LIMITATION, deliberately not engineered against (opus review,
+        # reviewer A #2): a BACK-dated row is the genuinely dangerous
+        # direction -- one row with a past-skewed clock or restored from an
+        # old backup drags the floor back and reclassifies every silent day
+        # in the window as an outage. No cheap bound fixes it. Clamping to
+        # the retention horizon (730 days) does nothing for the 30-day window
+        # the dashboard actually asks for, since today-730 already precedes
+        # it, and a back-dated row inside the plausible range is by
+        # construction indistinguishable from real coverage. The mitigation
+        # is upstream: log_scan_run rejects a non-ISO started_at, and cron is
+        # the only writer.
+        coverage_row = con.execute(
+            "SELECT MIN(DATE(started_at)) AS d FROM scan_runs "
+            "WHERE started_at IS NOT NULL AND DATE(started_at) <= ?",
+            (today.isoformat(),),
+        ).fetchone()
 
     # A row whose timestamp is in the FUTURE relative to `today` (clock skew, a
     # hand-inserted fixture) would otherwise be counted in the totals while
@@ -13387,16 +13784,49 @@ def get_scan_activity(days: int = 30) -> dict:
     # from the same dict lookups over the same explicit date list instead.
     attempts = {r["d"]: r["n"] for r in attempt_rows if r["d"]}
     preds = {r["d"]: r["n"] for r in pred_rows if r["d"]}
+    scans = {r["d"]: r["n"] for r in scan_rows if r["d"]}
+    scans_reaching_scan = {r["d"]: (r["scanned"] or 0) for r in scan_rows if r["d"]}
+    scan_reached_analysis = {r["d"]: (r["reached"] or 0) for r in scan_rows if r["d"]}
+    coverage_from = coverage_row["d"] if coverage_row else None
+    today_s = today.isoformat()
 
     series = []
     for i in range(window):
         d = (start + timedelta(days=i)).isoformat()
         reached = attempts.get(d, 0)
         signals = preds.get(d, 0)
+        n_scans = scans.get(d, 0)
+        n_reaching = scans_reaching_scan.get(d, 0)
+        scan_reached = scan_reached_analysis.get(d, 0)
+        # ISO dates compare correctly as strings, so no parsing is needed to
+        # ask whether this day is inside the recorded-scan era.
+        covered = coverage_from is not None and d >= coverage_from
         if signals > 0:
             state = "signals"
         elif reached > 0:
             state = "analysed, no signals"
+        elif n_reaching > 0:
+            state = "scanned, nothing survived"
+        elif n_scans > 0:
+            # Cron ran but no cycle reached the scan. Usually a kill-switch
+            # or black-swan halt returning early. It can ALSO be a scan that
+            # completed and was then stopped by the kill switch immediately
+            # before placement: run_trade_cycle returns None on that path and
+            # discards counts it had, so ~590 scanned markets are recorded as
+            # NULL and land here. Not an outage either way, but do not read
+            # this label as proof nothing was scanned.
+            state = "cron ran, no scan"
+        elif covered and d == today_s:
+            # NOT "no scan". Cron writes the row when a cycle ENDS, and the
+            # four cycles land at 02:15/08:15/14:15/20:15 UTC, so between
+            # 00:00 and ~02:20 UTC today legitimately has no row on a
+            # perfectly healthy day. Calling that an outage would fire a
+            # false alarm every single night -- the same inversion the
+            # coverage floor exists to prevent, on the other end of the
+            # window. Today's verdict is simply not settled yet.
+            state = "today, no scan yet"
+        elif covered:
+            state = "no scan"
         else:
             state = "no output"
         series.append(
@@ -13404,6 +13834,11 @@ def get_scan_activity(days: int = 30) -> dict:
                 "date": d,
                 "reached_analysis": reached,
                 "signals": signals,
+                "scans": n_scans,
+                "scans_reaching_scan": n_reaching,
+                # Per-SCAN sum from scan_runs, NOT the same quantity as
+                # `reached_analysis` above -- see the docstring.
+                "scan_reached_analysis": scan_reached,
                 "state": state,
             }
         )
@@ -13419,12 +13854,46 @@ def get_scan_activity(days: int = 30) -> dict:
         "analysed_no_signal_days": sum(
             1 for d in series if d["state"] == "analysed, no signals"
         ),
-        # Nothing was recorded at all. Ambiguous BY CONSTRUCTION between "the
-        # scanner did not run" and "it ran and gated everything"; see the
-        # docstring. Named for what was observed, not for a cause.
+        # A scan ran and every market was gated out. batch-78: this is the
+        # half of the old "no output" bucket that scan_runs can now name.
+        "scanned_no_survivors_days": sum(
+            1 for d in series if d["state"] == "scanned, nothing survived"
+        ),
+        # Cron ran but no cycle reached the scan (a deliberate halt, or a
+        # raise before any counts were known). Explicitly NOT an outage.
+        "cron_ran_no_scan_days": sum(
+            1 for d in series if d["state"] == "cron ran, no scan"
+        ),
+        # Today, with no cycle recorded yet. Cron writes on cycle END and the
+        # first cycle lands at 02:15 UTC, so this is the normal state of the
+        # current day for the first couple of hours. Deliberately its own
+        # bucket and NOT counted in no_scan_days -- today's verdict is not
+        # settled until the day is over.
+        "today_no_scan_yet_days": sum(
+            1 for d in series if d["state"] == "today, no scan yet"
+        ),
+        # A real CRON outage: scan recording was already live and no cron
+        # cycle ran at all. Named for cron specifically, not for the process
+        # as a whole -- `watch --auto` also scans and places but does not
+        # write scan_runs (see the docstring), so a watch-only day counts
+        # here.
+        "no_scan_days": sum(1 for d in series if d["state"] == "no scan"),
+        # Nothing was recorded at all, AND the day predates scan_runs' first
+        # row, so the cause is unknowable. Ambiguous BY CONSTRUCTION between
+        # "the scanner did not run" and "it ran and gated everything"; see
+        # the docstring. Named for what was observed, not for a cause. This
+        # count shrinks to zero as the window rolls past scan_coverage_from.
         "no_output_days": sum(1 for d in series if d["state"] == "no output"),
         "total_signals": sum(d["signals"] for d in series),
         "total_reached_analysis": sum(d["reached_analysis"] for d in series),
+        "total_scans": sum(d["scans"] for d in series),
+        "total_scans_reaching_scan": sum(d["scans_reaching_scan"] for d in series),
+        # Sum of scan_runs.reached_analysis. NOT comparable with
+        # total_reached_analysis above, which counts analysis_attempts rows.
+        "total_scan_reached_analysis": sum(d["scan_reached_analysis"] for d in series),
+        # Earliest date any scan was recorded, or None if scan_runs is empty.
+        # Days at or after this are diagnosable; days before it are not.
+        "scan_coverage_from": coverage_from,
     }
 
 

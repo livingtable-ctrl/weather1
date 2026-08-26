@@ -106,6 +106,13 @@ class TradeCycleResult:
     med_opps: list[tuple[dict, dict]]  # tier=med, eligible for placement
     signals_cache_entries: list[dict]
     gate_counts: dict[str, int]
+    scan_completed: bool  # False when the analysis loop did NOT run to
+    # completion (it timed out, crashed, or the kill switch tripped mid-scan)
+    # -- the same flag passed to snapshot_scan_funnel(), surfaced here so
+    # cron.py can stamp it onto the scan_runs row it writes. Without it a
+    # truncated scan's counts would be recorded as if they covered the whole
+    # market universe, which is the misreading the funnel's own `complete`
+    # field already exists to prevent (batch-65 M4, batch-78 item 1).
     dbg: dict[str, int]
     pre_settled: list[dict]
     strong_cap: float | None
@@ -1121,6 +1128,7 @@ def run_trade_cycle(
         med_opps=med_opps,
         signals_cache_entries=signals_cache_entries,
         gate_counts=gate_counts,
+        scan_completed=_scan_completed,
         dbg=dbg,
         pre_settled=pre_settled,
         strong_cap=strong_cap,

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2961,3 +2962,156 @@ class TestPrewarmPoolShutdown:
             trade_cycle._run_batch_prewarm_for_pairs(ctx, {("NYC", "2026-01-01")})
 
         mock_pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+class TestScanCompletedIsExposed:
+    """batch-78 item 1: `_scan_completed` already gated the funnel snapshot's
+    `complete` field, but lived only inside run_trade_cycle(). cron.py needs
+    it to stamp the scan_runs row, because a truncated scan's market counts
+    must not be recorded as if they covered the whole universe.
+    """
+
+    def test_a_completed_scan_reports_true(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            result = trade_cycle.run_trade_cycle(main._build_cron_context(), client)
+
+        assert result is not None
+        assert result.scan_completed is True
+        # Positive control: the loop really did run, so True above is the
+        # analysis loop finishing and not the field's initial value surviving
+        # a scan that never started.
+        assert result.scanned == 1
+        assert len(result.all_results) == 1
+
+    def test_a_truncated_scan_reports_false(self, engine_env):
+        """The case the field was ADDED for, and the one an opus review found
+        untested end to end (reviewer B #3): a scan that timed out returns a
+        result whose counts cover only part of the market universe.
+
+        Without this, `scan_completed=_scan_completed` could be hard-coded to
+        `True` at the construction site and the whole suite would stay green
+        -- every other assertion in this class and in TestScanRunRecord is
+        either True, or 0-because-the-result-was-None.
+
+        Driven through the real TimeoutError path: `as_completed` is imported
+        inside run_trade_cycle from concurrent.futures, so patching it there
+        reaches the `except TimeoutError` handler at trade_cycle.py rather
+        than simulating its effect.
+        """
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        def _boom(*_a, **_kw):
+            raise TimeoutError("analysis scan timed out")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("concurrent.futures.as_completed", side_effect=_boom),
+        ):
+            result = trade_cycle.run_trade_cycle(main._build_cron_context(), client)
+
+        assert result is not None, "a timeout is a soft failure, not a hard abort"
+        assert result.scan_completed is False
+        # Positive control: the scan really did start and really was
+        # truncated -- a market was fetched and deduped, but the analysis
+        # loop produced nothing because it never consumed a future. Without
+        # this, the False above would also pass if the scan had been skipped
+        # entirely upstream.
+        assert result.scanned == 1
+        assert result.all_results == []
+
+    def test_the_field_carries_the_same_value_the_funnel_snapshot_is_given(
+        self, engine_env
+    ):
+        """The two must not be able to disagree. If they ever did, the
+        dashboard funnel would call a scan partial while the scan_runs row
+        called the same scan complete.
+
+        Exercised on BOTH values (reviewer B #9): asserting agreement on the
+        completed path alone is a one-value tautology that `complete=True`
+        hard-coded, or `scan_completed=True` hard-coded, or both, would pass.
+        """
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        def _boom(*_a, **_kw):
+            raise TimeoutError("analysis scan timed out")
+
+        observed: list[tuple[bool, bool]] = []
+        for truncate in (False, True):
+            seen: list[bool] = []
+            extra = (
+                [patch("concurrent.futures.as_completed", side_effect=_boom)]
+                if truncate
+                else []
+            )
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(main, "get_weather_markets", return_value=[market])
+                )
+                stack.enter_context(
+                    patch.object(main, "enrich_with_forecast", return_value=enriched)
+                )
+                stack.enter_context(
+                    patch.object(main, "analyze_trade", return_value=analysis)
+                )
+                stack.enter_context(
+                    patch(
+                        "weather_markets.snapshot_scan_funnel",
+                        side_effect=lambda complete=True: seen.append(complete) or True,
+                    )
+                )
+                for cm in extra:
+                    stack.enter_context(cm)
+                result = trade_cycle.run_trade_cycle(main._build_cron_context(), client)
+
+            assert result is not None
+            assert seen == [result.scan_completed]
+            observed.append((truncate, result.scan_completed))
+
+        # Positive control for the tautology: the two runs really did produce
+        # DIFFERENT values, so the agreement asserted above is agreement
+        # across both, not a single constant matching itself.
+        assert observed == [(False, True), (True, False)]
+
+    def test_an_empty_market_universe_still_counts_as_a_completed_scan(
+        self, engine_env
+    ):
+        """Not an oversight: the flag is set from the analysis loop's
+        `for/else`, and a loop over zero markets is not broken out of, so it
+        completes. That is the right answer -- "complete" means the funnel
+        covers the whole universe, and over an empty universe it trivially
+        does. Pinned because the intuitive "no markets, so nothing finished"
+        reading would flip this to False and then label every quiet scan as
+        truncated, which is the opposite of what the flag is for.
+
+        The truncated case the flag DOES catch is covered by
+        test_a_truncated_scan_reports_false above, which drives the real
+        `except TimeoutError` handler. (test_scan_funnel.py's own coverage is
+        NOT a substitute: it calls snapshot_scan_funnel(complete=False)
+        directly and AST-checks trade_cycle.py's source, but never drives
+        run_trade_cycle into a truncated scan.) The other truncating path, a
+        mid-scan kill-switch `break`, cannot be asserted through this field
+        at all: it makes run_trade_cycle return None from the pre-placement
+        re-check, so there is no result to read scan_completed off.
+        """
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+
+        with patch.object(main, "get_weather_markets", return_value=[]):
+            result = trade_cycle.run_trade_cycle(main._build_cron_context(), client)
+
+        assert result is not None
+        assert result.scan_completed is True
+        # Positive control: the universe really was empty, so the True above
+        # is the for/else over zero markets and not a populated scan.
+        assert result.scanned == 0
+        assert result.all_results == []

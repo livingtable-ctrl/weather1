@@ -168,6 +168,33 @@ _ISOFORMAT_CUTOFF_ALLOWLIST: dict[tuple[str, str], str] = {
         "says it mirrors. Re-verify if a future write path to "
         "alert_deliveries.fired_at ever uses datetime('now') instead."
     ),
+    ("tracker.py", "prune_ensemble_member_values"): (
+        "batch-78 item 2. Cutoff compared against "
+        "ensemble_member_values.logged_at, written ONLY by "
+        "log_ensemble_members_bulk via datetime.now(UTC).isoformat() -- "
+        "verified as the column's single writer repo-wide "
+        "(log_ensemble_members delegates to the bulk writer rather than "
+        "carrying its own INSERT, and weather_markets._persist_member_values "
+        "calls the bulk writer directly). No datetime('now') writer touches "
+        "this column. Same shape as prune_old_analysis_attempts above."
+    ),
+    ("tracker.py", "prune_orderbook_depth_snapshots"): (
+        "batch-78 item 2. Cutoff compared against "
+        "orderbook_depth_snapshots.snapshot_at, written ONLY by "
+        "log_orderbook_depth. That writer accepts a caller-supplied value, "
+        "so it has two sources rather than one -- both isoformat: its own "
+        "`datetime.now(UTC).isoformat()` default, and kalshi_ws's depth book "
+        "`ts`, itself set from datetime.now(UTC).isoformat() in "
+        "parse_message. No datetime('now') writer touches this column. "
+        "Re-verify if a future caller passes an exchange-supplied timestamp "
+        "through instead of the book's own."
+    ),
+    ("tracker.py", "prune_scan_runs"): (
+        "batch-78 item 1. Cutoff compared against scan_runs.started_at, "
+        "written ONLY by log_scan_run, whose sole production caller "
+        "(cron._cmd_cron_body) passes datetime.now(UTC).isoformat(). No "
+        "datetime('now') writer touches this column."
+    ),
     ("tracker.py", "get_recent_city_correlations"): (
         "Cutoff uses .date().isoformat() deliberately (see the function's "
         "own comment two lines above) to match predictions.market_date, "
@@ -401,6 +428,8 @@ def test_current_repo_matches_exactly_the_known_allowlisted_sites():
     regressions) -- just documents the known-good baseline directly.
 
     5 sites at this guard's introduction; 6 since batch-69's A6 alert
-    delivery log added prune_old_alert_deliveries."""
+    delivery log added prune_old_alert_deliveries; 9 since batch-78 added
+    prune_ensemble_member_values, prune_orderbook_depth_snapshots and
+    prune_scan_runs."""
     sites = {(rel, fname) for rel, _, fname in _iter_isoformat_cutoff_sites()}
     assert sites == set(_ISOFORMAT_CUTOFF_ALLOWLIST.keys())

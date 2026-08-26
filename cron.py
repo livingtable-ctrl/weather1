@@ -53,6 +53,7 @@ from utils import (
 
 if TYPE_CHECKING:
     from kalshi_ws import KalshiWebSocket
+    from trade_cycle import TradeCycleResult
 
 # Use the "main" logger name so that existing tests which capture
 # logging.getLogger("main") continue to see cron log output.
@@ -1213,6 +1214,69 @@ def _cmd_cron_body(
     # mirroring the existing TRADING_PAUSED handling further down.
     _cron_halted_reason: str | None = None
 
+    # batch-78 item 1. Stamped at the very top, before the kill-switch and
+    # black-swan checks below, because those checks can `return None` and a
+    # cycle that deliberately halted still RAN -- see _record_scan_run's own
+    # comment for why recording it matters.
+    from datetime import UTC as _UTC_SCAN
+    from datetime import datetime as _dt_scan
+
+    _scan_started_at = _dt_scan.now(_UTC_SCAN).isoformat()
+
+    def _record_scan_run(
+        result: TradeCycleResult | None = None,
+        *,
+        halted_reason: str | None = None,
+    ) -> None:
+        """Persist one scan_runs row for this cycle. Never raises.
+
+        Called from EVERY exit path of this function that represents a cron
+        cycle actually happening -- including the two early `return None`
+        halts, which was an opus-review finding (batch-78, reviewer B #1) and
+        not merely a tidiness point. get_scan_activity() reads the ABSENCE of
+        a row for a covered day as "no scan", i.e. an outage. Recording only
+        on the paths that reach run_trade_cycle() would make an engaged kill
+        switch or a black-swan halt -- days on which cron ran perfectly and
+        deliberately chose not to scan -- report as a dead scheduler. That is
+        the same false-outage inversion `scan_coverage_from` exists to
+        prevent, arriving by a different route.
+
+        A halted cycle records counts as NULL and `halted_reason` set, which
+        get_scan_activity() reads as "cron ran, no scan" -- distinct from both
+        "scanned, nothing survived" and "no scan".
+        """
+        try:
+            from tracker import log_scan_run as _log_scan_run
+
+            _log_scan_run(
+                _scan_started_at,
+                markets_fetched=(None if result is None else len(result.markets)),
+                markets_scanned=(None if result is None else result.scanned),
+                reached_analysis=(
+                    # Per-SCAN analyses. Deliberately NOT the same quantity as
+                    # get_scan_activity()'s per-day `reached_analysis`, which
+                    # counts analysis_attempts rows -- that table upserts on
+                    # (ticker, target_date), so a re-analysed market moves its
+                    # row instead of adding one and the two legitimately
+                    # disagree. Do not compare them (reviewer B #12).
+                    None if result is None else len(result.all_results)
+                ),
+                scan_completed=(False if result is None else result.scan_completed),
+                mode="cron-sameday" if sameday_only else "cron",
+                halted_reason=(
+                    halted_reason if result is None else result.halted_reason
+                ),
+            )
+        except Exception as _scan_rec_exc:
+            # log_scan_run already swallows its own failures at warning level;
+            # this guard covers the import and the attribute reads above.
+            # WARNING, not debug (reviewer B #4): anything caught here means
+            # NO row is written, and a missing row is exactly what
+            # get_scan_activity() reports as an outage -- a permanently broken
+            # writer would otherwise manufacture a permanent false outage
+            # history with no trace above debug level.
+            _log.warning("cmd_cron: scan_runs record failed: %s", _scan_rec_exc)
+
     # Dead-man's-switch: if more than 48h have elapsed since the last
     # non-kill-switch-aborted cron run completed, log a warning and fire a
     # system notification so the user knows the bot went quiet. .cron_last_run
@@ -1288,6 +1352,11 @@ def _cmd_cron_body(
             "immediately. Remove the file to resume trading.",
             cooldown_key="kill_switch",
         )
+        # batch-78: cron RAN and deliberately did not scan. Without this row
+        # the day reads as an outage -- see _record_scan_run's docstring.
+        # batch-78: cron RAN and deliberately did not scan. Without this row
+        # the day reads as an outage -- see _record_scan_run's docstring.
+        _record_scan_run(halted_reason="kill_switch")
         return None
 
     # Manual override / accuracy halt / graduation gate: run_trade_cycle()
@@ -1580,6 +1649,57 @@ def _cmd_cron_body(
                 )
 
                 _prune_alert_deliveries(days=90)
+
+                # batch-78 item 2: batch-64's two forward-only tables had no
+                # sweep at all -- purge_old_predictions covers only
+                # predictions/outcomes, and a grep for DELETE against either
+                # of these found nothing. Windows differ per table on
+                # purpose: ensemble_member_values feeds A15b's rank
+                # histogram, a weather statistic that needs a full seasonal
+                # cycle to compare like with like, while
+                # orderbook_depth_snapshots feeds A4/A17's short-horizon
+                # replay and has no dedup key at all. See each pruner's own
+                # docstring for the measurements behind its number.
+                from tracker import (
+                    prune_ensemble_member_values as _prune_member_values,
+                )
+                from tracker import (
+                    prune_orderbook_depth_snapshots as _prune_depth,
+                )
+
+                # Each wrapped individually (reviewer B #7): the whole sweep
+                # body is one try/except with a `finally` that stamps the
+                # 7-day marker, so an exception from any one pruner would
+                # skip the VACUUM below AND suppress the entire sweep for
+                # another week, on one warning line. These three are new
+                # failure surface added ahead of the VACUUM, so they must not
+                # be able to take the rest of the sweep down with them.
+                for _pruner, _days, _what in (
+                    (_prune_member_values, 365, "ensemble_member_values"),
+                    (_prune_depth, 30, "orderbook_depth_snapshots"),
+                ):
+                    try:
+                        _pruner(days=_days)
+                    except Exception as _prune_exc:
+                        _log.warning(
+                            "cmd_cron: %s retention sweep failed: %s",
+                            _what,
+                            _prune_exc,
+                        )
+
+                # batch-78 item 1: one row per cron cycle, so this is
+                # negligible next to the two above -- swept on the same
+                # 730-day retention purge_old_predictions uses rather than a
+                # window of its own, since a long uptime baseline is the
+                # entire point of the table.
+                from tracker import prune_scan_runs as _prune_scan_runs
+
+                try:
+                    _prune_scan_runs(days=730)
+                except Exception as _prune_exc:
+                    _log.warning(
+                        "cmd_cron: scan_runs retention sweep failed: %s", _prune_exc
+                    )
 
                 # Compact the SQLite DB after pruning removes rows.
                 from tracker import vacuum_database as _vacuum_db
@@ -1890,6 +2010,9 @@ def _cmd_cron_body(
                 "cmd_cron: BLACK SWAN conditions triggered — halting. Conditions: %s",
                 _bs_conditions,
             )
+            # batch-78: same reasoning as the kill-switch return above -- a
+            # deliberate halt is not an outage.
+            _record_scan_run(halted_reason="black_swan")
             return None
     except Exception as _e:
         # Same reasoning as the anomaly-check handler above: run_black_swan_check
@@ -2329,22 +2452,52 @@ def _cmd_cron_body(
         except Exception as _ws_exc:
             _log.debug("WebSocket start failed: %s", _ws_exc)
 
-    result = run_trade_cycle(
-        ctx,
-        client,
-        min_edge=min_edge,
-        live=False,
-        live_config=None,
-        prewarm=True,
-        effective_strong_edge=_effective_strong_edge,
-        require_liquid_for_placement=False,
-        # Fold in the anomaly-halt / black-swan-check-error reason (if either
-        # fired above) so it still blocks placement inside the engine, not
-        # just in this function's own (now-removed) copy of the gate.
-        external_halted_reason=_cron_halted_reason,
-        on_markets_fetched=_subscribe_and_start_ws,
-        sameday_only=sameday_only,
-    )
+    # batch-78 item 1: the scan_runs row is written in a `finally` so that a
+    # scan which RAISES, or trips the kill switch mid-cycle, still leaves
+    # evidence it started. Recording only on the success path would reproduce
+    # the exact gap this table exists to close -- a dead cycle and a
+    # never-launched one would again look identical in get_scan_activity().
+    #
+    # Scope of that guarantee, stated precisely (reviewer B #6): `finally`
+    # covers Python exceptions ONLY. _install_cron_watchdog's 720s timeout
+    # calls os._exit(1), which by design runs no finally blocks, and SIGKILL
+    # or power loss do the same -- so a HUNG cycle, the classic "cron is
+    # dead" symptom, still leaves no row. Covering that would need
+    # finished_at to be nullable and a write-at-start/update-at-end design;
+    # `finished_at TEXT NOT NULL` deliberately does not support it, because a
+    # half-written row is its own ambiguity.
+    #
+    # `result` stays None when run_trade_cycle raised OR returned None, so
+    # the counts go in as NULL rather than 0 -- 0 would assert "scanned
+    # nothing". That does conflate three outcomes (reviewer B #5): a raise, a
+    # kill switch tripped BEFORE the scan, and a kill switch tripped after
+    # the analysis loop had already finished. In the third case `scanned` and
+    # `all_results` were genuinely known and run_trade_cycle discards them on
+    # its way out. Recording NULL there understates what was known, which is
+    # the safe direction; fixing it properly means changing run_trade_cycle's
+    # None-return contract and is out of this batch's scope.
+    _scan_result: TradeCycleResult | None = None
+    try:
+        result = run_trade_cycle(
+            ctx,
+            client,
+            min_edge=min_edge,
+            live=False,
+            live_config=None,
+            prewarm=True,
+            effective_strong_edge=_effective_strong_edge,
+            require_liquid_for_placement=False,
+            # Fold in the anomaly-halt / black-swan-check-error reason (if either
+            # fired above) so it still blocks placement inside the engine, not
+            # just in this function's own (now-removed) copy of the gate.
+            external_halted_reason=_cron_halted_reason,
+            on_markets_fetched=_subscribe_and_start_ws,
+            sameday_only=sameday_only,
+        )
+        _scan_result = result
+    finally:
+        _record_scan_run(_scan_result)
+
     if result is None:
         # Kill switch tripped inside run_trade_cycle() (e.g. activated
         # mid-scan or immediately before placement) — matches this

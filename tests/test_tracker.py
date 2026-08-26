@@ -12341,3 +12341,345 @@ class TestCoerceExpirationValue(unittest.TestCase):
 
     def test_negative_is_a_valid_settlement(self):
         self.assertAlmostEqual(tracker._coerce_expiration_value("T", "-12.00"), -12.0)
+
+
+class _IsolatedDbBase(unittest.TestCase):
+    """Per-test temp predictions.db, mirroring TestTracker's own setUp."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+        # Build the schema up front: these tests seed rows with raw INSERTs,
+        # which -- unlike the module's own writers -- do not call init_db().
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _rows(self, table: str) -> int:
+        with tracker._conn() as con:
+            return con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+class TestLogScanRun(_IsolatedDbBase):
+    """batch-78 item 1: the row whose ABSENCE means no scan ran that day."""
+
+    def test_records_the_counts_not_just_that_a_scan_happened(self):
+        """A bare ran/did-not-run flag cannot separate "ran and gated
+        everything" from "ran and analysed 40 that missed the threshold".
+        reached_analysis is the column that makes the distinction, so it must
+        survive the round trip rather than being collapsed to a boolean.
+        """
+        assert tracker.log_scan_run(
+            "2026-08-26T02:15:00+00:00",
+            finished_at="2026-08-26T02:19:30+00:00",
+            markets_fetched=612,
+            markets_scanned=590,
+            reached_analysis=41,
+            scan_completed=True,
+            mode="cron",
+        )
+
+        with tracker._conn() as con:
+            row = con.execute("SELECT * FROM scan_runs").fetchone()
+
+        self.assertEqual(row["started_at"], "2026-08-26T02:15:00+00:00")
+        self.assertEqual(row["finished_at"], "2026-08-26T02:19:30+00:00")
+        self.assertEqual(row["markets_fetched"], 612)
+        self.assertEqual(row["markets_scanned"], 590)
+        self.assertEqual(row["reached_analysis"], 41)
+        self.assertEqual(row["scan_completed"], 1)
+        self.assertEqual(row["mode"], "cron")
+        self.assertIsNone(row["halted_reason"])
+
+    def test_unknown_counts_are_stored_as_null_not_zero(self):
+        """The crash path. cron writes this from a `finally`, so when the
+        cycle raised there is no result to read counts from. Storing 0 would
+        assert "scanned nothing" -- the same false certainty the table exists
+        to remove, pointed the other way. NULL says "unknown", and
+        get_scan_activity still sees the row and calls the day scanned.
+        """
+        assert tracker.log_scan_run("2026-08-26T02:15:00+00:00")
+
+        with tracker._conn() as con:
+            row = con.execute("SELECT * FROM scan_runs").fetchone()
+
+        self.assertIsNone(row["markets_fetched"])
+        self.assertIsNone(row["markets_scanned"])
+        self.assertIsNone(row["reached_analysis"])
+        # Not NULL: a scan that never reported completion did not complete.
+        self.assertEqual(row["scan_completed"], 0)
+
+    def test_finished_at_defaults_to_now_and_is_never_null(self):
+        assert tracker.log_scan_run("2026-08-26T02:15:00+00:00")
+        with tracker._conn() as con:
+            row = con.execute("SELECT finished_at FROM scan_runs").fetchone()
+        self.assertIsNotNone(row["finished_at"])
+        datetime.fromisoformat(row["finished_at"])  # parses as a real stamp
+
+    def test_a_write_failure_is_swallowed_rather_than_failing_the_scan(self):
+        """Write-only observation: it must never propagate into a cron cycle
+        that otherwise succeeded.
+        """
+        with patch.object(
+            tracker, "_conn", side_effect=sqlite3.OperationalError("locked")
+        ):
+            self.assertFalse(tracker.log_scan_run("2026-08-26T02:15:00+00:00"))
+        # Positive control: the same call succeeds once the patch is lifted,
+        # so the False above is the swallowed failure and not a signature or
+        # schema problem that would make it always return False.
+        self.assertTrue(tracker.log_scan_run("2026-08-26T02:15:00+00:00"))
+        self.assertEqual(self._rows("scan_runs"), 1)
+
+
+class TestBatch78Pruners(_IsolatedDbBase):
+    """batch-78 item 2: batch-64's two forward-only tables had no sweep."""
+
+    def _add_member_values(self, logged_at: str, city: str = "nyc") -> None:
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO ensemble_member_values (city, model, target_date,"
+                " var, cycle, run_init, n_members, values_json, logged_at)"
+                " VALUES (?, 'gfs_seamless', '2026-08-26', 'max',"
+                " '2026-08-26_18z', NULL, 2, '[70.0, 71.0]', ?)",
+                (city, logged_at),
+            )
+
+    def _add_depth(self, snapshot_at: str, ticker: str = "KXHIGHNY-A") -> None:
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO orderbook_depth_snapshots (ticker, yes_json,"
+                " no_json, env, snapshot_at) VALUES (?, '[[50,10]]',"
+                " '[[49,10]]', 'demo', ?)",
+                (ticker, snapshot_at),
+            )
+
+    @staticmethod
+    def _ago(days: float) -> str:
+        return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+    def test_member_values_older_than_the_window_are_deleted(self):
+        self._add_member_values(self._ago(366), city="old")
+        self._add_member_values(self._ago(364), city="fresh")
+
+        deleted = tracker.prune_ensemble_member_values(days=365)
+
+        self.assertEqual(deleted, 1)
+        with tracker._conn() as con:
+            surviving = [
+                r["city"]
+                for r in con.execute("SELECT city FROM ensemble_member_values")
+            ]
+        # Positive control: the survivor names WHICH row lived, so this cannot
+        # pass by deleting the wrong one or by both inserts having no-opped.
+        self.assertEqual(surviving, ["fresh"])
+
+    def test_member_values_boundary_is_exclusive_on_the_cutoff_side(self):
+        """365 days minus a minute stays; 365 days plus a minute goes. Pins
+        the comparison direction -- flipping < to > deletes exactly the rows
+        the window was chosen to keep.
+        """
+        self._add_member_values(self._ago(365 - 1 / 1440), city="inside")
+        self._add_member_values(self._ago(365 + 1 / 1440), city="outside")
+
+        self.assertEqual(tracker.prune_ensemble_member_values(days=365), 1)
+
+        with tracker._conn() as con:
+            surviving = [
+                r["city"]
+                for r in con.execute("SELECT city FROM ensemble_member_values")
+            ]
+        self.assertEqual(surviving, ["inside"])
+
+    def test_depth_snapshots_older_than_the_window_are_deleted(self):
+        self._add_depth(self._ago(31), ticker="OLD")
+        self._add_depth(self._ago(29), ticker="FRESH")
+
+        deleted = tracker.prune_orderbook_depth_snapshots(days=30)
+
+        self.assertEqual(deleted, 1)
+        with tracker._conn() as con:
+            surviving = [
+                r["ticker"]
+                for r in con.execute("SELECT ticker FROM orderbook_depth_snapshots")
+            ]
+        self.assertEqual(surviving, ["FRESH"])
+
+    def test_the_two_windows_are_independent(self):
+        """The whole point of item 2's per-table decision: a 90-day-old member
+        set is inside its window while a 90-day-old depth snapshot is far
+        outside its own. One shared number would have to be wrong for one of
+        them.
+        """
+        self._add_member_values(self._ago(90))
+        self._add_depth(self._ago(90))
+
+        tracker.prune_ensemble_member_values(days=365)
+        tracker.prune_orderbook_depth_snapshots(days=30)
+
+        self.assertEqual(self._rows("ensemble_member_values"), 1)
+        self.assertEqual(self._rows("orderbook_depth_snapshots"), 0)
+
+    def test_each_pruner_touches_only_its_own_table(self):
+        """A DELETE aimed at the wrong table is the failure mode that would
+        silently destroy the corpus these panels are waiting on.
+        """
+        self._add_member_values(self._ago(400))
+        self._add_depth(self._ago(400))
+        tracker.log_scan_run(self._ago(800))
+
+        tracker.prune_ensemble_member_values(days=365)
+        self.assertEqual(self._rows("ensemble_member_values"), 0)
+        self.assertEqual(self._rows("orderbook_depth_snapshots"), 1)
+        self.assertEqual(self._rows("scan_runs"), 1)
+
+        tracker.prune_orderbook_depth_snapshots(days=30)
+        self.assertEqual(self._rows("orderbook_depth_snapshots"), 0)
+        self.assertEqual(self._rows("scan_runs"), 1)
+
+        tracker.prune_scan_runs(days=730)
+        self.assertEqual(self._rows("scan_runs"), 0)
+
+    def test_scan_runs_retention_outlives_both_other_tables(self):
+        """730 days, matching purge_old_predictions. A row that both other
+        pruners would have dropped long ago must still be here -- the outage
+        history is the one thing worth keeping longest.
+        """
+        tracker.log_scan_run(self._ago(400))
+
+        tracker.prune_scan_runs(days=730)
+
+        self.assertEqual(self._rows("scan_runs"), 1)
+        # Positive control: the same row DOES go once it is past 730 days, so
+        # the survival above is the window and not an unreachable DELETE.
+        tracker.prune_scan_runs(days=365)
+        self.assertEqual(self._rows("scan_runs"), 0)
+
+    def test_pruning_an_empty_table_is_a_no_op(self):
+        self.assertEqual(tracker.prune_ensemble_member_values(days=365), 0)
+        self.assertEqual(tracker.prune_orderbook_depth_snapshots(days=30), 0)
+        self.assertEqual(tracker.prune_scan_runs(days=730), 0)
+
+
+class TestBatch78ReviewRound2(_IsolatedDbBase):
+    """batch-78 opus review round 2, reviewer A: findings #5, #6 and #10."""
+
+    @staticmethod
+    def _ago(days: float) -> str:
+        return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+    def _add_member_values(self, logged_at: str) -> None:
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO ensemble_member_values (city, model, target_date,"
+                " var, cycle, run_init, n_members, values_json, logged_at)"
+                " VALUES ('nyc', 'gfs_seamless', '2026-08-26', 'max',"
+                " '2026-08-26_18z', NULL, 2, '[70.0, 71.0]', ?)",
+                (logged_at,),
+            )
+
+    # ── A#6: a non-positive window must not empty a forward-only table ────
+    def test_a_non_positive_window_raises_instead_of_wiping_the_table(self):
+        """`cutoff = now - timedelta(days=0)` is `now`, so `WHERE col < cutoff`
+        matches EVERY row; a negative window puts the cutoff in the future,
+        same result. These three tables are not backfillable, so a caller
+        typo must fail loudly rather than silently delete the corpus.
+        """
+        self._add_member_values(self._ago(1))
+        tracker.log_scan_run(self._ago(1))
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO orderbook_depth_snapshots (ticker, yes_json,"
+                " no_json, env, snapshot_at) VALUES ('T', '[]', '[]', 'demo', ?)",
+                (self._ago(1),),
+            )
+
+        for fn in (
+            tracker.prune_ensemble_member_values,
+            tracker.prune_orderbook_depth_snapshots,
+            tracker.prune_scan_runs,
+        ):
+            for bad in (0, -1):
+                with self.assertRaises(ValueError):
+                    fn(days=bad)
+
+        # Positive control, and the whole point: the rows the raise protected
+        # are all still here. Asserting only that ValueError was raised would
+        # pass even if the DELETE had run first.
+        self.assertEqual(self._rows("ensemble_member_values"), 1)
+        self.assertEqual(self._rows("orderbook_depth_snapshots"), 1)
+        self.assertEqual(self._rows("scan_runs"), 1)
+        # And a valid window on the same data behaves normally, so the guard
+        # is not just making every call fail. A 2-day window spares the
+        # 1-day-old row; an hour-long one takes it.
+        self.assertEqual(tracker.prune_ensemble_member_values(days=2), 0)
+        self.assertEqual(self._rows("ensemble_member_values"), 1)
+        self.assertEqual(tracker.prune_ensemble_member_values(days=1 / 24), 1)
+        self.assertEqual(self._rows("ensemble_member_values"), 0)
+
+    # ── A#10: a malformed started_at is unreadable AND unprunable ─────────
+    def test_a_malformed_started_at_is_refused_rather_than_stored(self):
+        """SQLite's DATE() returns NULL for a non-ISO value, so such a row
+        drops out of every count AND out of the coverage floor -- while
+        prune_scan_runs' lexicographic cutoff can never reach it ("now" sorts
+        above any "20xx-.." cutoff). A row that is neither countable nor
+        prunable is worse than no row.
+        """
+        for bad in ("now", "garbage", "1756123456", ""):
+            self.assertFalse(tracker.log_scan_run(bad), f"accepted {bad!r}")
+        self.assertEqual(self._rows("scan_runs"), 0)
+
+        # Positive control: a well-formed stamp on the same code path IS
+        # written, so the refusals above are the validator and not a blanket
+        # failure.
+        self.assertTrue(tracker.log_scan_run(self._ago(1)))
+        self.assertEqual(self._rows("scan_runs"), 1)
+
+    # ── A#5: the count columns must actually be READ, not just written ────
+    def test_scan_runs_reached_analysis_is_surfaced_not_write_only(self):
+        """The migration comment and log_scan_run's docstring both make
+        `reached_analysis` the central justification for storing counts
+        rather than a bare flag. Before this, get_scan_activity derived
+        everything from analysis_attempts and never read the column at all --
+        the docstrings asserted a capability the code did not deliver.
+        """
+        now = datetime.now(UTC).isoformat()
+        tracker.log_scan_run(now, markets_scanned=590, reached_analysis=41)
+        tracker.log_scan_run(now, markets_scanned=590, reached_analysis=7)
+
+        out = tracker.get_scan_activity(1)
+        today = out["days_series"][-1]
+
+        # Summed across the day's cycles, straight from scan_runs.
+        self.assertEqual(today["scan_reached_analysis"], 48)
+        self.assertEqual(out["total_scan_reached_analysis"], 48)
+        self.assertEqual(today["scans"], 2)
+        self.assertEqual(today["scans_reaching_scan"], 2)
+        self.assertEqual(out["total_scans_reaching_scan"], 2)
+        # Deliberately NOT the same quantity as the analysis_attempts-derived
+        # `reached_analysis`, which is 0 here because no attempt rows exist.
+        # The two must not be conflated -- that is why both are exposed.
+        self.assertEqual(today["reached_analysis"], 0)
+        self.assertEqual(out["total_reached_analysis"], 0)
+
+    def test_a_halted_cycle_contributes_no_reached_analysis(self):
+        """A halt records NULL, and SUM must treat that as absent rather than
+        letting COALESCE turn the whole day into 0 when a real cycle also ran.
+        """
+        now = datetime.now(UTC).isoformat()
+        tracker.log_scan_run(now, halted_reason="kill_switch")
+        tracker.log_scan_run(now, markets_scanned=590, reached_analysis=12)
+
+        out = tracker.get_scan_activity(1)
+        today = out["days_series"][-1]
+
+        self.assertEqual(today["scan_reached_analysis"], 12)
+        self.assertEqual(today["scans"], 2)
+        # Positive control: only ONE of the two cycles reached the scan, so
+        # the day is a real scan day rather than a halt day.
+        self.assertEqual(today["scans_reaching_scan"], 1)
+        self.assertEqual(today["state"], "scanned, nothing survived")

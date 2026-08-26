@@ -815,14 +815,19 @@ class TestScanActivity:
         590 markets produces zero rows in both tables. Calling that "no scan"
         would turn a routine modelling day into a phantom outage -- the exact
         inversion this function exists to prevent.
+
+        batch-78 gave the function a third table (`scan_runs`) that CAN name
+        an outage, so the vocabulary now exists -- but it stays unused while
+        that table is empty, which is the state here.
         """
         out = tracker.get_scan_activity(3)
 
         states = {d["state"] for d in out["days_series"]}
         assert states == {"no output"}
-        # The vocabulary must not claim to know a cause it cannot observe.
+        # The verdict must not claim to know a cause it cannot observe.
         assert "no scan" not in states
-        assert "no_scan_days" not in out
+        assert out["no_scan_days"] == 0
+        assert out["scan_coverage_from"] is None
         assert out["no_output_days"] == 3
 
     def test_every_day_in_the_window_is_present_including_empty_ones(self):
@@ -891,6 +896,250 @@ class TestScanActivity:
             assert out["days"] == 1
             assert len(out["days_series"]) == 1
             assert out["start_date"] == out["end_date"]
+
+    # ── batch-78 item 1: scan_runs splits the old "no output" bucket ──────
+    def _insert_scan(self, when: str, *, reached: int = 0) -> None:
+        tracker.log_scan_run(
+            when,
+            finished_at=when,
+            markets_fetched=590,
+            markets_scanned=590,
+            reached_analysis=reached,
+            scan_completed=True,
+            mode="cron",
+        )
+
+    def test_a_fully_gated_day_is_now_named_rather_than_left_ambiguous(self):
+        """The distinguishing case the whole table exists for. Neither
+        `analysis_attempts` nor `predictions` gets a row when every market is
+        gated out, so before batch-78 this day and a dead cron job were the
+        same observation. A scan_runs row separates them.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan(now.isoformat())
+
+        out = tracker.get_scan_activity(1)
+        today = out["days_series"][-1]
+
+        assert today["state"] == "scanned, nothing survived"
+        assert today["scans"] == 1
+        assert today["reached_analysis"] == 0
+        assert today["signals"] == 0
+        assert out["scanned_no_survivors_days"] == 1
+        assert out["no_output_days"] == 0
+        assert out["no_scan_days"] == 0
+        assert out["total_scans"] == 1
+
+    def test_a_missing_day_inside_the_covered_era_reads_as_a_real_outage(self):
+        """A silent day BETWEEN two scanned days is a genuine outage.
+
+        The gap day must not be today: cron writes the row when a cycle ENDS
+        and the first of four lands at 02:15 UTC, so today is legitimately
+        empty for the first couple of hours of every healthy day (see
+        test_today_is_never_called_an_outage). The outage verdict therefore
+        only applies to days that are already over.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now - timedelta(days=2)).isoformat())
+        self._insert_scan(now.isoformat())
+
+        out = tracker.get_scan_activity(3)
+        two_ago, one_ago, today = out["days_series"]
+
+        assert two_ago["state"] == "scanned, nothing survived"
+        assert one_ago["state"] == "no scan"
+        assert today["state"] == "scanned, nothing survived"
+        assert out["no_scan_days"] == 1
+        # Positive control: the outage verdict is the ABSENCE of a row for
+        # that day, so prove the day is inside the window and inside the
+        # covered era -- otherwise this would also pass if the day had simply
+        # fallen out of the series.
+        assert out["scan_coverage_from"] == two_ago["date"]
+        assert one_ago["date"] > out["scan_coverage_from"]
+        assert one_ago["date"] < out["end_date"]
+
+    def test_today_is_never_called_an_outage(self):
+        """Opus review (reviewer A #1), and a real bug an earlier version of
+        this very test class enshrined.
+
+        cron writes the scan_runs row when a cycle ENDS, and the four cycles
+        land at 02:15/08:15/14:15/20:15 UTC. Between 00:00 and ~02:20 UTC
+        today has no row on a perfectly healthy day. Labelling that "no scan"
+        would fire a false outage alarm every single night -- the same
+        inversion the coverage floor prevents at the other end of the window.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now - timedelta(days=1)).isoformat())
+
+        out = tracker.get_scan_activity(2)
+        yesterday, today = out["days_series"]
+
+        assert today["date"] == out["end_date"]
+        assert today["state"] == "today, no scan yet"
+        assert out["today_no_scan_yet_days"] == 1
+        assert out["no_scan_days"] == 0, "today's verdict is not settled yet"
+        # Positive control: today IS inside the covered era, so the label is
+        # the today-exemption doing its job and not the coverage floor
+        # already excusing the day for a different reason.
+        assert out["scan_coverage_from"] == yesterday["date"]
+        assert today["date"] > out["scan_coverage_from"]
+
+    def test_today_stays_no_output_before_coverage_begins(self):
+        """The today-exemption must not fire outside the covered era. With
+        scan_runs empty there is nothing to be "not yet" about, and the
+        honest label is still the pre-batch-78 one.
+        """
+        out = tracker.get_scan_activity(3)
+
+        assert {d["state"] for d in out["days_series"]} == {"no output"}
+        assert out["today_no_scan_yet_days"] == 0
+        assert out["no_output_days"] == 3
+        assert out["scan_coverage_from"] is None
+
+    def test_a_future_dated_row_never_becomes_the_reported_coverage_start(self):
+        """Opus review (reviewer A #2), narrowed to what the bound actually
+        does. A clock-skewed or hand-inserted future row must not be reported
+        as `scan_coverage_from` -- a caller rendering "scan recording began
+        <date>" would print a date that has not happened.
+
+        Asserted on the RETURNED VALUE, not on day states, and deliberately
+        so: a future floor leaves every window day uncovered, which is the
+        same state outcome as no floor at all, so a state-only assertion here
+        would pass with the bound removed. An earlier version of this test
+        made exactly that mistake -- it seeded a future row AND a present one,
+        so MIN() picked the present one regardless and the bound was never
+        exercised.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now + timedelta(days=400)).isoformat())
+
+        out = tracker.get_scan_activity(5)
+
+        assert out["scan_coverage_from"] is None
+        # Positive control: the row really was written, so the None above is
+        # the bound excluding it rather than an insert that silently failed.
+        with tracker._conn() as con:
+            assert con.execute("SELECT COUNT(*) FROM scan_runs").fetchone()[0] == 1
+        # And with the row inside the window instead, the floor IS set --
+        # proving the bound is date-sensitive and not a blanket None.
+        self._insert_scan(now.isoformat())
+        out2 = tracker.get_scan_activity(5)
+        assert out2["scan_coverage_from"] == out2["end_date"]
+
+    def test_a_back_dated_row_is_a_documented_limitation_not_a_guard(self):
+        """The other half of reviewer A #2, pinned as accepted behaviour so a
+        future reader does not mistake the `<= today` bound for protection
+        against it. A row back-dated inside the plausible range IS taken as
+        real coverage, and every silent day after it reads as an outage.
+        There is no cheap bound that separates that from genuine coverage;
+        the mitigation is that cron is the only writer and log_scan_run
+        rejects a non-ISO stamp.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now - timedelta(days=4)).isoformat())
+
+        out = tracker.get_scan_activity(5)
+
+        assert out["scan_coverage_from"] == out["days_series"][0]["date"]
+        # Days 2-4 of the window are outages; today is exempt as always.
+        assert out["no_scan_days"] == 3
+        assert out["today_no_scan_yet_days"] == 1
+        assert out["no_output_days"] == 0
+
+    def test_days_before_the_first_scan_row_are_never_called_an_outage(self):
+        """The coverage floor. `scan_runs` is forward-only and starts empty,
+        so every day before its first row has no scan record for a reason
+        that says nothing about whether a scan ran. Labelling those "no scan"
+        would manufacture an outage history that never happened -- strictly
+        worse than the ambiguity it replaced.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan(now.isoformat())
+
+        out = tracker.get_scan_activity(5)
+        series = out["days_series"]
+
+        assert series[-1]["state"] == "scanned, nothing survived"
+        # The four days before the table's first row keep the honest label.
+        assert [d["state"] for d in series[:-1]] == ["no output"] * 4
+        assert out["no_output_days"] == 4
+        assert out["no_scan_days"] == 0
+        assert out["scan_coverage_from"] == series[-1]["date"]
+
+    def test_the_floor_is_read_from_the_whole_table_not_just_the_window(self):
+        """A window that begins AFTER the first scan row must still treat its
+        own days as covered. Scoping the MIN() to the window would make
+        coverage_from equal the window's own first scan day, re-arming the
+        false-outage bug for every earlier-but-covered day in a short window.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now - timedelta(days=20)).isoformat())
+        self._insert_scan(now.isoformat())
+
+        out = tracker.get_scan_activity(3)
+        series = out["days_series"]
+
+        # The 20-day-old row is outside this 3-day window entirely...
+        assert out["total_scans"] == 1
+        # ...but it still sets the floor, so the two silent days inside the
+        # window are diagnosable outages rather than unknowns.
+        assert out["scan_coverage_from"] < series[0]["date"]
+        assert [d["state"] for d in series[:-1]] == ["no scan"] * 2
+        assert out["no_scan_days"] == 2
+        assert out["no_output_days"] == 0
+
+    def test_a_scan_that_reached_analysis_still_reads_as_an_analysis_day(self):
+        """scan_runs must not outrank the stronger evidence. A day with
+        analysis_attempts rows keeps its existing label; the scan count is
+        additive information, not a replacement verdict.
+        """
+        now = datetime.now(UTC)
+        when = now.strftime("%Y-%m-%d %H:%M:%S")
+        self._insert_attempt("A1", when)
+        self._insert_scan(now.isoformat(), reached=1)
+
+        out = tracker.get_scan_activity(1)
+        today = out["days_series"][-1]
+
+        assert today["state"] == "analysed, no signals"
+        assert today["scans"] == 1
+        assert out["scanned_no_survivors_days"] == 0
+        assert out["analysed_no_signal_days"] == 1
+
+    def test_the_four_day_states_partition_the_window(self):
+        """No day may be counted twice or dropped: the four state counters
+        must sum to the window length for any mix of inputs.
+        """
+        now = datetime.now(UTC)
+        self._insert_scan((now - timedelta(days=3)).isoformat())  # gated day
+        self._insert_scan(now.isoformat(), reached=1)
+        self._insert_attempt("A1", now.strftime("%Y-%m-%d %H:%M:%S"))
+        self._insert_prediction(
+            "P1",
+            (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+        out = tracker.get_scan_activity(6)
+
+        total = (
+            out["signal_days"]
+            + out["analysed_no_signal_days"]
+            + out["scanned_no_survivors_days"]
+            + out["cron_ran_no_scan_days"]
+            + out["today_no_scan_yet_days"]
+            + out["no_scan_days"]
+            + out["no_output_days"]
+        )
+        assert total == out["days"] == 6
+        # Every label the state chain can emit must have a counter above, or
+        # this sum silently stops being a partition the moment a new state is
+        # added. Derived from the series rather than hardcoded.
+        assert len({d["state"] for d in out["days_series"]}) >= 3
+        # Positive control: the mix really is mixed, so the sum above is a
+        # partition and not four zeros plus one full bucket.
+        assert out["signal_days"] == 1
+        assert out["analysed_no_signal_days"] == 1
+        assert out["scanned_no_survivors_days"] == 1
 
 
 class TestScannerFunnelEndpoint:

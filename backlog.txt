@@ -2,6 +2,141 @@ BACKLOG — future improvements to implement when ready
 ======================================================
 
 
+[OPEN 2026-08-26 -- found by the opus review (effort=high) of batch-78
+  item 1; the consequence lands in tracker.py which batch-78 owned, but the
+  fix lands in main.py which it did not] `watch --auto` SCANS AND PLACES BUT
+  WRITES NO scan_runs ROW, SO A WATCH-ONLY DAY READS AS A CRON OUTAGE
+Priority: Low -- the dashboard panel is display-only and the current
+  operating mode is manual (`python main.py cron` by hand), so a watch-only
+  day is uncommon today. It rises with any move to a real scheduler, and it
+  is a FALSE claim rather than a missing one, which is the kind of defect
+  batch-78 existed to remove.
+Files: main.py (the `watch --auto` loop's direct run_trade_cycle call),
+  tracker.py (get_scan_activity's "no scan" state and its docstring;
+  log_scan_run's `mode` column)
+
+Problem:
+  batch-78 added `scan_runs` and wrote it from cron._cmd_cron_body only.
+  main.py's watch loop calls trade_cycle.run_trade_cycle() directly -- it
+  scans, analyses AND places, i.e. it is a real scan by every definition the
+  panel cares about -- and records nothing.
+
+  get_scan_activity() reads the absence of a row for a covered day as
+  "no scan" and counts it in `no_scan_days`. So a day on which the operator
+  ran `watch --auto` for hours, placed trades, and simply did not fire a
+  cron cycle is reported as a cron outage.
+
+  Batch-78 made the claim narrower rather than wrong: the state is now
+  documented as a statement about the CRON SCHEDULER specifically, not about
+  the process as a whole, and get_scan_activity's docstring says so. That is
+  honest but weaker than it needs to be -- the `mode` column was added
+  precisely to let more than one producer write here ('cron' /
+  'cron-sameday' are the only values today).
+
+Why not now:
+  main.py was outside batch-78's file scope (owned by another batch in the
+  same parallel set), and this is a genuinely separate call site rather than
+  the same payload batch-78 was already touching -- workflow step 27's test
+  says new entry, not inline fix.
+
+What it would look like:
+  Wrap the watch loop's run_trade_cycle call the same way
+  cron._cmd_cron_body does -- a `try/finally` calling
+  tracker.log_scan_run(..., mode="watch"). The `_record_scan_run` closure in
+  cron.py is the shape to copy; note it records on the deliberate-halt paths
+  too, which was itself a review finding.
+
+  Then decide what "no scan" should mean once two producers exist: either
+  keep it cron-specific (and rename it, since the panel would then need
+  `no_cron_scan_days` and a separate all-producer view), or make it "no scan
+  of any kind" and let the `mode` column carry the breakdown. Do not wire
+  the writer without making that call -- adding rows under a new mode
+  silently changes what every existing `no_scan_days` number means.
+
+[OPEN 2026-08-26 -- found by batch-78 item 2 while sizing a retention
+  window; the window decision could not be made honestly without it, but
+  cloud_backup.py was outside that batch's file scope] EVERY BYTE KEPT IN
+  predictions.db IS PAID 31 TIMES OVER IN THE BACKUP FOLDER
+Priority: Medium -- nothing is broken, and local disk is cheap (155 GB free
+  on C: as of 2026-08-26). It matters because it silently multiplies the
+  cost of every future retention decision by 31, and because the destination
+  is a syncing OneDrive folder rather than plain local disk, so the multiple
+  is paid against a cloud quota the repo knows nothing about.
+Files: cloud_backup.py (backup_data's dated-folder scheme and its 30-day
+  prune loop), cron.py (the post-cycle backup_data call)
+
+Problem:
+  cloud_backup.backup_data() writes into <sync>/KalshiBot/data/<YYYY-MM-DD>/
+  and prunes directories older than 30 days, so the steady state is 31
+  dated folders each holding a full, uncompressed copy of every data/ file
+  -- predictions.db included. Files are copied via safe_io.backup_sqlite_db
+  (a real SQLite backup, correctly WAL-safe) with no compression and no
+  de-duplication between days, even though consecutive days differ by well
+  under 1% of the file.
+
+  So the sync-folder cost of predictions.db is size x 31, not size x 1. At
+  today's 50 MB that is ~1.5 GB. Batch-78 sized ensemble_member_values'
+  retention at 365 days, taking the DB to roughly 370 MB steady state and
+  the backup folder to roughly 11.5 GB.
+
+  Measured 2026-08-26: CLOUD_BACKUP_PATH is unset, so _find_sync_folder()
+  falls through to %ONEDRIVE% (set, and the directory exists), and backups
+  are landing in C:/Users/thesa/OneDrive/KalshiBot/data -- 2 folders,
+  94.1 MB, on their way to 31. Whether that is free is a function of the
+  account's OneDrive tier, which is not knowable from the repo.
+
+Why not now:
+  Batch-78 owned tracker.py/cron.py/trade_cycle.py/kalshi_ws.py, not
+  cloud_backup.py, and the retention windows were the decision that batch
+  was asked to make. Widening it into a backup-format change would have
+  bundled two unrelated calls into one diff.
+
+What it would look like (pick one, with the user):
+  - Compress each .db on the way out (gzip/zstd). A SQLite file of mostly
+    text rows compresses several-fold; nothing else changes.
+  - Keep a full copy weekly and a lighter artifact daily, instead of 31
+    identical fulls.
+  - Exclude the two forward-only observation tables from the backup
+    entirely -- they are write-only, not backfillable, and losing them to a
+    disk failure costs a panel's history rather than any trading record.
+    Cheapest to implement, and the only option that does not touch the
+    format, but it is also the only one that loses data on a restore.
+  Whichever is chosen, re-derive the x31 figure first: the prune window is a
+  literal 30 in backup_data and may have moved.
+
+[OPEN 2026-08-26 -- found by batch-78 item 1 while looking for existing
+  coverage of cron's Monday sweep] A TEST NAMED FOR THE UTC-MONDAY FIX
+  ASSERTS NOTHING AT ALL
+Priority: Low -- the behaviour it is named for is believed correct; the
+  problem is that nothing would notice if it stopped being. A test that
+  cannot fail is worse than a missing one, because the suite reports it as
+  coverage.
+Files: tests/test_phase2_batch_h.py (test_monday_check_uses_utc_weekday),
+  cron.py (the Monday sweep's `_utc_today().weekday() == 0` guard, ~1552)
+
+Problem:
+  The test body is, in full, a `with patch(...)` whose suite is `pass`,
+  followed by the comment "structure test — real fix verified by import
+  check". It patches "cron.utc_today" if that attribute exists and
+  "utils.utc_today" otherwise, then does nothing inside the patch. It makes
+  no assertion, calls no cron code, and passes unconditionally.
+
+  The behaviour it is named for is real and worth guarding: cron.py's weekly
+  DB sweep fires on `_utc_today().weekday() == 0`, and an earlier bug had it
+  comparing against LOCAL time, so near local midnight the sweep could fire
+  on the wrong day or skip a week. That guard now also gates batch-78's two
+  new retention pruners, so the blast radius of it silently regressing has
+  grown.
+
+What it would look like:
+  Drive cron._cmd_cron_body with utils.utc_today patched to a known Monday
+  and to a known Tuesday, and assert a sweep-only function is called in the
+  first case and not the second.
+  tests/test_cron_integration.py::TestBatch78MondaySweepWindows (added by
+  batch-78) already does exactly this shape for the two new pruners and can
+  be copied; the gap is that it pins the WINDOWS, not the UTC-vs-local
+  question this entry is about, so it is not a substitute.
+
 [RESOLVED 2026-08-25 -- fix applied and the 30 contaminated rows removed;
   found by the independent opus review of the prod-data-guard entry below]
   TEST RUNS WRITE FABRICATED ROWS INTO THE REAL data/predictions.db VIA AN
@@ -1014,10 +1149,12 @@ FOLLOW-UPS (not filed as separate entries yet -- they only become real work
     finding 4. Needs its own go/no-go.
   - The maturation-bias measurement in criterion 4 needs somewhere to record
     the two SPC readings per settled event; there is no table for it today.
-[OPEN 2026-08-25 -- found by the opus review (effort=high) of batch-64
-  itself; filed rather than folded in because a retention sweep is its own
-  design decision (how long is A15's rank histogram allowed to look back?)
-  and batch-64's value depends on the writers starting TODAY.] BATCH-64'S
+[RESOLVED 2026-08-26 by batch-78 item 2 -- windows decided with the user
+  per table, pruners wired into cron's existing Monday sweep. Originally
+  found by the opus review (effort=high) of batch-64 itself; filed rather
+  than folded in because a retention sweep is its own design decision (how
+  long is A15's rank histogram allowed to look back?) and batch-64's value
+  depends on the writers starting TODAY.] BATCH-64'S
   TWO FORWARD-ONLY TABLES HAVE NO RETENTION SWEEP, AND ONE OF THEM GROWS
   ~50x FASTER THAN ITS OWN MIGRATION COMMENT ESTIMATED
 Priority: Medium -- nothing is broken today and the tables are tiny for the
@@ -1066,7 +1203,96 @@ Plan:
   3. Check actual on-disk growth first -- run the row counts after this has
      been writing for a week and size the window against measured bytes
      rather than the estimate above, which has already been wrong once.
-[OPEN 2026-08-25 -- found by the opus review of batch-65 (A12), which caught
+
+Resolution (2026-08-26, batch-78 item 2):
+  Two pruners added in tracker.py -- prune_ensemble_member_values(days=365)
+  and prune_orderbook_depth_snapshots(days=30) -- wired into cron.py's
+  existing Monday sweep alongside purge_old_predictions / prune_api_requests
+  / prune_old_analysis_attempts / prune_old_alert_deliveries, so they run on
+  the cadence that already exists and are followed by the same
+  vacuum_database() call.
+
+  MEASURED FIRST, per this entry's own step 3. The figures in the Problem
+  text above were themselves a correction of an earlier 50x-low estimate and
+  were still wrong in both directions:
+      claimed:  ~1,200 rows/day, 0.3-1 KB of values_json each
+      measured: 605 rows in the live table; one full cycle window = 600 rows
+                (20 cities x 5 models x 2 vars x 3 target dates); mean
+                values_json 191 B, mean total payload 294 B
+  cron runs at 02:15/08:15/14:15/20:15 UTC and _ensemble_cycle_tag buckets
+  on the 02/08/14/20 availability boundaries, so each run lands in a
+  distinct cycle window and none collapse under idx_emv_dedup: ~2,400
+  rows/day, upper bound ~4,000 when 5 target dates are in scope rather than
+  the 3 measured.
+
+  On-disk cost was measured rather than estimated -- an isolated scratch DB
+  carrying this exact schema plus idx_emv_dedup, VACUUMed as the Monday
+  sweep does, came to 367 B/row. At 365 days that is ~876k rows / ~320 MB.
+
+  Cost driver found while sizing the window, and NOT fixed here:
+  cloud_backup.backup_data writes into a per-day dated folder and keeps 30
+  of them, so the sync folder holds 31 full uncompressed copies of
+  predictions.db -- the steady-state cloud cost of any retention decision is
+  DB size x 31, not x 1. Confirmed live: C:/Users/thesa/OneDrive/KalshiBot/
+  data held 2 folders / 94.1 MB. cloud_backup.py is outside batch-78's file
+  scope; filed as its own entry below.
+
+  WINDOWS (AskUserQuestion, deliberately asked per table -- these are not
+  the same question):
+  - ensemble_member_values: 365 days. A15b's rank histogram is a WEATHER
+    statistic; summer and winter ensemble spread are different populations,
+    so a full seasonal cycle is the shortest horizon that lets the panel
+    compare like with like. The choice is also asymmetric: these rows are
+    forward-only and not backfillable, so shortening the window later is
+    free while lengthening it cannot recover what was deleted.
+  - orderbook_depth_snapshots: 30 days (user's pick). A4's ladder walk and
+    A17's counterfactual replay are short-horizon by design, and this table
+    has no dedup key at all. Still 0 rows, so its volume remains a
+    projection: cron subscribes ~590 tickers and stops the WS at the end of
+    cmd_cron, giving of order 2,400-10,000 rows/day; a `watch --auto --live`
+    session holds the listener up continuously and is unbounded by
+    comparison.
+
+  Both migration comments were rewritten in place with the measured numbers
+  and the chosen window, replacing the stale estimates.
+
+  Tests: tests/test_tracker.py::TestBatch78Pruners (7) -- per-table
+  deletion, the cutoff-direction boundary, the two windows being genuinely
+  independent (a 90-day-old member set survives while a 90-day-old depth
+  snapshot does not), each pruner touching only its own table, and empty-
+  table no-ops. tests/test_cron_integration.py::TestBatch78MondaySweepWindows
+  (2) pins the call site's own `days=` values.
+
+  MUTATION-TESTING FOUND A REAL GAP. Flipping the emv DELETE's comparison
+  (`logged_at <` -> `>`) failed 4 tests as intended. But SWAPPING THE TWO
+  WINDOWS AT THE CALL SITE -- _prune_member_values(days=30) /
+  _prune_depth(days=365) -- left every test green, because the pruners'
+  defaults were tested and the call site was not. That mutation would
+  destroy 11 months of the corpus A15b is waiting on at the very next Monday
+  sweep, i.e. the single most destructive failure mode in the batch.
+  TestBatch78MondaySweepWindows was written specifically to kill it and does
+  (asserts 365/30/730 by name, asserts the ordering between them, and pairs
+  it with a non-Monday control proving the sweep branch actually gates the
+  calls).
+
+  Also added: the three new pruners each tripped
+  tests/test_isoformat_cutoff_guard.py, as that guard is designed to do.
+  Each column's writer was traced before allowlisting -- logged_at via
+  log_ensemble_members_bulk (verified single writer repo-wide;
+  log_ensemble_members delegates to it rather than carrying its own INSERT),
+  snapshot_at via log_orderbook_depth (two sources, both isoformat: its own
+  default and kalshi_ws's book `ts`), started_at via log_scan_run. No
+  datetime('now') writer touches any of the three.
+
+  kalshi_ws.py was read (DEPTH_SNAPSHOT_INTERVAL_SECS, _maybe_persist_depth)
+  and deliberately NOT changed: the throttle is the volume driver this entry
+  cites, but throttling is a collection decision and retention is a storage
+  one. Changing the interval would alter what A4/A17 can replay; the sweep
+  does not.
+[RESOLVED 2026-08-26 by batch-78 item 1 -- scan_runs table (schema v77/v78),
+  written unconditionally by cron, and get_scan_activity() now splits its old
+  "no output" bucket into a real "scanned, nothing survived" and a real "no
+  scan". Originally found by the opus review of batch-65 (A12), which caught
   the panel's own docstring claiming a distinction the data cannot make;
   confirmed pre-existing, the funnel only makes it visible.] NOTHING RECORDS
   PER-DAY THAT A SCAN RAN, SO AN OUTAGE AND A FULLY-GATED DAY ARE
@@ -1116,6 +1342,201 @@ What it would look like:
   with a read-only analytics batch. Once it exists, get_scan_activity()'s
   "no output" state can split back into a real "no scan" and a real
   "scanned, nothing survived", and the panel can stop hedging.
+
+Resolution (2026-08-26, batch-78 item 1):
+  Built as described in "What it would look like" above, with one addition
+  the plan did not name.
+
+  Schema v77/v78: `scan_runs` (id, started_at, finished_at, markets_fetched,
+  markets_scanned, reached_analysis, scan_completed, mode, halted_reason)
+  plus idx_scan_runs_started. _SCHEMA_VERSION 76 -> 78; _MIGRATIONS is
+  append-only and both entries were appended. The chain was proved to apply
+  from an empty DB, to upgrade a DB staged at v76 in place, and to be
+  idempotent on re-run -- all three against isolated scratch DBs, never the
+  real data/predictions.db (confirmed still v76 with no scan_runs table
+  afterwards).
+
+  COUNTS, NOT A FLAG, per this entry's own design note. reached_analysis is
+  what separates "ran and gated everything" (0) from "ran and analysed 40
+  that all missed the edge threshold" (40); a bare ran/did-not-run row would
+  collapse those back together. It is recorded per SCAN rather than per
+  market precisely because analysis_attempts upserts on (ticker,
+  target_date) and therefore undercounts a re-analysed market -- the same
+  property this entry documents above.
+
+  Written from cron.py in a `finally` around run_trade_cycle(), not on the
+  success path. Recording only past the `if result is None: return None`
+  early exit would have reproduced the exact gap the table closes: a cycle
+  that started and died would look identical to one that never launched. On
+  the abort and crash paths the counts go in as NULL rather than 0 -- on
+  those paths they are genuinely unknown, and 0 asserts "scanned nothing",
+  which is the same false certainty pointed the other way.
+
+  trade_cycle.py: `_scan_completed` already existed (it gates the funnel
+  snapshot's `complete` field, batch-65 M4) but lived only inside
+  run_trade_cycle(). Surfaced as TradeCycleResult.scan_completed so the
+  scan_runs row can carry it -- a truncated scan's counts must not be
+  recorded as if they covered the whole market universe.
+
+  THE ADDITION THE PLAN DID NOT NAME -- a coverage floor, and it is
+  load-bearing. scan_runs is forward-only and starts empty, so every day
+  before its first row has no scan record for a reason that says nothing
+  about whether a scan ran. Splitting "no output" into "no scan" without a
+  floor would have retroactively labelled the entire pre-batch-78 history as
+  an outage -- manufacturing a fault record that never happened, which is
+  strictly worse than the honest ambiguity it replaced and the same class of
+  inversion the A12 docstring already warns about. get_scan_activity() now
+  reads MIN(DATE(started_at)) over the WHOLE table (not the window -- a
+  window starting after the first row must still treat its own days as
+  covered) and exposes it as `scan_coverage_from`. Days at or after it are
+  diagnosable; days before it keep the original "no output" label. With the
+  table empty, `scan_coverage_from` is None and the function behaves exactly
+  as it did before this change.
+
+  get_scan_activity() additions, all additive -- web_app.py passes the dict
+  straight through and there is no frontend consumer of these keys yet:
+  per-day `scans`, and top-level `scanned_no_survivors_days`,
+  `no_scan_days`, `total_scans`, `scan_coverage_from`. `no_output_days`
+  keeps its batch-65 meaning (an observed zero of unknown cause) and now
+  shrinks toward zero as the window rolls past the coverage floor.
+
+  Retention: prune_scan_runs(days=730), matching purge_old_predictions
+  rather than taking a window of its own. One row per cron cycle at ~200 B
+  is ~0.3 MB/year, three orders of magnitude below batch-78 item 2's two
+  tables, and a long uptime baseline is the entire point of the table.
+
+  Tests: 39 new across both review rounds, none removed (re-counted from
+  the staged diff at the moment of writing this sentence, not recalled).
+  By class: TestLogScanRun 4 and TestBatch78Pruners 7 and
+  TestBatch78ReviewRound2 4 (tests/test_tracker.py); TestScanRunRecord 5,
+  TestScanRunRecordHaltedAndTruncated 3 and TestBatch78MondaySweepWindows 2
+  (tests/test_cron_integration.py); TestScanCompletedIsExposed 4
+  (tests/test_trade_cycle_engine.py); 10 added to TestScanActivity
+  (tests/test_scan_funnel.py, 7 -> 17).
+
+  Scoped suite at the end: 1114 passed across test_tracker, test_scan_funnel,
+  test_cron_integration, test_cron_group_c, test_cron_lock,
+  test_cron_trade_updates, test_cron_watchdog, test_trade_cycle_engine,
+  test_kalshi_ws, test_isoformat_cutoff_guard, test_phase2_batch_h,
+  test_phase3_batch_d, test_main_cron_smoke, test_batch64_forward_writers,
+  test_attempt_settlement, test_cleanup_data_dir. Never the bare full suite.
+  ruff / ruff-format / mypy clean via the real pre-commit hook.
+
+  One existing test was updated rather than deleted:
+  test_no_output_is_not_reported_as_an_outage asserted `"no_scan_days" not
+  in out`, which was correct when the function could not observe an outage
+  at all. Its real claim -- no phantom outage -- is preserved and sharpened:
+  it now asserts no_scan_days == 0 and scan_coverage_from is None with the
+  table empty, which is a stronger guard than the key's mere absence.
+
+  Mutation-tested via Edit, each claim individually: removing the coverage
+  floor (`d >= coverage_from`) fails only
+  test_days_before_the_first_scan_row_are_never_called_an_outage; scoping
+  the MIN() to the window fails only
+  test_the_floor_is_read_from_the_whole_table_not_just_the_window; storing
+  the unknown counts as 0 fails both the kill-switch and crash tests; making
+  the `finally` skip the record when no result came back fails three. Each
+  mutation was reverted with Edit (which errors loudly on a mismatch) and
+  the suite re-run green afterwards.
+
+  A finding this raised about an ADJACENT existing test, not fixed here:
+  tests/test_phase2_batch_h.py::test_monday_check_uses_utc_weekday is
+  vacuous -- its body is `with patch(...): pass  # structure test`, so it
+  asserts nothing at all about the UTC-vs-local Monday behaviour it is
+  named for. Different subsystem and its own entry's worth of work; filed
+  separately below rather than widened into this one (workflow step 27:
+  it does not feed the same payload as anything batch-78 touched).
+
+OPUS REVIEW (effort:high, two reviewers split by subsystem; every finding
+  addressed, none dropped). Reviewer A (tracker.py) died on an API error
+  mid-run and was respawned at the user's direction rather than silently
+  skipped. Reviewer B (cron.py / trade_cycle.py / tests) returned 13
+  findings; the four MEDIUMs materially changed the design.
+
+  B#1 (MEDIUM, the most valuable finding) -- THE FALSE-OUTAGE BUG CAME BACK
+    BY ANOTHER ROUTE. The try/finally sat downstream of two early
+    `return None` paths: the kill-switch check and the black-swan abort. On
+    those days cron RAN, deliberately declined to scan, and wrote no row --
+    so get_scan_activity labelled the day "no scan", i.e. an outage, and an
+    operator would go hunting a dead scheduler that was working perfectly.
+    Strictly worse than the pre-batch-78 "no output", and the same inversion
+    scan_coverage_from was built to prevent. FIXED structurally rather than
+    patched: a `_record_scan_run()` closure is now the single writer, called
+    from all three exit paths, and a halt records counts NULL with
+    halted_reason set ('kill_switch' / 'black_swan'). That needed a new
+    state, because such a day is neither an outage nor a scan --
+    get_scan_activity now discriminates on `markets_scanned IS NOT NULL` and
+    reports "cron ran, no scan", with its own `cron_ran_no_scan_days` count.
+  B#2 (MEDIUM) -- `watch --auto` scans and places but writes no row, so a
+    watch-only day reads as a cron outage. main.py is another batch's file;
+    narrowed the claim in code (the state and its docstring now say the
+    verdict is about the CRON SCHEDULER specifically) and filed the wiring
+    as its own entry above.
+  B#3 (MEDIUM) -- the concrete green mutation: nothing anywhere asserted
+    `scan_completed is False` from a non-None result, so hard-coding it True
+    at the construction site passed the whole suite. That is exactly the
+    case the field was added for. FIXED with a test driving the real
+    `except TimeoutError` handler (patching concurrent.futures.as_completed,
+    which run_trade_cycle imports at call time), plus a cron-side test
+    pinning scan_completed=0 WITH non-NULL counts -- the discriminator
+    against the abort path, which also records 0 but with NULLs.
+    Re-mutated after the fix: now fails 2 tests.
+  B#4 (MEDIUM) -- the recorder's failure was logged at debug. A permanently
+    broken writer would produce no rows, and no rows is what reads as an
+    outage, so the one failure that manufactures a permanent false outage
+    history had no trace above debug. Now warning, matching log_scan_run.
+  B#5 (LOW) -- `_scan_result is None` conflates a raise, a pre-scan kill
+    switch, and a kill switch tripped AFTER the analysis loop finished (that
+    third case had real counts, which run_trade_cycle discards on its way
+    out). Documented rather than fixed: correcting it means changing
+    run_trade_cycle's None-return contract. NULL understates what was known,
+    which is the safe direction.
+  B#6 (LOW) -- the `finally`'s comment overclaimed. It covers Python
+    exceptions only; _install_cron_watchdog's 720s timeout calls os._exit(1),
+    which runs no finally blocks, so a HUNG cycle -- the classic "cron is
+    dead" symptom -- still leaves no row. Comment narrowed to say so, and to
+    record that covering it would need finished_at nullable.
+  B#7 (LOW) -- the three new pruners sat inside the shared Monday-sweep try,
+    ahead of the VACUUM, whose finally stamps a 7-day marker: one raise would
+    skip the VACUUM and suppress the entire sweep for another week. Each new
+    pruner now has its own try/except.
+  B#8 (LOW) -- the cron tests' SimpleNamespace stand-in could not detect a
+    TradeCycleResult field being renamed or removed. Replaced with a real
+    keyword-constructed TradeCycleResult via a shared `_fake_cycle_result()`
+    builder; dbg/gate_counts stay defaultdicts, with the reason and the
+    weakening both stated in the docstring.
+  B#9 (LOW) -- `assert seen == [result.scan_completed]` was a one-value
+    tautology (both sides True on the only path run). Now exercised on both
+    values with a positive control asserting the two runs genuinely differed.
+  B#10 (LOW) -- a test docstring pointed at test_scan_funnel.py for
+    truncated-scan coverage that does not exist there behaviourally (it calls
+    snapshot_scan_funnel directly and AST-checks source). Corrected, and it
+    now also records that the mid-scan kill-switch path CANNOT be asserted
+    through this field at all, since it returns None.
+  B#11 (INFO) -- two contradictory count paragraphs in the isoformat guard's
+    docstring, from my own edit. Folded into one sentence.
+  B#12 (INFO) -- `reached_analysis` names two different quantities
+    (scan_runs' per-scan len(all_results) vs get_scan_activity's per-day
+    analysis_attempts COUNT, which upserts). Both sites now say so and say
+    not to compare them.
+  B#13 (INFO) -- nothing pinned started_at to the scan's START; moving the
+    stamp after the call would stay green. Test added asserting
+    started_at <= the moment run_trade_cycle was entered <= finished_at.
+
+  Reviewer B also verified and reported clean: `from __future__ import
+  annotations` present so the TYPE_CHECKING-only annotation is safe; the
+  finally cannot mask or raise; `_scan_result` always bound; WS lifetime
+  unaffected; no double-recording; TradeCycleResult's mid-dataclass field
+  insertion safe (single all-keyword construction site, no astuple/asdict/
+  fields()/pickling anywhere); test DB isolation genuinely autouse and
+  covering unittest TestCase; the Monday-sweep test really reaches the Monday
+  branch; no new test vacuous under revert; and the modified existing test
+  strengthened rather than weakened. It explicitly disclosed that findings
+  B#3 and B#13 were established by static analysis and grep rather than by
+  applying the mutation, since the review was read-only -- both were
+  independently re-confirmed here by actually applying the mutation via Edit
+  and re-running (B#3 failed 2 tests once fixed; B#13's test was written
+  against the real stamp ordering).
 
 [OPEN 2026-08-25 -- found by batch-65 (A2) while building the calibration
   decomposition panel; measured against the live DB, not inferred.] THE
@@ -27472,7 +27893,12 @@ Update 2026-08-25 (batch-59 item 4, cross-reference -- entry stays OPEN):
   the spread-calibration fix turns out to be, rather than treating them as
   independent.
 
-[OPEN 2026-08-20 -- adjacency finding during batch-06 (item 3, "SEVERAL
+[RESOLVED 2026-08-24 by batch-57 item 1 (commit cd831a81); header
+  corrected 2026-08-26 by batch-78, which was handed this as an open item
+  and found the fix already shipped -- the Resolution block below was
+  written at the time but the status bracket was never flipped, so
+  backlog_index.py kept listing it and a later handoff re-filed it.
+  Originally an adjacency finding during batch-06 (item 3, "SEVERAL
   BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER"): a genuinely
   separate consumer (web_app.py dashboard display only), not a duplicate of
   the tuple that fix unified -- filed as its own entry per workflow step 27

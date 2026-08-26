@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import importlib
 import logging
+from collections import defaultdict
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -3097,3 +3099,391 @@ class TestBatch69AlertRuleHook:
             r for r in _alerts.get_alert_rule_definitions() if r.rule_id == "cron_gap"
         )
         assert calls[0]["trigger_source"] not in gap_rule.triggers
+
+
+def _fake_cycle_result(**overrides):
+    """A real trade_cycle.TradeCycleResult, not a look-alike.
+
+    Reviewer B #8: the first version of these tests built a SimpleNamespace
+    mirroring TradeCycleResult field by field, which meant the class whose
+    subject IS that dataclass could not detect one of its fields being
+    renamed or removed. Constructing the real type with keyword args makes
+    any such change an immediate, legible failure here.
+
+    `dbg` and `gate_counts` stay defaultdicts rather than the engine's real
+    key sets: cron's scan-summary block reads a dozen counters downstream of
+    the write under test, and pinning them would make these tests fail
+    whenever an unrelated counter is added. That IS more permissive than
+    production (a genuinely missing key reads 0 here where the engine would
+    KeyError), which is an accepted trade -- these tests are about the
+    scan_runs row, and test_cron_integration.py's real-engine tests cover the
+    counter contract.
+    """
+    import trade_cycle
+
+    fields = dict(
+        halted_reason=None,
+        consistency_skip=False,
+        markets=[{"ticker": f"T{i}"} for i in range(7)],
+        deduped_markets=[{"ticker": f"T{i}"} for i in range(5)],
+        scanned=5,
+        dedup_removed=2,
+        stale_skipped=0,
+        effective_min_edge=0.05,
+        all_results=[({}, {}), ({}, {})],
+        ticker_city={},
+        no_quote_opps=[],
+        liquid_opps=[],
+        strong_opps=[],
+        med_opps=[],
+        signals_cache_entries=[],
+        gate_counts=defaultdict(int),
+        scan_completed=True,
+        dbg=defaultdict(int),
+        pre_settled=[],
+        strong_cap=None,
+        placed_strong=0,
+        placed_med=0,
+        synced_count=0,
+        paper_settled=[],
+        shadow_logged_count=0,
+    )
+    fields.update(overrides)
+    return trade_cycle.TradeCycleResult(**fields)
+
+
+@pytest.mark.cron_integration
+class TestScanRunRecord:
+    """batch-78 item 1: cron must record that a scan cycle happened, on every
+    exit path. Nothing else persisted is unconditional -- analysis_attempts
+    needs a market past every SCAN_GATES check and predictions needs one past
+    the placement gate -- so this row's absence is the only evidence that the
+    cron job did not run at all.
+    """
+
+    @staticmethod
+    def _scan_rows():
+        import tracker
+
+        with tracker._conn() as con:
+            return con.execute("SELECT * FROM scan_runs ORDER BY id").fetchall()
+
+    def test_a_completed_cycle_records_its_counts(self, cron_env):
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        def _fake_run_trade_cycle(ctx, client, **kwargs):
+            return _fake_cycle_result(
+                halted_reason="accuracy halt",
+                markets=[{"ticker": f"T{i}"} for i in range(7)],
+                all_results=[({}, {}), ({}, {})],
+            )
+
+        with patch.object(
+            trade_cycle, "run_trade_cycle", side_effect=_fake_run_trade_cycle
+        ):
+            ctx = main._build_cron_context()
+            cron._cmd_cron_body(ctx, client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        assert rows[0]["markets_fetched"] == 7
+        assert rows[0]["markets_scanned"] == 5
+        # The count that separates "gated everything" from "analysed some".
+        assert rows[0]["reached_analysis"] == 2
+        assert rows[0]["scan_completed"] == 1
+        assert rows[0]["mode"] == "cron"
+        assert rows[0]["halted_reason"] == "accuracy halt"
+        assert rows[0]["started_at"] <= rows[0]["finished_at"]
+
+    def test_a_kill_switch_abort_still_leaves_a_row(self, cron_env):
+        """run_trade_cycle returns None on a hard abort and _cmd_cron_body
+        returns immediately. Recording only past that early return would make
+        a cycle that started and died look identical to one that never
+        launched -- the exact gap this table closes.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        with patch.object(trade_cycle, "run_trade_cycle", return_value=None):
+            ctx = main._build_cron_context()
+            cron._cmd_cron_body(ctx, client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        # Counts are unknown on this path, so they must be NULL rather than 0:
+        # 0 would assert "scanned nothing", which is a different claim.
+        assert rows[0]["markets_fetched"] is None
+        assert rows[0]["markets_scanned"] is None
+        assert rows[0]["reached_analysis"] is None
+        assert rows[0]["scan_completed"] == 0
+
+    def test_a_crashing_cycle_still_leaves_a_row_and_still_raises(self, cron_env):
+        """The `finally` half. The exception must reach the caller unchanged
+        -- an observability write may not swallow a real crash -- while the
+        row proves a cycle was attempted.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        with patch.object(
+            trade_cycle, "run_trade_cycle", side_effect=RuntimeError("scan blew up")
+        ):
+            ctx = main._build_cron_context()
+            with pytest.raises(RuntimeError, match="scan blew up"):
+                cron._cmd_cron_body(ctx, client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        assert rows[0]["scan_completed"] == 0
+        assert rows[0]["reached_analysis"] is None
+
+    def test_sameday_only_is_recorded_as_its_own_mode(self, cron_env):
+        """A --sameday-only cycle scans a deliberately small subset, so its
+        counts are not comparable with a full scan's. Without the mode column
+        a day of sameday runs would read as a collapsed market universe.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        with patch.object(trade_cycle, "run_trade_cycle", return_value=None):
+            ctx = main._build_cron_context()
+            cron._cmd_cron_body(ctx, client, sameday_only=True)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        assert rows[0]["mode"] == "cron-sameday"
+        # Positive control: the same path records the other mode when the flag
+        # is off, so "cron-sameday" is the flag's doing and not a constant.
+        with patch.object(trade_cycle, "run_trade_cycle", return_value=None):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+        assert [r["mode"] for r in self._scan_rows()] == ["cron-sameday", "cron"]
+
+    def test_a_failing_scan_record_does_not_fail_the_cycle(self, cron_env):
+        """Write-only observation. If log_scan_run itself blows up, the cycle
+        it was observing must still complete.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import tracker
+        import trade_cycle
+
+        with (
+            patch.object(trade_cycle, "run_trade_cycle", return_value=None),
+            patch.object(
+                tracker, "log_scan_run", side_effect=RuntimeError("recorder down")
+            ),
+        ):
+            ctx = main._build_cron_context()
+            cron._cmd_cron_body(ctx, client)  # must not raise
+
+        assert self._scan_rows() == []
+
+
+@pytest.mark.cron_integration
+class TestBatch78MondaySweepWindows:
+    """batch-78 item 2: the retention WINDOWS are the decision this item made,
+    and they live at the call site rather than in the pruners' defaults.
+
+    Found by mutation testing: swapping `_prune_member_values(days=365)` and
+    `_prune_depth(days=30)` at the call site left every other test in this
+    batch green, while destroying 11 months of the corpus A15b is waiting on
+    at the very next Monday sweep. The pruners' own behaviour is covered by
+    tests/test_tracker.py::TestBatch78Pruners; this pins what cron asks for.
+    """
+
+    def _run_monday_sweep(self, main, client, cron):
+        import tracker
+        import trade_cycle
+        import utils
+
+        calls: dict[str, int] = {}
+
+        def _rec(name):
+            def _f(days=None, **_kw):
+                calls[name] = days
+                return 0
+
+            return _f
+
+        monday = date(2026, 6, 1)
+        assert monday.weekday() == 0
+        with (
+            patch.object(utils, "utc_today", return_value=monday),
+            patch.object(trade_cycle, "run_trade_cycle", return_value=None),
+            patch.object(
+                tracker,
+                "prune_ensemble_member_values",
+                side_effect=_rec("member_values"),
+            ),
+            patch.object(
+                tracker,
+                "prune_orderbook_depth_snapshots",
+                side_effect=_rec("depth"),
+            ),
+            patch.object(tracker, "prune_scan_runs", side_effect=_rec("scan_runs")),
+        ):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+        return calls
+
+    def test_each_table_is_swept_on_its_own_decided_window(self, cron_env):
+        tmp_path, client, main, paper = cron_env
+        import cron
+
+        calls = self._run_monday_sweep(main, client, cron)
+
+        # Positive control: all three pruners were actually reached, so the
+        # per-window assertions below are not vacuously passing on a sweep
+        # branch that never fired.
+        assert set(calls) == {"member_values", "depth", "scan_runs"}
+        # A15b's rank histogram needs a full seasonal cycle.
+        assert calls["member_values"] == 365
+        # A4/A17 replay is short-horizon, and this table has no dedup at all.
+        assert calls["depth"] == 30
+        # Outage history, matching purge_old_predictions' retention.
+        assert calls["scan_runs"] == 730
+        # The windows must not be interchangeable: keeping depth as long as
+        # member values, or member values as short as depth, is the specific
+        # mutation this test exists to kill.
+        assert calls["member_values"] > calls["depth"]
+        assert calls["scan_runs"] > calls["member_values"]
+
+    def test_the_sweep_does_not_run_on_a_non_monday(self, cron_env):
+        """Positive control for the test above: the windows it asserts are
+        reached via the Monday branch, so that branch must genuinely gate
+        them rather than the pruners running every cycle.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import tracker
+        import trade_cycle
+        import utils
+
+        calls: list[str] = []
+        tuesday = date(2026, 6, 2)
+        assert tuesday.weekday() == 1
+        with (
+            patch.object(utils, "utc_today", return_value=tuesday),
+            patch.object(trade_cycle, "run_trade_cycle", return_value=None),
+            patch.object(
+                tracker,
+                "prune_ensemble_member_values",
+                side_effect=lambda **_kw: calls.append("member_values"),
+            ),
+            patch.object(
+                tracker,
+                "prune_orderbook_depth_snapshots",
+                side_effect=lambda **_kw: calls.append("depth"),
+            ),
+        ):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+
+        assert calls == []
+
+
+@pytest.mark.cron_integration
+class TestScanRunRecordHaltedAndTruncated:
+    """batch-78 item 1, opus-review round 2. Three claims the first pass
+    missed, all found by reviewer B:
+
+    #1 a deliberate halt (kill switch, black swan) returns before
+       run_trade_cycle, so recording only around that call made a day cron
+       ran perfectly and CHOSE not to scan report as a dead scheduler;
+    #3 no test forced `scan_completed` to False from a non-None result, so
+       hard-coding it True at the construction site stayed green;
+    #13 nothing pinned `started_at` to the scan's actual start, so moving the
+       stamp after the call would also stay green.
+    """
+
+    @staticmethod
+    def _scan_rows():
+        import tracker
+
+        with tracker._conn() as con:
+            return con.execute("SELECT * FROM scan_runs ORDER BY id").fetchall()
+
+    def test_a_kill_switch_halt_is_recorded_and_is_not_an_outage(
+        self, cron_env, tmp_path
+    ):
+        """cron ran, found .kill_switch, and returned before scanning. That is
+        a deliberate halt, not a dead cron job, and get_scan_activity must not
+        call it one.
+        """
+        _tmp, client, main, paper = cron_env
+        import cron
+        import tracker
+
+        cron.KILL_SWITCH_PATH.write_text('{"reason": "test halt"}')
+
+        cron._cmd_cron_body(main._build_cron_context(), client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1, "a halted cycle still RAN and must leave a row"
+        assert rows[0]["halted_reason"] == "kill_switch"
+        assert rows[0]["markets_scanned"] is None, "it never reached the scan"
+        assert rows[0]["scan_completed"] == 0
+
+        # The whole point: the day reads as a halt, NOT as an outage.
+        out = tracker.get_scan_activity(1)
+        today = out["days_series"][-1]
+        assert today["state"] == "cron ran, no scan"
+        assert today["scans"] == 1
+        assert today["scans_reaching_scan"] == 0
+        assert out["no_scan_days"] == 0
+        assert out["cron_ran_no_scan_days"] == 1
+        assert out["scanned_no_survivors_days"] == 0
+
+    def test_a_truncated_scan_records_incomplete_with_real_counts(self, cron_env):
+        """The non-None result whose scan_completed is False. Distinguishes a
+        partial scan from both a complete one and an aborted one: the counts
+        are REAL (not NULL, unlike the abort path) but do not cover the whole
+        market universe.
+        """
+        _tmp, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        def _fake(ctx, client, **kwargs):
+            return _fake_cycle_result(scan_completed=False, all_results=[({}, {})])
+
+        with patch.object(trade_cycle, "run_trade_cycle", side_effect=_fake):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        assert rows[0]["scan_completed"] == 0
+        # Positive control, and the actual discriminator: unlike the abort and
+        # crash paths (which record NULL), a truncated scan knows its counts.
+        # Asserting only scan_completed == 0 would pass on those paths too.
+        assert rows[0]["markets_scanned"] == 5
+        assert rows[0]["reached_analysis"] == 1
+
+    def test_started_at_is_stamped_before_the_scan_runs(self, cron_env):
+        """Pins the stamp to the cycle's START. Moving
+        `_scan_started_at = ...now()` to after run_trade_cycle returns would
+        leave every row claiming a zero-duration scan, and every other
+        assertion in these classes green.
+        """
+        _tmp, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        entered_at: list[str] = []
+
+        def _fake(ctx, client, **kwargs):
+            entered_at.append(datetime.now(UTC).isoformat())
+            return _fake_cycle_result()
+
+        with patch.object(trade_cycle, "run_trade_cycle", side_effect=_fake):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+
+        rows = self._scan_rows()
+        assert len(rows) == 1
+        assert entered_at, "positive control: run_trade_cycle was actually called"
+        # Stamped before the engine was entered, and finished after it.
+        assert rows[0]["started_at"] <= entered_at[0]
+        assert rows[0]["finished_at"] >= entered_at[0]
