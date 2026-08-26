@@ -29,6 +29,13 @@ The item's note names only the last one. **`test_one_below_the_cap_still_places`
 
 So the requirement is not "update three numbers". It is: **preserve the bracketing property under the new semantics.** After the change, a per-placement cap makes total-after-placement the invariant, so the probes must still distinguish a cap of 20 from 19 and 21. Design the new probe set deliberately and mutation-test the cap to 19 and 21, not just to something absurd — otherwise this change silently destroys the very property batch-80 added.
 
+
+## Where this batch sits, as of 2026-08-26
+
+The project has since been measured against the market on the unbiased `analysis_attempts` population and **found to have no edge** — 0 of 18 cities, both horizons, all three methods, both families. See `backlog.txt`'s *"PROJECT DIRECTION AFTER THE NO-EDGE RESULT"*. That does **not** cancel this batch: nothing here is an attempt to improve the forecast, and every item is a correctness or observability defect that stands regardless of whether the bot ever trades again. But it does set the bar for scope — **do not expand this batch into anything justified as improving edge.**
+
+**Anchors re-verified 2026-08-26 against master `1e06d6d3`** — all hold, and neither `order_executor.py` nor `tests/test_trade_improvements.py` has changed since the review that produced the findings below: `_reprice_or_cancel_pending_orders` at **`:2125`**, `MAX_CONCURRENT_POSITIONS` at **`:4367`**, `queue_positions` table at `execution_log.py:180`, and the four cap tests at `tests/test_trade_improvements.py:266 / :291 / :317 / :330`.
+
 ### 1. [LOW] `MAX_CONCURRENT_POSITIONS` is a per-cycle entry gate, so one cycle can exceed it
 
 > `MAX_CONCURRENT_POSITIONS IS A PER-CYCLE ENTRY GATE, SO ONE CYCLE CAN OPEN MORE POSITIONS THAN THE CAP ALLOWS`
@@ -58,4 +65,9 @@ Read `C:\Users\thesa\.claude\projects\C--Users-thesa-claude-kalshi\memory\feedba
 >
 > `_auto_place_trades` is referenced in ~20 test files, so do **not** expand to all of them — that would be over half the suite. Instead, `grep -rln "<symbol>" tests/*.py` for the specific symbols you actually change and add only what that returns. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
 
-**Two standing hazards.** Scripts run outside pytest bypass conftest's real-`data/`-write blocker and its default-deny network guard — redirect `safe_io.project_root()` or the specific `paths.py` constant before running any scratch script. And do not run `git restore .` or `git checkout -- data/`.
+**Standing hazards — the first was INVERTED by batch 83 and is corrected here.**
+
+- ~~Scripts run outside pytest bypass conftest's real-`data/`-write blocker~~ — **no longer true.** Batch 83 (`c8bb4a1c`, *"arm the prod-data guard outside pytest"*) armed it, so a scratch script that writes under the real `data/` now **raises**, it does not silently succeed. Redirect `safe_io.project_root()` or the specific `paths.py` constant before running one. The default-deny network guard is still pytest-only.
+- Do not run `git restore .` or `git checkout -- data/`.
+
+**Lint — `git commit` does NOT lint anything in this repo.** There is no `.git/hooks/pre-commit`, no `.githooks/` directory, and `core.hooksPath` is unset, so a clean `git commit` is indistinguishable from a passing hook. Run `python -m pre_commit run --files <paths>` explicitly. And if you add or edit anything under `audit/`, run CI's own two commands as well — `ruff check .` and `mypy . --ignore-missing-imports --implicit-optional --no-error-summary` — because `.pre-commit-config.yaml` sets `exclude: ^audit/` on ruff, ruff-format and mypy while `.github/workflows/ci.yml` applies no exclusion at all. A green hook is not a green CI.

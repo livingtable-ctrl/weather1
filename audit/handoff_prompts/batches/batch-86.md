@@ -6,7 +6,7 @@ Repo: weather1. Written 2026-08-26 against master `0c332140` — **re-verify cur
 
 **Files owned: `cloud_backup.py`, `cron.py`, `tests/test_phase2_batch_h.py`.**
 
-> **Check `cron.py` before starting.** `0c332140` ("unroll the pruner loop so the dead-code scan can see both calls") landed 2026-08-26 and touched it. Rebase onto current master.
+> **Check `cron.py` before starting.** Verified 2026-08-26: `cloud_backup.py`'s 30-day prune is at **`:262`**, and the vacuous test is `test_monday_check_uses_utc_weekday` at **`tests/test_phase2_batch_h.py:253`**. `0c332140` ("unroll the pruner loop so the dead-code scan can see both calls") landed 2026-08-26 and touched it. Rebase onto current master.
 
 ## ⚠ REVIEW FINDINGS 2026-08-26 — read before anything else
 
@@ -41,6 +41,23 @@ A retention policy that keeps 31 copies is worth nothing if some fraction of the
 
 Note the copy path is otherwise careful and should not be "simplified": `backup_sqlite_db` is WAL-safe deliberately, because a plain `shutil.copy2` of a `.db` silently omits anything committed but not yet checkpointed out of the `-wal` sidecar. That was reproduced live (AUD backup/pass20).
 
+
+## Where this batch sits, as of 2026-08-26
+
+The project has since been measured against the market on the unbiased `analysis_attempts` population and **found to have no edge** — 0 of 18 cities, both horizons, all three methods, both families. See `backlog.txt`'s *"PROJECT DIRECTION AFTER THE NO-EDGE RESULT"*. That does **not** cancel this batch: nothing here is an attempt to improve the forecast, and every item is a correctness or observability defect that stands regardless of whether the bot ever trades again. But it does set the bar for scope — **do not expand this batch into anything justified as improving edge.**
+
+**And it RAISES this batch's item 1.** If the project becomes a measurement platform rather than a trading one — which is the leading option — then the accumulated data *is* the asset. A backup that silently omits the database stops being a storage-economics question and becomes the main risk to the only thing of value.
+
+**Re-measured 2026-08-26 against master `1e06d6d3`** (supersedes the figures below):
+
+```
+2026-08-25 : 100 files   12.8 MB   db = NONE
+2026-08-26 : 111 files   62.3 MB   db = execution_log.db, predictions.db
+TOTAL 75.1 MB across 2 snapshot dirs
+```
+
+**The 2026-08-25 snapshot still contains no database, a full day later.** That is not a transient race — it is a permanent hole. Snapshot dirs are date-named and only rewritten within their own day, so **2026-08-25 has no database backup and never will**. A restore to that day is impossible. Establish which of `backup_data`'s three paths produced it (`_sqlite_source_is_empty` skip at DEBUG, `backup_sqlite_db` readability-check failure at WARNING, or the per-file `except`) **before touching retention** — a 30-day policy that keeps some snapshots with no database in them is worse than a shorter one that keeps whole snapshots. If it was the silent DEBUG path, file it separately: a backup reporting success while omitting the primary database is a bigger defect than anything else in this batch.
+
 ### 1. [MEDIUM] Every byte kept in `predictions.db` is paid 31 times over in the backup folder
 
 > `EVERY BYTE KEPT IN predictions.db IS PAID 31 TIMES OVER IN THE BACKUP FOLDER`
@@ -70,4 +87,9 @@ Read `C:\Users\thesa\.claude\projects\C--Users-thesa-claude-kalshi\memory\feedba
 >
 > Confirm with `grep -rln "<symbol>" tests/*.py` for whatever you actually change rather than trusting this list. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
 
-**Two standing hazards.** Scripts run outside pytest bypass conftest's real-`data/`-write blocker and its default-deny network guard — redirect `safe_io.project_root()` or the specific `paths.py` constant before running any scratch script. And do not run `git restore .` or `git checkout -- data/`.
+**Standing hazards — the first was INVERTED by batch 83 and is corrected here.**
+
+- ~~Scripts run outside pytest bypass conftest's real-`data/`-write blocker~~ — **no longer true.** Batch 83 (`c8bb4a1c`, *"arm the prod-data guard outside pytest"*) armed it, so a scratch script that writes under the real `data/` now **raises**, it does not silently succeed. Redirect `safe_io.project_root()` or the specific `paths.py` constant before running one. The default-deny network guard is still pytest-only.
+- Do not run `git restore .` or `git checkout -- data/`.
+
+**Lint — `git commit` does NOT lint anything in this repo.** There is no `.git/hooks/pre-commit`, no `.githooks/` directory, and `core.hooksPath` is unset, so a clean `git commit` is indistinguishable from a passing hook. Run `python -m pre_commit run --files <paths>` explicitly. And if you add or edit anything under `audit/`, run CI's own two commands as well — `ruff check .` and `mypy . --ignore-missing-imports --implicit-optional --no-error-summary` — because `.pre-commit-config.yaml` sets `exclude: ^audit/` on ruff, ruff-format and mypy while `.github/workflows/ci.yml` applies no exclusion at all. A green hook is not a green CI.
