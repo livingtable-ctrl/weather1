@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected, resolveByKey, orderQuoteStaleness, staleQuoteWarning, StaleQuoteNotice, useFeedClock, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected, resolveByKey, orderQuoteStaleness, staleQuoteWarning, StaleQuoteNotice, useFeedClock, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, withTimeout, actionFailureMessage, countTimeouts, bulkOutcomeMessage } from '../shared.jsx';
 
 // batch-48 item 1: both confirm modals below render as an unfocusable div
 // with onKeyDown="Enter confirms" -- since nothing inside them ever receives
@@ -240,11 +240,11 @@ export default function SignalsTab() {
     if (!confirmPending) return;
     const { opp, qty } = confirmPending;
     setPendingApprovalKey(null);
-    fetch('/api/paper-order', {
+    fetch('/api/paper-order', withTimeout({
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify(buildPaperOrderBody(opp, qty)),
-    })
+    }))
       .then(r => r.json())
       .then(d => {
         setActionMsg(d.error ? `✗ ${d.error}` : `✓ ${opp.ticker} placed`);
@@ -259,9 +259,15 @@ export default function SignalsTab() {
           M.refresh();
         }
       })
-      .catch(() => {
-        setActionMsg(`✗ Request failed`);
-        setTimeout(() => setActionMsg(''), 3000);
+      .catch(e => {
+        // batch-84 item 3: an aborted /api/paper-order may still have placed
+        // the order, and check_position_limits has no
+        // already-open-on-this-ticker guard, so a blind re-click after a
+        // flat "Request failed" is how a timeout turns into a double
+        // position. placedSet is deliberately NOT written here -- we do not
+        // know it succeeded either.
+        setActionMsg(actionFailureMessage(e, 'the order may have been placed'));
+        setTimeout(() => setActionMsg(''), 5000);
       });
   }
 
@@ -329,11 +335,11 @@ export default function SignalsTab() {
     setBulkActionMsg(`Placing ${rows.length} orders...`);
 
     Promise.allSettled(rows.map(({ opp, qty }) =>
-      fetch('/api/paper-order', {
+      fetch('/api/paper-order', withTimeout({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(buildPaperOrderBody(opp, qty)),
-      }).then(r => r.json()).then(d => ({ opp, d }))
+      })).then(r => r.json()).then(d => ({ opp, d }))
     )).then(results => {
       // C-1 fix: inspect what each response actually said, not an
       // unconditional "all placed" toast -- a rejected fetch (network
@@ -351,7 +357,24 @@ export default function SignalsTab() {
           return next;
         });
       }
-      setBulkActionMsg(failed > 0 ? `✓ ${succeeded} placed / ✗ ${failed} failed` : `✓ ${succeeded} placed`);
+      // batch-84 item 3: a timed-out order may still have been placed, so it
+      // cannot be counted alongside the ones that definitely were not. Same
+      // reasoning, and now the same shared implementation, as PositionsTab's
+      // bulk close. Note the previous copy led with an unconditional "✓ 0
+      // placed", so a batch where every order timed out opened with a green
+      // check (opus review INFO-3); bulkOutcomeMessage drops a zero count.
+      //
+      // These N signals share one t0 -- see PositionsTab's bulk close for
+      // the same note about AbortSignal.timeout and connection queueing.
+      setBulkActionMsg(bulkOutcomeMessage(
+        { succeeded, failed, timedOut: countTimeouts(results) },
+        {
+          successPhrase: n => `✓ ${n} placed`,
+          timeoutOutcome: 'may have been placed',
+          emptyMessage: '✗ Bulk approve failed',
+          sep: ' / ',
+        }
+      ));
       setSelectedIds(prev => {
         const next = new Set(prev);
         rows.forEach(({ opp }) => next.delete(opp.ticker));

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag, ORDER_STALE_MS, orderQuoteStaleness, staleQuoteWarning, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, useFeedClock, __resetFeedClockForTests, staleFeedState, staleBannerCopy } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag, ORDER_STALE_MS, orderQuoteStaleness, staleQuoteWarning, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, useFeedClock, __resetFeedClockForTests, staleFeedState, staleBannerCopy, withTimeout, isTimeoutError, actionFailureMessage, countTimeouts, CRON_POLL_TIMEOUT_MS, bulkOutcomeMessage } from './shared.jsx';
+import { API_TIMEOUT_MS, timeoutSignal } from './useData.js';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -1793,5 +1794,416 @@ describe('staleFeedState escalation across ALL members (round-2 H1)', () => {
     expect(r.stale).toBe(false);
     expect(r.anyEscalated).toBe(false);
     expect(staleBannerCopy(r)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-84 item 3 — backlog.txt "EVERY OTHER RAW fetch() IN THE FRONTEND
+// STILL HAS NO REQUEST TIMEOUT"
+//
+// batch-80 gave useData.js's apiFetch a budget; the 14 fetches in App.jsx,
+// shared.jsx and the Analytics/Positions/Settings/Signals tabs kept
+// fetch()'s default of "never". These cover the extracted helpers -- this
+// repo's frontend has no component-render tests, and the convention is to
+// pull the logic into shared.jsx so it can be tested as a pure function.
+// ---------------------------------------------------------------------------
+
+describe('withTimeout', () => {
+  it('keeps every option it was given and adds an AbortSignal', () => {
+    const opts = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Basic x' },
+      body: '{"trade_id":7}',
+    };
+    const out = withTimeout(opts, 5_000);
+    expect(out.method).toBe('POST');
+    expect(out.headers).toEqual(opts.headers);
+    expect(out.body).toBe('{"trade_id":7}');
+    expect(out.signal).toBeInstanceOf(AbortSignal);
+    // A NEW object: mutating the caller's options in place would leak a
+    // spent signal into a second click on the same handler.
+    expect(out).not.toBe(opts);
+    expect(opts.signal).toBeUndefined();
+  });
+
+  it('works on no arguments at all', () => {
+    // Not every call site passes options -- a bare GET may not.
+    expect(withTimeout().signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('the signal it attaches genuinely aborts', async () => {
+    // POSITIVE CONTROL for every assertion above: an AbortSignal-shaped
+    // object that never fires would satisfy toBeInstanceOf and leave the
+    // hang exactly as it was.
+    const { signal } = withTimeout({}, 5);
+    expect(signal.aborted).toBe(false);
+    await new Promise(r => setTimeout(r, 60));
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('defaults to batch-80\'s API_TIMEOUT_MS, and honours an explicit budget', () => {
+    // The default is the point of reusing useData.js's constant rather than
+    // inventing a second one: an operator click can land inside the same
+    // 23-request poll burst and queue behind the browser's ~6-connection cap.
+    const spy = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      withTimeout({ method: 'POST' });
+      expect(spy).toHaveBeenLastCalledWith(API_TIMEOUT_MS);
+      withTimeout({}, CRON_POLL_TIMEOUT_MS);
+      expect(spy).toHaveBeenLastCalledWith(CRON_POLL_TIMEOUT_MS);
+      // Positive control on the pair: the two budgets are different values,
+      // so "honours an explicit budget" is not satisfiable by the default.
+      expect(CRON_POLL_TIMEOUT_MS).not.toBe(API_TIMEOUT_MS);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('replaces a signal the caller already put in the options', () => {
+    // Documented behaviour, asserted so it stays deliberate: silently
+    // keeping the caller's signal would mean the timeout quietly did nothing.
+    const theirs = new AbortController().signal;
+    const out = withTimeout({ signal: theirs }, 5_000);
+    expect(out.signal).not.toBe(theirs);
+  });
+});
+
+describe('isTimeoutError', () => {
+  it('recognises BOTH names our own timeouts can reject with', () => {
+    // AbortSignal.timeout() rejects with a TimeoutError; timeoutSignal's
+    // fallback for engines below Chrome 103 aborts an AbortController, which
+    // rejects with an AbortError. Recognising only the first would render
+    // every timeout on an older browser as a flat "Request failed".
+    expect(isTimeoutError(new DOMException('signal timed out', 'TimeoutError'))).toBe(true);
+    expect(isTimeoutError(new DOMException('aborted', 'AbortError'))).toBe(true);
+  });
+
+  it('does not claim an ordinary network failure was a timeout', () => {
+    // Positive control for the pair above: the predicate has to separate
+    // two things, not return true for everything it is handed.
+    expect(isTimeoutError(new TypeError('Failed to fetch'))).toBe(false);
+    expect(isTimeoutError(new Error('HTTP 500'))).toBe(false);
+    expect(isTimeoutError(null)).toBe(false);
+    expect(isTimeoutError(undefined)).toBe(false);
+  });
+
+  it('matches what the REAL timeoutSignal aborts with, on both paths', async () => {
+    // The load-bearing test: everything above uses hand-built DOMExceptions,
+    // so it would all still pass if the runtime rejected with some third
+    // name. This reads the reason off the actual signals batch-80's helper
+    // produces, on the native path and on the fallback path.
+    const native = timeoutSignal(5);
+    await new Promise(r => setTimeout(r, 60));
+    expect(native.aborted).toBe(true);
+    expect(isTimeoutError(native.reason)).toBe(true);
+
+    const realTimeout = AbortSignal.timeout;
+    try {
+      AbortSignal.timeout = undefined;
+      const fallback = timeoutSignal(5);
+      await new Promise(r => setTimeout(r, 60));
+      expect(fallback.aborted).toBe(true);
+      expect(isTimeoutError(fallback.reason)).toBe(true);
+    } finally {
+      AbortSignal.timeout = realTimeout;
+    }
+  });
+});
+
+describe('actionFailureMessage', () => {
+  it('a timeout says what may have happened and what to do', () => {
+    const msg = actionFailureMessage(
+      new DOMException('signal timed out', 'TimeoutError'),
+      'the order may have been placed'
+    );
+    expect(msg).toContain('Timed out');
+    expect(msg).toContain('the order may have been placed');
+    expect(msg).toContain('Refresh before retrying');
+  });
+
+  it('an ordinary failure keeps the original wording, with no speculation', () => {
+    // Positive control, and the half that matters: a refused connection
+    // really did not reach the server, so telling the operator the order
+    // "may have been placed" there would be a new lie in the other
+    // direction. The outcome text must not leak into this branch.
+    const msg = actionFailureMessage(new TypeError('Failed to fetch'), 'the order may have been placed');
+    expect(msg).toBe('✗ Request failed');
+    expect(msg).not.toContain('may have been placed');
+  });
+});
+
+describe('countTimeouts', () => {
+  it('counts only the rejections that were our own timeout', () => {
+    const results = [
+      { status: 'fulfilled', value: { ok: true } },
+      { status: 'rejected', reason: new DOMException('signal timed out', 'TimeoutError') },
+      { status: 'rejected', reason: new TypeError('Failed to fetch') },
+      { status: 'rejected', reason: new DOMException('aborted', 'AbortError') },
+    ];
+    expect(countTimeouts(results)).toBe(2);
+    // POSITIVE CONTROL: summarizeBulkResults folds all three rejections into
+    // one number, which is exactly why the split exists -- "3 failed" for a
+    // batch where two orders may have gone through is the wrong answer.
+    expect(summarizeBulkResults(results).failed).toBe(3);
+    expect(summarizeBulkResults(results).succeeded).toBe(1);
+  });
+
+  it('is zero for a clean batch and never throws on junk', () => {
+    expect(countTimeouts([{ status: 'fulfilled', value: 1 }])).toBe(0);
+    expect(countTimeouts([])).toBe(0);
+    expect(countTimeouts(undefined)).toBe(0);
+    expect(countTimeouts([null, undefined])).toBe(0);
+  });
+});
+
+describe('haltOrResume timeout wording', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {},
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a timeout does not claim the halt definitely failed', async () => {
+    // "Halt FAILED" is a definite statement. After an abort we do not know
+    // that -- /api/halt may already have written the kill switch.
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new DOMException('signal timed out', 'TimeoutError');
+    }));
+    const refresh = vi.fn();
+    const addToast = vi.fn();
+    await haltOrResume('halt', { refresh, addToast });
+    expect(refresh).not.toHaveBeenCalled();
+    const [msg, tone] = addToast.mock.calls[0];
+    expect(msg).toContain('timed out');
+    expect(msg).toContain('py main.py kill');
+    expect(msg).not.toContain('FAILED');
+    expect(tone).toBe('error');
+  });
+
+  it('a real network failure still says FAILED', async () => {
+    // POSITIVE CONTROL for the test above: the definite wording is still
+    // reachable, so the timeout branch narrowed the claim rather than
+    // deleting it.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const addToast = vi.fn();
+    await haltOrResume('resume', { refresh: vi.fn(), addToast });
+    expect(addToast).toHaveBeenCalledWith('Resume FAILED — use py main.py resume', 'error');
+  });
+
+  it('passes an abort signal to fetch', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (path, opts) => { calls.push([path, opts]); return { ok: true }; }));
+    const refresh = vi.fn();
+    await haltOrResume('halt', { refresh, addToast: vi.fn() });
+    expect(calls[0][0]).toBe('/api/halt');
+    expect(calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    // Positive control: the options the handler already relied on survived
+    // being wrapped -- a POST that lost its method would 405, not hang.
+    expect(calls[0][1].method).toBe('POST');
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the timeout budgets stay under the intervals that fire them', () => {
+  it('CRON_POLL_TIMEOUT_MS is below App.jsx\'s 3s cron poll', () => {
+    // A budget at or above its own poll interval lets requests stack, which
+    // is the unbounded accumulation this item is about -- the same rule
+    // batch-80 applied to SCAN_VERSION_TIMEOUT_MS against its 5s loop.
+    expect(CRON_POLL_TIMEOUT_MS).toBeLessThan(3_000);
+    // Pinned, not merely bounded: the bound above is satisfied by a wide
+    // range and says nothing about the value actually chosen.
+    expect(CRON_POLL_TIMEOUT_MS).toBe(2_500);
+  });
+
+});
+
+describe('bulkOutcomeMessage', () => {
+  const CLOSE = {
+    successPhrase: n => `✓ Closed ${n}`,
+    timeoutOutcome: 'may have closed',
+    skippedPhrase: n => `skipped ${n} with no live quote`,
+    emptyMessage: '✗ Bulk close failed',
+  };
+
+  it('holds timeouts apart from real failures', () => {
+    // The whole point: three closes that TIMED OUT may all have landed, so
+    // "✗ 3 failed" is the one wrong answer. `failed` arrives from
+    // summarizeBulkResults already including them.
+    const msg = bulkOutcomeMessage({ succeeded: 1, failed: 3, timedOut: 2 }, CLOSE);
+    expect(msg).toContain('✓ Closed 1');
+    expect(msg).toContain('✗ 1 failed');
+    expect(msg).toContain('2 timed out — may have closed; refresh');
+    // POSITIVE CONTROL: with the SAME totals and no timeouts, all three
+    // land in the failed bucket -- so the split above is driven by
+    // `timedOut` and not by the arithmetic always producing 1.
+    expect(bulkOutcomeMessage({ succeeded: 1, failed: 3, timedOut: 0 }, CLOSE))
+      .toContain('✗ 3 failed');
+  });
+
+  it('never prints a zero count, in any bucket', () => {
+    // opus review INFO-3: SignalsTab used to lead with an unconditional
+    // "✓ 0 placed", so a batch where every order timed out opened with a
+    // green check.
+    const msg = bulkOutcomeMessage({ succeeded: 0, failed: 2, timedOut: 2 }, CLOSE);
+    expect(msg).not.toContain('✓ Closed 0');
+    expect(msg).not.toContain('0 failed');
+    expect(msg).toBe('2 timed out — may have closed; refresh');
+  });
+
+  it('falls back to the empty message when nothing happened at all', () => {
+    expect(bulkOutcomeMessage({}, CLOSE)).toBe('✗ Bulk close failed');
+    expect(bulkOutcomeMessage({ succeeded: 0, failed: 0, timedOut: 0, skipped: 0 }, CLOSE))
+      .toBe('✗ Bulk close failed');
+  });
+
+  it('reports skipped rows only when the caller supplies a phrase', () => {
+    expect(bulkOutcomeMessage({ succeeded: 2, skipped: 1 }, CLOSE))
+      .toBe('✓ Closed 2 — skipped 1 with no live quote');
+    // SignalsTab has no skipped concept and passes no phrase.
+    expect(bulkOutcomeMessage({ succeeded: 2, skipped: 1 }, { ...CLOSE, skippedPhrase: undefined }))
+      .toBe('✓ Closed 2');
+  });
+
+  it('preserves each tab\'s own wording and separator', () => {
+    // The two tabs' copy differs in word order and separator, and this
+    // extraction is not the place to change either.
+    expect(bulkOutcomeMessage({ succeeded: 3, failed: 1, timedOut: 1 }, {
+      successPhrase: n => `✓ ${n} placed`,
+      timeoutOutcome: 'may have been placed',
+      emptyMessage: '✗ Bulk approve failed',
+      sep: ' / ',
+    })).toBe('✓ 3 placed / 1 timed out — may have been placed; refresh');
+  });
+
+  it('cannot produce a negative failure count', () => {
+    // failed >= timedOut is an invariant (both are derived from the same
+    // allSettled array), but a caller passing them separately could break
+    // it, and "✗ -1 failed" would be worse than either honest answer.
+    expect(bulkOutcomeMessage({ succeeded: 0, failed: 0, timedOut: 2 }, CLOSE))
+      .toBe('2 timed out — may have closed; refresh');
+  });
+});
+
+describe('every fetch() in these files carries a timeout', () => {
+  // This repo's frontend has no component-render tests -- only pure
+  // functions are unit-tested -- so nothing above can observe whether a
+  // given call site actually wraps its options. A source scan is the only
+  // mechanism available, and without it the helpers could all be correct
+  // while a tab quietly kept (or re-added) a raw fetch: exactly the state
+  // batch-80 left behind when it fixed apiFetch alone.
+  const FILES = {
+    'App.jsx': 4,
+    'shared.jsx': 1,
+    'tabs/AnalyticsTab.jsx': 2,
+    'tabs/PositionsTab.jsx': 2,
+    'tabs/SettingsTab.jsx': 3,
+    'tabs/SignalsTab.jsx': 2,
+  };
+
+  /** Lines that call fetch() for real — comments and apiFetch excluded.
+   *
+   * `\b` after the optional `.`-or-word guard: `apiFetch(` has a capital F
+   * and never matched anyway, so an earlier draft's lookbehind was doing
+   * nothing except silently EXCLUDING `window.fetch(` / `globalThis.fetch(`
+   * -- a genuinely untimed call the scan would have classified as "not a
+   * fetch" (opus review LOW-1). This version matches a member-expression
+   * fetch too, and excludes only an identifier that merely ENDS in "fetch"
+   * (prefetch, refetch).
+   */
+  function fetchLines(source) {
+    return source.split('\n').filter(line => {
+      const t = line.trim();
+      if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return false;
+      return /(?<![A-Za-z0-9_$])fetch\s*\(/.test(t);
+    });
+  }
+
+  async function readSrc(rel) {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(new URL(`./${rel}`, import.meta.url), 'utf8');
+  }
+
+  it.each(Object.entries(FILES))('%s wraps all %i of its fetch calls', async (rel, expected) => {
+    const lines = fetchLines(await readSrc(rel));
+    // POSITIVE CONTROL, and the reason this is not a vacuous scan: the
+    // count is pinned per file, so a regex that silently matched nothing
+    // (or a file that lost a call site to a refactor) fails here rather
+    // than passing with an empty set. Update the number deliberately when
+    // a call site is genuinely added or removed.
+    expect(lines).toHaveLength(expected);
+    for (const line of lines) {
+      expect(line).toContain('withTimeout(');
+    }
+  });
+
+  it('no OTHER source file has a raw fetch either', async () => {
+    // opus review MEDIUM-4: the map above is hand-written, so its guarantee
+    // was only as wide as the author's list -- and the failure mode it
+    // exists to prevent is precisely "some file quietly has a bare fetch".
+    // Enumerate the whole tree instead of naming six files.
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const srcDir = new URL('./', import.meta.url);
+    const all = readdirSync(srcDir, { recursive: true, encoding: 'utf8' })
+      .map(p => p.replace(/\\/g, '/'))
+      .filter(p => /\.(js|jsx)$/.test(p) && !p.endsWith('.test.js'));
+    // Positive control on the enumeration itself: a readdir that returned
+    // nothing (or only the files already covered) would make the loop below
+    // vacuous. useData.js owns the only legitimate raw fetch — apiFetch —
+    // and is not this change's to modify.
+    expect(all).toContain('useData.js');
+    expect(all).toContain('tabs/OverviewTab.jsx');
+    expect(all.length).toBeGreaterThan(Object.keys(FILES).length + 3);
+
+    const strays = [];
+    for (const rel of all) {
+      if (rel in FILES || rel === 'useData.js') continue;
+      const lines = fetchLines(readFileSync(new URL(`./${rel}`, srcDir), 'utf8'));
+      if (lines.length) strays.push(`${rel}: ${lines[0].trim()}`);
+    }
+    expect(strays).toEqual([]);
+  });
+
+  it('the 3s cron poll uses CRON_POLL_TIMEOUT_MS, not the shared default', async () => {
+    // opus review MEDIUM-1: the suite pinned the constant's VALUE and the
+    // scan checked only that the line contained `withTimeout(`, so nothing
+    // bound the two together -- dropping the second argument at this call
+    // site put the 3s poll back on the 30s default (up to 10 requests in
+    // flight per hang, the exact stacking this change exists to stop) and
+    // left all 327 tests green.
+    //
+    // Bound by CONTAINMENT to the setInterval body, not a file-wide match:
+    // a bare `grep` for the constant would be satisfied by the import line,
+    // or by any unrelated future use of it elsewhere in App.jsx.
+    const src = await readSrc('App.jsx');
+    expect(src).toMatch(
+      /setInterval\([\s\S]{0,1200}?withTimeout\([\s\S]{0,200}?CRON_POLL_TIMEOUT_MS\s*\)/
+    );
+    // Positive control: the mount-time one-shot hits the SAME endpoint and
+    // deliberately takes the default instead (it fires inside useData's
+    // 23-request burst, where 2.5s would abort it whenever the dashboard is
+    // busiest). Asserted on the call LINE, since both sites' comments name
+    // the constant and a slice-based check matches those too.
+    const callLines = fetchLines(src).filter(l => l.includes('/api/cron-status'));
+    expect(callLines).toHaveLength(2);
+    const [pollLine, mountLine] = callLines;
+    expect(pollLine).toContain('CRON_POLL_TIMEOUT_MS');
+    expect(mountLine).not.toContain('CRON_POLL_TIMEOUT_MS');
+    expect(mountLine).toContain('withTimeout(');
+  });
+
+  it('the scan can actually tell a wrapped call from a bare one', () => {
+    // Control on the matcher itself: without this, `fetchLines` returning
+    // nothing useful would make every assertion above trivially satisfiable.
+    const bare = "    fetch('/api/x', { headers: authHeader() })";
+    const wrapped = "    fetch('/api/x', withTimeout({ headers: authHeader() }))";
+    const viaWindow = '    window.fetch(url);';
+    const notAFetch = '    prefetch(url);';
+    const commented = "    // fetch('/api/x') used to have no timeout";
+    expect(fetchLines([bare, wrapped, viaWindow, notAFetch, commented].join('\n')))
+      .toEqual([bare, wrapped, viaWindow]);
+    expect(fetchLines(bare)[0]).not.toContain('withTimeout(');
   });
 });

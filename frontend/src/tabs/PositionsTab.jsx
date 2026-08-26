@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned, positionUnrealizedPnl, orderQuoteStaleness, StaleQuoteNotice, useFeedClock } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned, positionUnrealizedPnl, orderQuoteStaleness, StaleQuoteNotice, useFeedClock, withTimeout, actionFailureMessage, countTimeouts, bulkOutcomeMessage } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // WeatherAlertBanner — NWS active alerts for cities with open positions
@@ -195,22 +195,39 @@ export default function PositionsTab() {
     setBulkActionMsg(`Closing ${positionsToClose.length} positions...`);
 
     Promise.allSettled(positionsToClose.map(p =>
-      fetch('/api/close-position', {
+      fetch('/api/close-position', withTimeout({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify({ trade_id: p.id, exit_price: p.mark || 0, manual: false }),
-      }).then(r => r.json())
+      })).then(r => r.json())
     )).then(results => {
       // C-2 fix: count what the responses actually said, not an
       // unconditional "all N succeeded" -- a rejected fetch (network
       // failure) or a fulfilled response carrying {error} both count as
       // failed, so the toast can never claim a close that didn't happen.
       const { succeeded, failed } = summarizeBulkResults(results);
-      const parts = [];
-      if (succeeded > 0) parts.push(`✓ Closed ${succeeded}`);
-      if (failed > 0) parts.push(`✗ ${failed} failed`);
-      if (skipped > 0) parts.push(`skipped ${skipped} with no live quote`);
-      setBulkActionMsg(parts.length ? parts.join(' — ') : '✗ Bulk close failed');
+      // batch-84 item 3: summarizeBulkResults folds a timeout into `failed`
+      // like any other rejection, but a timed-out close may well have gone
+      // through server-side. Saying "3 failed" for three closes that landed
+      // is the one wrong answer here, so timeouts are counted out and named.
+      // The message itself is built in shared.jsx so it can be unit-tested --
+      // this repo has no component-render tests, and the inline version
+      // mutation-tested as unobserved (opus review MEDIUM-3).
+      //
+      // Note these N signals all share one t0: AbortSignal.timeout starts
+      // counting when it is CREATED, and .map() creates them all at once, so
+      // the tail of a large batch can burn budget queueing behind the
+      // browser's ~6-connection cap. Same accepted tradeoff useData.js
+      // documents for the poll burst; the honest copy is what bounds it.
+      setBulkActionMsg(bulkOutcomeMessage(
+        { succeeded, failed, timedOut: countTimeouts(results), skipped },
+        {
+          successPhrase: n => `✓ Closed ${n}`,
+          timeoutOutcome: 'may have closed',
+          skippedPhrase: n => `skipped ${n} with no live quote`,
+          emptyMessage: '✗ Bulk close failed',
+        }
+      ));
       // opus review LOW-10: only drop the keys this action actually
       // touched (candidates), not the whole selection -- a filter-hidden
       // selection made earlier must survive a bulk close the same way it
@@ -275,11 +292,11 @@ export default function PositionsTab() {
     setConfirmCloseId(null);
 
     if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
-    fetch('/api/close-position', {
+    fetch('/api/close-position', withTimeout({
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify({ trade_id: pos.id, exit_price: exitPrice, manual }),
-    })
+    }))
       .then(r => r.json())
       .then(d => {
         if (d.error) { setCloseMsg(`✗ ${d.error}`); }
@@ -291,7 +308,14 @@ export default function PositionsTab() {
         }
         setTimeout(() => setCloseMsg(''), 4000);
       })
-      .catch(() => { setCloseMsg('✗ Request failed'); setTimeout(() => setCloseMsg(''), 3000); });
+      .catch(e => {
+        // batch-84 item 3: an aborted close may still have settled the trade
+        // server-side (paper.close_paper_early writes before the response),
+        // so a timeout must not be reported as a definite failure the way a
+        // refused connection can be.
+        setCloseMsg(actionFailureMessage(e, 'the close may have gone through'));
+        setTimeout(() => setCloseMsg(''), 5000);
+      });
   }
 
   useEffect(() => {

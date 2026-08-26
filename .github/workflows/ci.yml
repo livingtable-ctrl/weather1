@@ -50,8 +50,10 @@ jobs:
     # than the whole suite (test_safe_io.py::TestCrossProcessLock is a
     # single class within an otherwise-mixed, mostly-non-Windows-specific
     # file, hence the ::TestCrossProcessLock scoping rather than the whole
-    # file): this job exists to exercise the concurrency guards
-    # specifically, not to duplicate the ubuntu job's full coverage run on
+    # file): this job exists to exercise the Windows-only guards
+    # specifically -- as of batch-84 that is the concurrency guards AND
+    # notify.py's plyer-backend resolution, not only concurrency -- rather
+    # than to duplicate the ubuntu job's full coverage run on
     # a slower/costlier runner.
     runs-on: windows-latest
 
@@ -71,5 +73,15 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+      # batch-84 item 1 adds tests/test_notify.py here. Its
+      # test_resolve_win_balloon_tip_matches_the_installed_plyer is, by its
+      # own docstring, the load-bearing test of that item: every other test
+      # in the class injects a double, so if _resolve_win_balloon_tip() ever
+      # stops returning plyer's real balloon_tip, production silently falls
+      # back to the fire-and-forget facade and reinstates the phantom
+      # "delivered" with the whole suite still green. On ubuntu that test
+      # only ever runs its `else: assert resolved is None` branch -- which a
+      # BROKEN resolver satisfies just as well. Only a Windows runner
+      # executes the half that checks the real backend (opus review M-2).
       - name: Run Windows concurrency guard tests
-        run: pytest -v tests/test_cron_lock.py tests/test_paper_cross_process_lock.py tests/test_settlement_monitor.py tests/test_safe_io.py::TestCrossProcessLock
+        run: pytest -v tests/test_cron_lock.py tests/test_paper_cross_process_lock.py tests/test_settlement_monitor.py tests/test_safe_io.py::TestCrossProcessLock tests/test_notify.py

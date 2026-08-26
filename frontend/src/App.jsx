@@ -51,7 +51,7 @@ const SettingsTab  = lazyRetry(() => import('./tabs/SettingsTab.jsx'));
 // Shared helpers used directly in App (CommandPalette uses normCity; Nav's
 // kill switch and its DataContext-provided addToast/refresh use haltOrResume;
 // TableSkeleton is the Suspense fallback for lazy-loaded tabs)
-import { normCity, haltOrResume, TAB_LIST, tabForHotkey, TableSkeleton } from './shared.jsx';
+import { normCity, haltOrResume, TAB_LIST, tabForHotkey, TableSkeleton, withTimeout, isTimeoutError, CRON_POLL_TIMEOUT_MS } from './shared.jsx';
 
 // ---------------------------------------------------------------------------
 // Error boundary — catches render crashes and shows the error instead of
@@ -501,7 +501,11 @@ export default function App() {
   const startCronPoll = useCallback(() => {
     if (cronPollRef.current) clearInterval(cronPollRef.current);
     cronPollRef.current = setInterval(() => {
-      fetch('/api/cron-status', { headers: authHeader() })
+      // batch-84 item 3: CRON_POLL_TIMEOUT_MS sits below this 3s interval so
+      // a hung backend cannot stack one in-flight status request per tick
+      // for the whole duration of the hang. A dropped tick costs nothing --
+      // the next one is 3s away.
+      fetch('/api/cron-status', withTimeout({ headers: authHeader() }, CRON_POLL_TIMEOUT_MS))
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d) return;
@@ -527,7 +531,7 @@ export default function App() {
       Notification.requestPermission();
     }
     setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
-    fetch('/api/run_cron', { method: 'POST', headers: authHeader() })
+    fetch('/api/run_cron', withTimeout({ method: 'POST', headers: authHeader() }))
       .then(r => r.json())
       .then(d => {
         if (d.error) {
@@ -536,21 +540,55 @@ export default function App() {
           startCronPoll();
         }
       })
-      .catch(() => setCronState({ status: 'error', log: ['Request failed — is the server running?'], exitCode: 1 }));
+      .catch(e => setCronState({
+        status: 'error',
+        // batch-84 item 3: api_run_cron spawns the subprocess and only then
+        // responds, so an aborted request may have started a scan that is
+        // now running unwatched. Saying "is the server running?" there is
+        // actively misleading. A second click is guarded server-side (409
+        // "cron already running" plus the spawn rate limit), so the advice
+        // is to look rather than to not touch it.
+        //
+        // Deliberately NOT startCronPoll() here (opus review INFO-2 raised
+        // it as the faster alternative). /api/cron-status reports exit_code
+        // from api_run_cron._proc, which persists across runs -- so if the
+        // PREVIOUS dashboard-spawned scan exited 0 and no new one actually
+        // started, the first poll tick would read running:false,
+        // exit_code:0, resolve to 'done', and fire both the "Cron scan
+        // complete — signals updated." toast and a desktop Notification for
+        // a scan that never ran. A reload re-runs the mount check against
+        // whatever is really true.
+        log: [isTimeoutError(e)
+          ? 'Request timed out — a scan may have started anyway; reload to check.'
+          : 'Request failed — is the server running?'],
+        exitCode: 1,
+      }));
   }, [startCronPoll]);
 
   const handleCancelCron = useCallback(() => {
-    fetch('/api/cancel-cron', { method: 'POST', headers: authHeader() })
+    fetch('/api/cancel-cron', withTimeout({ method: 'POST', headers: authHeader() }))
       .then(() => {
         if (cronPollRef.current) { clearInterval(cronPollRef.current); cronPollRef.current = null; }
         setCronState(prev => ({ ...prev, status: 'cancelled', log: [...prev.log, '— cancelled by user —'] }));
       })
-      .catch(() => {});
-  }, []);
+      // batch-84 item 3: this was a bare `.catch(() => {})`, which was
+      // survivable only because a failure could not previously be reached
+      // any way other than a network error -- the request simply hung and
+      // the operator saw nothing change. Now that it can abort, silence
+      // would leave the scan visibly still "running" with no explanation.
+      // The poll is deliberately left armed: the scan really may still be
+      // running, and its own completion is what should clear the state.
+      .catch(() => addToast('Cancel request failed — the scan may still be running', 'error'));
+  }, [addToast]);
 
   // Check if a cron is already running on mount (e.g. started before page load)
   useEffect(() => {
-    fetch('/api/cron-status', { headers: authHeader() })
+    // The DEFAULT budget here, not CRON_POLL_TIMEOUT_MS: this one-shot fires
+    // at mount, alongside useData's 23-request burst, so it can sit in the
+    // browser's connection queue for seconds before it is even dispatched.
+    // A 2.5s budget would abort it roughly whenever the dashboard is busiest,
+    // and the cost is the operator not being told a scan is already running.
+    fetch('/api/cron-status', withTimeout({ headers: authHeader() }))
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d?.running) {

@@ -40734,10 +40734,70 @@ When to revisit: next time anyone edits tracker.py's exclusion registry or
   its sameday condition-type alert.
 
 
-[OPEN 2026-08-26 -- adjacency found by batch-79 item 1 while sweeping every
-  __main__ block in the repo for the same load_dotenv gap.] `py watchdog.py`
+[RESOLVED 2026-08-26 by batch-84 item 2 -- originally OPEN 2026-08-26,
+  adjacency found by batch-79 item 1 while sweeping every __main__ block in
+  the repo for the same load_dotenv gap.] `py watchdog.py`
   NEVER CALLS load_dotenv, SO ITS ntfy PUSH ALERT CANNOT BE CONFIGURED FROM
   .env
+
+Resolution (batch-84 item 2):
+  watchdog.py now does `load_dotenv()` above `from paths import
+  LAST_HEARTBEAT_PATH`, matching main.py:41 and web_app.py:62. No
+  override=True, so an already-exported variable still wins -- cron.py
+  imports this module lazily from inside a long-lived process, and an
+  overriding re-read would rewrite os.environ under every module already
+  loaded. (That import runs the module body exactly ONCE, on the first cron
+  cycle, not per cycle -- an earlier draft of the comment said "mid-cycle",
+  corrected after opus review L-2.)
+
+  Two things the fix hardened beyond the entry's ask:
+  - The dotenv import is wrapped in try/except ImportError with a no-op
+    fallback (opus L-1). Without it, a broken venv would make cron.py's
+    `from watchdog import update_heartbeat` -- which sits inside a bare
+    try/except -- silently stop writing the heartbeat, and the watchdog
+    would then raise a FALSE 48h-stale alarm. main.py has an explicit
+    "pip install -r requirements.txt" guard for this; watchdog.py had none.
+  - Windows stdout is reconfigured to UTF-8 as main.py:16-19 does. The
+    no-topic fallback print()s a message containing U+2014, so `py
+    watchdog.py > log.txt` would have raised UnicodeEncodeError inside the
+    very branch that exists to say the bot is down.
+
+  Tests: tests/test_dead_man.py 1 -> 12. Five run in child processes,
+  because conftest imports main (which calls load_dotenv at import), so
+  nothing in-process can tell "watchdog loaded it" from "already loaded".
+  Mirrors batch-79's TestStandaloneDotenvBootstrap harness, including the
+  safe_io.project_root redirection so a child can never touch the real
+  data/. Coverage: the configured topic reaches the actual ntfy POST URL
+  (parametrized over two values); nothing but watchdog puts it in the
+  environment (before is None, after is the .env value); an already-set
+  variable beats the file; the source position of the call precedes the
+  first local import; and the module's import-scope local-module set stays
+  within {watchdog, paths, safe_io}.
+
+  Opus review found one MEDIUM this change newly made reachable: with .env
+  now read, `NTFY_TOPIC=` (the shape you get by uncommenting
+  .env.example:60 and deleting the placeholder) yields "" rather than None.
+  send_alert's `if not topic` already handles it, but mutating that to `if
+  topic is None` left all eight tests green, and the resulting behaviour is
+  a dead man's switch POSTing to the bare https://ntfy.sh/ root and logging
+  "alert sent" while nobody is notified. Now tested. Also added, from I-4:
+  an HTTP-error response must not be logged as a delivered alert (deleting
+  resp.raise_for_status() had left the suite green), plus assertions on the
+  Priority/Tags headers and the request timeout.
+
+  Scope note (verified during review): all 56 repo-root modules were
+  re-swept for `if __name__ == "__main__"` cross-referenced against env
+  reads. Only main.py, web_app.py and watchdog.py are entry points that read
+  env; backlog_index.py, migrate_backup.py, param_sweep.py and
+  sigma_audit.py contain no os.getenv/os.environ and import neither utils
+  nor config at any scope. watchdog.py was the last instance -- this closes
+  the class batch-79 opened.
+
+  Known and accepted: run from a git worktree, watchdog.py loads the MAIN
+  clone's .env, because find_dotenv walks up from the module's own file
+  rather than cwd. Identical to main.py/web_app.py from a worktree and
+  consistent with safe_io.project_root()'s own worktree resolution, so it is
+  a property of the repo's dotenv convention rather than of this change.
 Priority: Low, and currently ZERO impact -- NTFY_TOPIC is not set in this
   deployment's .env, so `py watchdog.py` behaves identically with and without
   the fix. Filed because it is a dead-man-switch alert path where the failure
@@ -40772,10 +40832,95 @@ When to revisit: whenever NTFY_TOPIC is actually set, or next time anyone
   touches watchdog.py or the notification path.
 
 
-[OPEN 2026-08-25 -- filed by batch-80 item 2 while fixing the 256-char
-  truncation in the same function]
+[RESOLVED 2026-08-26 by batch-84 item 1 -- originally OPEN 2026-08-25,
+  filed by batch-80 item 2 while fixing the 256-char truncation in the same
+  function]
   NOTIFY.PY RECORDS THE DESKTOP CHANNEL AS DELIVERED WHENEVER PLYER'S
   notify() RETURNS, BUT ON WINDOWS THAT ONLY MEANS "A THREAD WAS STARTED"
+
+Resolution (batch-84 item 1):
+  notify._desktop_notify() now runs plyer's balloon_tip on a thread THIS
+  module owns, captures whatever it raises (BaseException, so nothing
+  escapes uncaught the way it did through plyer's), and joins for
+  DESKTOP_CONFIRM_SECS = 0.5. Both call sites append what it observed
+  instead of an unconditional True. macOS/Linux are untouched:
+  _WIN_BALLOON_TIP is None there and the plyer facade is called exactly as
+  before, since all four non-Windows backends are synchronous.
+
+  THE ENTRY'S OWN FIRST SUGGESTION WOULD HAVE BEEN A REGRESSION, and this
+  is the measurement that decided it. The entry rated this Low partly on
+  NOTIFY_CHANNELS defaulting to all five channels. But this deployment's
+  .env has NTFY_TOPIC, PUSHOVER_TOKEN/USER, DISCORD_WEBHOOK_URL(S) and
+  SMTP_* ALL unset, and each of those senders returns False without
+  credentials -- so desktop's phantom True is the ONLY reason
+  send_system_alert() ever returns True today. "Stop treating desktop as a
+  channel that can report success" would therefore have turned EVERY system
+  alert into status="failed", rolling back both the 6h cooldown and
+  alerts.check_halt_transition's edge state, and re-firing each halt alert
+  every cron cycle for as long as the condition lasted -- including when the
+  toast was appearing perfectly well. Confirmed with the user before
+  implementing; they chose owning the thread.
+
+  DESKTOP_CONFIRM_SECS is a failure-DETECTION window, not a completion
+  deadline. WindowsBalloonTip.__init__ sleeps `timeout` (10s) AFTER its
+  Win32 work, so a successful call is still running when the join expires,
+  by construction; every failure mode raises before that sleep, in
+  ctypes/Win32 calls that take well under a millisecond. A failure pushed
+  past the window reports True -- exactly the pre-fix behaviour, never worse
+  -- and, since opus review M-1, still logs at the moment of the catch
+  rather than into a list nobody re-reads. That mattered: main.py installs a
+  threading.excepthook writing THREAD EXCEPTION blocks to data/crash.log, so
+  an escaping plyer exception previously had a durable record, and catching
+  it without logging would have been a net loss of a safety net.
+
+  What this does NOT promise: if the backend fails PERSISTENTLY, retry-
+  forever is the outcome. That is correct rather than a bug -- with desktop
+  the only channel, a dead backend means nothing reaches the operator and
+  the per-cycle WARNING is the only signal anything is wrong -- but the
+  realistic way to enter that state is the planned VM / Scheduled-Task move
+  (session 0 has no tray). Filed separately, see "THE ALERT PATH HAS NO
+  HEADLESS-CAPABLE CHANNEL, WHICH THE VM MOVE MAKES LOAD-BEARING".
+
+  Latency, corrected after opus review L-4: 0.5s per alert ACTUALLY SENT,
+  and the cooldowns bound repeats of one alert rather than the number of
+  distinct alerts in a pass -- so it is N x 0.5s in the two loops that fire
+  per item (order_executor._park_stale_unknown_order's per-row
+  "unresolved_live_order:{row_id}" key, and alert_strong_signal's per-ticker
+  key in main.py's two market loops). No call site holds a lock across it
+  (AST-checked across ten modules) and none is on the live order-PLACEMENT
+  path. Measured: no existing test in the alerting suites reaches the real
+  backend at all (0 hits under a probe plugin over test_batch24_alerting,
+  test_batch33_reliability, test_batch69_alerting_correlation,
+  test_cron_integration).
+
+  batch-80's UTF-16 truncation is intact on BOTH paths -- kwargs is built
+  once before the Windows/facade split -- and its comment block, which used
+  to conclude "there is no wrapper this module can add that catches it", is
+  corrected in place rather than removed: that was true of a wrapper around
+  plyer's FACADE, and truncation is still what actually delivers an
+  over-long toast rather than merely reporting its loss.
+
+  Tests: tests/test_notify.py 23 -> 41. The doubles are recording doubles,
+  not raising mocks of _notif -- a raising _notif is caught by the very
+  `except Exception` this defect is about and can only demonstrate the path
+  that already worked. Every absence-assertion is paired with a positive
+  control. Mutation-tested and killed: reverting either call site to
+  `successes.append(True)`; the failure branch returning True; dropping
+  truncation; the resolver always returning None; `worker.join(0)`;
+  `daemon=True`; `except Exception`; `"timeout": 0`; moving the warning back
+  after the join; and routing the Windows path through the facade.
+  `worker.join(0)` initially SURVIVED -- the doubles raised fast enough that
+  Thread.start()'s own handshake usually recorded the failure first -- which
+  is a race, not a proof; a double that raises only after a delay now pins
+  the wait.
+
+  CI (opus review M-2): tests/test_notify.py was added to the
+  windows-latest job. test_resolve_win_balloon_tip_matches_the_installed_
+  plyer is the load-bearing test of this item -- everything else injects a
+  double, so a resolver that stopped returning the real balloon_tip would
+  silently reinstate the phantom True with the suite green -- and on ubuntu
+  it only ever runs its `else: assert resolved is None` branch, which a
+  BROKEN resolver satisfies too.
 Priority: Low -- affects the accuracy of a delivery tally and of
   send_system_alert's bool contract, not whether other channels deliver.
 Files: notify.py (send_system_alert_detailed's desktop branch,
@@ -40822,9 +40967,129 @@ What it would look like:
   runs with NOTIFY_CHANNELS=desktop alone.
 
 
-[OPEN 2026-08-25 -- filed by batch-80 item 1, which fixed the same defect in
-  useData.js's apiFetch but does not own these files]
+[RESOLVED 2026-08-26 by batch-84 item 3 -- originally OPEN 2026-08-25,
+  filed by batch-80 item 1, which fixed the same defect in useData.js's
+  apiFetch but does not own these files]
   EVERY OTHER RAW fetch() IN THE FRONTEND STILL HAS NO REQUEST TIMEOUT
+
+Resolution (batch-84 item 3):
+  All raw call sites now go through a new shared.jsx `withTimeout(options,
+  ms)` that reuses batch-80's own `timeoutSignal` (AbortSignal.timeout with
+  an AbortController fallback below Chrome 103) and its API_TIMEOUT_MS as
+  the default, rather than inventing a second mechanism.
+
+  COUNT CORRECTION, since three different numbers were in circulation: there
+  are 14 call sites, not 13 (this entry's Problem prose) and not 15 (the
+  batch-84 handoff). The 15 comes from `grep -n "fetch(" | grep -v apiFetch`
+  returning 15 LINES, one of which is a comment inside shared.jsx's
+  haltOrResume block quoting the old code. This entry's own Files list
+  already enumerated 14 correctly. Verified independently by the reviewer.
+
+  Only ONE site deviates from the default: App.jsx's 3s cron-status poll
+  takes CRON_POLL_TIMEOUT_MS = 2_500, bounded ABOVE by its own interval for
+  the same reason batch-80 gave SCAN_VERSION_TIMEOUT_MS that treatment -- a
+  budget at or past the interval lets requests stack, which is the
+  accumulation being fixed. The mount-time one-shot on the SAME endpoint
+  deliberately keeps the 30s default: it fires inside useData's 23-request
+  burst, where 2.5s would abort it whenever the dashboard is busiest.
+
+  An earlier draft also gave /api/weekly-report a 120s budget on the grounds
+  that it renders a PDF inside the request and "can run to minutes". Opus
+  review MEDIUM-2 traced the handler and disproved the premise --
+  pdf_report._collect_data does only local JSON/SQLite reads and
+  _generate_pdf is fpdf2 text with no matplotlib and no HTTP anywhere in the
+  module, so it is sub-second. The constant was deleted rather than
+  re-justified: a second budget defended by a claim that is not true is
+  worse than no second budget.
+
+  HONEST FAILURE COPY on the mutating POSTs, confirmed with the user before
+  implementing. An aborted /api/paper-order may still have placed the order
+  (check_position_limits enforces per-market cost and portfolio caps but has
+  no already-open-on-this-ticker guard), and /api/close-position writes
+  before it responds -- so a flat "Request failed" is what turns a timeout
+  into a duplicate position. actionFailureMessage() renders a timeout as
+  "Timed out — <what may have happened>. Refresh before retrying." while an
+  ordinary network failure keeps the original wording, which is what it has
+  always meant. haltOrResume drops "Halt FAILED" (a definite statement we no
+  longer have) for wording that still names the manual fallback command.
+  App.jsx's run-cron branch stops saying "is the server running?" for an
+  abort that may well have spawned a scan.
+
+  For the two bulk paths, summarizeBulkResults folds a timeout into `failed`
+  like any other rejection -- "✗ 3 failed" for three orders that may all
+  have landed is the one wrong answer -- so countTimeouts() splits them out
+  and bulkOutcomeMessage() renders both buckets. That message builder lives
+  in shared.jsx rather than inline in the two tabs specifically because this
+  repo's frontend has NO component-render tests: the inline version
+  mutation-tested as unobserved (reverting the timeout branch to a dead
+  condition left all 327 tests green). Extracting it also fixed a
+  pre-existing SignalsTab wart where an all-timed-out batch opened with a
+  green "✓ 0 placed".
+
+  Two deliberate non-changes, each argued rather than defaulted:
+  - The timeout branches say "Refresh before retrying" instead of calling
+    M.refresh() themselves. A timeout means the backend is already slow or
+    hung, and M.refresh() fires the 23-request burst straight into it.
+  - handleRunCron's timeout branch does not arm the cron poll. Because
+    /api/cron-status reports exit_code from api_run_cron._proc, which
+    persists across runs, a poll started when no new scan actually began
+    would read running:false/exit_code:0 from the PREVIOUS scan, resolve to
+    'done', and fire both the "scan complete" toast and a desktop
+    Notification for a scan that never ran.
+
+  Tests: frontend 303 -> 334 (shared.test.js 177 -> 208). Includes a source
+  scan, which is the only mechanism available for the call sites
+  themselves: per-file pinned counts for the six files that have fetches,
+  plus a tree-wide sweep asserting no OTHER src file has a raw one (the
+  hand-written six-file list was only as wide as its author -- opus review
+  MEDIUM-4), plus a containment-bound assertion tying CRON_POLL_TIMEOUT_MS
+  to the setInterval body rather than to the file (MEDIUM-1: dropping that
+  second argument put the 3s poll back on 30s and left everything green).
+  The matcher has its own self-test; its earlier `apiFetch` control was
+  vacuous (capital F never matched) and was hiding a `window.fetch(` blind
+  spot (LOW-1). isTimeoutError is pinned against the reason the REAL
+  timeoutSignal aborts with, on both its native and fallback paths, not
+  against hand-built DOMExceptions.
+
+  Known and documented: isTimeoutError accepts AbortError as well as
+  TimeoutError, which also claims a BROWSER-initiated abort (Firefox rejects
+  with AbortError when the user presses Esc; Chrome gives TypeError) as a
+  timeout. Left folded in deliberately -- the only wrong word is "Timed
+  out", while everything after it stays correct, and narrowing to
+  TimeoutError alone would drop a real timeout on any engine below Chrome
+  103 back to "Request failed". Making the two genuinely distinguishable
+  needs an explicit abort reason in useData.js's timeoutSignal fallback,
+  which this change does not own; filed as a follow-up.
+
+  static/dist was rebuilt (`npm run build`), as every prior frontend commit
+  in this repo does -- the bundle is tracked.
+
+graphify-out was deliberately NOT refreshed by batch-84, with a measurement:
+  The standing process refreshes the knowledge graph's AST layer for changed
+  files before committing. Measured instead that a load+save round-trip of
+  graphify-out/graph.json through graphify's own load_node_link_graph()
+  rewrites 12,276 of 22,371 links with source and target transposed.
+
+  That is NOT corruption: the artifact declares "directed": false, and the
+  multiset of undirected {source,target}+type edges is byte-for-byte
+  identical before and after (verified with a Counter comparison -- an
+  earlier sorted()-based check said otherwise and was wrong). networkx
+  simply canonicalises the endpoint order of an undirected edge on
+  re-serialisation.
+
+  It is still a reason to skip. A 12,276-line transposition inside a tracked
+  18MB artifact is indistinguishable in review from the real thing -- commit
+  14162c46 ("repair 12,994 backwards edges") is this repo reacting to almost
+  exactly this number once already -- and dragging it into a batch that
+  changed two Python files would bury the actual diff. The graph is in any
+  case already stale by roughly eight batches (last refreshed at aa7c15ed
+  for batch-76), and its own built_at_commit stamp (5f1b4290) is not a valid
+  object in this repository at all, so a two-file scoped refresh would not
+  meaningfully restore its accuracy either.
+
+  What a future refresh should do first: pass the artifact's own `directed`
+  flag through the loader and sort links deterministically before writing,
+  so a refresh produces a diff proportional to what actually changed.
 Priority: Low -- these are operator-initiated actions and per-tab loads
   rather than the 60s poll that drives the whole dashboard, so a hang
   stalls one button or one card instead of freezing every number on screen.
@@ -41231,3 +41496,141 @@ When to revisit:
   Before quoting any calibration-curve number, and before trusting an
   all-clear from this panel. Coordinate with batch-82 if it is still open --
   it owns main.py, tracker.py and the same-day calibration surface.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-84 item 1's opus review (L-9, L-10)
+  while owning notify.py; tests/conftest.py belongs to a batch running in
+  parallel, so neither half could land in the same change]
+  TWO CONFTEST-LEVEL FOLLOW-UPS UNBLOCKED BY notify.py OWNING ITS OWN TOAST
+  THREAD
+Priority: Low -- test-suite hygiene and a now-stale comment, no production
+  behaviour.
+Files: tests/conftest.py (pytest_runtest_makereport at ~:366-383; a new
+  autouse fixture beside isolate_notify_cooldowns at ~:1770)
+
+Problem:
+  1. conftest.py's pytest_runtest_makereport docstring justifies NOT
+     promoting PytestUnhandledThreadExceptionWarning to a suite-wide error
+     on the grounds that "tests/test_live_execution.py already emits one
+     from plyer's Windows balloon-tip backend, a real, separately filed,
+     Windows-only bug in a file this change has no business touching."
+     batch-84 item 1 made notify.py catch that exception on its own thread,
+     so the emission is gone -- measured, `pytest tests/test_live_execution
+     .py -q` on Windows produces no PytestUnhandledThreadExceptionWarning
+     and 215 pass. The rationale is stale and the hardening it defers (which
+     would close a real hole in the network guard: a leak swallowed by a
+     thread target currently becomes a warning rather than a failure) may
+     now be adoptable.
+
+  2. Two tests in tests/test_live_execution.py reach order_executor's "Live
+     exit blocked" alert without patching notify.send_system_alert, so on a
+     Windows dev machine they drove plyer's REAL backend -- popping actual
+     desktop toasts (pre-existing) and, after batch-84, additionally
+     blocking ~0.5s each on DESKTOP_CONFIRM_SECS (measured 0.513s / 0.508s
+     under a probe plugin). batch-84 added a module-scoped autouse fixture
+     in test_live_execution.py pinning notify._WIN_BALLOON_TIP to None AND
+     notify._notif to a recording no-op -- BOTH are needed, since pinning
+     only the former routes the call to the plyer facade, which on Windows
+     is the same fire-and-forget toast. That fix is per-file; the fixture
+     belongs in conftest.py next to isolate_notify_cooldowns so no future
+     test can reintroduce it.
+
+What it would look like:
+  For (2), lift the fixture verbatim into conftest.py as autouse, and delete
+  the local copy plus its "owned by another batch" note. Individual tests
+  that genuinely want the real backend can opt back in. For (1), re-run
+  test_live_execution.py, confirm the warning is really gone, then try
+  `filterwarnings = error::pytest.PytestUnhandledThreadExceptionWarning` and
+  see what else in the suite surfaces -- main.py's auto_settle/auto_backtest
+  threads and kalshi_ws.py's reader are the named candidates and may need
+  their own handling first.
+
+When to revisit: next time anyone touches tests/conftest.py, or when the
+  batch that currently owns it lands.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-84 item 3's opus review (LOW-2);
+  frontend/src/useData.js was outside that batch's file scope]
+  timeoutSignal's FALLBACK ABORTS WITHOUT A REASON, SO A USER-CANCELLED
+  REQUEST IS INDISTINGUISHABLE FROM OUR OWN TIMEOUT
+Priority: Low -- the resulting copy is mislabelled but its advice stays
+  correct, and the ambiguous path only exists on engines below Chrome 103.
+Files: frontend/src/useData.js (timeoutSignal, ~:105-113)
+
+Problem:
+  batch-84 item 3's shared.jsx isTimeoutError() has to accept BOTH
+  'TimeoutError' (what AbortSignal.timeout rejects with) and 'AbortError'
+  (what timeoutSignal's AbortController fallback rejects with), because
+  narrowing to the first would render every timeout on an older engine as a
+  flat "Request failed" -- the same shape as batch-80's freshness-banner
+  bug, where one helper returned null for two states the caller then had to
+  tell apart.
+
+  The cost is that a BROWSER-initiated abort is also claimed as a timeout.
+  Firefox rejects an in-flight fetch with AbortError when the user presses
+  Esc or navigates away (Chrome gives TypeError), and Esc is a live key in
+  this dashboard, so an operator who cancels a POST on Firefox is told it
+  "timed out". Only the label is wrong -- the request WAS dispatched, the
+  order may well have landed, and refreshing before retrying is right -- so
+  batch-84 folded it in deliberately rather than narrowing.
+
+  Not verified against a real Firefox: there is no browser in the agent
+  environment, so this rests on reading isTimeoutError plus known engine
+  behaviour, not on an observed repro. Confirm before acting.
+
+What it would look like:
+  Give the fallback an explicit reason -- `c.abort(new DOMException('signal
+  timed out', 'TimeoutError'))` -- so both paths reject with the same name.
+  AbortController.abort(reason) is Chrome 98 / Firefox 97 / Safari 15.4,
+  slightly EARLIER than AbortSignal.timeout, and an engine too old for it
+  ignores the argument and still aborts, so this degrades to today's
+  behaviour rather than breaking. isTimeoutError can then drop 'AbortError'
+  and shared.test.js's "recognises BOTH names" test becomes a test that the
+  fallback carries the reason. Check useData.js's own apiFetch first: safe()
+  treats every non-auth rejection identically, so nothing there depends on
+  the current name.
+
+When to revisit: next time anyone touches useData.js's request layer.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-84 item 2's opus review (L-3);
+  main.py belongs to a batch running in parallel]
+  cmd_settings SIGNALS "KALSHI_ENV WAS UNSET" BY DELETING IT FROM os.environ,
+  WHICH ANY LATER load_dotenv() SILENTLY UNDOES
+Priority: Low -- NOT reachable in this deployment today (see below), but the
+  guard it weakens is the M-25 prod/demo desync fix, which is a live-money
+  concern if it ever does fire.
+Files: main.py (cmd_settings, ~:8109-8133; _kalshi_env at ~:708-710)
+
+Problem:
+  cmd_settings snapshots KALSHI_ENV, runs load_dotenv(env_path,
+  override=True) to pick up an operator's edit, then restores the snapshot
+  -- and when the snapshot was None it does os.environ.pop("KALSHI_ENV",
+  None). That deliberate ABSENCE is the carrier of intent: _kalshi_env()
+  falls back to "demo" when the variable is unset, which is the safe
+  direction.
+
+  Absence is a fragile carrier. Any later non-overriding load_dotenv() in
+  the same process sets the variable precisely BECAUSE it is absent,
+  resurrecting the popped value from .env and undoing the guard. batch-84
+  item 2 added one such call to watchdog.py, which cron.py imports lazily at
+  runtime -- and cmd_menu offers both "S" Settings and "L" Cron in the same
+  process, so the sequence is: Settings edit -> Cron -> first-ever watchdog
+  import -> KALSHI_ENV back.
+
+  Reachability, stated honestly: NOT reachable here today. This deployment's
+  .env sets KALSHI_ENV=prod, so main.py:41's startup load_dotenv() always
+  puts it in os.environ, the snapshot is never None, and the pop branch
+  never runs. It needs a .env WITHOUT KALSHI_ENV at process start, then the
+  operator hand-adding it mid-session -- which is exactly the external-edit
+  scenario main.py's own comment says that block was written to defend
+  against.
+
+What it would look like:
+  Stop using absence-from-os.environ as the signal. A module-level
+  _KALSHI_ENV_PINNED sentinel that _kalshi_env() consults ahead of
+  os.getenv, set by cmd_settings when the snapshot was None, is immune to
+  any later dotenv load. Nothing in watchdog.py can or should fix this.
+
+When to revisit: next time anyone touches cmd_settings or _kalshi_env, or
+  when the batch that currently owns main.py lands.

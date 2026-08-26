@@ -3,6 +3,47 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_real_desktop_toast(monkeypatch):
+    """Keep this file's alerts off the operator's real Windows toast backend.
+
+    batch-84 item 1 (opus review L-10). Two tests here reach
+    order_executor's "Live exit blocked" alert without patching
+    notify.send_system_alert, so on a Windows dev machine they called
+    plyer's real balloon_tip -- popping actual desktop notifications, which
+    was already true before batch-84, and now additionally blocking ~0.5s
+    each on notify.DESKTOP_CONFIRM_SECS while the toast thread is given its
+    chance to fail. Measured: `calls=2 real_backend=2, secs=0.513 / 0.508`.
+
+    BOTH backends have to be neutralised, not just one. Pinning
+    _WIN_BALLOON_TIP to None alone only removes the 0.5s -- it routes the
+    call to the plyer FACADE, which on Windows is the fire-and-forget
+    WindowsNotification that pops the same real toast. So the facade gets a
+    recording no-op too.
+
+    This deliberately does NOT stub send_system_alert: the facade path
+    returns True exactly as a working toast does, so every assertion in this
+    file about whether an alert fired still runs against the real
+    send_system_alert with unchanged delivery bookkeeping.
+
+    Module-scoped rather than a conftest.py autouse fixture (which is where
+    it really belongs, next to isolate_notify_cooldowns): tests/conftest.py
+    is owned by another batch running in parallel. Filed in backlog.txt as a
+    follow-up so the suite-wide version lands later.
+    """
+    import notify
+
+    class _SilentNotif:
+        def __init__(self):
+            self.calls = []
+
+        def notify(self, **kwargs):
+            self.calls.append(kwargs)
+
+    monkeypatch.setattr(notify, "_WIN_BALLOON_TIP", None)
+    monkeypatch.setattr(notify, "_notif", _SilentNotif())
+
+
 def _live_gates_open():
     """Patch BOTH live gates open, for a test that only cares about the code
     path past them.

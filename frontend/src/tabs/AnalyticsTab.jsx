@@ -1,7 +1,7 @@
 ﻿import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, StatCard, BrierTrendChart } from '../shared.jsx';
+import { normCity, StatCard, BrierTrendChart, withTimeout } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // EquityCurveChart — running cumulative P&L from closedTrades, sorted by date
@@ -1045,8 +1045,12 @@ export default function AnalyticsTab() {
   const [reliabilityData, setReliabilityData] = useState({});
   const [edgeRealization, setEdgeRealization] = useState([]);
 
+  // batch-84 item 3: both loads below are reads with a .catch that already
+  // degrades to the empty chart state, so the only thing a timeout changes
+  // is that the degradation eventually happens instead of the panel sitting
+  // blank forever behind a hung backend.
   React.useEffect(() => {
-    fetch('/api/edge-realization', { headers: authHeader() })
+    fetch('/api/edge-realization', withTimeout({ headers: authHeader() }))
       .then(r => r.json())
       .then(d => setEdgeRealization(d))
       .catch(() => {});
@@ -1060,7 +1064,7 @@ export default function AnalyticsTab() {
     });
     const top3 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
     top3.forEach(city => {
-      fetch(`/api/reliability/${encodeURIComponent(city)}`, { headers: authHeader() })
+      fetch(`/api/reliability/${encodeURIComponent(city)}`, withTimeout({ headers: authHeader() }))
         .then(r => r.json())
         .then(d => setReliabilityData(prev => ({ ...prev, [city]: d })))
         .catch(() => {});

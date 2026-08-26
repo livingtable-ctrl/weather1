@@ -108,16 +108,18 @@ _last_notified: dict[str, float] = {}  # ticker -> last fire timestamp
 # a title is simply the likelier of the two to already be short. Both are
 # capped here.
 #
-# Why truncating is the whole fix, and why the entry's second suggestion
-# ("wrapping the plyer call in its own try/except so a backend failure can
-# never escape the thread") is not implementable from this side:
-# WindowsNotification._notify is `thread(target=balloon_tip, kwargs=...)
-# .start()` -- plyer spawns its OWN thread and returns immediately. The
-# ValueError is raised on that thread, so notify.py's `except Exception`
-# around _notif.notify() never sees it; it surfaces only as pytest's
-# PytestUnhandledThreadExceptionWarning, or in production as nothing at all.
-# There is no wrapper this module can add that catches it. Not sending an
-# over-long string is the only control available here.
+# Why truncating is still the right fix -- REVISED batch-84 item 1, because
+# the Windows path no longer goes through plyer's facade at all.
+# WindowsNotification._notify is `thread(target=balloon_tip, ...).start()`,
+# so the ValueError is raised on a thread plyer spawns and a wrapper around
+# _notif.notify() could never see it. This block used to conclude from that
+# "there is no wrapper this module can add that catches it", which was true
+# of a facade wrapper but not of the module as a whole: _desktop_notify()
+# below now calls balloon_tip on a thread THIS module owns and catches it.
+#
+# Truncation is still the fix for over-long text, because catching the
+# ValueError only turns a silently-lost toast into a correctly-REPORTED lost
+# toast. Not sending an over-long string is what actually delivers it.
 #
 # One unit is reserved for the NUL terminator: ctypes accepts a string of
 # exactly the array length (measured -- 256 raises nothing, 257 raises), but
@@ -219,6 +221,209 @@ def _truncate_for_desktop(text: str, limit: int, field: str) -> str:
         out.append(ch)
         used += width
     return "".join(out) + "…"
+
+
+# ---------------------------------------------------------------------------
+# Desktop delivery confirmation (batch-84 item 1; backlog.txt "NOTIFY.PY
+# RECORDS THE DESKTOP CHANNEL AS DELIVERED WHENEVER PLYER'S notify()
+# RETURNS, BUT ON WINDOWS THAT ONLY MEANS 'A THREAD WAS STARTED'").
+#
+# plyer's Windows backend, in full (verified against plyer 2.1.0,
+# plyer/platforms/win/notification.py):
+#
+#     class WindowsNotification(Notification):
+#         def _notify(self, **kwargs):
+#             thread(target=balloon_tip, kwargs=kwargs).start()
+#
+# Fire-and-forget. Everything that can fail -- GetModuleHandleW ("Could not
+# get windows module instance."), RegisterClassExW, CreateWindowExW, either
+# Shell_NotifyIconW ("Shell_NotifyIconW failed."), and the fixed-width WCHAR
+# assignment the block above exists to avoid -- raises on plyer's OWN
+# thread, where the caller's `except Exception` can never see it. So
+# `successes.append(True)` ran unconditionally and a desktop toast that
+# never appeared was recorded as delivered.
+#
+# That is not cosmetic here. send_system_alert() returns `status !=
+# "failed"`, and alerts.check_halt_transition/rollback_halt_transition use a
+# False return to roll edge-triggered halt state back so the NEXT cycle
+# retries instead of treating a lost alert as done. A phantom True defeats
+# exactly that, and the "all N channel(s) failed" warning below can never
+# fire on a desktop-only failure.
+#
+# Why not simply stop appending True. Measured 2026-08-26 against this
+# deployment's .env: NTFY_TOPIC, PUSHOVER_TOKEN/USER, DISCORD_WEBHOOK_URL(S)
+# and SMTP_* are ALL unset, so desktop is the only channel that can succeed
+# and its True is the only reason send_system_alert() ever returns True
+# today. Recording it as False UNCONDITIONALLY would make every system alert
+# "failed" -- cooldown rolled back, halt-transition state rolled back -- and
+# re-fire the same alert every cron cycle even when the toast was appearing
+# perfectly well. That trades a phantom success for a phantom failure.
+# Owning the thread gives a REAL answer instead of picking which lie to tell.
+#
+# WHAT THIS DOES NOT PROMISE (opus review M-3). If the toast backend fails
+# PERSISTENTLY, retry-forever is the outcome, and that is correct rather
+# than a bug: with desktop the only configured channel, a genuinely dead
+# backend means nothing reaches the operator, and the per-cycle WARNING in
+# bot.log is then the only signal that anything is wrong. What changes is
+# that the retry is now driven by a real observation instead of never
+# happening at all. The realistic way to enter that state is the planned VM
+# / Scheduled-Task move: a session-0 non-interactive process has no tray for
+# Shell_NotifyIconW to talk to. backlog.txt "[MOVE OFF LOCAL CRON -- HOST ON
+# A SMALL ALWAYS-ON VM]" already calls for dropping "desktop" from
+# NOTIFY_CHANNELS and configuring Pushover/Discord/email as part of that
+# move -- that, not anything in this file, is the actual fix.
+#
+# macOS and Linux need none of this: OSXNotification._notify and all three
+# Linux implementations run synchronously, so their exceptions already reach
+# the caller's except. _WIN_BALLOON_TIP is None there and the plyer facade is
+# called exactly as before.
+# ---------------------------------------------------------------------------
+def _resolve_win_balloon_tip():
+    """Return plyer's Windows ``balloon_tip``, or None on any other backend.
+
+    Gated on plyer's OWN platform token (plyer.utils.platform), not
+    sys.platform directly, so this tracks whatever backend plyer's Proxy
+    would actually dispatch to rather than a second, parallel guess. Any
+    import failure resolves to None, which falls back to the facade call --
+    a plyer upgrade that moves or renames this private module degrades to
+    the pre-batch-84 behaviour instead of breaking alerting outright.
+
+    The platform guard is not redundant with that except (opus review I-4):
+    on a non-Windows host the win import fails anyway, but noisily -- the
+    guard is what keeps a Linux/macOS process from logging a WARNING about a
+    backend it was never going to use. Pinned by
+    test_a_non_windows_platform_resolves_to_none_without_warning.
+    """
+    try:
+        from plyer.utils import platform as _plyer_platform
+
+        if str(_plyer_platform) != "win":
+            return None
+        from plyer.platforms.win.libs.balloontip import balloon_tip
+
+        return balloon_tip
+    except Exception as exc:  # pragma: no cover - platform/packaging specific
+        _log.warning(
+            "notify: could not load plyer's Windows balloon_tip (%s) -- desktop "
+            "delivery will be reported optimistically, as it was before",
+            exc,
+        )
+        return None
+
+
+# Resolved eagerly, and NOT additionally gated on `"desktop" in _CHANNELS`
+# (opus review L-8 raised the gating as a small saving). Deliberate: the
+# saving is ~10 windll entry-point lookups in a Windows process that has
+# disabled desktop notifications and would import the same module anyway on
+# any facade call -- while binding this constant to _CHANNELS would make the
+# two disagree the moment anything rebinds _CHANNELS after import (every
+# test in this repo's desktop suite does), silently leaving the Windows path
+# disabled while the channel looks enabled. A gate and its enforcement have
+# to share a binding; here they would not.
+_WIN_BALLOON_TIP = _resolve_win_balloon_tip() if _ENABLED else None
+
+# How long to wait for the toast thread to fail before calling it delivered.
+#
+# This is a FAILURE-DETECTION window, not a completion deadline, and it can
+# only ever be too short -- never wrong in the unsafe direction.
+# WindowsBalloonTip.__init__ does its window/icon/Shell_NotifyIconW work and
+# THEN sleeps `timeout` seconds (10 here), so the thread is still alive at
+# the end of a successful call by construction; a clean join within the
+# window is impossible. Every failure mode above raises before that sleep,
+# in ctypes/Win32 calls that complete in well under a millisecond, so 0.5s
+# is orders of magnitude of headroom. If a pathologically busy shell ever
+# did push a genuine failure past it, this reports True and we are exactly
+# where the code was before this change -- degraded, never spamming.
+#
+# The cost is 0.5s of latency on each desktop alert that is actually sent.
+# The cooldowns bound repeats of the SAME alert, not the number of distinct
+# alerts in one pass, so the honest figure is N x 0.5s wherever N alerts fire
+# in a loop (opus review L-4, correcting an earlier "not on any hot path"):
+#
+#   - order_executor._park_stale_unknown_order builds a per-ROW cooldown key
+#     (f"unresolved_live_order:{row_id}"), and _recover_pending_orders calls
+#     it once per stranded row at the start of a cron cycle. Its own comment
+#     cites "an outage strands four rows in one pass" -- 2s.
+#   - alert_strong_signal's key is the ticker, and both call sites
+#     (main.py's _analyze_once loop and `watch --auto`'s liquid_opps loop)
+#     iterate markets, so a cycle with N newly-STRONG tickers adds N x 0.5s.
+#
+# No call site holds a lock across it (AST-checked across cron.py, main.py,
+# order_executor.py, alerts.py, trade_cycle.py, kalshi_client.py,
+# kalshi_weather_index.py, tracker.py, execution_log.py, web_app.py), and
+# none is on the live order-PLACEMENT path -- the nearest,
+# order_executor.py's mid-cycle drawdown alert, is followed immediately by
+# `break`. The cron lock is already held for the whole multi-minute cycle,
+# so seconds there are irrelevant; the one place a human would notice is an
+# interactive `analyse` render.
+#
+# No env override, deliberately (opus review I-5 suggested one for a
+# headless operator): a second binding for the same value is how a gate and
+# its enforcement drift apart, and the headless case wants a working
+# channel, not a faster way to mis-report a broken one.
+DESKTOP_CONFIRM_SECS = 0.5
+
+
+def _desktop_notify(title: str, message: str) -> bool:
+    """Send one desktop toast; return whether it actually got sent.
+
+    Raises whatever the synchronous (macOS/Linux) plyer backends raise --
+    both call sites already wrap this in the try/except that has always
+    handled that case. On Windows the BACKEND's exception is suppressed and
+    reported as False instead, but this function is still not raise-free
+    there (opus review L-7): _truncate_for_desktop runs before the branch on
+    both paths, and Thread.start() can raise RuntimeError under thread
+    exhaustion. Both call sites keep their try/except for exactly that.
+    """
+    kwargs = {
+        "title": _truncate_for_desktop(title, DESKTOP_TITLE_MAX, "title"),
+        "message": _truncate_for_desktop(message, DESKTOP_MESSAGE_MAX, "message"),
+        "app_name": "Kalshi Weather",
+        "timeout": 10,
+    }
+
+    tip = _WIN_BALLOON_TIP
+    if tip is None:
+        _notif.notify(**kwargs)
+        return True
+
+    failures: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            tip(**kwargs)
+        except BaseException as exc:  # noqa: BLE001 - see below
+            # BaseException, not Exception: the entire point is that nothing
+            # escapes this thread uncaught the way it did through plyer's.
+            # An escaping BaseException surfaces only as pytest's
+            # PytestUnhandledThreadExceptionWarning or, in a `py main.py`
+            # process, as a THREAD EXCEPTION block in data/crash.log written
+            # by main.py's threading.excepthook -- and as nothing at all in
+            # any process that does not go through main.py.
+            failures.append(exc)
+            # LOG HERE, not after the join (opus review M-1). The join
+            # ALWAYS times out on the success path by construction, so a
+            # failure raised after the confirm window would otherwise be
+            # appended to a list nobody reads and recorded nowhere -- worse
+            # than the pre-batch-84 state, which at least reached main.py's
+            # crash log. Logging at the catch means a late failure still
+            # lands in bot.log even though this call already returned True.
+            _log.warning(
+                "desktop notify: the Windows toast backend failed (%s: %s) -- "
+                "the alert was NOT delivered on this channel",
+                type(exc).__name__,
+                exc,
+            )
+
+    # daemon is left to inherit from the calling thread, exactly as plyer's
+    # own bare `thread(target=balloon_tip, kwargs=kwargs)` does, so process
+    # shutdown behaviour is unchanged by this fix. Pinned by
+    # test_the_worker_thread_inherits_the_callers_daemon_flag.
+    worker = threading.Thread(target=_run, name="kalshi-desktop-toast")
+    worker.start()
+    worker.join(DESKTOP_CONFIRM_SECS)
+
+    return not failures
 
 
 # backlog.txt "NOTIFY.SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY
@@ -640,18 +845,16 @@ def alert_strong_signal(
     # Desktop notification (plyer)
     if _ENABLED and "desktop" in _CHANNELS:
         try:
-            # batch-80 item 2: truncated for the Windows toast field limits.
-            # This call site matters as much as send_system_alert's -- both
-            # `title` and `msg` here come from operator-editable templates
-            # (_TEMPLATES via notify_templates.json), so their length is
-            # entirely unbounded by anything in this file.
-            _notif.notify(
-                title=_truncate_for_desktop(title, DESKTOP_TITLE_MAX, "title"),
-                message=_truncate_for_desktop(msg, DESKTOP_MESSAGE_MAX, "message"),
-                app_name="Kalshi Weather",
-                timeout=10,
-            )
-            successes.append(True)
+            # batch-80 item 2: truncated for the Windows toast field limits
+            # (inside _desktop_notify). This call site matters as much as
+            # send_system_alert's -- both `title` and `msg` here come from
+            # operator-editable templates (_TEMPLATES via
+            # notify_templates.json), so their length is entirely unbounded
+            # by anything in this file.
+            #
+            # batch-84 item 1: the appended value is what _desktop_notify
+            # actually observed, not an unconditional True.
+            successes.append(_desktop_notify(title, msg))
         except Exception as exc:
             _log.warning("alert_strong_signal: desktop notify failed: %s", exc)
             successes.append(False)
@@ -773,20 +976,20 @@ def send_system_alert_detailed(
     # Desktop notification
     if _ENABLED and "desktop" in _CHANNELS:
         try:
-            # batch-80 item 2: truncated for the Windows toast field limits.
-            # The known live case is tracker.audit_settlement's Miami
-            # index-mismatch alert. The backlog entry put that body at
-            # ~1,499 characters; evaluating the real f-string with realistic
-            # values renders ~377 (opus review M-2) -- still ~1.5x over the
-            # cap and still lost today, but not 6x. Every other channel below
-            # still receives the untouched `message`.
-            _notif.notify(
-                title=_truncate_for_desktop(title, DESKTOP_TITLE_MAX, "title"),
-                message=_truncate_for_desktop(message, DESKTOP_MESSAGE_MAX, "message"),
-                app_name="Kalshi Weather",
-                timeout=10,
-            )
-            successes.append(True)
+            # batch-80 item 2: truncated for the Windows toast field limits
+            # (inside _desktop_notify). The known live case is
+            # tracker.audit_settlement's Miami index-mismatch alert. The
+            # backlog entry put that body at ~1,499 characters; evaluating
+            # the real f-string with realistic values renders ~377 (opus
+            # review M-2) -- still ~1.5x over the cap and still lost today,
+            # but not 6x. Every other channel below still receives the
+            # untouched `message`.
+            #
+            # batch-84 item 1: the appended value is what _desktop_notify
+            # actually observed, not an unconditional True. This is the
+            # append that decides `status` for a desktop-only deployment,
+            # and therefore whether check_halt_transition rolls back.
+            successes.append(_desktop_notify(title, message))
         except Exception as exc:
             _log.warning("send_system_alert: desktop notify failed: %s", exc)
             successes.append(False)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { authHeader } from './useData.js';
+import { authHeader, timeoutSignal, API_TIMEOUT_MS } from './useData.js';
 
 // ---------------------------------------------------------------------------
 // City display-name normalization  (backend uses CamelCase keys)
@@ -704,6 +704,174 @@ export function brierAlertTier(brierHistory, threshold = 0.22) {
 }
 
 // ---------------------------------------------------------------------------
+// Request timeouts for every fetch outside useData.js (batch-84 item 3;
+// backlog.txt "EVERY OTHER RAW fetch() IN THE FRONTEND STILL HAS NO REQUEST
+// TIMEOUT").
+//
+// batch-80 gave useData.js's apiFetch a budget; these 14 call sites --
+// App.jsx's cron controls, this file's halt/resume, and the Analytics /
+// Positions / Settings / Signals tabs -- were not its to own and kept
+// fetch()'s default of "never". A hung backend leaves an operator-clicked
+// button pinned on "Closing 3 positions..." or "Generating…" with no
+// timeout ever clearing it, and leaves the 3s cron poll stacking requests
+// for as long as the hang lasts.
+//
+// Reuses batch-80's timeoutSignal (AbortSignal.timeout with an
+// AbortController fallback for engines below Chrome 103 / Firefox 100 /
+// Safari 16) rather than inventing a second mechanism, and reuses its
+// API_TIMEOUT_MS as the default: an operator click can land inside the same
+// 23-request poll burst and queue behind the browser's ~6-connection cap on
+// this HTTP/1.1 backend, so the budget has to cover queueing, not just
+// server time.
+// ---------------------------------------------------------------------------
+
+// The 3s cron-status poll (App.jsx's startCronPoll). Bounded ABOVE by its own
+// interval for exactly the reason batch-80 gave SCAN_VERSION_TIMEOUT_MS the
+// same treatment: a budget at or past the interval lets requests stack, which
+// is the accumulation this change exists to stop. web_app.py's
+// api_cron_status reads the cron lock file (via cron._is_cron_running, which
+// can also run a psutil PID-reuse check) and ANSI-strips the last 200 lines
+// of the web log, plus one subprocess.poll() -- all local and fast, so the
+// whole budget is slack for queueing rather than for server time.
+//
+// This is the ONLY budget below the shared default. Every other site here
+// takes API_TIMEOUT_MS: an earlier draft also gave /api/weekly-report a
+// 120s budget on the grounds that it renders a PDF inside the request and
+// "can run to minutes", which opus review MEDIUM-2 disproved --
+// pdf_report.generate_weekly_report's _collect_data does only local
+// JSON/SQLite reads (paper.get_performance/get_balance/get_all_trades/
+// fear_greed_index, tracker.brier_score_rolling_with_n) and _generate_pdf is
+// fpdf2 text output with no matplotlib and no HTTP anywhere in the module.
+// Sub-second in practice, so the default covers it and a second constant
+// justified by a claim that is not true is worse than no constant.
+export const CRON_POLL_TIMEOUT_MS = 2_500;
+
+/**
+ * Add a timeout signal to a fetch options object.
+ *
+ * Returns a NEW object; any `signal` already present is replaced (no call
+ * site passes one today, and silently keeping a caller's signal would mean
+ * the timeout quietly did nothing).
+ */
+export function withTimeout(options = {}, ms = API_TIMEOUT_MS) {
+  return { ...options, signal: timeoutSignal(ms) };
+}
+
+/**
+ * Did this rejection come from our own timeout rather than the network?
+ *
+ * BOTH names matter. AbortSignal.timeout() rejects with a TimeoutError, but
+ * timeoutSignal's fallback path for older engines aborts an AbortController,
+ * which rejects with an AbortError. Testing only for TimeoutError would make
+ * every timeout on an older browser render as a flat "Request failed" -- the
+ * same shape as batch-80's freshness-banner bug, where one helper returned
+ * null for two states the caller then had to tell apart.
+ *
+ * KNOWINGLY FOLDED IN (opus review LOW-2): accepting AbortError also claims
+ * a BROWSER-initiated abort as a timeout. Nothing in this app constructs an
+ * AbortController other than timeoutSignal's fallback, and React StrictMode's
+ * double-effect does not abort fetches -- but Firefox rejects an in-flight
+ * fetch with AbortError when the user presses Esc or navigates away, where
+ * Chrome gives TypeError. Esc is a live key here (PositionsTab's
+ * kalshi:escape listener), so an operator who cancels a POST on Firefox is
+ * told it "timed out".
+ *
+ * Left as-is deliberately rather than narrowed. The only wrong word is
+ * "Timed out"; everything that follows it stays exactly right -- the request
+ * WAS dispatched, the order may well have landed, and refreshing before
+ * retrying is the correct advice. An operator who just pressed Esc has the
+ * context to read past the label, whereas narrowing this to TimeoutError
+ * alone would silently drop a real timeout on any engine below Chrome 103
+ * back to "Request failed". Making the two genuinely distinguishable means
+ * giving timeoutSignal's fallback an explicit abort reason, which lives in
+ * useData.js -- not a file this change owns; filed as a backlog follow-up.
+ */
+export function isTimeoutError(err) {
+  return !!err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+}
+
+/**
+ * Failure copy for an operator-initiated action, honest about what a timeout
+ * does and does not tell us.
+ *
+ * An aborted POST says nothing about whether the server ran it: /api/paper-
+ * order may have placed the order, /api/close-position may have closed the
+ * trade. check_position_limits has no already-open-on-this-ticker guard, so
+ * a blind re-click after a timeout can genuinely double-place. `outcome`
+ * names what may have happened; a plain network failure keeps the original
+ * wording, which is what it has always meant.
+ *
+ * The copy says "Refresh before retrying" rather than the handler calling
+ * M.refresh() itself, which opus review LOW-3 raised as the more helpful
+ * option. Deliberate: a timeout means the backend is already slow or hung,
+ * and M.refresh() fires useData's 23-request burst straight into it -- most
+ * of which would then time out too, at 30s each, while the operator watches
+ * a dashboard degrade instead of getting an answer. The refresh button is
+ * right there, and after a timeout the operator is better placed than this
+ * catch block to judge when the backend is worth asking again.
+ */
+export function actionFailureMessage(err, outcome) {
+  return isTimeoutError(err)
+    ? `✗ Timed out — ${outcome}. Refresh before retrying.`
+    : '✗ Request failed';
+}
+
+/**
+ * How many of a Promise.allSettled batch were rejected BY A TIMEOUT.
+ *
+ * summarizeBulkResults folds every rejection into one `failed` count, so a
+ * bulk close or bulk approve would otherwise report "✗ 3 failed" for three
+ * orders that may all have gone through. Counting them separately is what
+ * lets the toast say so.
+ */
+export function countTimeouts(results) {
+  return (results || []).filter(
+    r => r && r.status === 'rejected' && isTimeoutError(r.reason)
+  ).length;
+}
+
+/**
+ * The toast for a bulk action, with timeouts held apart from real failures.
+ *
+ * Extracted (opus review MEDIUM-3) because the arithmetic that USES
+ * countTimeouts is the part that carries the honest-copy decision, and it
+ * was sitting inline in two components this repo has no render tests for --
+ * so reverting `if (timedOut > 0)` to a dead condition left the whole suite
+ * green while restoring "✗ 3 failed" for three orders that may all have
+ * landed. One implementation, unit-tested, called by both tabs.
+ *
+ * `failed` is summarizeBulkResults' count, which includes the timeouts;
+ * they are subtracted out here so a caller cannot forget to. The Math.max
+ * is belt-and-braces -- both counts are derived from the same array, so
+ * failed >= timedOut is already an invariant.
+ *
+ * successPhrase/skippedPhrase are functions rather than words because the
+ * two tabs' existing copy differs in word order ("✓ Closed 3" vs "✓ 3
+ * placed"), and this extraction is not the place to change either.
+ *
+ * Zero successes print nothing (opus review INFO-3): SignalsTab previously
+ * led with an unconditional "✓ 0 placed", so a batch where every order
+ * timed out would have opened with a green check.
+ */
+export function bulkOutcomeMessage(counts, options) {
+  const { succeeded = 0, failed = 0, timedOut = 0, skipped = 0 } = counts || {};
+  const {
+    successPhrase,
+    timeoutOutcome,
+    skippedPhrase,
+    emptyMessage,
+    sep = ' — ',
+  } = options || {};
+  const hardFailed = Math.max(0, failed - timedOut);
+  const parts = [];
+  if (succeeded > 0) parts.push(successPhrase(succeeded));
+  if (hardFailed > 0) parts.push(`✗ ${hardFailed} failed`);
+  if (timedOut > 0) parts.push(`${timedOut} timed out — ${timeoutOutcome}; refresh`);
+  if (skipped > 0 && skippedPhrase) parts.push(skippedPhrase(skipped));
+  return parts.length ? parts.join(sep) : emptyMessage;
+}
+
+// ---------------------------------------------------------------------------
 // haltOrResume — batch-45 audit-M-8: five near-identical inline handlers
 // (App.jsx's Nav kill switch, RiskTab's kill switch, and SettingsTab's inline
 // resume + bottom Halt/Resume pair) each fired `fetch('/api/halt'|'/api/resume', ...)`
@@ -742,9 +910,18 @@ export function haltOrResume(action, { refresh, addToast }) {
   const failMsg = action === 'halt'
     ? 'Halt FAILED — use py main.py kill'
     : 'Resume FAILED — use py main.py resume';
-  return fetch(endpoint, { method: 'POST', headers: authHeader() })
+  // batch-84 item 3: a timeout keeps its own wording rather than borrowing
+  // failMsg's. "Halt FAILED" is a definite statement, and after an abort we
+  // do not know that -- the kill switch may already be engaged. The manual
+  // fallback command is still named, because it is also how the operator
+  // CHECKS, and both routes are idempotent so running it after a timeout
+  // that did land is harmless.
+  const timeoutMsg = action === 'halt'
+    ? 'Halt timed out — it may have applied; confirm with py main.py kill'
+    : 'Resume timed out — it may have applied; confirm with py main.py resume';
+  return fetch(endpoint, withTimeout({ method: 'POST', headers: authHeader() }))
     .then(r => r.ok ? refresh() : addToast(failMsg, 'error'))
-    .catch(() => addToast(failMsg, 'error'));
+    .catch(e => addToast(isTimeoutError(e) ? timeoutMsg : failMsg, 'error'));
 }
 
 // ---------------------------------------------------------------------------

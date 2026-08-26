@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { haltOrResume, validateOverrideDuration } from '../shared.jsx';
+import { haltOrResume, validateOverrideDuration, withTimeout, actionFailureMessage, isTimeoutError } from '../shared.jsx';
 
 export default function SettingsTab() {
   const M = useContext(DataContext);
@@ -19,7 +19,13 @@ export default function SettingsTab() {
 
   function handleDownloadReport() {
     setReportMsg('Generating…');
-    fetch('/api/weekly-report', { headers: authHeader() })
+    // batch-84 item 3: the shared default. An earlier draft gave this its own
+    // 120s budget because api_weekly_report renders the PDF inside the
+    // request -- opus review MEDIUM-2 traced the handler and disproved the
+    // premise: pdf_report._collect_data reads only local JSON/SQLite and
+    // _generate_pdf is fpdf2 text with no charts and no HTTP, so it is
+    // sub-second. A pure read, so an abort costs nothing but a re-click.
+    fetch('/api/weekly-report', withTimeout({ headers: authHeader() }))
       .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Failed'); });
         return r.blob().then(blob => {
@@ -33,7 +39,16 @@ export default function SettingsTab() {
           setTimeout(() => setReportMsg(''), 3000);
         });
       })
-      .catch(e => { setReportMsg(`✗ ${e.message}`); setTimeout(() => setReportMsg(''), 4000); });
+      .catch(e => {
+        // A timeout's own message is a bare DOMException string ("signal
+        // timed out"), which tells the operator nothing about what to do.
+        setReportMsg(
+          isTimeoutError(e)
+            ? '✗ Timed out — report generation took too long'
+            : `✗ ${e.message}`
+        );
+        setTimeout(() => setReportMsg(''), 4000);
+      });
   }
 
   // Config params — all read from /api/config (M.config); stats fallback for max_daily_spend
@@ -62,11 +77,11 @@ export default function SettingsTab() {
     // batch-45 M-8: this is the one destructive action on the page with no
     // confirmation -- Halt, Resume, and Close Position all confirm first.
     if (!window.confirm(`Force-allow trading through an active drawdown halt for ${duration} minutes?`)) return;
-    fetch('/api/override', {
+    fetch('/api/override', withTimeout({
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify({ reason: overrideReason.trim(), duration_minutes: duration }),
-    })
+    }))
       .then(r => r.json())
       .then(d => {
         // opus review MEDIUM (batch-45): web_app.py's api_override_set caps
@@ -83,7 +98,14 @@ export default function SettingsTab() {
         if (!d.error) M.refresh();
         setTimeout(() => setOverrideMsg(''), 4000);
       })
-      .catch(() => { setOverrideMsg('✗ Request failed'); setTimeout(() => setOverrideMsg(''), 3000); });
+      .catch(e => {
+        // batch-84 item 3: an aborted POST may still have written the
+        // override -- this is the one control on the page that force-allows
+        // trading through a drawdown halt, so "Request failed" for an
+        // override that actually applied is the worst wrong answer here.
+        setOverrideMsg(actionFailureMessage(e, 'the override may have been set'));
+        setTimeout(() => setOverrideMsg(''), 5000);
+      });
   }
 
   // Auto-scroll log to bottom when new lines arrive
@@ -92,17 +114,20 @@ export default function SettingsTab() {
   }, [cronState?.log?.length]);
 
   function handleClearOverride() {
-    fetch('/api/override', {
+    fetch('/api/override', withTimeout({
       method: 'DELETE',
       headers: authHeader(),
-    })
+    }))
       .then(r => r.json())
       .then(d => {
         setOverrideMsg(d.error ? `✗ ${d.error}` : '✓ Override cleared');
         if (!d.error) M.refresh();
         setTimeout(() => setOverrideMsg(''), 3000);
       })
-      .catch(() => { setOverrideMsg('✗ Request failed'); setTimeout(() => setOverrideMsg(''), 3000); });
+      .catch(e => {
+        setOverrideMsg(actionFailureMessage(e, 'the override may have been cleared'));
+        setTimeout(() => setOverrideMsg(''), 5000);
+      });
   }
 
   return (
