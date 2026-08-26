@@ -2127,8 +2127,12 @@ class TestSignalGraduationRegistry:
         assert report[0]["count"] == 25
         assert report[0]["floor_cleared"] is True
         data = json.loads(fa_path.read_text())
-        assert "signal_test_sig_floor" in data
-        assert data["signal_test_sig_floor"]["n_settled"] == 25
+        # batch-81: the key now carries the floor value and the population,
+        # so raising a floor cannot let an alert fired at the old one
+        # permanently suppress the new one. See
+        # tests/test_batch81_signal_floors.py for the test that pins that.
+        assert "signal_test_sig_floor20_predictions" in data
+        assert data["signal_test_sig_floor20_predictions"]["n_settled"] == 25
 
         # Idempotent: a second call must not error and the notify file's
         # existing entry must be preserved (matches _notify_feature_activation's

@@ -6777,6 +6777,9 @@ def cmd_order(client: KalshiClient, action: str, args: list):
 
             try:
                 from tracker import log_analysis_attempt as _log_attempt
+                from weather_markets import (
+                    signal_values_from_analysis as _sig_vals,
+                )
 
                 _log_attempt(
                     ticker=ticker,
@@ -6787,6 +6790,15 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                     market_prob=_analysis.get("market_prob", 0.0),
                     days_out=_days_out,
                     was_traded=True,
+                    # batch-81 item 2, same reasoning as _auto_place_trades'
+                    # own call. cmd_order's single-market analysis dict
+                    # carries none of the scan-path-only values --
+                    # market_implied, gated_edge and liquidity_edge_scale
+                    # are all attached by cron's/cmd_analyze's scan loops
+                    # (see _prediction_kwargs_from_analysis' docstring) --
+                    # so this blob naturally holds the per-market signals
+                    # only, exactly as the predictions side already does.
+                    signals=_sig_vals(_analysis, ticker),
                 )
             except Exception as _le:
                 _log.warning("cmd_order: log_analysis_attempt failed: %s", _le)
@@ -7476,24 +7488,89 @@ def cmd_signals() -> None:
             "signal is still a manual judgment call (see notes below)."
         )
     )
+    print(
+        dim(
+            "  Two floors: the graduation floor is the count at which the "
+            "correlation question can actually be answered (80% power); the "
+            "tripwire below it means only that rows are arriving."
+        )
+    )
+    print(
+        dim(
+            "  Two populations, never summed: for most signals `modelled` is "
+            "settled predictions rows (selection-biased -- they exist only "
+            "past the placement gate), and `unbiased` is scored "
+            "analysis_attempts rows (every analysed market, and a superset "
+            "of the traded ones)."
+        )
+    )
+    print(
+        dim(
+            "  Four entries do not fit that description: gem/ukmo/hrrr count "
+            "ensemble_member_scores observations and rain's market-implied "
+            "entry counts distinct settled city-months -- none of those pass "
+            "through the placement gate, so `modelled` is not biased for "
+            "them. Each entry's own note below is authoritative."
+        )
+    )
     print()
     for row in report:
-        if row["sample_floor"] is None:
-            status = (
-                dim(f"{row['count']} samples, no fixed floor")
-                if row["count"] is not None
-                else dim("no fixed floor")
-            )
-        elif row["count"] is None:
-            status = yellow("count unavailable")
-        elif row["floor_cleared"]:
-            status = green(f"{row['count']}/{row['sample_floor']} -- floor cleared")
-        else:
-            status = dim(f"{row['count']}/{row['sample_floor']}")
         print(f"  {bold(row['name'])}")
-        print(f"    status: {status}   backlog: {row['backlog_ref']}")
+        print(
+            f"    modelled: {_signal_status(row, 'count', 'floor_cleared', 'tripwire_cleared')}"
+        )
+        # Only printed when the signal has an unbiased counterpart at all --
+        # run_trend, market_implied_rain and the ensemble_member_scores
+        # graduations do not, and a blank "0/112" line for them would read
+        # as "no data yet" rather than "this population does not apply
+        # here". Gated on has_attempt_population, NOT on attempt_count being
+        # None: the latter is also what a FAILED count query returns, and
+        # gating on it would hide a DB error behind the same silence as a
+        # deliberate absence -- and make _signal_status' "count unavailable"
+        # unreachable for this column.
+        if row["has_attempt_population"]:
+            print(
+                f"    unbiased: {_signal_status(row, 'attempt_count', 'attempt_floor_cleared', 'attempt_tripwire_cleared')}"
+            )
+        print(f"    backlog: {row['backlog_ref']}")
         print(f"    {dim(row['correlation_note'])}")
         print()
+
+
+def _signal_status(row: dict, count_key: str, floor_key: str, tripwire_key: str) -> str:
+    """Render one population's cell of the signal graduation report.
+
+    Split out of cmd_signals so the two populations cannot drift into
+    rendering the same state differently. Five renderings, deliberately
+    distinct: no fixed floor (with or without a count), count unavailable,
+    graduation floor cleared, above the tripwire but not decisive, and
+    below both -- the last two split apart because "20/112" and "0/112"
+    mean very different things to whoever is deciding what to look at next.
+    """
+    count = row[count_key]
+    floor = row["sample_floor"]
+    if floor is None:
+        return (
+            dim(f"{count} samples, no fixed floor")
+            if count is not None
+            else dim("no fixed floor")
+        )
+    if count is None:
+        return yellow("count unavailable")
+    if row[floor_key]:
+        return green(f"{count}/{floor} -- graduation floor cleared")
+    if row[tripwire_key]:
+        # Deliberately not green and deliberately spelled out. The old
+        # report printed a green "floor cleared" at this sample size, which
+        # is the affordance backlog.txt's "sample_floor=20 CLEARS AT ~27%
+        # STATISTICAL POWER" entry filed as a bad-decision trap: it reads as
+        # an invitation to graduate when it means "you may now begin
+        # collecting evidence".
+        return dim(
+            f"{count}/{floor} -- above the {row['tripwire_floor']} tripwire, "
+            "not yet decisive"
+        )
+    return dim(f"{count}/{floor}")
 
 
 def cmd_features() -> None:

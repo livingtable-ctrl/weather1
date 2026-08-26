@@ -5199,6 +5199,9 @@ def _auto_place_trades(
                     import datetime as _dt2
 
                     from tracker import log_analysis_attempt as _log_attempt2
+                    from weather_markets import (
+                        signal_values_from_analysis as _sig_vals,
+                    )
 
                     _td2 = trade.get("target_date")
                     if isinstance(_td2, str):
@@ -5215,6 +5218,14 @@ def _auto_place_trades(
                         market_prob=a.get("market_prob", 0.0),
                         days_out=int(a.get("days_out", 1)),
                         was_traded=True,
+                        # batch-81 item 2. A traded market's attempt row is
+                        # part of the unbiased population too --
+                        # analysis_attempts is a superset of the traded
+                        # markets, not their complement, and dropping the
+                        # blob here would leave exactly the highest-edge
+                        # rows blank. Merged per-key with whatever the scan
+                        # that preceded placement already recorded.
+                        signals=_sig_vals(a, ticker),
                     )
                 except Exception as _e:
                     _log.warning(

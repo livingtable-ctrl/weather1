@@ -2549,6 +2549,8 @@ def _cmd_cron_body(
         )
 
     # #perf: flush analysis attempts in one batch transaction (vs one INSERT per market)
+    from weather_markets import signal_values_from_analysis as _signal_values
+
     _analysis_batch: list[dict] = []
     for _enriched, _analysis in result.all_results:
         try:
@@ -2570,6 +2572,29 @@ def _cmd_cron_body(
                     "market_prob": _analysis.get("market_prob", 0.0),
                     "days_out": int(_analysis.get("days_out", 0)),
                     "was_traded": False,
+                    # batch-81 item 2. This is the whole point of the item:
+                    # every registry sample floor counted settled
+                    # `predictions` rows, which only exist past the
+                    # placement gate, so none of THIS stream -- every
+                    # analysed market, ~6-7x the volume and structurally
+                    # unbiased -- ever reached a floor. Pure dict lookups
+                    # off the analysis dict trade_cycle already built; no
+                    # network call is added to the scan (see
+                    # _ATTEMPT_SIGNAL_FIELDS for the one signal that is
+                    # excluded for exactly that reason).
+                    # ticker is passed explicitly (and is required by that
+                    # function) because it is what separates the temperature
+                    # market-implied fit from the monthly-rain one -- the
+                    # same slot carries degrees F for KXHIGH*/KXLOW* and
+                    # inches for KXRAIN*M.
+                    # `or None` rather than a "" default: an empty ticker is not
+                    # a known market, and signal_values_from_analysis must be
+                    # able to tell "unknown" from "a temperature market", or
+                    # it files a monthly-rain fit in inches under the
+                    # degrees-F key.
+                    "signals": _signal_values(
+                        _analysis, _enriched.get("ticker") or None
+                    ),
                 }
             )
         except Exception:

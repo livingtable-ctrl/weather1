@@ -111,7 +111,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 78  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 79  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -804,6 +804,30 @@ _MIGRATIONS = [
     # v78: get_scan_activity() groups on DATE(started_at) over a rolling
     # window, and prune_scan_runs() deletes on the same column.
     "CREATE INDEX IF NOT EXISTS idx_scan_runs_started ON scan_runs(started_at)",
+    # v79 (batch-81 item 2): signal values on the UNBIASED population.
+    # Every registry sample floor counted settled `predictions` rows, which
+    # only exist past the placement gate -- so the floors saw none of the
+    # ~6-7x-faster, structurally unbiased `analysis_attempts` stream (its
+    # measured minimum |forecast - market| is 0.0011; predictions' is
+    # 0.0984). One JSON dict column, mirroring predictions.signal_values, so
+    # a future log-only signal needs no migration of its own -- rather than
+    # a typed column per signal, which would grow this append-only list
+    # every time.
+    #
+    # VOLUME: ~19 scored rows/day. A full blob measured by calling the real
+    # signal_values_from_analysis is ~510-590 B (a minimal two-signal one is
+    # ~113 B); the _days_out map is ~45% of that, since it repeats every key
+    # name. So ~4 MB/year, not the ~1.2 MB an earlier 180 B/row estimate
+    # here implied -- still negligible, and the conclusion below stands. No
+    # new retention rule needed: prune_old_analysis_attempts already keeps
+    # scored rows permanently and drops unscored ones at 30 days, and its
+    # own docstring already names 730 days as the window to use if that
+    # ever needs bounding (the same one batch-78 chose for
+    # ensemble_member_values).
+    #
+    # APPENDED, never inserted -- see the analysis_attempts block above and
+    # _run_migrations' own comment for why _MIGRATIONS is append-only.
+    "ALTER TABLE analysis_attempts ADD COLUMN signal_values TEXT",
 ]
 
 
@@ -4152,6 +4176,48 @@ _SIGNAL_JSON_KEY_ALLOWLIST = frozenset(
     }
 )
 
+# batch-81 item 2: the same trust boundary as _SIGNAL_COLUMN_ALLOWLIST, for
+# the keys count_scored_attempt_signal_rows may interpolate into a
+# json_extract path over analysis_attempts.signal_values. Deliberately a
+# SECOND list rather than a reuse of the two above: the populations are
+# different, the settlement definitions are different, and a key being
+# countable on `predictions` says nothing about whether anything ever
+# writes it onto `analysis_attempts`.
+#
+# This list is the SQL trust boundary. weather_markets.
+# _ATTEMPT_PRODUCIBLE_KEYS is the set of COUNTABLE keys that module can
+# emit -- not everything it can emit: the generic a["signals"] loop admits
+# any non-underscore finite scalar, so _analyze_monthly_rain_trade also
+# writes rain_forecast_blend_tail_days / _n_members / _n_tail_years. Those
+# are stratification metadata, not countable signals, and belong in
+# neither set. tests/test_batch81_signal_floors.py pins producible <=
+# allowlist, so a countable key that is written but not countable fails
+# loudly. The two are exactly equal today.
+#
+# The "_rain"-suffixed market-implied keys are a separate unit from their
+# bare counterparts, not aliases: implied_mean is degrees F, implied_mean_
+# rain is inches of monthly rain total. Pooling them would be a category
+# error -- see signal_values_from_analysis for why the split has to happen
+# at write time on this population.
+_ATTEMPT_JSON_KEY_ALLOWLIST = frozenset(
+    {
+        "gated_edge",
+        "liquidity_edge_scale",
+        "nbm_quantile_prob",
+        "ecmwf_consensus_gap_prob",
+        "ensemble_spread_f",
+        "model_disagreement_f",
+        "precip_sum_in",
+        "implied_mean",
+        "implied_sigma",
+        "fit_residual",
+        "implied_mean_rain",
+        "implied_sigma_rain",
+        "fit_residual_rain",
+        "rain_forecast_blend_prob",
+    }
+)
+
 
 def count_settled_signal_rows(
     column: str | None = None,
@@ -4239,6 +4305,80 @@ def count_settled_signal_rows(
             f"SELECT COUNT(*) FROM {table} p "
             "JOIN outcomes_valid o ON p.ticker = o.ticker "
             f"WHERE {where}"
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def count_scored_attempt_signal_rows(json_key: str) -> int:
+    """Count SCORED analysis_attempts rows carrying a value for one signal.
+
+    batch-81 item 2 — the unbiased counterpart to count_settled_signal_rows.
+    That function counts settled `predictions` rows, a population
+    log_prediction only ever writes to past the placement gate: measured
+    2026-08-26 it contains nothing below |forecast_prob - market_prob| =
+    0.0984, while `analysis_attempts` (every analysed market) reaches
+    0.0011. The floors were counting the biased half exclusively.
+
+    THE TWO ARE NOT INTERCHANGEABLE and callers must never sum them:
+
+    * Different settlement definitions. count_settled_signal_rows requires
+      a real settled TEMPERATURE via outcomes_valid (`o.settled_temp_f IS
+      NOT NULL`, its default). This requires `outcome IS NOT NULL` — the
+      binary market resolution, which is what analysis_attempts records and
+      what an AUC-against-settlement check actually consumes. (One partial
+      exception: the rain_forecast_blend registry entry passes
+      require_settled_temp=False, so for that one signal the two populations
+      differ only by the row source and the outcomes_valid join.)
+    * Overlapping rows. analysis_attempts holds was_traded=1 rows too, so
+      it is a SUPERSET of the traded markets rather than their complement.
+      Adding the two counts would double-count every traded market, and
+      filtering them out here would swap one bias for another — so it does
+      neither, and get_signal_graduation_report reports the two separately.
+    * Duplicated ladder rungs. The market-implied fit is per EVENT, and
+      resolve_market_implied_for_analysis hands the identical fit to every
+      sibling rung; analysis_attempts keys on (ticker, target_date), so one
+      event contributes several rows. That is why market_implied_rain has
+      no attempt_json_key at all — its predictions-side count is a DISTINCT
+      city-month count, which a COUNT(*) here would not match.
+
+    DISPUTED ROWS. count_settled_signal_rows joins `outcomes_valid`, this
+    repo's single definition of "not disputed", which tests/
+    test_disputed_row_guard.py enforces across production files. That guard
+    scans for `JOIN outcomes` and so is structurally blind to this query,
+    which reads analysis_attempts.outcome instead — and a dispute can reach
+    that column, because settle_pending_attempt_tickers calls
+    audit_settlement (the only caller of mark_outcome_disputed) and then
+    settles the attempt rows regardless, while settle_orphaned_attempt_
+    outcomes joins raw `outcomes`. There is no un-settle path. So the
+    exclusion is applied explicitly below rather than inherited. Measured
+    2026-08-26: zero disputed rows exist today, so this is a latent
+    divergence being closed, not live poisoning being cleaned up.
+
+    json_key is checked against _ATTEMPT_JSON_KEY_ALLOWLIST before being
+    interpolated into the json_extract path, the same defense-in-depth
+    count_settled_signal_rows applies to its own two name arguments rather
+    than trusting caller discipline alone.
+    """
+    if json_key not in _ATTEMPT_JSON_KEY_ALLOWLIST:
+        raise ValueError(
+            f"count_scored_attempt_signal_rows: json_key={json_key!r} is not "
+            "in _ATTEMPT_JSON_KEY_ALLOWLIST -- add it there if this is a real "
+            "signal that gets logged onto analysis_attempts, not a typo"
+        )
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM analysis_attempts a "
+            f"WHERE json_extract(a.signal_values, '$.{json_key}') IS NOT NULL "
+            "AND a.outcome IS NOT NULL "
+            # NOT EXISTS rather than a join: an attempt row need not have an
+            # outcomes row at all (that is the orphaned-attempt case this
+            # table exists to capture), and a join would silently drop every
+            # one of them.
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM outcomes o"
+            "  WHERE o.ticker = a.ticker AND o.disputed IS NOT NULL"
+            "    AND o.disputed != 0)"
         ).fetchone()
     return row[0] if row else 0
 
@@ -13099,6 +13239,101 @@ def format_brier_alert(scores: list[float]) -> str:
 # ── Unselected bias tracking (#55) ────────────────────────────────────────────
 
 
+# batch-81 item 2. Shared by log_analysis_attempt and
+# batch_log_analysis_attempts so the two cannot drift; the merge semantics
+# below are subtle enough that two hand-maintained copies would.
+#
+# A market is re-analysed on every scan until it closes and this table
+# upserts on (ticker, target_date), so one row sees many scans at shrinking
+# days_out. json_patch merges the incoming blob into the stored one PER KEY
+# (RFC 7396, recursively for the nested lead-time map) rather than replacing
+# it, because a signal computed only at longer leads would otherwise be
+# erased by a later same-day scan that cannot compute it: nbm_quantile_prob
+# is skipped entirely on the METAR-locked same-day path, and 366 of the 584
+# scored rows measured 2026-08-26 were days_out=0.
+#
+# Two guards on the SQL, because json_patch returns NULL if EITHER side is
+# NULL. The outer CASE handles a later scan that produced no signals at all
+# (excluded NULL): keep what is stored rather than wiping it. The inner
+# CASE handles the stored side being NULL or unparseable: substitute '{}'
+# so the incoming blob lands. That inner branch is NOT dead -- a row whose
+# FIRST scan computed nothing has a NULL blob, and per-signal coverage runs
+# 26-93%, so "first scan produced no signals, a later one did" is routine.
+# Without it that row would be NULL-poisoned permanently, since every later
+# merge would re-derive NULL from NULL.
+#
+# The writer additionally never emits a JSON null VALUE, since RFC 7396
+# reads null as "delete this key" -- see _signal_values_json, which owns
+# that invariant (and the NaN one, which reaches the same place via
+# SQLite's JSON5 parser) rather than trusting callers.
+# The json_valid() term is a blast-radius guard, not a correctness one.
+# json_patch raises OperationalError on an unparseable STORED value, and in
+# batch_log_analysis_attempts that is one executemany inside one
+# transaction -- so a single corrupt blob would roll back the entire scan's
+# attempt batch, losing analyzed_at/forecast_prob/market_prob/days_out/
+# was_traded for 100+ markets, not just one row's signals. Before this
+# column the statement contained no JSON function and had no such failure
+# mode. Treating an unparseable stored blob as absent costs that one row
+# its history and lets every other row through.
+_ATTEMPT_SIGNAL_VALUES_MERGE = """
+                       signal_values  = CASE
+                           WHEN excluded.signal_values IS NULL
+                               THEN analysis_attempts.signal_values
+                           ELSE json_patch(
+                               CASE
+                                   WHEN json_valid(analysis_attempts.signal_values)
+                                       THEN analysis_attempts.signal_values
+                                   ELSE '{}'
+                               END,
+                               excluded.signal_values)
+                       END"""
+
+
+def _signal_values_json(signals: dict | None) -> str | None:
+    """Serialise an analysis_attempts signal blob, or None when there is
+    nothing to record.
+
+    This function owns the RFC 7396 invariants for the merge below, rather
+    than relying on its callers to have upheld them -- log_analysis_attempt
+    and batch_log_analysis_attempts are public, and their `signals` argument
+    originates in an untyped analysis dict. Three things it guarantees:
+
+    * Never returns the string "null" (a non-NULL column value that
+      json_patch would then read as a wipe) -- an empty/falsy blob is None.
+    * Never emits a TOP-LEVEL JSON `null` value. RFC 7396 defines null as
+      "delete this key", so a caller passing {"gated_edge": None} would
+      silently erase a previously recorded gated_edge instead of recording
+      nothing. The strip is deliberately shallow: weather_markets'
+      signal_values_from_analysis owns the nested level (it admits only
+      scalars from the generic path), and the ONE nested map production
+      emits -- the lead-time stamp -- uses nulls on purpose, to clear a
+      stale entry it can no longer describe.
+    * Never emits bare NaN/Infinity. json.dumps allows them by default and
+      SQLite's JSON5 parser maps NaN to null -- i.e. straight back to the
+      delete case, with no error anywhere. allow_nan=False turns that into
+      a ValueError the except below already catches. The live vector is a
+      value read straight from an API body: json.loads accepts bare NaN,
+      which is the exact hazard _finite_number exists for.
+    * Rejects a non-dict outright. A list serialises fine, and
+      json_patch(array, object) returns the object wholesale -- discarding
+      every signal previously recorded for that row.
+    """
+    import json as _json
+
+    if not isinstance(signals, dict) or not signals:
+        return None
+    cleaned = {k: v for k, v in signals.items() if v is not None}
+    if not cleaned:
+        return None
+    try:
+        return _json.dumps(cleaned, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        # `signals` comes from an untyped analysis dict; a non-serialisable
+        # value must cost this row its blob, not the whole attempt record.
+        _log.warning("_signal_values_json: unserialisable signals dropped: %s", exc)
+        return None
+
+
 def log_analysis_attempt(
     ticker: str,
     city: str | None,
@@ -13108,8 +13343,17 @@ def log_analysis_attempt(
     market_prob: float,
     days_out: int,
     was_traded: bool = False,
+    signals: dict | None = None,
 ) -> None:
-    """#55: Log every analyzed market (traded or not) for bias detection."""
+    """#55: Log every analyzed market (traded or not) for bias detection.
+
+    `signals` (batch-81 item 2) is the blob from
+    weather_markets.signal_values_from_analysis — the log-only signal values
+    for this market, merged per-key into whatever earlier scans of the same
+    (ticker, target_date) recorded. Optional and defaulted so every existing
+    caller keeps working unchanged; a caller that omits it simply leaves the
+    stored blob alone rather than clearing it.
+    """
     init_db()
     from datetime import UTC
 
@@ -13129,15 +13373,17 @@ def log_analysis_attempt(
             con.execute(
                 """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
-                    forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    forecast_prob, market_prob, days_out, was_traded,
+                    signal_values)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(ticker, target_date) DO UPDATE SET
                        analyzed_at    = excluded.analyzed_at,
                        forecast_prob  = excluded.forecast_prob,
                        market_prob    = excluded.market_prob,
                        days_out       = excluded.days_out,
                        was_traded     = MAX(analysis_attempts.was_traded,
-                                            excluded.was_traded)""",
+                                            excluded.was_traded),"""
+                + _ATTEMPT_SIGNAL_VALUES_MERGE,
                 (
                     ticker,
                     city,
@@ -13148,6 +13394,7 @@ def log_analysis_attempt(
                     market_prob,
                     days_out,
                     1 if was_traded else 0,
+                    _signal_values_json(signals),
                 ),
             )
     except Exception as exc:
@@ -13156,7 +13403,13 @@ def log_analysis_attempt(
 
 def batch_log_analysis_attempts(attempts: list[dict]) -> None:
     """#perf: Bulk-insert analysis attempts in a single transaction (much faster than
-    calling log_analysis_attempt per row when scanning 100+ markets)."""
+    calling log_analysis_attempt per row when scanning 100+ markets).
+
+    Each attempt dict may carry a "signals" key (batch-81 item 2) holding
+    weather_markets.signal_values_from_analysis' blob for that market; see
+    log_analysis_attempt's docstring and _ATTEMPT_SIGNAL_VALUES_MERGE for
+    the per-key merge semantics, which are identical here.
+    """
     if not attempts:
         return
     init_db()
@@ -13184,6 +13437,7 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
                 float(a.get("market_prob", 0.0)),
                 int(a.get("days_out", 0)),
                 1 if a.get("was_traded") else 0,
+                _signal_values_json(a.get("signals")),
             )
         )
     try:
@@ -13191,15 +13445,17 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
             con.executemany(
                 """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
-                    forecast_prob, market_prob, days_out, was_traded)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    forecast_prob, market_prob, days_out, was_traded,
+                    signal_values)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(ticker, target_date) DO UPDATE SET
                        analyzed_at    = excluded.analyzed_at,
                        forecast_prob  = excluded.forecast_prob,
                        market_prob    = excluded.market_prob,
                        days_out       = excluded.days_out,
                        was_traded     = MAX(analysis_attempts.was_traded,
-                                            excluded.was_traded)""",
+                                            excluded.was_traded),"""
+                + _ATTEMPT_SIGNAL_VALUES_MERGE,
                 rows,
             )
     except Exception as exc:

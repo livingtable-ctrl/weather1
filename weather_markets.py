@@ -10088,6 +10088,71 @@ def _pdopna_blend_active() -> bool:
 # part.
 
 
+# ── The two floors, and where their numbers come from ────────────────────────
+#
+# batch-81 item 1, replacing a flat sample_floor=20 on ten of the twelve
+# registry entries below. Recorded here rather than left to be re-derived,
+# per the backlog entry's own closing ask ("Record the power basis next to
+# the number so the next person does not have to re-derive it").
+#
+# BASIS. backlog.txt "THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27%
+# STATISTICAL POWER" works the question through on nbm_quantile_prob, the
+# only registry signal with a measured effect: AUC 0.657 against settlement
+# on 26 settled rows, 9 positives / 17 negatives. Its Hanley-McNeil (1982)
+# SE at that AUC and base rate, tested two-sided against AUC=0.5 at
+# alpha=0.05, gives the power curve the entry publishes -- 27% at n=26, 46%
+# at n=50, 76% at n=100, 96% at n=200.
+#
+# Solving that same curve for the conventional 80% power gives n=112. (The
+# stricter variant, which uses the SE under H0 rather than at the
+# alternative when placing the critical value, gives 117; 112 is the number
+# consistent with the entry's own published table, so it is the one used.)
+#
+# Two numbers the batch-81 handoff carried did NOT survive re-derivation,
+# recorded so they are not reintroduced. It back-solved the effect size from
+# "n=20 -> 27% power", but the entry's 27% is at n=26, not 20. And even on
+# its own effect size, ((z_{1-a/2} + z_{1-b}) / delta)^2 is 86.52 taking its
+# stated delta=0.3012 at face value (86.50 from the unrounded back-solve) --
+# either way above 86, so its answer was rounded the wrong way and buys
+# 79.8% power, not 80%. On the corrected basis 86 is ~69% power. The floor
+# of 20 this replaces buys 21.4%.
+#
+# CAVEAT worth carrying forward: 0.657 is an observed point estimate on 26
+# rows, so it is optimistic (winner's curse). If a signal's true AUC is
+# 0.62, 80% power needs n=198, not 112. 112 is the floor at which the
+# question becomes answerable for a good signal -- not a guarantee that a
+# marginal one will be resolved.
+#
+# SECOND CAVEAT, about UNITS. The derivation is an AUC-vs-0.5 test on binary
+# settlement, so "80% power" is only literally true for the entries whose
+# sample really is one settled market per row. It is applied uniformly
+# anyway, because no other entry has a measured effect size to derive from
+# and 112 is conservative in every case -- but it is not the same statement
+# for all twelve:
+#   * gem/ukmo/hrrr_graduation count ensemble_member_scores observations,
+#     and their own correlation_note says the criterion is a per-city MAE
+#     comparison, not an AUC test. 112 there is a sample-size floor with no
+#     derived power attached to it.
+#   * market_implied_rain counts DISTINCT settled city-months, so 112 means
+#     ~10 months of full coverage across the 11 rain series, against ~2
+#     months under the old floor of 20. That is a much larger real-terms
+#     move than the same number represents anywhere else.
+# Per-signal floors are the principled fix if any of these becomes the
+# blocker; the backlog entry's own fix sketch anticipated that ("pick per
+# signal if their effect sizes differ meaningfully").
+SIGNAL_GRADUATION_FLOOR: int = 112
+
+# The old floor, kept as a deliberately quiet tripwire rather than deleted.
+# 20 is genuinely useful as "the pipeline works and rows are arriving",
+# which is a real thing to want to see -- it is only useless as a
+# graduation verdict. Crossing it is reported, dimmed and explicitly
+# labelled as not decisive, and fires no activation alert; only
+# SIGNAL_GRADUATION_FLOOR does that. Per the backlog entry's own preferred
+# fix ("keep 20 as a 'start looking' tripwire and add a SECOND, higher
+# 'enough to decide' threshold, with the report distinguishing them").
+SIGNAL_TRIPWIRE_FLOOR: int = 20
+
+
 @dataclass(frozen=True)
 class _SignalRegistryEntry:
     key: str  # stable id — also the _notify_feature_activation dedup key
@@ -10096,6 +10161,35 @@ class _SignalRegistryEntry:
     count_fn: Callable[[], int] | None  # current settled-sample count, or None
     correlation_note: str  # what "graduation-worthy" means; still a human call
     backlog_ref: str  # the backlog.txt entry this maps to, for cross-reference
+    # batch-81 item 2. Key inside analysis_attempts.signal_values holding
+    # this signal, when it is one of the values cron/order_executor log onto
+    # that table -- the UNBIASED population, counted and reported entirely
+    # separately from count_fn's selection-biased `predictions` count (see
+    # get_signal_graduation_report for why the two are never summed).
+    #
+    # None means this entry has no unbiased counterpart, for one of THREE
+    # distinct reasons (each None entry below says which):
+    #   * not derivable from an analysis dict without extra I/O -- run_trend,
+    #     whose fetch is up to 3 sequential HTTP calls per row;
+    #   * not on a per-market analysis dict at all -- gem/ukmo/hrrr_graduation
+    #     count ensemble_member_scores rows, and cross_city_pooling has no
+    #     count query whatsoever;
+    #   * the value IS written to the blob, but its predictions-side count is
+    #     not row-shaped, so an attempts-side row count would not be
+    #     comparable -- market_implied_rain, whose count_fn counts DISTINCT
+    #     settled city-months.
+    attempt_json_key: str | None = None
+    # What count_fn's population actually IS, in words, for the activation
+    # alert. Defaulted to the common case rather than repeated on nine
+    # entries. It has to be per-entry because four entries do not count
+    # `predictions` at all: gem/ukmo/hrrr_graduation count
+    # ensemble_member_scores observations (never selection-biased -- they
+    # never pass a placement gate) and market_implied_rain counts distinct
+    # settled city-months. The alert is written ONCE, persisted to
+    # feature_activations.json, and read days later with none of the
+    # report's surrounding context, so a blanket "selection-biased
+    # predictions" there is a claim the reader has no way to correct.
+    count_population_label: str = "selection-biased predictions"
 
 
 def _count_signal_column(column: str, *, multiday: bool = False) -> Callable[[], int]:
@@ -10185,11 +10279,349 @@ def _count_market_implied_rain() -> Callable[[], int]:
     return _count
 
 
+def _count_attempt_json_key(json_key: str) -> Callable[[], int]:
+    """Same late-bound-closure factory shape as _count_signal_column, for the
+    UNBIASED half of a registry entry's sample count (batch-81 item 2):
+    scored `analysis_attempts` rows carrying this signal, rather than settled
+    `predictions` rows.
+
+    Kept as a separate closure from count_fn -- never folded into it, never
+    added to it -- because the two count genuinely different populations and
+    a single mixed number would be worse than either alone. See
+    get_signal_graduation_report's own docstring.
+
+    Note this factory is called at REPORT time, not registry-build time, so
+    it deliberately does no validation of its own -- raising here would take
+    down the whole report rather than one entry. The equivalent of
+    _count_model_obs' build-time check lives in _validate_attempt_json_keys()
+    below, which runs at module import.
+    """
+
+    def _count() -> int:
+        from tracker import count_scored_attempt_signal_rows
+
+        return count_scored_attempt_signal_rows(json_key)
+
+    return _count
+
+
+# The signal names carried on an analyze_trade() result dict that are cheap
+# enough to log onto every analysed market, not just the traded ones.
+# "Cheap" is the whole selection criterion: every one of these is already
+# computed onto the analysis dict by analyze_trade() or by the scan loop
+# (trade_cycle.py attaches market_implied/gated_edge before appending to
+# all_results), so building the blob costs a few dict lookups and no I/O.
+#
+# run_trend_delta is deliberately ABSENT despite being one of the two
+# slowest-accruing signals in the registry: it is not on the analysis dict
+# at all, and tracker.get_forecast_run_trend_from_analysis fetches it with
+# up to 3 sequential HTTP calls (~60s worst case on a cache miss). That is
+# affordable once per placed trade, which is why _prediction_kwargs_from_
+# analysis does it there; it is not affordable once per analysed market on
+# a scan that routinely covers 100+ of them.
+_ATTEMPT_SIGNAL_FIELDS: tuple[str, ...] = (
+    "gated_edge",
+    "liquidity_edge_scale",
+    "nbm_quantile_prob",
+    "ecmwf_consensus_gap_prob",
+    "ensemble_spread_f",
+    "model_disagreement_f",
+    "precip_sum_in",
+)
+
+# The market-implied fit, which lives one level down under
+# a["market_implied"] rather than on `a` directly -- it is a per-EVENT fit
+# over the full sibling bracket ladder, attached onto each market's analysis
+# dict by the scan loops (see _prediction_kwargs_from_analysis's docstring
+# for the same distinction on the predictions side). Flattened into the blob
+# under its own names so the counting query is one json_extract like every
+# other signal's, not a nested path.
+_ATTEMPT_MARKET_IMPLIED_FIELDS: tuple[str, ...] = (
+    "implied_mean",
+    "implied_sigma",
+    "fit_residual",
+)
+
+# Nested key under which signal_values_from_analysis records the lead time
+# each value was captured at. Reserved: the underscore prefix is what keeps
+# it out of the signal namespace, and signal_values_from_analysis drops any
+# incoming key that starts with "_" so a future signal cannot collide with
+# it. See that function's docstring for why the stamp is needed at all.
+ATTEMPT_LEAD_TIME_KEY: str = "_days_out"
+
+# Generic-path keys (a["signals"]) that are real countable signals rather
+# than composition metadata. Today only the rain forecast-blend probability:
+# _analyze_monthly_rain_trade also ships rain_forecast_blend_tail_days /
+# _n_members / _n_tail_years alongside it, which are stratification metadata
+# for a future analysis, not values a floor would ever count.
+_ATTEMPT_GENERIC_SIGNAL_KEYS: frozenset[str] = frozenset({"rain_forecast_blend_prob"})
+
+# Every key the NAMED paths can occupy, whether or not a given analysis
+# dict actually fills it. The generic a["signals"] loop refuses to write any
+# of these, so a named field being absent never opens its slot to a generic
+# value of a different provenance (or, for the market-implied names, a
+# different unit).
+_ATTEMPT_NAMED_KEYS: frozenset[str] = frozenset(_ATTEMPT_SIGNAL_FIELDS) | {
+    f"{field}{suffix}"
+    for field in _ATTEMPT_MARKET_IMPLIED_FIELDS
+    for suffix in ("", "_rain")
+}
+
+# Every key signal_values_from_analysis can actually emit that is countable.
+# Derived, never hand-listed, so it cannot drift from the producers above --
+# and note the market-implied fields appear twice, once bare (temperature)
+# and once "_rain"-suffixed, which is the separation that keeps inches out
+# of the temperature signal's count.
+_ATTEMPT_PRODUCIBLE_KEYS: frozenset[str] = (
+    _ATTEMPT_NAMED_KEYS | _ATTEMPT_GENERIC_SIGNAL_KEYS
+)
+
+
+def _is_rain_monthly_ticker(ticker: str | None) -> bool:
+    """True for a KXRAIN*M monthly-rain-total ticker.
+
+    Uses _KXRAIN_MONTHLY_CITY, the same prefix map
+    market_implied_rain_event_key() and _rain_gates_active() key off, so
+    this cannot drift from the definition the rest of the module uses.
+    """
+    if not ticker:
+        return False
+    return ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+
+
+# _compute_ensemble_spread returns its 0.0 placeholder below this many
+# non-None member temperatures. Named here rather than inlined so the guard
+# and the producer cannot drift apart silently.
+_MIN_ENSEMBLE_MEMBERS_FOR_SPREAD = 2
+
+
+def _is_finite_scalar(v: object) -> bool:
+    """True for a value that can survive the whole write path.
+
+    NaN and Infinity are floats, so they pass every isinstance check --
+    but tracker._signal_values_json serialises with allow_nan=False, where
+    a single non-finite value raises and costs the row its ENTIRE blob:
+    every named signal and the market-implied fit with it. Filtering here,
+    where the per-key context exists, turns "lose 14 values" into "lose 1".
+    (allow_nan=False stays as the backstop for anything that reaches
+    tracker by another route.)
+    """
+    if isinstance(v, bool):
+        return True
+    if isinstance(v, float):
+        return _math.isfinite(v)
+    return isinstance(v, int | str)
+
+
+def _is_real_ensemble(a: dict) -> bool:
+    """True only when the analysis dict proves enough ensemble members
+    existed for ensemble_spread_f to be a measurement rather than the 0.0
+    placeholder. Fails closed on anything unproven -- see the call site."""
+    n = a.get("n_ensemble_members")
+    if isinstance(n, bool) or not isinstance(n, int):
+        return False
+    return n >= _MIN_ENSEMBLE_MEMBERS_FOR_SPREAD
+
+
+def signal_values_from_analysis(a: dict, ticker: str | None) -> dict | None:
+    """Build the analysis_attempts.signal_values blob from an analyze_trade()
+    result dict, or None when the dict carries no loggable signal.
+
+    `ticker` is REQUIRED (no default) rather than optional, so a new call
+    site cannot silently omit it: it is what separates the temperature and
+    rain market-implied fits below, and a caller that guessed would
+    reintroduce exactly the unit conflation this batch exists to remove.
+    Pass None only for a genuinely unknown market -- the market-implied
+    fields are then dropped rather than filed under a guessed unit.
+
+    batch-81 item 2. `predictions` only ever receives a row for a market
+    that cleared the placement gate, so it structurally contains nothing
+    below |forecast_prob - market_prob| = 0.0984 -- every registry floor
+    counted that selection-biased population. `analysis_attempts` receives
+    every analysed market (measured minimum |forecast - market| = 0.0011)
+    and accrues ~6-7x faster, but carried no signal values at all, so none
+    of that reached the floors. This is the function that changes that.
+
+    Shape mirrors predictions.signal_values: one JSON dict, one column, no
+    per-signal migration. Both the named _ATTEMPT_SIGNAL_FIELDS and the
+    generic a["signals"] dict (today: the rain forecast-blend signal) flow
+    through, so a future log-only signal that already uses the generic path
+    needs no change here at all -- subject to the three filters documented
+    at that loop (reserved namespace, scalars only, no name collision).
+
+    LEAD TIME. A market is re-analysed on every scan until it closes, and
+    analysis_attempts upserts on (ticker, target_date), so one row sees many
+    scans at shrinking days_out. tracker's upsert merges these per-key
+    rather than overwriting the blob wholesale, specifically so a signal
+    computed only at longer leads is not erased by a later same-day scan
+    that cannot compute it -- nbm_quantile_prob is skipped entirely on the
+    METAR-locked same-day path, and 366 of the 584 scored rows measured
+    2026-08-26 were days_out=0, so wholesale overwrite would have thrown
+    away most of exactly the signal that motivated this batch.
+
+    The cost of that merge is that a row's values can come from different
+    scans, and the row's own days_out column (last scan) then describes none
+    of them. So each value's lead time is recorded alongside it under
+    ATTEMPT_LEAD_TIME_KEY, which json_patch merges recursively on the same
+    per-key basis. Same reasoning, and the same must-ship-before-rows-
+    accumulate urgency, as the rain_forecast_blend composition metadata:
+    it cannot be retrofitted onto already-logged rows.
+    """
+    values: dict = {}
+    for field in _ATTEMPT_SIGNAL_FIELDS:
+        v = a.get(field)
+        if v is None:
+            continue
+        # ensemble_spread_f is 0.0, not None, whenever there was no ensemble
+        # to measure -- unlike nbm_quantile_prob and ecmwf_consensus_gap_prob
+        # beside it, which correctly use None. That sentinel is a
+        # placeholder, and dropping only None would let it overwrite a real
+        # longer-lead reading through the per-key merge AND stamp itself as
+        # a genuine capture, defeating the exact erasure this design exists
+        # to prevent on the 63% of rows that are days_out=0.
+        #
+        # The boundary is TWO, not zero, and it is _compute_ensemble_spread's
+        # own: it returns 0.0 for `len(values) < 2`. model_temps only ever
+        # holds "nbm" and "ecmwf", so n_ensemble_members' domain is {0,1,2}
+        # -- and n=1 (one provider fetched, the other raised or returned
+        # None, a routine upstream hiccup) yields the identical placeholder.
+        # An earlier version of this guard tested `== 0` and so missed a
+        # third of its own domain.
+        #
+        # Fails CLOSED: a missing, None, bool or non-integer
+        # n_ensemble_members means we cannot establish the value is a real
+        # measurement, so it is dropped. Losing one row of one log-only
+        # signal costs nothing; recording a placeholder as a measurement is
+        # permanent and cannot be retrofitted out.
+        if field == "ensemble_spread_f" and not _is_real_ensemble(a):
+            continue
+        if not _is_finite_scalar(v):
+            continue
+        values[field] = v
+
+    mi = a.get("market_implied")
+    # `ticker` truthiness, not `is not None`: cron's call site falls back to
+    # "" when a market dict somehow lacks a ticker, and an empty string is
+    # not None -- it would sail past an is-not-None guard, fail the rain
+    # prefix test, and file the fit under the TEMPERATURE keys. That is the
+    # unit conflation this guard exists to prevent, reachable through a
+    # one-character path.
+    if isinstance(mi, dict) and ticker:
+        # The SAME market_implied slot carries a TEMPERATURE fit (degrees F)
+        # for KXHIGH*/KXLOW* and a monthly-RAIN-TOTAL fit (inches) for
+        # KXRAIN*M -- resolve_market_implied_for_analysis returns whichever
+        # applies, keyed by ticker. Filing both under "implied_mean" would
+        # pool inches into the temperature signal's graduation count, a unit
+        # category error. `predictions` avoids it only by accident:
+        # count_settled_signal_rows' require_settled_temp=True default
+        # excludes rain rows, and tracker documents that. This population
+        # has no settled_temp_f to filter on, so the separation has to be
+        # made here, at write time.
+        suffix = "_rain" if _is_rain_monthly_ticker(ticker) else ""
+        for field in _ATTEMPT_MARKET_IMPLIED_FIELDS:
+            v = mi.get(field)
+            if v is not None and _is_finite_scalar(v):
+                values[f"{field}{suffix}"] = v
+
+    # The generic path (order_executor._prediction_kwargs_from_analysis's
+    # `signals=a.get("signals")` equivalent). `a` is untyped, and this
+    # codebase uses "signals" for an unrelated concept elsewhere (cron.py's
+    # signals_cache), which that field's own comment already warns about --
+    # so a non-dict is ignored rather than trusted, and three further
+    # filters apply to each entry:
+    #   * underscore-prefixed keys are dropped, so nothing can land in
+    #     ATTEMPT_LEAD_TIME_KEY's reserved namespace;
+    #   * non-scalar values are dropped, because the None-filter above only
+    #     reaches the top level -- a nested null inside a dict value would
+    #     survive to the merge, where RFC 7396 reads it as "delete this
+    #     key" and would silently remove a stored value;
+    #   * a key that collides with one of the named fields is dropped
+    #     rather than silently overwriting it, since the two come from
+    #     different producers and last-writer-wins between them would be
+    #     invisible.
+    generic = a.get("signals")
+    if isinstance(generic, dict):
+        for k, v in generic.items():
+            key = str(k)
+            if v is None or key.startswith("_"):
+                continue
+            if not isinstance(v, int | float | str | bool):
+                _log.warning(
+                    "signal_values_from_analysis: dropping non-scalar "
+                    "generic signal %r (%s)",
+                    key,
+                    type(v).__name__,
+                )
+                continue
+            # NaN/Infinity pass isinstance(v, float). tracker's
+            # _signal_values_json serialises with allow_nan=False, so one
+            # non-finite generic value would raise there and cost the row
+            # its ENTIRE blob -- all the named signals and the market-
+            # implied fit with it. Dropping the one key here is the
+            # difference between losing 1 value and losing 14.
+            if not _is_finite_scalar(v):
+                _log.warning(
+                    "signal_values_from_analysis: dropping non-finite "
+                    "generic signal %r (%r)",
+                    key,
+                    v,
+                )
+                continue
+            # Compared against the full named-field namespace, NOT against
+            # `values`: a named field that was legitimately absent (dropped
+            # as a placeholder, or simply not computed) leaves its slot
+            # free, and a generic key would then land in it -- including
+            # under a bare market-implied key, which carries no ticker-based
+            # unit routing and so would put rain inches back under the
+            # temperature name.
+            if key in _ATTEMPT_NAMED_KEYS or key in values:
+                _log.warning(
+                    "signal_values_from_analysis: dropping generic signal "
+                    "%r -- it collides with %s",
+                    key,
+                    "a named field"
+                    if key in _ATTEMPT_NAMED_KEYS
+                    else "an earlier generic key",
+                )
+                continue
+            values[key] = v
+
+    if not values:
+        return None
+
+    # A bool is rejected outright: int(True) is 1, which would stamp a
+    # plausible-looking lead time onto a value that never had one.
+    # OverflowError (float('inf')) is caught alongside TypeError/ValueError
+    # because it is neither. (In practice every call site computes its own
+    # bare int(days_out) first and would raise before reaching here, so this
+    # is belt-and-braces for a future caller rather than a live path.)
+    days_out_raw = a.get("days_out")
+    days_out: int | None
+    if isinstance(days_out_raw, bool):
+        days_out = None
+    else:
+        try:
+            days_out = int(days_out_raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError, OverflowError):
+            days_out = None
+
+    # The stamp is written EITHER WAY. When the lead time is unknown the
+    # per-key value is JSON null, which RFC 7396 defines as "delete this
+    # key" -- so the merge removes any stamp an earlier scan left for these
+    # keys. Simply omitting the stamp would leave that earlier entry in
+    # place, still describing the values it was written for while the
+    # values beside it are overwritten: a row that positively asserts a
+    # lead time none of its contents has. Deleting is the honest outcome --
+    # "no lead time recorded" rather than a wrong one.
+    values[ATTEMPT_LEAD_TIME_KEY] = dict.fromkeys(values, days_out)
+    return values
+
+
 SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
     _SignalRegistryEntry(
         key="run_trend",
         name="Forecast run-to-run trend (delta/jumpy)",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_signal_column("run_trend_delta", multiday=True),
         correlation_note=(
             "Does positive run_trend_delta correlate with the forecast being "
@@ -10198,11 +10630,26 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "testable directly against settled_temp_f."
         ),
         backlog_ref="FORECAST RUN-TO-RUN TREND SIGNAL",
+        # No attempt_json_key, and this is the one omission worth flagging:
+        # run_trend and nbm_quantile_prob are the two slowest-accruing
+        # signals that have a live accrual rate at all -- both around
+        # 1 settled row/day against 2.1-2.6 for every other entry with a
+        # rate, measured over a fully-settled 14-day window on 2026-08-26.
+        # (hrrr_graduation is slower still at 0/day, but it has never
+        # produced a single observation, which is a different problem.)
+        # Re-measure rather than trusting those figures: they move daily,
+        # and count_settled_signal_rows is the accessor to use. So this is
+        # exactly the entry that would benefit most from the unbiased
+        # population. It is left out anyway because it is the only
+        # registry signal NOT already
+        # computed onto the analysis dict -- see _ATTEMPT_SIGNAL_FIELDS for
+        # why its up-to-3-HTTP-call fetch cannot go on the scan path.
+        attempt_json_key=None,
     ),
     _SignalRegistryEntry(
         key="market_implied",
         name="Market-implied temperature distribution (mean/sigma)",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_signal_column("implied_mean"),
         correlation_note=(
             "Same ENABLEMENT TRIGGER precedent as run_trend — check whether "
@@ -10210,11 +10657,31 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "settlement error before ever wiring this into the blend."
         ),
         backlog_ref="MARKET-IMPLIED TEMPERATURE DISTRIBUTION FROM THE FULL LADDER",
+        # No attempt_json_key, for the SAME reason market_implied_rain has
+        # none, and it took a second review round to notice the two entries
+        # share the property: this is a per-EVENT fit, and
+        # resolve_market_implied_for_analysis hands the identical value to
+        # every sibling rung of the ladder. analysis_attempts keys on
+        # (ticker, target_date), so one event contributes several rows --
+        # measured 2026-08-26, 584 scored rows across 514 distinct
+        # (city, date, market-family) groups, and the worst single group
+        # was 7 rungs.
+        #
+        # A COUNT(*) over those rows is therefore NOT the independent-sample
+        # count SIGNAL_GRADUATION_FLOOR was derived for: the floor would
+        # clear, and print green, on materially fewer real observations than
+        # 112. That is a smaller copy of the exact bad-decision affordance
+        # item 1 exists to remove, so it is not shipped. The values are
+        # still WRITTEN to the blob (as implied_mean/implied_sigma/
+        # fit_residual) -- only the count is withheld, and wiring it up
+        # needs a distinct-event count on the attempts side, which is its
+        # own piece of work. See backlog.txt for the follow-up entry.
+        attempt_json_key=None,
     ),
     _SignalRegistryEntry(
         key="market_implied_rain",
         name="Market-implied monthly-rain-total distribution (mean/sigma)",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_market_implied_rain(),
         correlation_note=(
             "Same ENABLEMENT TRIGGER precedent as market_implied (temperature) "
@@ -10226,11 +10693,24 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "RAIN'S MARKET-IMPLIED DISTRIBUTION (implied_mean/implied_sigma) "
             "HAS NO GRADUATION/SAMPLE-FLOOR TRACKING OF ITS OWN"
         ),
+        count_population_label="distinct settled city-months",
+        # No attempt_json_key despite the value BEING written to the blob
+        # (signal_values_from_analysis files it as implied_mean_rain, kept
+        # separate from the temperature fit's implied_mean so inches can
+        # never be pooled into degrees F). The reason is the third one in
+        # attempt_json_key's own list: count_fn here counts DISTINCT settled
+        # city-months, because resolve_market_implied_for_analysis hands the
+        # identical per-event fit to every sibling rung of a ladder. An
+        # attempts-side COUNT(*) would count rungs, so the two numbers would
+        # not be the same quantity -- exactly the conflation this batch
+        # exists to remove. Wiring it up needs a distinct-event count on the
+        # attempts side, which is its own piece of work.
+        attempt_json_key=None,
     ),
     _SignalRegistryEntry(
         key="gated_edge",
         name="Liquidity-gated edge divisor",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_signal_column("gated_edge"),
         correlation_note=(
             "Among trades gated_edge would have downgraded a tier (STRONG "
@@ -10239,6 +10719,7 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "stayed at the same tier under both?"
         ),
         backlog_ref="LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD",
+        attempt_json_key="gated_edge",
     ),
     _SignalRegistryEntry(
         key="richer_ml_features",
@@ -10251,11 +10732,15 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "whether these earn a place in ml_bias.py's training vector."
         ),
         backlog_ref="RICHER ML CALIBRATION FEATURES",
+        # Logged onto attempts even though this entry has no sample_floor:
+        # the count is informational either way, and the unbiased population
+        # is the one the `features` command would want to arbitrate on.
+        attempt_json_key="ensemble_spread_f",
     ),
     _SignalRegistryEntry(
         key="nbm_quantile_prob",
         name="NBM percentile-quantile probability",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_signal_column("nbm_quantile_prob"),
         correlation_note=(
             "Verify nbm_quantile_prob correlates with real settlement (same "
@@ -10263,11 +10748,12 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "ever wiring into forecast_prob or get_historical_sigma."
         ),
         backlog_ref="NBM PROBABILISTIC QUANTILES",
+        attempt_json_key="nbm_quantile_prob",
     ),
     _SignalRegistryEntry(
         key="ecmwf_consensus_gap",
         name="3-way ECMWF-AIFS consensus gap",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         # Counts settled ecmwf_consensus_gap_prob rows directly (its own
         # "accumulation clock", per its 2026-07-24 resolution note) rather
         # than raw ecmwf_aifs025_ensemble observations in
@@ -10284,11 +10770,12 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "don't guess at the 3-way threshold blind."
         ),
         backlog_ref="3-WAY MODEL_CONSENSUS CHECK",
+        attempt_json_key="ecmwf_consensus_gap_prob",
     ),
     _SignalRegistryEntry(
         key="gem_graduation",
         name="GEM (gem_global) graduation from track-only",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_model_obs("gem_global"),
         correlation_note=(
             "Per-city MAE pre-check: gem_global's MAE must not exceed the "
@@ -10299,11 +10786,12 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "independently of UKMO."
         ),
         backlog_ref="GRADUATE GEM/UKMO",
+        count_population_label="ensemble_member_scores observations",
     ),
     _SignalRegistryEntry(
         key="ukmo_graduation",
         name="UKMO (ukmo_global_ensemble_20km) graduation from track-only",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_model_obs("ukmo_global_ensemble_20km"),
         correlation_note=(
             "Same MAE pre-check as GEM, computed independently — UKMO's "
@@ -10312,11 +10800,12 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "that's a legitimate outcome, not a bug."
         ),
         backlog_ref="GRADUATE GEM/UKMO",
+        count_population_label="ensemble_member_scores observations",
     ),
     _SignalRegistryEntry(
         key="hrrr_graduation",
         name="HRRR (ncep_hrrr_conus) graduation from track-only",
-        sample_floor=20,
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_model_obs("ncep_hrrr_conus"),
         correlation_note=(
             "Same per-city worst-baseline-MAE pre-check as GEM/UKMO. HRRR is "
@@ -10330,6 +10819,7 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "question."
         ),
         backlog_ref="GRADUATE HRRR",
+        count_population_label="ensemble_member_scores observations",
     ),
     _SignalRegistryEntry(
         key="cross_city_pooling",
@@ -10363,10 +10853,21 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
     _SignalRegistryEntry(
         key="rain_forecast_blend",
         name="Rain monthly-model short-range forecast blend",
-        sample_floor=20,  # matches _RAIN_GATE_MIN_SAMPLES's own floor for this market family
+        # Until batch-81 this was 20, annotated "matches _RAIN_GATE_MIN_SAMPLES's
+        # own floor for this market family". It no longer does, deliberately:
+        # _RAIN_GATE_MIN_SAMPLES gates whether rain markets may be TRADED at
+        # all, which is a different question from whether this log-only blend
+        # signal has enough evidence to graduate into the blend, and only the
+        # second one is in this batch's scope. The coincidence of both being
+        # 20 was never a dependency -- nothing reads one to derive the other.
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
         count_fn=_count_signal_json_key(
             "rain_forecast_blend_prob", require_settled_temp=False
         ),
+        # Flows through signal_values_from_analysis' generic a["signals"]
+        # path, which is where _analyze_monthly_rain_trade already puts it --
+        # no per-signal wiring needed on the attempts side either.
+        attempt_json_key="rain_forecast_blend_prob",
         correlation_note=(
             "Once enough settled monthly-rain predictions carry this signal, "
             "compare rain_forecast_blend_prob's calibration/Brier score "
@@ -10377,6 +10878,76 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
         backlog_ref="RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL",
     ),
 )
+
+
+def _validate_attempt_json_keys() -> None:
+    """Fail at MODULE IMPORT if any entry's attempt_json_key names something
+    signal_values_from_analysis can never write.
+
+    Same guarantee, and the same reasoning, as _count_model_obs' validation
+    of its model name against KNOWN_FORECAST_MODEL_NAMES: a typo'd key would
+    otherwise fail silently forever. count_scored_attempt_signal_rows would
+    raise ValueError at report time, but get_signal_graduation_report's
+    per-entry try/except swallows it and reports the count as unavailable --
+    which renders identically to "this signal has no unbiased population",
+    on a surface nobody reads daily. Import-time is the only place this is
+    loud.
+
+    Checked against _ATTEMPT_PRODUCIBLE_KEYS (what this module can emit)
+    rather than tracker's SQL allowlist, deliberately: it needs no
+    module-level cross-import (the registry's stated convention), and a key
+    tracker would permit but nothing ever writes is just as dead as a typo.
+    tests/test_batch81_signal_floors.py pins the two lists against each
+    other so neither can drift.
+    """
+    for entry in SIGNAL_REGISTRY:
+        if (
+            entry.attempt_json_key is not None
+            and entry.attempt_json_key not in _ATTEMPT_PRODUCIBLE_KEYS
+        ):
+            raise ValueError(
+                f"SIGNAL_REGISTRY[{entry.key!r}].attempt_json_key="
+                f"{entry.attempt_json_key!r} is never written by "
+                "signal_values_from_analysis -- typo, or a real new signal "
+                "that needs adding to _ATTEMPT_SIGNAL_FIELDS / "
+                "_ATTEMPT_MARKET_IMPLIED_FIELDS / "
+                "_ATTEMPT_GENERIC_SIGNAL_KEYS first"
+            )
+
+
+_validate_attempt_json_keys()
+
+
+def _safe_signal_count(
+    key: str, label: str, count_fn: Callable[[], int] | None
+) -> int | None:
+    """Run one registry count query, returning None instead of raising.
+
+    A DB error in one signal's count must not blow up the report for every
+    OTHER registered signal — the pre-batch-81 behaviour, preserved here and
+    now shared by both populations' queries rather than duplicated.
+    """
+    if count_fn is None:
+        return None
+    try:
+        return count_fn()
+    except Exception as exc:
+        _log.warning("get_signal_graduation_report: %s %s failed: %s", key, label, exc)
+        return None
+
+
+def _floor_verdict(count: int | None, floor: int | None) -> bool | None:
+    """True/False once both a count and a floor exist, None otherwise.
+
+    None is a third state with its own meaning, not a falsy stand-in for
+    False: "this entry has no fixed floor" (richer_ml_features,
+    cross_city_pooling) and "the count is unavailable" both have to stay
+    distinguishable from "counted, and below the floor" — main.py renders
+    all three differently.
+    """
+    if count is None or floor is None:
+        return None
+    return count >= floor
 
 
 def get_signal_graduation_report() -> list[dict]:
@@ -10391,37 +10962,140 @@ def get_signal_graduation_report() -> list[dict]:
     mechanism _regime_blend_active/_pdopna_blend_active already use — so
     crossing a floor surfaces the same way any other auto-activation does,
     without this function itself deciding the signal is "active."
+
+    TWO FLOORS (batch-81 item 1). `floor_cleared` means the count reached
+    SIGNAL_GRADUATION_FLOOR — enough evidence to actually answer the
+    correlation question at 80% power. `tripwire_cleared` means it reached
+    the much lower SIGNAL_TRIPWIRE_FLOOR, which means only "rows are
+    arriving". Only the former fires an alert or prints green; see those
+    two constants for the derivation and for why the old single floor of 20
+    could not tell a real signal from noise.
+
+    TWO POPULATIONS (batch-81 item 2), reported side by side and NEVER
+    summed or max()'d into one number:
+
+      count          settled `predictions` rows. Selection-biased: a row
+                     only exists once the market cleared the placement
+                     gate, so this population structurally contains nothing
+                     below |forecast_prob - market_prob| = 0.0984.
+      attempt_count  scored `analysis_attempts` rows. Unbiased — every
+                     analysed market, measured minimum 0.0011 — and accrues
+                     ~6-7x faster. None when the entry has no
+                     attempt_json_key.
+
+    A single mixed count would be worse than either alone, so each gets its
+    own cleared-flag and its own alert key, and the alert text names which
+    population crossed. Three further asymmetries the caller must not paper
+    over:
+
+      * different settlement definitions — a real settled temperature
+        (via outcomes_valid) vs. a resolved binary outcome. The one
+        exception is rain_forecast_blend, whose count_fn already passes
+        require_settled_temp=False;
+      * attempt_count is a SUPERSET of the traded markets, not the untraded
+        complement, so the two are not independent samples and must never
+        be added;
+      * the attempts side has NO disputed-row exclusion equivalent to
+        outcomes_valid's — see count_scored_attempt_signal_rows for what it
+        does instead and why the two still differ.
+
+    `has_attempt_population` distinguishes "this entry has no unbiased
+    counterpart" (False) from "it has one and the query failed" (True with
+    attempt_count None) — without it both render identically and main.py's
+    "count unavailable" state is unreachable for that column.
+
+    NOTE on the alert's reach: this function's only caller is main.py's
+    interactive `cmd_signals`, so the "proactive" activation alert can only
+    ever be written while a human is already reading the report. That is
+    pre-existing and unchanged here, but it means the alert is a record of
+    a crossing rather than a notification of one.
     """
     report = []
     for entry in SIGNAL_REGISTRY:
-        count: int | None = None
-        floor_cleared: bool | None = None
-        if entry.count_fn is not None:
-            try:
-                count = entry.count_fn()
-            except Exception as exc:
-                _log.warning(
-                    "get_signal_graduation_report: %s count_fn failed: %s",
-                    entry.key,
-                    exc,
+        count = _safe_signal_count(entry.key, "count_fn", entry.count_fn)
+        attempt_count = (
+            _safe_signal_count(
+                entry.key,
+                "attempt count",
+                _count_attempt_json_key(entry.attempt_json_key),
+            )
+            if entry.attempt_json_key is not None
+            else None
+        )
+
+        floor_cleared = _floor_verdict(count, entry.sample_floor)
+        attempt_floor_cleared = _floor_verdict(attempt_count, entry.sample_floor)
+        tripwire_floor = (
+            SIGNAL_TRIPWIRE_FLOOR if entry.sample_floor is not None else None
+        )
+        tripwire_cleared = _floor_verdict(count, tripwire_floor)
+        attempt_tripwire_cleared = _floor_verdict(attempt_count, tripwire_floor)
+
+        # One alert per (signal, population), and the floor value is part of
+        # the dedup key on purpose: _notify_feature_activation is a
+        # write-once-per-key file, so a key of "signal_<x>_floor" would let
+        # a signal that fired at the OLD floor of 20 permanently suppress
+        # its own alert at the new one. Embedding the number makes any
+        # future floor change self-healing the same way.
+        for pop, label, noun, n, cleared in (
+            (
+                "predictions",
+                # Per-entry, not hard-coded: four entries do not count
+                # `predictions` at all. See count_population_label.
+                entry.count_population_label,
+                "settled",
+                count,
+                floor_cleared,
+            ),
+            (
+                "attempts",
+                "unbiased analysis_attempts",
+                # Not "settled": this population's settledness is a resolved
+                # binary outcome, not a settled temperature, and both counts'
+                # own docstrings turn on keeping that distinction visible.
+                "scored",
+                attempt_count,
+                attempt_floor_cleared,
+            ),
+        ):
+            if cleared:
+                _notify_feature_activation(
+                    f"signal_{entry.key}_floor{entry.sample_floor}_{pop}",
+                    f"{entry.name} has {n} {noun} samples in the {label} "
+                    f"population (graduation floor {entry.sample_floor}) — "
+                    "enough to run the correlation check on that population.",
+                    {
+                        # n_settled is kept for the predictions population
+                        # because _regime_blend_active and the rest of
+                        # feature_activations.json already use that name.
+                        # The attempts population's count is SCORED, not
+                        # settled -- the distinction the `noun` above exists
+                        # to keep visible -- so it gets its own key rather
+                        # than being filed under a word that is wrong for it.
+                        ("n_settled" if pop == "predictions" else "n_scored"): n,
+                        "sample_floor": entry.sample_floor,
+                        "population": pop,
+                    },
                 )
-            if count is not None and entry.sample_floor is not None:
-                floor_cleared = count >= entry.sample_floor
-                if floor_cleared:
-                    _notify_feature_activation(
-                        f"signal_{entry.key}_floor",
-                        f"{entry.name} has {count} settled samples "
-                        f"(floor {entry.sample_floor}) — ready for the "
-                        "correlation check before considering graduation.",
-                        {"n_settled": count, "sample_floor": entry.sample_floor},
-                    )
+
         report.append(
             {
                 "key": entry.key,
                 "name": entry.name,
                 "sample_floor": entry.sample_floor,
+                "tripwire_floor": tripwire_floor,
                 "count": count,
                 "floor_cleared": floor_cleared,
+                "tripwire_cleared": tripwire_cleared,
+                # False = this entry has no unbiased counterpart at all.
+                # True with attempt_count None = it has one and the query
+                # failed. Without this the two are indistinguishable, and
+                # main.py's "count unavailable" state is unreachable for
+                # the unbiased column.
+                "has_attempt_population": entry.attempt_json_key is not None,
+                "attempt_count": attempt_count,
+                "attempt_floor_cleared": attempt_floor_cleared,
+                "attempt_tripwire_cleared": attempt_tripwire_cleared,
                 "correlation_note": entry.correlation_note,
                 "backlog_ref": entry.backlog_ref,
             }

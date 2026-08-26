@@ -1311,67 +1311,201 @@ class TestCmdSignals:
     """backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b): the
     `py main.py signals` CLI command displaying get_signal_graduation_report()."""
 
-    def _row(self, **overrides):
-        row = {
-            "key": "test_sig",
-            "name": "Test Signal",
-            "sample_floor": 20,
-            "count": 5,
-            "floor_cleared": False,
-            "correlation_note": "check the thing",
-            "backlog_ref": "SOME BACKLOG ENTRY",
-        }
+    def _row(self, monkeypatch, tmp_path, **overrides):
+        """One report row, DERIVED from get_signal_graduation_report()'s own
+        output rather than hand-listed.
+
+        It used to be a literal dict, which made it a drift surface: batch-81
+        added five keys to the producer and every hand-written copy of the
+        shape broke at once (KeyError, not a meaningful assertion failure).
+        Building it from the real function means these tests exercise
+        whatever the producer actually emits, and only the fields a given
+        test cares about are overridden."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_FEATURE_ACTIVATIONS_PATH", tmp_path / "fa.json")
+        monkeypatch.setattr(
+            wm,
+            "SIGNAL_REGISTRY",
+            (
+                wm._SignalRegistryEntry(
+                    key="test_sig",
+                    name="Test Signal",
+                    sample_floor=20,
+                    count_fn=lambda: 5,
+                    correlation_note="check the thing",
+                    backlog_ref="SOME BACKLOG ENTRY",
+                ),
+            ),
+        )
+        row = wm.get_signal_graduation_report()[0]
         row.update(overrides)
         return row
 
-    def test_prints_signal_name_and_backlog_ref(self, monkeypatch, capsys):
+    def _render(self, monkeypatch, capsys, rows):
         import main
 
         monkeypatch.setattr(
-            "weather_markets.get_signal_graduation_report",
-            lambda: [self._row()],
+            "weather_markets.get_signal_graduation_report", lambda: rows
         )
         main.cmd_signals()
-        out = capsys.readouterr().out
+        return capsys.readouterr().out
+
+    def test_prints_signal_name_and_backlog_ref(self, monkeypatch, tmp_path, capsys):
+        out = self._render(monkeypatch, capsys, [self._row(monkeypatch, tmp_path)])
         assert "Test Signal" in out
         assert "SOME BACKLOG ENTRY" in out
         assert "check the thing" in out
 
-    def test_floor_cleared_shows_cleared_status(self, monkeypatch, capsys):
-        import main
-
-        monkeypatch.setattr(
-            "weather_markets.get_signal_graduation_report",
-            lambda: [self._row(count=25, floor_cleared=True)],
+    def test_floor_cleared_shows_cleared_status(self, monkeypatch, tmp_path, capsys):
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [self._row(monkeypatch, tmp_path, count=25, floor_cleared=True)],
         )
-        main.cmd_signals()
-        out = capsys.readouterr().out
         assert "25/20" in out
         assert "floor cleared" in out
 
     def test_no_fixed_floor_shows_no_floor_status_not_a_ratio(
-        self, monkeypatch, capsys
+        self, monkeypatch, tmp_path, capsys
     ):
-        import main
-
-        monkeypatch.setattr(
-            "weather_markets.get_signal_graduation_report",
-            lambda: [self._row(sample_floor=None, count=100, floor_cleared=None)],
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    sample_floor=None,
+                    count=100,
+                    floor_cleared=None,
+                )
+            ],
         )
-        main.cmd_signals()
-        out = capsys.readouterr().out
         assert "no fixed floor" in out
         assert "100/" not in out  # must not fabricate a ratio against nothing
 
-    def test_count_unavailable_does_not_crash(self, monkeypatch, capsys):
-        import main
-
-        monkeypatch.setattr(
-            "weather_markets.get_signal_graduation_report",
-            lambda: [self._row(sample_floor=20, count=None, floor_cleared=None)],
+    def test_count_unavailable_does_not_crash(self, monkeypatch, tmp_path, capsys):
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    sample_floor=20,
+                    count=None,
+                    floor_cleared=None,
+                )
+            ],
         )
-        main.cmd_signals()  # must not raise
-        out = capsys.readouterr().out
+        assert "count unavailable" in out
+
+    def test_tripwire_is_reported_but_not_as_a_cleared_floor(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """batch-81: a count between the tripwire and the graduation floor is
+        exactly the state that used to print a green "floor cleared". It must
+        now say so explicitly and NOT use the cleared wording, which is the
+        bad-decision affordance backlog.txt's "sample_floor=20 CLEARS AT ~27%
+        STATISTICAL POWER" entry filed."""
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    sample_floor=112,
+                    tripwire_floor=20,
+                    count=25,
+                    floor_cleared=False,
+                    tripwire_cleared=True,
+                )
+            ],
+        )
+        assert "25/112" in out
+        assert "not yet decisive" in out
+        assert "floor cleared" not in out
+
+    def test_both_populations_are_labelled_and_shown_separately(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """batch-81 item 2: the report must never present one number whose
+        population is ambiguous. Both counts appear, each under its own
+        label, and the header says what each one is."""
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    sample_floor=112,
+                    count=77,
+                    has_attempt_population=True,
+                    attempt_count=13,
+                    attempt_floor_cleared=False,
+                    attempt_tripwire_cleared=False,
+                )
+            ],
+        )
+        assert "modelled:" in out
+        assert "unbiased:" in out
+        assert "77/112" in out
+        assert "13/112" in out
+        # 77 + 13 = 90; neither population is anywhere near 112 and no
+        # pooled number may appear.
+        assert "90/112" not in out
+
+    def test_a_signal_with_no_unbiased_counterpart_omits_that_line(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """run_trend, market_implied_rain and the ensemble_member_scores
+        graduations have no analysis_attempts counterpart. A "0/112" line for
+        them would read as "no rows yet" rather than "this population does
+        not apply", so the line is dropped entirely."""
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    count=40,
+                    has_attempt_population=False,
+                    attempt_count=None,
+                )
+            ],
+        )
+        assert "modelled:" in out  # positive control: rendering did happen
+        assert "unbiased:" not in out
+
+    def test_a_failed_unbiased_count_still_shows_the_line_as_unavailable(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """batch-81: a DB error and a deliberate absence both leave
+        attempt_count None. Gating the line on that would hide the error
+        behind the same silence as the absence -- the operator would read
+        "this signal has no unbiased population" when the truth is "the
+        query failed". has_attempt_population separates them."""
+        out = self._render(
+            monkeypatch,
+            capsys,
+            [
+                self._row(
+                    monkeypatch,
+                    tmp_path,
+                    sample_floor=112,
+                    count=40,
+                    has_attempt_population=True,
+                    attempt_count=None,
+                    attempt_floor_cleared=None,
+                    attempt_tripwire_cleared=None,
+                )
+            ],
+        )
+        assert "unbiased:" in out
         assert "count unavailable" in out
 
 

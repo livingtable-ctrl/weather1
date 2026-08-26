@@ -2,6 +2,105 @@ BACKLOG — future improvements to implement when ready
 ======================================================
 
 
+[OPEN 2026-08-26 -- found by batch-81's second opus review round, which
+  noticed the batch had documented this hazard for the rain entry and not
+  carried the reasoning across to the temperature one] THE TWO MARKET-IMPLIED
+  SIGNALS CANNOT USE THE UNBIASED POPULATION UNTIL IT HAS A DISTINCT-EVENT
+  COUNT
+Priority: Medium -- nothing is wrong in production and no floor is affected
+  today, because batch-81 shipped both entries with attempt_json_key=None
+  rather than a count it could not justify. This is the work needed to turn
+  that conservative choice back into the ~6-7x accrual gain the rest of the
+  signals got.
+Files: tracker.py (count_scored_attempt_signal_rows), weather_markets.py
+  (the market_implied and market_implied_rain registry entries)
+
+Problem:
+  The market-implied distribution is fitted once per EVENT, and
+  resolve_market_implied_for_analysis hands the identical fitted value to
+  every sibling rung of that event's ladder. `analysis_attempts` keys on
+  (ticker, target_date), so one event contributes one row per rung.
+
+  Measured 2026-08-26: 584 scored attempt rows across 514 distinct
+  (city, target_date, 6-char market family) groups = 1.14 rows/event, and
+  1.51 against the coarser (city, target_date). The worst single group was
+  7 rungs (Chicago, 2026-08-01, KXRAIN).
+
+  A COUNT(*) over those rows is therefore not the independent-sample count
+  SIGNAL_GRADUATION_FLOOR was derived for -- the floor would clear, and the
+  report would print green, on materially fewer real observations than 112.
+  That is a smaller copy of the exact affordance batch-81 item 1 removed,
+  which is why both entries ship with no attempt_json_key rather than with
+  an inflated one. The VALUES are still written to the blob
+  (implied_mean/implied_sigma/fit_residual, and implied_mean_rain and
+  friends for KXRAIN*M), so no data is being lost meanwhile -- only the
+  count is withheld.
+
+What the fix looks like:
+  A distinct-event count mode on count_scored_attempt_signal_rows, then
+  attempt_json_key restored on both entries. The event key is the hard part
+  and should not be guessed: temperature fits are keyed
+  (city, date_iso, var) on the produce side, and analysis_attempts stores
+  city and target_date but NOT var -- so the var has to come from the
+  ticker prefix (KXHIGH vs KXLOW), and rain's event key is
+  (city, "RAIN", year, month) instead. Reuse
+  market_implied_rain_event_key()/_var_from_ticker_prefix() rather than
+  re-deriving either, or the count and the fit will disagree about what an
+  event is.
+
+Why not now:
+  Getting the event key wrong produces a count that looks right and is
+  wrong, which is worse than no count -- and no count is the state batch-81
+  deliberately shipped. Wants its own session with the produce-side key
+  functions in front of it.
+
+
+[OPEN 2026-08-26 -- found by batch-81 while running its scoped regression
+  suite; confirmed pre-existing by running the same test against a clean
+  detached worktree at origin/master, so it is batch-78's to answer, not
+  batch-81's] tests/test_dead_code_scan.py IS RED ON MASTER -- BATCH-78'S
+  TWO PRUNERS ARE WIRED BUT INVISIBLE TO THE SCANNER
+Priority: Medium -- nothing is wrong in production (both functions really
+  are called every Monday), but a permanently-red test is worse than a
+  failing one: the next session to run this file has to re-derive that the
+  failure is not theirs, which cost batch-81 a full clean-master run.
+Files: cron.py (the Monday sweep's aliased imports ~:1663 and the
+  `for _pruner, _days, _what in (...)` indirection loop below them),
+  tests/test_dead_code_scan.py (_DEAD_CODE_ALLOWLIST)
+
+Problem:
+  test_no_new_dead_code_outside_allowlist fails with:
+      tracker.py:prune_ensemble_member_values (TESTED, NO PROD CALL SITE)
+      tracker.py:prune_orderbook_depth_snapshots (TESTED, NO PROD CALL SITE)
+
+  Both ARE wired, into cron.py's Monday sweep. The scanner is regex-based
+  and looks for `name(` call syntax, and neither name ever appears that way:
+  they are imported under aliases (`as _prune_member_values` / `as
+  _prune_depth`), then put in a tuple and invoked as `_pruner(days=_days)`. Two
+  layers of indirection, each individually reasonable, that together make a
+  genuinely-called function read as fully dead.
+
+  Same failure mode weather_markets._count_market_implied_rain already hit
+  in 2026-08-02 and solved by matching the factory-call convention exactly
+  rather than by an allowlist entry.
+
+What the fix looks like:
+  Either (a) an allowlist entry for each with the concrete reason ("invoked
+  via the _pruner indirection in cron's Monday sweep"), or (b) restructure
+  the loop so the real names appear at a call site. (b) is closer to the
+  _count_market_implied_rain precedent and keeps the scanner honest; (a) is
+  one line. De-aliasing the imports alone is NOT sufficient -- the call is
+  through the loop variable, so the name still never appears with parens.
+
+Why not now:
+  Choosing between (a) and (b) is a judgment call about batch-78's own loop
+  -- which exists for a stated reason (each pruner wrapped individually so
+  one failure cannot suppress the whole sweep for a week) -- and the
+  allowlist demands a concrete reason its author is best placed to write.
+  batch-81 found it, verified it was not its own, and left it rather than
+  quietly widening its scope into another batch's design.
+
+
 [OPEN 2026-08-26 -- found by the opus review (effort=high) of batch-78
   item 1; the consequence lands in tracker.py which batch-78 owned, but the
   fix lands in main.py which it did not] `watch --auto` SCANS AND PLACES BUT
@@ -13454,7 +13553,18 @@ When to revisit:
 
 RE-VERIFIED 2026-08-22 (batch-16, items #2/#3/#4 still open -- deliberately
   deferred, no code change): min_n=20 has cleared for both models (36
-  settled observations each, via `py main.py signals`). Ran the concrete
+  settled observations each, via `py main.py signals`).
+  [SUPERSEDED 2026-08-26 by batch-81. That floor no longer exists: 20 bought
+  ~21% statistical power and was raised to 112 (80% power) -- see backlog
+  entry "THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27% STATISTICAL
+  POWER" for the derivation. Re-measured 2026-08-26: gem_global and
+  ukmo_global_ensemble_20km hold 42 settled observations each, so NEITHER
+  clears the real floor, and both need roughly double what they have. They
+  each accrue at ~2.3/day (each, not 2.3 combined), so expect ~30 days. The "min_n=20 has
+  cleared" reading above is kept verbatim for history but must not be cited
+  as a current graduation status. Neither model has an analysis_attempts
+  counterpart to accelerate it -- their samples live in
+  ensemble_member_scores, not on a per-market analysis dict.] Ran the concrete
   MAE pre-check (#4) -- but per-city data is far too thin for the per-city
   framing the entry itself specifies (max 6 observations for any single
   city/model pair, most cells 1-4; get_member_accuracy's own per-city floor
@@ -38387,9 +38497,11 @@ When to revisit:
   us" question is genuinely interesting (see the measured 1.41x median) and
   is blocked on this.
 
-[OPEN 2026-08-25 -- found by batch-53's replay while validating the NBM
-  quantile signal, which had just cleared its floor. The floor turned out
-  not to mean what it looks like it means, and nine signals share it.]
+[RESOLVED 2026-08-26 batch-81 -- floor raised 20 -> 112 (80% power, derived
+  from this entry's own Hanley-McNeil table), 20 kept as a silent tripwire,
+  and signal values now logged onto the unbiased analysis_attempts
+  population so the new floor is reachable in days rather than months. Full
+  narrative at the end of this entry.]
   THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27% STATISTICAL POWER --
   IT CANNOT DISTINGUISH A REAL SIGNAL FROM NOISE
 Priority: Medium-High -- no signal has been wired live on the strength of a
@@ -38405,10 +38517,16 @@ Files: weather_markets.py (_SignalRegistryEntry ~8623, the nine
   block ~8918-8945), main.py (the report printer ~7418-7440)
 
 Problem:
-  Nine of the eleven registry entries use sample_floor=20: run_trend,
-  market_implied, market_implied_rain, gated_edge, richer_ml_features,
-  nbm_quantile_prob, ecmwf_consensus_gap, gem_graduation, ukmo_graduation,
-  hrrr_graduation. (cross_city_pooling and rain_forecast_blend use None.)
+  [CORRECTED 2026-08-26 by batch-81, which enumerated the _SignalRegistryEntry
+  blocks rather than trusting this paragraph. The original text read "Nine of
+  the eleven registry entries use sample_floor=20" and listed
+  richer_ml_features among them and rain_forecast_blend among the Nones. All
+  three claims were wrong; the corrected text follows.]
+
+  TEN of the TWELVE registry entries use sample_floor=20: run_trend,
+  market_implied, market_implied_rain, gated_edge, nbm_quantile_prob,
+  ecmwf_consensus_gap, gem_graduation, ukmo_graduation, hrrr_graduation,
+  rain_forecast_blend. (richer_ml_features and cross_city_pooling use None.)
 
   At n=20-26, a binary-outcome signal cannot be distinguished from noise.
   Worked through on nbm_quantile_prob, which cleared the floor with 26
@@ -38472,6 +38590,243 @@ Why not now:
 When to revisit:
   Before any signal is wired live on the strength of a cleared floor. If
   that is about to happen, this entry is the blocker.
+
+RESOLUTION 2026-08-26 (batch-81, both items):
+
+  ITEM 1 -- the floor. sample_floor is now 112 on all ten entries that had
+  20, via a named constant weather_markets.SIGNAL_GRADUATION_FLOOR whose
+  derivation is recorded beside it (this entry's own closing ask). 20
+  survives as weather_markets.SIGNAL_TRIPWIRE_FLOOR: reported, dimmed,
+  labelled "above the 20 tripwire, not yet decisive", and firing no alert.
+  That is this entry's own preferred option, chosen by the user over a
+  single floor.
+
+  Deriving 112. Re-solving the Hanley-McNeil table above (AUC 0.657, 9
+  positives / 17 negatives, two-sided alpha=0.05) for 80% power: 112 is the
+  smallest INTEGER n reaching it (power 80.4% at n=112, 79.7% at n=111).
+  The continuous crossing is n=111.2; a sqrt(n)-scaling approximation of the
+  same curve gives 112.45, which is the figure an earlier draft of this
+  block quoted and then rounded DOWN -- the exact error the next paragraph
+  criticises in the handoff. The integer solve is the one that matters and
+  is what the test pins. The re-derivation reproduces this entry's own published
+  SE/CI/power at n=26, 50, 100 and 200 to rounding, so the basis is the one
+  this entry already established, not a new one. tests/
+  test_batch81_signal_floors.py recomputes it from Hanley-McNeil rather
+  than restating the number, and pins both bounds (n=112 reaches 80%,
+  n=111 does not).
+
+  Two numbers in the batch-81 handoff did NOT survive that re-derivation
+  and are recorded here so they are not reintroduced. It proposed 86, back-
+  solved from "n=20 -> 27% power" -- but this entry's 27% is at n=26 (the
+  row count nbm_quantile_prob actually cleared on), not 20. And even on its
+  own effect size the formula gives 86.52 taking its stated delta=0.3012
+  at face value (86.50 from the unrounded back-solve) -- either way above
+  86, so it was rounded the wrong way and buys 79.8% power, not the 80%
+  claimed. On the corrected basis 86 is
+  ~69% power. The floor of 20 this replaces bought 21.4%, not 27%.
+
+  Caveat worth carrying: 0.657 is an observed point estimate on 26 rows, so
+  it is optimistic. If a signal's true AUC is 0.62, 80% power needs n=198.
+  112 makes the question answerable for a good signal; it does not promise
+  a marginal one will resolve.
+
+  Measured effect, 2026-08-26. Seven signals reported "floor cleared" in
+  green under 20 -- run_trend (28), market_implied (78), gated_edge (89),
+  nbm_quantile_prob (27), ecmwf_consensus_gap (77), gem_graduation (42),
+  ukmo_graduation (42). Under 112, none do. Note the ordering flip that
+  motivated the entry: nbm_quantile_prob, the signal that cleared the floor
+  and fired the activation alert, was the second-furthest of all of them
+  from being measurable. It looked ready because the bar was wrong.
+
+  (The batch-81 handoff's own cost table was also wrong, in a way worth
+  recording: its counts came from a query WITHOUT the settled_temp_f filter
+  the registry actually applies -- it read gated_edge as 110 against a real
+  89, and run_trend as 40 against a real 28. Re-derive registry counts by
+  running count_settled_signal_rows, not by hand-writing a similar query.)
+
+  ITEM 2 -- the population, which is the larger half. Every floor counted
+  settled `predictions` rows: a population log_prediction only writes past
+  the placement gate, so it structurally holds nothing below
+  |forecast_prob - market_prob| = 0.0984. `analysis_attempts` holds every
+  analysed market (measured minimum 0.0011) and accrues ~6-7x faster, but
+  carried no signal values, so none of it reached a floor. (19.3 scored
+  analysis_attempts rows/day against 2.93 settled predictions rows/day,
+  each over a fully-settled 14-day window. Quote this as ~6-7x rather than
+  the 6.59x the division gives: the two are measured on different date
+  columns -- analyzed_at against the market date -- and across the
+  fully-settled windows checked the ratio ran 6.2-7.3.)
+
+  It does now: migration v79 adds analysis_attempts.signal_values, a JSON
+  dict mirroring predictions.signal_values -- one column, no per-signal
+  migration ever, and the generic a["signals"] path flows through it so a
+  future log-only signal needs no wiring at all. Built by
+  weather_markets.signal_values_from_analysis from values analyze_trade and
+  the scan loop already computed, so no network call is added to a scan.
+  run_trend is the one exclusion, and the painful one -- it is the slowest-
+  accruing signal in the registry, and it is also the only one not on the
+  analysis dict, fetched instead with up to 3 sequential HTTP calls per row.
+
+  Projected accrual from zero at each signal's measured coverage:
+  gated_edge 6 days to 112, ecmwf_consensus_gap 7, implied_mean 8,
+  nbm_quantile_prob 17. On the biased population, the same from-zero
+  measure over the same fully-settled window is 42 / 44 / 52 / 112 days
+  (run_trend, which has no unbiased counterpart, is 121). So roughly a 6x
+  compression -- graduation becomes a weekly question instead of a
+  quarterly one.
+
+  The two populations are reported side by side and NEVER summed --
+  different settlement definitions (a settled temperature vs a resolved
+  binary outcome), and analysis_attempts is a SUPERSET of the traded
+  markets rather than their complement, so a pooled count would double-
+  count every trade. `py main.py signals` prints them as separate
+  "modelled:" and "unbiased:" lines and each fires its own alert naming its
+  own population. A test mutation that pools them fails.
+
+  Two implementation details that are load-bearing and easy to undo by
+  accident. (a) The upsert merges the blob PER KEY via json_patch rather
+  than replacing it: a market is re-analysed every scan and this table
+  upserts on (ticker, target_date), and 366 of the 584 scored rows are
+  days_out=0 -- where nbm_quantile_prob is skipped entirely on the METAR-
+  locked path -- so wholesale overwrite would have erased most of exactly
+  the signal that motivated this batch. (b) Because of (a) a row's values
+  can come from different scans, so each value's lead time is stamped
+  beside it under a reserved "_days_out" key. That cannot be retrofitted
+  onto rows already written, which is why it ships with the column.
+
+  Also: the activation-alert dedup key now embeds the floor value and the
+  population (signal_<key>_floor112_predictions). It used to be
+  signal_<key>_floor, which -- since _notify_feature_activation writes once
+  per key and never overwrites -- would have let an alert fired at 20
+  permanently suppress the alert at 112. The signal would have crossed the
+  real floor in silence.
+
+  Tests: 78 in tests/test_batch81_signal_floors.py, plus 4 new and 4
+  rewritten in tests/test_p1_remaining.py's TestCmdSignals (4 -> 8), 1
+  updated in tests/test_forecasting.py, and a _RAW_OUTCOMES_ALLOWLIST entry
+  in tests/test_disputed_row_guard.py. The
+  report-row fixture in tests/test_p1_remaining.py's TestCmdSignals was
+  hand-listed and broke as a shape drift; it now derives the row from
+  get_signal_graduation_report itself.
+
+  Mutation testing: every production guard this batch adds was mutated
+  individually and confirmed to break a named test. Three reviewers ran
+  their own batteries on top of that (44 mutations in one case) and found
+  two SURVIVORS, both since closed: the merge's NULL-stored-side guard --
+  whose only real exercise is "first scan computed nothing, a later one
+  did", an ordering no original test used -- and a registry entry
+  hardcoding `sample_floor=112` instead of naming the constant, which a
+  count-by-value assertion cannot see. Both now have tests. Recorded
+  because an earlier draft of this block claimed "every causal claim
+  mutation-tested", which was not true at the time it was written.
+
+  WHAT THE REVIEWS CAUGHT. Three independent opus reviews (effort=high,
+  scoped to item 1 / item 2 / the tests+records) returned 33 findings, no
+  HIGH. All three independently re-derived the power table and the
+  population measurements and reproduced them. The findings worth carrying
+  forward, because each is a trap the next signal-logging change can fall
+  into the same way:
+
+  * The temperature and monthly-rain market-implied fits share ONE slot on
+    the analysis dict -- implied_mean is degrees F for KXHIGH*/KXLOW* and
+    INCHES for KXRAIN*M. `predictions` avoids pooling them only by
+    accident: count_settled_signal_rows' require_settled_temp=True default
+    excludes rain rows. This population has no settled_temp_f to filter on,
+    so the first draft would have pooled 27 of 584 scored rows of inches
+    into the temperature signal's graduation count -- reintroducing, one
+    layer down, exactly the conflation this batch exists to remove. The fit
+    is now written under implied_mean_rain, and `ticker` is a REQUIRED
+    argument of signal_values_from_analysis so no future call site can
+    silently pool them again.
+  * ensemble_spread_f is 0.0, not None, on the METAR-locked same-day path,
+    where there is no ensemble at all. Dropping only None let that sentinel
+    overwrite a real longer-lead reading through the per-key merge AND
+    stamp itself as a genuine same-day capture -- on the 63% of rows that
+    are days_out=0. Now skipped when n_ensemble_members == 0.
+  * NaN reaches the same "delete this key" outcome as an explicit null:
+    json.dumps emits bare NaN by default and SQLite's JSON5 parser maps it
+    to null. Fixed with allow_nan=False. The None-strip and the non-dict
+    rejection also moved into tracker's _signal_values_json, so the module
+    that owns the RFC 7396 merge owns its invariants rather than trusting
+    callers.
+  * json_patch raises on an unparseable STORED blob, and the batch writer
+    is one executemany in one transaction -- so a single corrupt row would
+    have rolled back a whole scan's attempt batch, losing analyzed_at /
+    forecast_prob / market_prob / days_out / was_traded for 100+ markets.
+    A json_valid() guard now costs that one row its blob instead.
+  * The attempts count inherits no disputed-row filter (outcomes_valid is a
+    join this query does not make), and tests/test_disputed_row_guard.py
+    scans for `JOIN outcomes` so is structurally blind to it. Zero disputed
+    rows exist today, so this was latent; the exclusion is now explicit,
+    written as NOT EXISTS rather than a join so orphaned attempts -- the
+    whole point of this population -- are not dropped.
+  * A typo'd attempt_json_key would have failed silently forever, the exact
+    hazard _count_model_obs' build-time validation already exists for.
+    _validate_attempt_json_keys() now runs at module import.
+
+  WHAT THE SECOND REVIEW ROUND CAUGHT, i.e. bugs the FIXES introduced.
+  Worth recording separately, because this repo's workflow requires a fix
+  round to get its own independent review for exactly this reason, and it
+  paid for itself again:
+
+  * The ensemble-sentinel guard was written as `n_ensemble_members == 0`,
+    but _compute_ensemble_spread returns its 0.0 placeholder at
+    `len(values) < 2`, and model_temps only ever holds "nbm" and "ecmwf" --
+    so the domain is {0,1,2} and n=1 (one provider fetched, the other
+    raised: a routine upstream hiccup) produced the identical placeholder
+    and was NOT skipped. The first fix missed a third of its own domain.
+    Now `>= 2`, failing closed on missing/None/bool, via a named constant
+    tied to the producer's own threshold.
+  * The activation alert had "selection-biased predictions" hard-coded per
+    population slot, which is false for the four entries whose count_fn
+    reads ensemble_member_scores or distinct city-months. The alert is
+    write-once and persisted, and is read days later without the report's
+    surrounding context -- so it is now a per-entry
+    count_population_label. This was a REGRESSION the first fix round
+    introduced: the pre-batch text was population-neutral.
+  * The generic-path collision guard compared against `values` (what was
+    actually collected) rather than the named-key namespace, so a named
+    field that had legitimately been dropped -- including by the sentinel
+    guard above -- left its slot open for a generic key to occupy, with no
+    unit routing.
+  * `test_cron_files_the_blob_under_the_key_the_writer_reads` was VACUOUS:
+    it scanned every dict literal in cron.py for a "signals" key, and
+    cron.py has a second, unrelated one for the web dashboard. Renaming the
+    real key survived it. It now binds to the dict that lexically contains
+    the builder call.
+  * The _RAW_OUTCOMES_ALLOWLIST entry written for the dispute fix asserted
+    that an inner join "would silently drop the majority of the sample".
+    Measured: 0 of 584 scored attempt rows lack an outcomes row. The 494
+    figure is rows with no PREDICTIONS row, which is a different
+    orphanhood. It also claimed anti-joining outcomes_valid would read
+    absence as "not disputed" when it in fact returns disputed-OR-absent,
+    the inverse. Both rewritten -- an allowlist entry carrying a false
+    measurement is worse than the failing test it silences.
+  * `test_every_producible_key_is_countable` hand-recomputed the producible
+    set instead of reading _ATTEMPT_PRODUCIBLE_KEYS, omitting the three
+    "_rain" keys -- the ones carrying the entire unit-separation half of
+    item 2 -- so dropping implied_mean_rain from the allowlist survived the
+    whole suite.
+
+  A pleasing consequence of that last dispute fix: adding the exclusion made
+  tests/test_disputed_row_guard.py START failing, because its regex looks
+  for `JOIN outcomes` / `FROM outcomes` and the query previously referenced
+  no outcomes table at all. The guard was blind to this divergence for
+  exactly as long as the divergence existed, and became able to see it only
+  once it was fixed. It now carries a _RAW_OUTCOMES_ALLOWLIST entry that is
+  the inverse of every other entry there: this query touches raw `outcomes`
+  precisely IN ORDER TO exclude disputed rows, and cannot use
+  outcomes_valid, because an attempt row need not have an outcomes row at
+  all (an orphaned attempt is the unbiased population) and because a
+  disputed ticker's absence from that view would read as "not disputed".
+
+  Not in scope, deliberately: weather_markets._RAIN_GATE_MIN_SAMPLES is
+  also 20 and rain_forecast_blend's floor used to be annotated as matching
+  it. That constant gates whether rain markets may be TRADED at all, which
+  is a different question from whether a log-only signal has enough
+  evidence to graduate, and only the second is this entry's subject. The
+  annotation is corrected in place rather than left asserting a match that
+  no longer holds. Whether a live trading gate should also sit at n=20 is
+  its own question and is NOT answered here.
 
 [RESOLVED 2026-08-26 -- found while answering "how long until this could
   graduate to live trading?". The answer is dominated by one number, and
