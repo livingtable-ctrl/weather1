@@ -40,7 +40,40 @@ def test_kelly_fraction_never_exceeds_cap(our_prob, price):
     kelly_frac=st.floats(min_value=0.0, max_value=0.25),
     price=st.floats(min_value=0.01, max_value=0.99),
 )
-@settings(max_examples=200)
+# deadline=None (batch-80 item 4). This test flaked with hypothesis'
+# DeadlineExceeded under machine load, reproduced on unmodified master.
+# The deadline is the wrong instrument here: what it actually times is this
+# test's OWN per-example fixture I/O (a TemporaryDirectory created and torn
+# down 200 times over), not kelly_quantity(), which is pure arithmetic and
+# cannot regress in a way a wall clock would catch. Measured 2026-08-25:
+# ~0.57s for all 200 examples (~3ms each) against a 200ms default, so a
+# failure needs a ~65x stall -- i.e. an external stall, never a code change.
+#
+# Ruled OUT as the cause before retuning (the batch-80 handoff asked for
+# this explicitly): tests/conftest.py's default-deny network guard
+# (3cca1e8e) and real-data/-write blocker (27949ffa). Both landed
+# 2026-08-25 -- the handoff said 2026-08-26, which `git log` contradicts and
+# which would be tomorrow (opus review L-5). Timed at 95b0df4c, the true
+# parent of 3cca1e8e, in a throwaway worktree: 0.57-0.58s, versus
+# 0.57-0.59s with both present.
+# They cost roughly 0.25ms per example, against ~197ms of headroom -- they
+# did not move this test measurably closer to the deadline.
+#
+# Strict on VALUES, lenient on TIME: the assertion below is a financial
+# invariant (cost never exceeds balance) and is deliberately left untouched,
+# as is max_examples. Only the clock is dropped. The five tests in this file
+# that do no I/O keep their default deadline.
+#
+# CONSIDERED AND DECLINED (opus review L-6): a generous ceiling --
+# deadline=timedelta(seconds=2), ~600x the measured per-example cost --
+# rather than None. It would keep an order-of-magnitude tripwire and would
+# not have flaked under the load that produced the original report. Declined
+# because what the clock measures here is this test's own per-example
+# TemporaryDirectory churn, so the tripwire would guard fixture I/O rather
+# than kelly_quantity, and the stall behind the report was unbounded rather
+# than merely large -- a 2s ceiling narrows the flake window without closing
+# it. A real perf guard for kelly_quantity belongs on the function.
+@settings(max_examples=200, deadline=None)
 def test_kelly_quantity_cost_never_exceeds_balance(kelly_frac, price):
     """kelly_quantity cost (qty * price) never exceeds current balance."""
     import tempfile
@@ -106,7 +139,13 @@ def test_kelly_monotone_in_prob(our_prob, price):
     drawdown_scale=st.floats(min_value=0.0, max_value=1.0),
     balance=st.floats(min_value=10.0, max_value=10_000.0),
 )
-@settings(max_examples=200)
+# deadline=None -- same reasoning, same evidence, as
+# test_kelly_quantity_cost_never_exceeds_balance above (batch-80 item 4).
+# This one is the slower of the two because each example also WRITES the
+# ledger file (a per-example `balance` is the whole point of the property),
+# so its fixture I/O is strictly larger and its measured ~0.63s/200 examples
+# strictly closer to the deadline -- and equally unrelated to the invariant.
+@settings(max_examples=200, deadline=None)
 def test_kelly_bet_dollars_never_exceeds_balance(kelly_frac, drawdown_scale, balance):
     """P3-3: kelly_bet_dollars * drawdown_scaling_factor must never exceed current balance.
 

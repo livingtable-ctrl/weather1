@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
-import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier, sumUnrealizedPnl, balanceDeltaPct } from '../shared.jsx';
+import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier, sumUnrealizedPnl, balanceDeltaPct, StaleFeedBanner, staleFeedState, useFeedClock } from '../shared.jsx';
+import { OVERVIEW_FEED_KEYS } from '../useData.js';
 
 // ---------------------------------------------------------------------------
 // LastSettlementBatch — compact inline summary of the most recently settled
@@ -84,6 +85,16 @@ export default function OverviewTab() {
   const brierAlertFiring   = brierTier === 'alert';   // true P10.3: 2+ weeks
   const brierWarningFiring = brierTier === 'warning'; // early warning: 1 week
 
+  // batch-80 item 1. useFeedClock supplies the two halves the pure predicate
+  // needs: a `now` that ticks on its own, so staleness becomes visible even
+  // when NO fetch ever resolves (the hung-backend case this whole item is
+  // about -- an attempt-counting design would never fire), and a
+  // `visibleSince` that restarts the tolerance window when the tab returns
+  // from being hidden, since the main poll is visibility-gated and makes no
+  // attempts at all while hidden.
+  const feedClock = useFeedClock();
+  const feedState = staleFeedState(M.fetchedAt, OVERVIEW_FEED_KEYS, feedClock);
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <div style={{ marginBottom: 18 }}>
@@ -103,9 +114,15 @@ export default function OverviewTab() {
         )}
       </div>
 
-      {/* Alert banner — kill switch, Brier degradation, and cron staleness. */}
-      {(cronStale || killSwitchActive || brierAlertFiring || brierWarningFiring) && (
+      {/* Alert banner — feed staleness, kill switch, Brier degradation, cron
+          staleness. The staleness banner is unconditional (StaleFeedBanner
+          returns null when the feeds are fresh) and sits FIRST deliberately:
+          it qualifies every other banner in this stack. A kill-switch or
+          Brier alert derived from a feed that stopped answering an hour ago
+          should be read with that caveat already on screen above it. */}
+      {(feedState.stale || cronStale || killSwitchActive || brierAlertFiring || brierWarningFiring) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          <StaleFeedBanner feed={feedState} />
           {cronStale && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',

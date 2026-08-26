@@ -4,6 +4,9 @@ import {
   mapForecasts, normalizeForecastEntry, mapScanStats, mapAnomalyStatus, mapAlerts,
   mergeFetchedAt, mapTrades, orderFeedSuccess,
   startVisibilityGatedPoll,
+  API_TIMEOUT_MS, SCAN_VERSION_TIMEOUT_MS, anyFeedResolved, nextStatsTimestamp,
+  makeScanVersionPoller, timeoutSignal,
+  OVERVIEW_FEED_KEYS, RISK_FEED_KEYS,
 } from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
@@ -1073,33 +1076,62 @@ describe('orderFeedSuccess', () => {
   it('reports success only for the feeds whose data the merge actually took', () => {
     const ok = orderFeedSuccess(mapTrades({ open: [], closed: [] }),
                                 resolveOpportunities(mapSignals({ signals: [] })),
-                                mapAnomalyStatus({ active: false }));
-    expect(ok).toEqual({ anomalyStatus: true, positions: true, opportunities: true });
+                                mapAnomalyStatus({ active: false }),
+                                { balance: 100 }, { aged_positions: [] }, { ready: true });
+    expect(ok).toEqual({
+      anomalyStatus: true, positions: true, opportunities: true,
+      stats: true, risk: true, graduation: true,
+    });
   });
 
   it('a failed fetch on any feed reports false for that feed ONLY', () => {
     // The failure this exists to prevent: a key stamping fresh for data that
     // never arrived, which is worse than having no freshness gate at all.
+    const OK_STATUS = { balance: 100 };
+    const OK_RISK = { aged_positions: [] };
+    const OK_GRAD = { ready: true };
+    const REST = { risk: true, graduation: true };
     expect(orderFeedSuccess(mapTrades(null),
                             resolveOpportunities(mapSignals({ signals: [] })),
-                            mapAnomalyStatus({ active: false })))
-      .toEqual({ anomalyStatus: true, positions: false, opportunities: true });
+                            mapAnomalyStatus({ active: false }), OK_STATUS, OK_RISK, OK_GRAD))
+      .toEqual({ anomalyStatus: true, positions: false, opportunities: true, stats: true, ...REST });
 
     expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
                             resolveOpportunities(mapSignals(null)),
-                            mapAnomalyStatus({ active: false })))
-      .toEqual({ anomalyStatus: true, positions: true, opportunities: false });
+                            mapAnomalyStatus({ active: false }), OK_STATUS, OK_RISK, OK_GRAD))
+      .toEqual({ anomalyStatus: true, positions: true, opportunities: false, stats: true, ...REST });
 
     expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
                             resolveOpportunities(mapSignals({ signals: [] })),
-                            mapAnomalyStatus(null)))
-      .toEqual({ anomalyStatus: false, positions: true, opportunities: true });
+                            mapAnomalyStatus(null), OK_STATUS, OK_RISK, OK_GRAD))
+      .toEqual({ anomalyStatus: false, positions: true, opportunities: true, stats: true, ...REST });
+
+    // batch-80 item 1: /api/status failing must isolate to `stats` alone.
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                            resolveOpportunities(mapSignals({ signals: [] })),
+                            mapAnomalyStatus({ active: false }), null, OK_RISK, OK_GRAD))
+      .toEqual({ anomalyStatus: true, positions: true, opportunities: true, stats: false, ...REST });
+
+    // round-2 opus review M1/M2: /api/risk and /api/graduation each isolate
+    // to their own key. Before they had keys at all, a 500 on either froze
+    // cards on both tabs while `stats` kept stamping fresh.
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                            resolveOpportunities(mapSignals({ signals: [] })),
+                            mapAnomalyStatus({ active: false }), OK_STATUS,
+                            { error: 'db locked' }, OK_GRAD).risk).toBe(false);
+    expect(orderFeedSuccess(mapTrades({ open: [], closed: [] }),
+                            resolveOpportunities(mapSignals({ signals: [] })),
+                            mapAnomalyStatus({ active: false }), OK_STATUS,
+                            OK_RISK, { error: 'db locked' }).graduation).toBe(false);
   });
 
   it('every feed failing reports all false, and never throws on undefined input', () => {
-    expect(orderFeedSuccess(mapTrades(null), undefined, null))
-      .toEqual({ anomalyStatus: false, positions: false, opportunities: false });
-    expect(() => orderFeedSuccess(undefined, undefined, undefined)).not.toThrow();
+    expect(orderFeedSuccess(mapTrades(null), undefined, null, null, null, null))
+      .toEqual({
+        anomalyStatus: false, positions: false, opportunities: false,
+        stats: false, risk: false, graduation: false,
+      });
+    expect(() => orderFeedSuccess()).not.toThrow();
   });
 
   it('feeds straight into mergeFetchedAt: only the successes advance', () => {
@@ -1164,5 +1196,334 @@ describe('mapTrades carries the backend quote_is_live flag', () => {
     // Must not be coerced to false, which would warn on every position
     // forever against a backend that simply predates the field.
     expect(r.open[0].quoteIsLive).not.toBe(false);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// batch-80 item 1 — backlog "useData.js's apiFetch has no request timeout, so
+// a HUNG backend freezes the whole dashboard silently instead of degrading"
+// ---------------------------------------------------------------------------
+
+describe('apiFetch request timeout', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => { vi.stubGlobal('sessionStorage', createMemoryStorage()); });
+  afterEach(() => { global.fetch = realFetch; vi.unstubAllGlobals(); });
+
+  it('passes an AbortSignal to every endpoint fetch', async () => {
+    // The defect was the ABSENCE of a signal, so this asserts a signal is
+    // present and is a real AbortSignal -- not merely that fetch was called.
+    const seen = [];
+    global.fetch = (path, init) => {
+      seen.push({ path, init });
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: 1 }) });
+    };
+    await fetchAllSafe(['/api/status'], () => null);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].init.signal).toBeInstanceOf(AbortSignal);
+    // Positive control: the headers the pre-existing code sent are still
+    // there, so this proves the init object was extended rather than replaced.
+    expect(seen[0].init.headers['X-Requested-With']).toBe('XMLHttpRequest');
+  });
+
+  it('a request that never settles resolves as a null feed, not a hang', async () => {
+    // The whole point of the item. Uses a real AbortSignal.timeout with a
+    // tiny budget and a fetch that only ever rejects when aborted -- i.e. a
+    // faithful stand-in for a backend that accepts the connection and then
+    // says nothing. Before the fix this promise never settled at all.
+    let aborted = false;
+    global.fetch = (path, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('timeout'), { name: 'TimeoutError' }));
+      });
+    });
+    // 50ms budget, injected. Before fetchAllSafe threaded timeoutMs through,
+    // this test genuinely waited out the full default (measured: 15008ms of
+    // a 15.4s suite) while its own comment claimed a "tiny budget" -- and
+    // apiFetch's timeoutMs parameter had no caller at all, so it was
+    // decorative API surface. vi.useFakeTimers() cannot help here:
+    // AbortSignal.timeout uses an internal timer, not the patched setTimeout.
+    const results = await fetchAllSafe(['/api/status'], () => null, 50);
+    expect(results).toHaveLength(1);
+    // POSITIVE CONTROL, and the load-bearing half of this test: prove the
+    // request was ended BY THE TIMEOUT. Without it, deleting the signal
+    // entirely still passes -- the mock then throws a TypeError on the
+    // missing signal, safe() swallows that into the same null, and the
+    // assertions below cannot tell the two apart.
+    expect(aborted).toBe(true);
+    // safe() swallows non-auth failures into null, which is exactly what
+    // every branch of fetchAll's merge already treats as "keep prior value".
+    // That is what stops a timeout putting `undefined` where a tab expects
+    // data -- trading a frozen dashboard for a crashing one.
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[0].value).toBeNull();
+  });
+
+  it('the timeout budgets stay under the poll intervals that fire them', () => {
+    // A timeout at or above its own poll interval lets requests stack, which
+    // is the unbounded accumulation the item is about -- so these constants
+    // are load-bearing, not decoration, and a later edit that raises either
+    // past its interval should fail here rather than in production.
+    expect(API_TIMEOUT_MS).toBeLessThan(60_000);        // main poll
+    expect(SCAN_VERSION_TIMEOUT_MS).toBeLessThan(5_000); // scan-version poll
+    // And above /api/weather-alerts' worst case: it fans out over
+    // ThreadPoolExecutor(max_workers=8) with a per-city requests timeout=5,
+    // so ceil(N/8) x 5s -- ~15s at CITY_COORDS' 21-city fallback.
+    expect(API_TIMEOUT_MS).toBeGreaterThan(15_000);
+    // opus review I4: the bounds above are a guardrail against a careless
+    // edit, but they are satisfied by a wide range, so they say nothing
+    // about the values actually chosen. Pin them too -- these were reasoned
+    // from measured backend behaviour and a change to either should be a
+    // deliberate one that updates this line.
+    expect(API_TIMEOUT_MS).toBe(30_000);
+    expect(SCAN_VERSION_TIMEOUT_MS).toBe(4_000);
+  });
+});
+
+describe('anyFeedResolved', () => {
+  it('is false when every endpoint failed — the hung-backend case', () => {
+    expect(anyFeedResolved([null, null, null])).toBe(false);
+    // Positive control: one survivor flips it, so the false above is about
+    // the values and not about the function always returning false.
+    expect(anyFeedResolved([null, { balance: 1 }, null])).toBe(true);
+  });
+
+  it('counts a genuinely empty but successful response as resolved', () => {
+    // An empty list IS an answer. Treating it as a miss would suppress the
+    // refresh marker on a perfectly healthy poll.
+    expect(anyFeedResolved([[]])).toBe(true);
+    expect(anyFeedResolved([{}])).toBe(true);
+  });
+
+  it('never throws on a non-array', () => {
+    expect(anyFeedResolved(undefined)).toBe(false);
+    expect(anyFeedResolved(null)).toBe(false);
+  });
+});
+
+describe('orderFeedSuccess stats key (batch-80 item 1)', () => {
+  it('matches mapStats own gate: a 200-with-an-error body is NOT a success', () => {
+    // The predicate must be byte-for-byte mapStats' `status && !status.error`
+    // gate, or the timestamp vouches for a merge that never happened.
+    expect(orderFeedSuccess(null, undefined, null, { error: 'db locked' }).stats)
+      .toBe(false);
+    // Positive control: same shape without the error field does stamp.
+    expect(orderFeedSuccess(null, undefined, null, { balance: 100 }).stats)
+      .toBe(true);
+  });
+
+  it('pairs with mapStats: nothing stamps for a body mapStats refuses', () => {
+    // The coupling is the invariant, so both halves are exercised together
+    // here rather than asserted separately and left to drift.
+    const errBody = { error: 'db locked', balance: 999 };
+    const patch = mapStats(errBody, null, null, { balance: 5 });
+    expect(patch.balance).toBe(5);   // mapStats took nothing from it
+    expect(orderFeedSuccess(null, undefined, null, errBody).stats).toBe(false);
+  });
+
+  it('feeds mergeFetchedAt so only a real /api/status advances stats', () => {
+    const NOW = 1_700_000_000_000;
+    const prev = { stats: NOW - 500_000 };
+    expect(mergeFetchedAt(prev, orderFeedSuccess(null, undefined, null, null), NOW))
+      .toMatchObject({ stats: NOW - 500_000 });  // failed: carried forward
+    expect(mergeFetchedAt(prev, orderFeedSuccess(null, undefined, null, { b: 1 }), NOW))
+      .toMatchObject({ stats: NOW });            // succeeded: stamped
+  });
+});
+
+describe('per-tab feed key lists (batch-80 item 1)', () => {
+  // A tab's banner is a POOLED gate -- one verdict for several feeds -- so a
+  // key that is misspelled or renamed silently inherits the pool's all-clear
+  // and that feed goes unwatched with no visible symptom. This checks the
+  // names mechanically against the map that actually produces them.
+  const produced = Object.keys(
+    orderFeedSuccess(mapTrades({ open: [], closed: [] }), [], null,
+                     { b: 1 }, { c: 1 }, { d: 1 }),
+  );
+
+  it('every watched key is one orderFeedSuccess actually emits', () => {
+    for (const k of [...OVERVIEW_FEED_KEYS, ...RISK_FEED_KEYS]) {
+      expect(produced).toContain(k);
+    }
+    // Positive control: the check can fail. A name that is not produced must
+    // not pass, or the loop above proves nothing.
+    expect(produced).not.toContain('stat');
+  });
+
+  // opus review M4: the containment check above only pins MISSPELLINGS. It
+  // is satisfied by an EMPTY list, so deleting 'positions' from
+  // OVERVIEW_FEED_KEYS -- silently unwatching the positions feed -- passed.
+  // Exact contents close that direction.
+  it('the lists are exactly these keys, so a silent removal fails', () => {
+    expect(OVERVIEW_FEED_KEYS).toEqual(['stats', 'positions', 'opportunities', 'graduation']);
+    expect(RISK_FEED_KEYS).toEqual(['stats', 'positions', 'risk']);
+  });
+
+  // opus review M4, other half: a key ADDED to orderFeedSuccess and never
+  // listed inherits the pool's all-clear and goes unwatched with no symptom
+  // -- verbatim the case the rationale comment claimed was covered and was
+  // not. Every produced key must be either watched or deliberately excluded,
+  // so a new one forces a decision here rather than defaulting to unwatched.
+  it('every key orderFeedSuccess emits is watched or explicitly excluded', () => {
+    // Excluded = rendered by the OTHER tab, or reported by its own card.
+    // RiskTab shows no opportunities and no graduation gates; OverviewTab
+    // shows none of /api/risk's aged/correlated/expiry/directional figures;
+    // anomalyStatus has its own dedicated card on RiskTab (batch-61).
+    const RISK_EXCLUDED = ['anomalyStatus', 'opportunities', 'graduation'];
+    const OVERVIEW_EXCLUDED = ['anomalyStatus', 'risk'];
+    for (const k of produced) {
+      expect(
+        RISK_FEED_KEYS.includes(k) || RISK_EXCLUDED.includes(k),
+        `RISK_FEED_KEYS neither watches nor excludes "${k}"`,
+      ).toBe(true);
+      expect(
+        OVERVIEW_FEED_KEYS.includes(k) || OVERVIEW_EXCLUDED.includes(k),
+        `OVERVIEW_FEED_KEYS neither watches nor excludes "${k}"`,
+      ).toBe(true);
+    }
+    // Positive control: the exclusion lists name only keys that exist, so
+    // they cannot be used to wave through a key that was renamed away.
+    for (const k of [...RISK_EXCLUDED, ...OVERVIEW_EXCLUDED]) {
+      expect(produced).toContain(k);
+    }
+  });
+
+  it('both tabs watch the stats feed, which every headline number reads', () => {
+    expect(OVERVIEW_FEED_KEYS).toContain('stats');
+    expect(RISK_FEED_KEYS).toContain('stats');
+  });
+
+  it('RiskTab does not pool anomalyStatus — its own card reports that', () => {
+    expect(RISK_FEED_KEYS).not.toContain('anomalyStatus');
+  });
+});
+
+describe('nextStatsTimestamp (batch-80 item 1)', () => {
+  const NOW = 1_700_000_000_000;
+  const PREV = NOW - 60_000;
+
+  it('does not re-stamp when every endpoint failed', () => {
+    // The header's refresh countdown resets on this value changing, so an
+    // unconditional stamp made a poll in which all 23 endpoints timed out
+    // announce "just refreshed" -- the most reassuring the header can look,
+    // during a total outage.
+    expect(nextStatsTimestamp(PREV, [null, null, null], NOW)).toBe(PREV);
+  });
+
+  it('stamps when anything at all came back', () => {
+    // Positive control for the assertion above: same shape, one survivor.
+    expect(nextStatsTimestamp(PREV, [null, { balance: 1 }, null], NOW)).toBe(NOW);
+  });
+
+  it('a genuinely empty but successful response still counts as a refresh', () => {
+    expect(nextStatsTimestamp(PREV, [[]], NOW)).toBe(NOW);
+  });
+
+  it('returns the previous value UNCHANGED, undefined included', () => {
+    // MOCK.stats deliberately carries no timestamp, so `prev` really is
+    // undefined on the first poll. App.jsx keys RefreshCountdown's effect on
+    // [M.stats?.timestamp], and undefined -> null IS a dependency change, so
+    // coercing here fired exactly one spurious "60s" reset on a cold load
+    // against a hung backend -- the same false reassurance this function
+    // removes everywhere else. The no-op has to be a true no-op.
+    expect(nextStatsTimestamp(undefined, [null], NOW)).toBeUndefined();
+    // Positive control: a real previous stamp is likewise returned as-is,
+    // so the assertion above is about identity, not about undefined.
+    expect(nextStatsTimestamp(PREV, [null], NOW)).toBe(PREV);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// batch-80 item 1, opus review round 1 — M3 / M4 / I4
+// ---------------------------------------------------------------------------
+
+describe('makeScanVersionPoller (opus review M3)', () => {
+  const realFetch = global.fetch;
+  beforeEach(() => { vi.stubGlobal('sessionStorage', createMemoryStorage()); });
+  afterEach(() => { global.fetch = realFetch; vi.unstubAllGlobals(); });
+
+  function okResponse(version) {
+    return Promise.resolve({ ok: true, json: async () => ({ version }) });
+  }
+
+  it('sends an AbortSignal on the 5s scan-version poll', async () => {
+    // This assertion is the whole reason the poller was lifted out of the
+    // mount useEffect. While it lived there, deleting its `signal:` left the
+    // entire suite green -- half of this item's TIMEOUT deliverable had no
+    // behavioural coverage at all.
+    const seen = [];
+    const poll = makeScanVersionPoller(() => {}, (path, init) => {
+      seen.push({ path, init });
+      return okResponse(1);
+    });
+    await poll();
+    expect(seen).toHaveLength(1);
+    expect(seen[0].path).toBe('/api/scan-version');
+    expect(seen[0].init.signal).toBeInstanceOf(AbortSignal);
+    // Positive control: the pre-existing auth header is still sent, so the
+    // init object was extended rather than replaced.
+    expect(seen[0].init.headers['X-Requested-With']).toBe('XMLHttpRequest');
+  });
+
+  it('fires onNewVersion only when the version CHANGES, never on first sight', async () => {
+    // A null lastVersion must not fire, or every mount would trigger a
+    // spurious full refresh. This is the behaviour the inline closure had;
+    // extracting it must not have changed it.
+    const fired = [];
+    let version = 7;
+    const poll = makeScanVersionPoller(() => fired.push(1), () => okResponse(version));
+    await poll();
+    expect(fired).toHaveLength(0);   // first sight: adopt, do not fire
+    await poll();
+    expect(fired).toHaveLength(0);   // unchanged: still nothing
+    version = 8;
+    await poll();
+    expect(fired).toHaveLength(1);   // changed: fires exactly once
+  });
+
+  it('swallows a rejected fetch without throwing out of the interval', async () => {
+    const poll = makeScanVersionPoller(() => { throw new Error('must not run'); },
+      () => Promise.reject(new Error('timeout')));
+    await expect(poll()).resolves.toBeUndefined();
+  });
+
+  it('ignores a non-ok response and a body with no version', async () => {
+    const fired = [];
+    const notOk = makeScanVersionPoller(() => fired.push(1),
+      () => Promise.resolve({ ok: false, json: async () => ({ version: 1 }) }));
+    await notOk();
+    const noVersion = makeScanVersionPoller(() => fired.push(1),
+      () => Promise.resolve({ ok: true, json: async () => ({}) }));
+    await noVersion();
+    expect(fired).toHaveLength(0);
+  });
+});
+
+describe('timeoutSignal fallback (opus review L2)', () => {
+  it('returns a real AbortSignal that aborts, with or without AbortSignal.timeout', async () => {
+    // Vite transpiles syntax but does not polyfill runtime APIs, and
+    // AbortSignal.timeout is Chrome 103+. On an older engine the bare call
+    // throws -- and in makeScanVersionPoller it would throw during argument
+    // evaluation, before fetch() returns a promise, so the trailing .catch()
+    // could not attach and the 5s interval would raise uncaught every tick.
+    const native = timeoutSignal(5);
+    expect(native).toBeInstanceOf(AbortSignal);
+
+    const realTimeout = AbortSignal.timeout;
+    try {
+      // eslint-disable-next-line no-import-assign
+      AbortSignal.timeout = undefined;
+      const fallback = timeoutSignal(5);
+      expect(fallback).toBeInstanceOf(AbortSignal);
+      expect(fallback.aborted).toBe(false);
+      await new Promise(r => setTimeout(r, 40));
+      // Positive control on the fallback: it must actually fire, not just
+      // be an AbortSignal-shaped object that never aborts.
+      expect(fallback.aborted).toBe(true);
+    } finally {
+      AbortSignal.timeout = realTimeout;
+    }
   });
 });

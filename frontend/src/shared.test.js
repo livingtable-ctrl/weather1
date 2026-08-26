@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag, ORDER_STALE_MS, orderQuoteStaleness, staleQuoteWarning, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, useFeedClock, __resetFeedClockForTests } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes, sumUnrealizedPnl, positionUnrealizedPnl, balanceDeltaPct, TAB_LIST, tabForHotkey, resolveByKey, heatStatus, feedFreshness, formatFeedAge, FEED_STALE_MS, FEED_HARD_STALE_MS, alarmSafeFlag, ORDER_STALE_MS, orderQuoteStaleness, staleQuoteWarning, worstStaleness, parseFeedTimestamp, SCAN_STALE_MS, useFeedClock, __resetFeedClockForTests, staleFeedState, staleBannerCopy } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -1512,5 +1512,286 @@ describe('useFeedClock singleton — mount refreshes the clock (round 1 F1, roun
     // ...and with a REFRESHED clock the same feed correctly reads stale.
     // That difference is the entire fix.
     expect(orderQuoteStaleness(fetchedAt, { now: NOW }).stale).toBe(true);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// staleFeedState — batch-80 item 1. The pure half of the stale-data banner
+// OverviewTab and RiskTab both render. StaleFeedBanner itself is a component
+// and this repo has no jsdom/RTL, so every decision the banner makes lives
+// here where a test can reach it; the component only formats what this
+// returns.
+// ---------------------------------------------------------------------------
+describe('staleFeedState', () => {
+  const NOW = 1_700_000_000_000;
+  const clock = { now: NOW, visibleSince: null };
+
+  it('is not stale while every watched feed is fresh', () => {
+    const r = staleFeedState(
+      { stats: NOW - 30_000, positions: NOW - 30_000 },
+      ['stats', 'positions'],
+      clock,
+    );
+    expect(r.stale).toBe(false);
+  });
+
+  it('one dead feed among fresh ones still trips it', () => {
+    // The banner is a pooled verdict, so the failure mode to guard is a
+    // single stale member being averaged away by its healthy neighbours.
+    const r = staleFeedState(
+      { stats: NOW - 30_000, positions: NOW - 600_000 },
+      ['stats', 'positions'],
+      clock,
+    );
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBe(600_000);   // reports the WORST, not the average
+  });
+
+  it('reports the oldest age when several feeds are stale', () => {
+    const r = staleFeedState(
+      { stats: NOW - 400_000, positions: NOW - 900_000 },
+      ['stats', 'positions'],
+      clock,
+    );
+    expect(r.ageMs).toBe(900_000);
+  });
+
+  it('a feed that never answered is stale with a null age', () => {
+    // The hung-backend case at first load: no stamp has ever been written.
+    // ageMs null is what makes the banner render its neutral "waiting"
+    // wording instead of "NaN min ago".
+    const r = staleFeedState({}, ['stats'], clock);
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBeNull();
+    expect(formatFeedAge(r.ageMs)).toBeNull();
+  });
+
+  it('an UNWATCHED stale feed cannot trip the banner', () => {
+    // The pooled-gate blind spot stated positively: a key absent from the
+    // list is genuinely not watched, which is why useData.test.js checks the
+    // lists against orderFeedSuccess's own key names.
+    const fetchedAt = { stats: NOW - 30_000, opportunities: NOW - 900_000 };
+    expect(staleFeedState(fetchedAt, ['stats'], clock).stale).toBe(false);
+    // Positive control: watching it does trip, so the false above is about
+    // the key list and not about this fixture being fresh after all.
+    expect(staleFeedState(fetchedAt, ['stats', 'opportunities'], clock).stale)
+      .toBe(true);
+  });
+
+  it('honours the visibleSince credit the visibility-gated poll needs', () => {
+    // The main poll stops entirely while the tab is hidden, so time we could
+    // not poll through must not be counted against the feed on return.
+    const fetchedAt = { stats: NOW - 600_000 };
+    expect(staleFeedState(fetchedAt, ['stats'], { now: NOW, visibleSince: null }).stale)
+      .toBe(true);
+    expect(staleFeedState(fetchedAt, ['stats'], { now: NOW, visibleSince: NOW - 1_000 }).stale)
+      .toBe(false);
+  });
+
+  it('the hard ceiling still fires however recently the tab became visible', () => {
+    // Otherwise an operator alt-tabbing every couple of minutes resets the
+    // window forever and a genuinely dead feed never alarms.
+    const r = staleFeedState(
+      { stats: NOW - (FEED_HARD_STALE_MS + 1) },
+      ['stats'],
+      { now: NOW, visibleSince: NOW - 1_000 },
+    );
+    expect(r.stale).toBe(true);
+  });
+
+  it('never throws on missing fetchedAt, keys, or clock', () => {
+    // These all arrive from context on first render, before any poll.
+    expect(() => staleFeedState(undefined, ['stats'], clock)).not.toThrow();
+    expect(() => staleFeedState({}, undefined, clock)).not.toThrow();
+    expect(() => staleFeedState({}, ['stats'], undefined)).not.toThrow();
+    // An empty key list watches nothing, so it must report not-stale rather
+    // than a spurious alarm.
+    expect(staleFeedState({}, [], clock).stale).toBe(false);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// batch-80 item 1, opus review round 1 — H1 / I3.
+//
+// The original staleFeedState suite passed `visibleSince: null` in every
+// case, and that is the ONE value for which feedFreshness cannot reach its
+// escalated `state:'stale'` + `ageMs:null` branch. So the exact input that
+// broke StaleFeedBanner was structurally excluded from the tests that were
+// supposed to cover it. These pin it from both directions.
+// ---------------------------------------------------------------------------
+describe('staleFeedState: a never-answered feed ESCALATES (opus review H1)', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('past maxAgeMs from `since`, a feed with no stamp is stale, not pending', () => {
+    // The distinction StaleFeedBanner keys its amber/grey decision on. Both
+    // states report ageMs === null, so `ageMs == null` is NOT a usable test
+    // for "pending" -- which is exactly the bug this replaced.
+    const pending = staleFeedState({}, ['stats'], { now: NOW, visibleSince: NOW - 1_000 });
+    expect(pending.state).toBe('pending');
+    expect(pending.ageMs).toBeNull();
+
+    const escalated = staleFeedState({}, ['stats'], { now: NOW, visibleSince: NOW - 600_000 });
+    expect(escalated.state).toBe('stale');
+    expect(escalated.stale).toBe(true);
+    // Same null age as the pending case above -- that is the whole trap.
+    expect(escalated.ageMs).toBeNull();
+    expect(formatFeedAge(escalated.ageMs)).toBeNull();
+  });
+
+  it('a never-answered feed does not mask genuinely stale siblings', () => {
+    // worstStaleness ranks a null ageMs as Infinity ("knowing nothing is
+    // worse than knowing it is old"), so the no-stamp key always WINS the
+    // pool. Two feeds two hours dead therefore surface with ageMs null --
+    // correct as a ranking, but it means the banner must not read that null
+    // as "we only just started watching".
+    const r = staleFeedState(
+      { stats: NOW - 7_200_000, positions: NOW - 7_200_000 },
+      ['stats', 'positions', 'opportunities'],
+      { now: NOW, visibleSince: NOW - 7_200_000 },
+    );
+    expect(r.stale).toBe(true);
+    expect(r.ageMs).toBeNull();
+    // The load-bearing assertion: `state` still distinguishes it, which is
+    // why the banner keys on state rather than on the age.
+    expect(r.state).toBe('stale');
+  });
+
+  it('the boundary between pending and escalated is maxAgeMs from `since`', () => {
+    const at = staleFeedState({}, ['stats'],
+      { now: NOW, visibleSince: NOW - FEED_STALE_MS });
+    const past = staleFeedState({}, ['stats'],
+      { now: NOW, visibleSince: NOW - FEED_STALE_MS - 1 });
+    expect(at.state).toBe('pending');
+    expect(past.state).toBe('stale');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// staleBannerCopy — the amber-vs-grey decision, extracted from
+// StaleFeedBanner so it can actually be held by a test (opus review H1).
+// Reintroducing the original `formatFeedAge(feed.ageMs) == null` test inside
+// the component left all 293 tests green; these fail on it.
+// ---------------------------------------------------------------------------
+describe('staleBannerCopy', () => {
+  const NOW = 1_700_000_000_000;
+  const at = (fetchedAt, keys, since) =>
+    staleFeedState(fetchedAt, keys, { now: NOW, visibleSince: since });
+
+  it('renders nothing while the feeds are fresh', () => {
+    expect(staleBannerCopy(at({ stats: NOW - 30_000 }, ['stats'], null))).toBeNull();
+    expect(staleBannerCopy(null)).toBeNull();
+    expect(staleBannerCopy({ stale: false })).toBeNull();
+  });
+
+  it('grey/neutral only while genuinely PENDING', () => {
+    const r = staleBannerCopy(at({}, ['stats'], NOW - 1_000));
+    expect(r.tone).toBe('pending');
+    expect(r.headline).toMatch(/Waiting for the first response/);
+  });
+
+  it('ALERTS on a never-answered feed once it escalates — the H1 regression', () => {
+    // Same null ageMs as the pending case above. Keying on the age instead
+    // of the state left this grey and calm forever, over MOCK's fabricated
+    // balance and positions, on a backend that hung at page load.
+    const r = staleBannerCopy(at({}, ['stats'], NOW - 600_000));
+    expect(r.tone).toBe('alert');
+    expect(r.headline).toMatch(/since this page loaded/);
+    expect(r.headline).not.toMatch(/NaN/);
+  });
+
+  it('ALERTS when a never-answered feed masks two long-dead ones', () => {
+    const r = staleBannerCopy(at(
+      { stats: NOW - 7_200_000, positions: NOW - 7_200_000 },
+      ['stats', 'positions', 'opportunities'],
+      NOW - 7_200_000,
+    ));
+    expect(r.tone).toBe('alert');
+  });
+
+  it('names the age when there is one, without doubling up on "ago"', () => {
+    const r = staleBannerCopy(at({ stats: NOW - 600_000 }, ['stats'], null));
+    expect(r.tone).toBe('alert');
+    expect(r.headline).toContain('10 min');
+    // formatFeedAge returns "10 min ago"; pairing that with "for" would read
+    // "for 10 min ago".
+    expect(r.headline).not.toMatch(/for .* ago/);
+  });
+
+  it('says data stopped updating, not that the backend is down', () => {
+    // One endpoint answering 500 while the other 22 are healthy stops only
+    // its own feed stamping. Asserting the backend is unreachable would send
+    // the operator to check the wrong thing.
+    const r = staleBannerCopy(at({ stats: NOW - 600_000 }, ['stats'], null));
+    expect(r.headline).toMatch(/stopped updating/);
+    expect(r.headline).not.toMatch(/backend/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round-2 opus review H1: the round-1 fix was half a fix. Keying tone on the
+// POOL WINNER's state is wrong, because worstStaleness ranks an unknown age
+// as Infinity, so a member that never answered always wins. And with no
+// stamp there is no hard ceiling, so a total hang from page load reverts
+// from amber to grey on every alt-tab, forever.
+// ---------------------------------------------------------------------------
+describe('staleFeedState escalation across ALL members (round-2 H1)', () => {
+  const NOW = 1_700_000_000_000;
+
+  it('a never-answered member does not calm two hard-stale siblings', () => {
+    // The winner is the pending one (null age outranks everything), but two
+    // feeds are 13 minutes dead. Before the fix this reported tone 'pending'
+    // -- a calm grey "waiting" over two dead safety feeds.
+    const r = staleFeedState(
+      { stats: NOW - 800_000, positions: NOW - 800_000 },
+      ['stats', 'positions', 'opportunities'],
+      { now: NOW, visibleSince: NOW, pageLoad: NOW },
+    );
+    expect(r.stale).toBe(true);
+    expect(r.state).toBe('pending');        // the ranking is unchanged...
+    expect(r.anyEscalated).toBe(true);      // ...but the ALARM is not the ranking
+    expect(staleBannerCopy(r).tone).toBe('alert');
+  });
+
+  it('a genuinely fresh page still reads pending, not alert', () => {
+    // Positive control for the assertion above: the escalation must come
+    // from a real stale member, not from merely having several keys.
+    const r = staleFeedState({}, ['stats', 'positions'],
+      { now: NOW, visibleSince: NOW - 1_000, pageLoad: NOW - 1_000 });
+    expect(r.anyEscalated).toBe(false);
+    expect(staleBannerCopy(r).tone).toBe('pending');
+  });
+
+  it('past the hard ceiling since PAGE LOAD, an unanswered feed alarms even after an alt-tab', () => {
+    // _onFeedClockVisible resets visibleSince on every hidden->visible
+    // transition, and feedFreshness's FEED_HARD_STALE_MS ceiling is gated
+    // behind hasStamp -- so nothing capped the credit on the never-answered
+    // path. An operator alt-tabbing more often than FEED_STALE_MS never saw
+    // amber at all. pageLoad is the anchor nothing resets.
+    const justAltTabbed = { now: NOW, visibleSince: NOW - 1_000 };
+    const cold = staleFeedState({}, ['stats'],
+      { ...justAltTabbed, pageLoad: NOW - (FEED_HARD_STALE_MS + 1) });
+    expect(cold.anyEscalated).toBe(true);
+    expect(staleBannerCopy(cold).tone).toBe('alert');
+
+    // Positive control: the SAME alt-tab, but only just after page load, is
+    // still legitimately pending -- so the ceiling is what escalated it and
+    // not the alt-tab itself.
+    const early = staleFeedState({}, ['stats'],
+      { ...justAltTabbed, pageLoad: NOW - 5_000 });
+    expect(early.anyEscalated).toBe(false);
+    expect(staleBannerCopy(early).tone).toBe('pending');
+  });
+
+  it('the ceiling does not alarm a page whose feeds are all answering', () => {
+    // A long-open healthy dashboard must never trip it: past the ceiling,
+    // but nothing is stale, so there is nothing to escalate.
+    const r = staleFeedState({ stats: NOW - 1_000, positions: NOW - 1_000 },
+      ['stats', 'positions'],
+      { now: NOW, visibleSince: NOW - 1_000, pageLoad: NOW - 86_400_000 });
+    expect(r.stale).toBe(false);
+    expect(r.anyEscalated).toBe(false);
+    expect(staleBannerCopy(r)).toBeNull();
   });
 });
