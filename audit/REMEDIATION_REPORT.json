@@ -1,0 +1,326 @@
+{
+  "meta": {
+    "report": "Weather1 Remediation Batch Set 76-80",
+    "generated": "2026-08-26",
+    "source_branch": "master",
+    "source_commit": "f5cbbf70",
+    "method": "Derived from the 61 open backlog.txt entries by filtering for items completable in a single session, then grouped so that no two batches share a touched file. Every entry was verified against its own body text rather than its title -- three entries in the same pass proved to be already resolved and were closed.",
+    "counts": {
+      "total": 13,
+      "HIGH": 2,
+      "MEDIUM": 6,
+      "LOW": 5,
+      "needing_user_decision": 9
+    },
+    "batches": {
+      "76": "weather_markets.py, metar.py",
+      "77": "kalshi_client.py, paper.py",
+      "78": "tracker.py, cron.py, trade_cycle.py, kalshi_ws.py",
+      "79": "web.py, web_app.py, config.py, utils.py, calibration.py, ml_bias.py, paths.py, main.py",
+      "80": "frontend/src/*, notify.py, tests/test_trade_improvements.py, tests/test_kelly_property.py, order_executor.py"
+    },
+    "deferred": [
+      {
+        "title": "THE SIGNAL REGISTRY'S sample_floor=20 CLEARS AT ~27% STATISTICAL POWER",
+        "severity": "MEDIUM-HIGH",
+        "blocked_by": "needs weather_markets.py (batch 76) + main.py (batch 79)"
+      },
+      {
+        "title": "cron.report_anomalies READS A \"forecast_temp_raw\" KEY THAT NOTHING HAS EVER WRITTEN",
+        "severity": "LOW",
+        "blocked_by": "needs weather_markets.py (batch 76) + cron.py (batch 78)"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "REM-0001",
+      "batch": 76,
+      "severity": "HIGH",
+      "scope": "live trade-entry",
+      "title": "METAR-locked path's recommended side can contradict the lock's own outcome, and the divergence gate is skipped there",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "weather_markets.py",
+        "metar.py"
+      ],
+      "symbols": [
+        "analyze_trade",
+        "_price_and_size",
+        "_dynamic_lock_in_confidence"
+      ],
+      "root_cause": "Side selection is a bare `blended_prob > market_prob`, but a monotone-safe lock's probability is floored at 0.72 by _dynamic_lock_in_confidence while its true likelihood is ~99.9%. The understatement flips the side rather than merely under-betting.",
+      "evidence": "Monotone-safe YES lock, blended_prob=0.72 vs market 0.90 -> rec_side='no', entry_side_edge=(1-0.72)-(1-0.90)=+0.18. Independently reproduced end-to-end through analyze_trade by an opus reviewer on the OKC/SATX incident shape.",
+      "financial_risk": "Places a confidently-sized bet against an outcome the lock has already determined is settled.",
+      "decision_required": "Raise the confidence floor for monotone-safe locks / enforce side-agreement with the lock verdict / stop skipping the divergence gate. Not equivalent -- only side-agreement closes it by construction."
+    },
+    {
+      "id": "REM-0002",
+      "batch": 76,
+      "severity": "MEDIUM",
+      "scope": "shadow calibration -> live forecast corrector",
+      "title": "_var_from_ticker_prefix returns None for KXHOLIDAYTMIN, so a daily-MINIMUM market is analysed as a daily-MAXIMUM one",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "weather_markets.py"
+      ],
+      "symbols": [
+        "_var_from_ticker_prefix",
+        "_daily_var_from_series",
+        "_metar_lock_in"
+      ],
+      "root_cause": "The helper keys off the substrings HIGH/LOW; the KXHOLIDAYTMAX/TMIN family uses TMAX/TMIN naming and contains neither, so the `or \"max\"` fallback silently mislabels every TMIN market.",
+      "evidence": "_var_from_ticker_prefix('KXHOLIDAYTMIN') -> None; _daily_var_from_series('KXHOLIDAYTMIN') -> 'max'. batch-68 traced a third consumer: the mislabel reaches ensemble_member_scores as var='max' with a MINIMUM actual_temp, which get_dynamic_station_bias reads for the max cell.",
+      "financial_risk": "None today (0 open holiday markets, gated behind _holiday_temp_gates_active). Once the family trades, a ~20-30F sign-flipped sample enters the correction subtracted from every daily-HIGH forecast for that city.",
+      "decision_required": null
+    },
+    {
+      "id": "REM-0003",
+      "batch": 77,
+      "severity": "HIGH",
+      "scope": "risk control",
+      "title": "One shared 'kalshi_api_read' circuit breaker lets auth failures on private endpoints disable public market-data reads, removing stop-loss protection",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-observed-live",
+      "files": [
+        "kalshi_client.py",
+        "paper.py"
+      ],
+      "symbols": [
+        "CircuitBreaker",
+        "_get",
+        "get_market",
+        "get_balance"
+      ],
+      "root_cause": "kalshi_client.py:93 declares one breaker for all reads and _get() routes both auth=True and auth=False through it, so a credential/clock fault on private endpoints trips it for public ones.",
+      "evidence": "2026-08-26 00:28 UTC cron: six 401s on /portfolio/{balance,positions} (header_timestamp_expired, 41.4s clock skew) -> 'Circuit kalshi_api_read OPEN after 5 failures' -> '[StopLoss] got a usable quote for 0/8 open position(s) ... effectively unprotected'. get_market() is unsigned and could not have 401'd.",
+      "financial_risk": "Every open position unprotected for the cycle; unrealized P&L reads 0.00 via the entry_price fallback, so no stop can fire. The same cascade under LIVE_TRADING_ENABLED leaves real positions unprotected.",
+      "decision_required": "Split public/authenticated breakers; exclude 401 from breaker counting; decide stop-loss behaviour when a position cannot be priced; add a startup clock-skew assertion."
+    },
+    {
+      "id": "REM-0004",
+      "batch": 78,
+      "severity": "MEDIUM",
+      "scope": "observability",
+      "title": "Nothing records per-day that a scan ran, so an outage and a fully-gated day are indistinguishable",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E1-observed-live",
+      "files": [
+        "tracker.py",
+        "trade_cycle.py",
+        "cron.py"
+      ],
+      "symbols": [
+        "get_scan_activity",
+        "batch_log_analysis_attempts"
+      ],
+      "root_cause": "No per-day scan record exists; the A12 funnel panel's own docstring claims a distinction the data cannot support.",
+      "evidence": "batch-64 landed 2026-08-25 08:46 UTC and its four forward-only writers produced nothing until 00:30 UTC the next day because no scan ran in between. Invisible for a full day, and it led a downstream session to conclude the writers were broken.",
+      "financial_risk": "None directly; delays detection of a dead cron.",
+      "decision_required": "Whether the record carries a reached-analysis count rather than a bare ran/did-not-run flag."
+    },
+    {
+      "id": "REM-0005",
+      "batch": 78,
+      "severity": "MEDIUM",
+      "scope": "storage/backup",
+      "title": "batch-64's two forward-only tables have no retention sweep, and one grows ~50x faster than its migration comment estimated",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E1-measured",
+      "files": [
+        "tracker.py",
+        "kalshi_ws.py"
+      ],
+      "symbols": [
+        "ensemble_member_values",
+        "orderbook_depth_snapshots",
+        "purge_old_predictions"
+      ],
+      "root_cause": "purge_old_predictions covers predictions and outcomes only; a grep for DELETE against either new table finds nothing.",
+      "evidence": "Measured 2026-08-26: one cron cycle wrote 597 real ensemble_member_values rows (17-50 members each, ~0.3-1KB). orderbook_depth_snapshots still 0 -- it is written from the WS listener thread and needs live trading. predictions.db is ~47MB and cloud_backup pushes it after every run.",
+      "financial_risk": "None; backup cost and unbounded disk growth.",
+      "decision_required": "Retention window PER TABLE. Member values are long-horizon (A15b needs months); depth snapshots are short-horizon (A4/A17 replay). Not one number for both."
+    },
+    {
+      "id": "REM-0006",
+      "batch": 78,
+      "severity": "LOW",
+      "scope": "dashboard display",
+      "title": "brier_skill_score() has no condition_type filter",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E2-code-read",
+      "files": [
+        "tracker.py"
+      ],
+      "symbols": [
+        "brier_skill_score"
+      ],
+      "root_cause": "The query selects our_prob/market_prob/settled_yes with no exclusion at all, so shadow-only rain/snow/hurricane/storm-order and 'between' rows enter the statistic.",
+      "evidence": "Confirmed callers: web_app.py dashboard and its own tests; no live-trading-gate consumer found. It never had the hardcoded tuple batch-06 unified, so this is not a 'will now disagree' case -- it was always unfiltered.",
+      "financial_risk": "None; display only.",
+      "decision_required": "Whether 'between' is excluded. get_station_bias_by_lead deliberately KEEPS it, for reasoning that may not transfer to a calibration statistic."
+    },
+    {
+      "id": "REM-0007",
+      "batch": 79,
+      "severity": "MEDIUM",
+      "scope": "config correctness",
+      "title": "A standalone `py web.py` server never calls load_dotenv, so the dashboard shows code defaults rather than configured values",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "web.py",
+        "web_app.py",
+        "config.py",
+        "utils.py"
+      ],
+      "symbols": [
+        "load_dotenv"
+      ],
+      "root_cause": "web.py has no load_dotenv call; main.py does at import (~:41). Compounded by config.py binding credentials as module constants AT IMPORT TIME, so import ordering -- not the presence of load_dotenv -- decides whether config is real.",
+      "evidence": "Reproduced 2026-08-26: a python -c that called load_dotenv() and then constructed a KalshiClient still raised 'API key and private key required', because config.py had already bound the empty values at import.",
+      "financial_risk": "None directly; an operator may read dashboard values as truth when they are code defaults.",
+      "decision_required": "Whether a dashboard process should read the same .env as the bot. This is a behavioural change to a live-facing surface."
+    },
+    {
+      "id": "REM-0008",
+      "batch": 79,
+      "severity": "MEDIUM",
+      "scope": "data durability",
+      "title": "`git restore .` silently resets five learned-calibration files to uncalibrated seeds",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E2-code-read",
+      "files": [
+        ".gitignore",
+        "calibration.py",
+        "ml_bias.py",
+        "web_app.py",
+        "main.py",
+        "paths.py"
+      ],
+      "symbols": [],
+      "root_cause": "Five calibration files are force-tracked in git despite data/ being gitignored, so a routine restore reverts them to committed seed values with no warning, and nothing downstream notices it is running on seeds.",
+      "evidence": "The 2026-08-26 cron run wrote data/seasonal_weights.json via F3 auto-calibration ('seasonal(4) city(0) condition(3) weights written'), so these files change on a normal cadence and a stale restore is a real loss.",
+      "financial_risk": "Silent reversion to uncalibrated weights on a live pricing path.",
+      "decision_required": "Where first-run seeds live -- untrack and ship elsewhere, keep tracking with a guard, or leave and document."
+    },
+    {
+      "id": "REM-0009",
+      "batch": 79,
+      "severity": "LOW",
+      "scope": "CLI display",
+      "title": "cmd_walkforward's per-condition Brier silently drops 'between'",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E2-code-read",
+      "files": [
+        "main.py"
+      ],
+      "symbols": [
+        "cmd_walkforward"
+      ],
+      "root_cause": "The per-condition breakdown omits 'between' with no statement of intent.",
+      "evidence": "Display-only via `py main.py walkforward`; no gate or trading behaviour reads it.",
+      "financial_risk": "None.",
+      "decision_required": "Whether 'between' belongs in a per-condition Brier at all. Decide; do not add it reflexively."
+    },
+    {
+      "id": "REM-0010",
+      "batch": 80,
+      "severity": "MEDIUM",
+      "scope": "frontend resilience",
+      "title": "useData.js's apiFetch has no request timeout, so a hung backend freezes the dashboard instead of degrading",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E2-code-read",
+      "files": [
+        "frontend/src/useData.js",
+        "frontend/src/tabs/OverviewTab.jsx",
+        "frontend/src/tabs/RiskTab.jsx"
+      ],
+      "symbols": [
+        "apiFetch",
+        "safe",
+        "fetchAllSafe",
+        "fetchAll"
+      ],
+      "root_cause": "No timeout on the fetch, so a backend that hangs rather than errors stalls the whole UI with no indication.",
+      "evidence": "Filed by batch-61's opus review (F1) as out of scope for that change.",
+      "financial_risk": "None; an operator may act on a frozen view believing it current.",
+      "decision_required": "Stale-with-marker vs explicit error state on timeout. Note this frontend has no component-render tests -- logic must be extracted to shared.jsx to be testable."
+    },
+    {
+      "id": "REM-0011",
+      "batch": 80,
+      "severity": "LOW",
+      "scope": "alerting",
+      "title": "A system alert longer than 256 characters crashes the desktop-toast backend",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "notify.py"
+      ],
+      "symbols": [
+        "send_system_alert"
+      ],
+      "root_cause": "plyer's Windows backend packs the message into a NOTIFYICONDATAW struct with a hard 256-character field; a longer string raises inside the notify thread.",
+      "evidence": "ValueError: string too long (333, maximum length 256), surfaced as a PytestUnhandledThreadExceptionWarning during batch-68's test run -- i.e. it escapes the notify thread uncaught rather than being truncated or logged.",
+      "financial_risk": "None; Discord still delivers. It drops the desktop half specifically for the longest, usually most serious, messages.",
+      "decision_required": null
+    },
+    {
+      "id": "REM-0012",
+      "batch": 80,
+      "severity": "LOW",
+      "scope": "test integrity",
+      "title": "test_trades_placed_below_cap has never exercised the 20-position cap it is named for",
+      "status": "CONFIRMED",
+      "confidence": "VERY HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "tests/test_trade_improvements.py",
+        "order_executor.py"
+      ],
+      "symbols": [
+        "TestMaxConcurrentPositions",
+        "_auto_place_trades"
+      ],
+      "root_cause": "The fixture never reaches the cap, so the assertion is permanently vacuous.",
+      "evidence": "Found by an opus review during batch-62 item 1 while tightening a nearby assertion that had been hiding it.",
+      "financial_risk": "None directly; the position cap is a live sizing gate with no real regression test behind it.",
+      "decision_required": null
+    },
+    {
+      "id": "REM-0013",
+      "batch": 80,
+      "severity": "LOW",
+      "scope": "test reliability",
+      "title": "test_kelly_property.py has a hypothesis DeadlineExceeded flake under machine load",
+      "status": "CONFIRMED",
+      "confidence": "HIGH",
+      "evidence_level": "E1-reproduced",
+      "files": [
+        "tests/test_kelly_property.py"
+      ],
+      "symbols": [
+        "test_kelly_quantity_cost_never_exceeds_balance",
+        "test_kelly_bet_dollars_never_exceeds_balance"
+      ],
+      "root_cause": "Timing-sensitive property test; the deadline is too tight for a loaded machine.",
+      "evidence": "Reproduced on unmodified master while regression-testing the isolate_tracker_db change.",
+      "financial_risk": "None.",
+      "decision_required": null
+    }
+  ]
+}
