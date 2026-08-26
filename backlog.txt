@@ -42972,3 +42972,124 @@ When to revisit:
 Sources for the published-ranking claim:
   https://www.getambee.com/blogs/best-weather-forecast-models
   https://open-meteo.com/en/docs/ensemble-api
+
+
+[OPEN 2026-08-26 -- found by the batch-88 session while diagnosing an apparent
+  gfs_seamless underperformance. Filed here rather than left in
+  audit/handoff_prompts/batches/batch-88.md, because that batch is unlikely to
+  run as written and these two findings should not die with it.]
+  THE ENSEMBLE BLEND IS EFFECTIVELY UNWEIGHTED: round(w*2) COLLAPSES EVERY
+  WEIGHT THE LEARNING SYSTEM PRODUCES TO THE SAME INTEGER
+Priority: MEDIUM -- a whole subsystem computes values, persists them, and then
+  discards them. Not a weight-VALUE question, so it does not need the sample
+  floors that block re-deriving weights; it is a mechanism defect.
+Files: weather_markets.py (`get_ensemble_temps` ~:5467, the replication at
+  ~:5523; `_model_weights` :5235 and its baseline at :5326; `_weights_from_mae`;
+  `load_learned_weights`).
+
+Problem:
+  get_ensemble_temps applies model weights by integer replication:
+
+    base_w = weights.get(model, 1.0)
+    w = 1.0 + (base_w - 1.0) * decay          # decay = 1.0 on a fresh fetch
+    repeats = max(1, round(w * 2))
+    all_temps.extend(temps * repeats)
+
+  `_model_weights` resolves in tiers. Tier 1 (`_weights_from_mae`) fires for
+  EVERY city, because per-city n < min_n=20 for all 19 cities, so every one
+  falls back to the global-MAE weights. Measured by the batch-88 session over
+  predictions.db (284 rows, 60 days):
+
+    icon_seamless           1.124   ->  w*2 = 2.248  ->  repeats = 2
+    gfs_seamless            0.834   ->  w*2 = 1.668  ->  repeats = 2
+    ecmwf_aifs025_ensemble  1.065   ->  w*2 = 2.130  ->  repeats = 2
+                     (Jan)  1.215   ->  w*2 = 2.430  ->  repeats = 2
+
+  Every weight collapses to the same integer, in both seasons. **The blend is
+  therefore identical to an unweighted one**, and the effective split is
+  nothing but each vendor's member count: icon 39, gefs 30, aifs 50, i.e.
+  32.8 / 25.2 / 42.0%.
+
+  Two consequences that follow:
+   - `baseline` (:5326) never applies in production, because tier 1 always
+     fires first.
+   - `learned_weights.json` (tier 2) never fires AT ALL, for the same reason.
+     Its content is NYC-only (icon 1.111 / gfs 0.889) and would also quantise
+     to repeats=2 even if it did.
+
+  Also note `round()` is banker's rounding, so the quantisation is asymmetric:
+  round(2.5)=2 but round(3.5)=4. Not currently reachable, but it makes the
+  behaviour non-obvious to anyone who fixes only the step size.
+
+What this is NOT:
+  Not a claim that any particular weight is wrong. Re-deriving weight VALUES
+  needs a sample floor this data does not clear (n=21 paired cells for the
+  member-MAE comparison; batch-81 derived 112 for a single signal). This entry
+  is only that the mechanism discards its input.
+
+Plan:
+  1. Replace integer replication with a real weighted mean (or fractional
+     replication), so a weight of 1.124 differs from 0.834.
+  2. Then, and only then, the separate question of whether weights should be
+     per-model or per-member -- currently a model's influence is
+     weight x member_count, while `weights` reads as per-model. That question
+     is meaningless until weights apply at all.
+  3. Measure before/after held out. This changes live pricing.
+
+Sequencing:
+  MUST land after the recalibration work (direction-entry option 2), which
+  flips the model's favoured side on ~61% of rows. Landing both together
+  leaves neither attributable. Measure between them.
+
+
+[OPEN 2026-08-26 -- found by the batch-88 session, verified live against
+  ensemble-api.open-meteo.com.]
+  _model_weights' DOCSTRING EXCLUDES THE BEST-MEASURING ENSEMBLE MEMBER ON A
+  FACTUALLY FALSE GROUND
+Priority: MEDIUM -- the exclusion may well be correct, but it is currently
+  defended by a false statement, so nobody can tell whether it was a real
+  decision or a mistake that hardened.
+Files: weather_markets.py (`_model_weights` docstring ~:5303; the blend
+  membership tuple `_QUARANTINE_CANDIDATE_MODELS` :4611).
+
+Problem:
+  The docstring at ~:5303 justifies excluding `ecmwf_ifs025` from the ensemble
+  blend on the grounds that it "has no ensemble members".
+
+  That is false. `ensemble-api.open-meteo.com` returns
+  `ecmwf_ifs025_ensemble` with 50 members -- verified live 2026-08-26, and the
+  live response was read directly, not inferred.
+
+  It matters because of which member it excludes. Per-member MAE from
+  ensemble_member_scores (PAIRED -- only cells where all three live members
+  are present, n=21 per var):
+
+                             max     min
+    ecmwf_ifs025           2.138   1.914    <- BEST on both. NOT blended.
+    icon_seamless          2.461   2.063
+    gfs_seamless           2.878   2.465
+    ecmwf_aifs025_ensemble 3.150   2.329    <- WORST on max. IS blended.
+
+  So the blend excludes the best-measuring member and includes the worst on
+  max, and the stated reason for doing so is not true.
+
+The exclusion may still be RIGHT. Do not "fix" it by adding ifs025:
+  - AIFS may have been chosen deliberately on skill, horizon, latency or cost
+    grounds that the docstring simply failed to record.
+  - MAE is not probability skill, and here they DISAGREE: on unpaired
+    per-member Brier the ordering partly inverts, with min-Brier putting
+    gfs_seamless BEST (0.3613) and ecmwf_ifs025 WORST (0.4008).
+  - n=21 paired cells, one month, summer.
+
+Plan:
+  1. `git log` when `ecmwf_aifs025_ensemble` entered
+     `_QUARANTINE_CANDIDATE_MODELS`, and read that change's own reasoning.
+     Deliberate-vs-drift is the whole question and it is one command.
+  2. Correct the docstring to state the real reason, whatever it turns out to
+     be. If the real reason is "nobody compared them", say that.
+  3. Only if step 1 shows drift, and only on Brier over paired cells at a
+     defensible n, revisit membership.
+
+When to revisit:
+  Before any blend-membership or weight change, and alongside the quantisation
+  entry above -- they are the same area and a session in one should read both.
