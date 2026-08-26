@@ -31,6 +31,13 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "files": 25
+    },
+    {
+      "date": "2026-08-26T00:00:00+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 2,
+      "note": "batch-76 scoped AST refresh (weather_markets.py, metar.py) on graphify 0.9.50 from GitHub; semantic tier untouched. build_merge preserves _src/_tgt in memory but the JSON writers drop them and an undirected reload rescrambles source/target -- 12,088 links (54%) repaired deterministically from _src/_tgt, same method as commit 14162c46. Clustering restored per node id (184) with file-majority fallback for genuinely new symbols (215); no repo-wide re-cluster. obsidian/, graph.html and GRAPH_REPORT.md deliberately NOT regenerated."
     }
   ],
   "total_input_tokens": 0,
