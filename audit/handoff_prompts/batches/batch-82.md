@@ -4,9 +4,20 @@
 
 Repo: weather1. Written 2026-08-26 against master `c9cd4426` — **re-verify current before starting**.
 
-> ## ⛔ BLOCKED on batches 76, 78, 79. Check `git log origin/master` before starting.
+> ## ✅ UNBLOCKED 2026-08-26. All three prerequisites landed.
 >
-> Touches `calibration.py`, `ml_bias.py`, `main.py` (owned by batch 79), `weather_markets.py` (76) and `tracker.py` (78). Rebase onto whatever they land.
+> `703e2c86` (76), `96ffc611` (78), `2af1daef` (79). **Re-anchor onto `0b645aca` or later.**
+>
+> **Re-verified against `0b645aca` — the batch's two load-bearing premises both hold:**
+>
+> - `calibration.py:203` still reads `FROM multiday_predictions p`. Unchanged.
+> - **The precedence trap is still live.** `data/condition_weights.json` still holds real fitted values for all three conditions (`above {.60, .05, .35}`, `below {.05, .75, .20}`, `between {.093, .004, .903}`), so a same-day row still resolves at the **condition** tier and never reaches seasonal. Fitting same-day seasonal alone would still be dead code.
+> - Sample counts re-measured and **unchanged**: 204 fittable rows all-horizon, **77 at D+0**, 127 at D+1-and-up, 348 settled. Re-run them anyway before sizing.
+> - `_nws_days_out_scale` moved `~:9848` → **`:9869`** (call sites `:10474`, `:10494`).
+>
+> **What batch 79 changed underneath this batch — read before choosing a file shape.** The five calibration files are **no longer tracked**; `git ls-files data/` is empty. Fresh-clone copies now live in **`seeds/`**, applied by **`paths.materialize_missing_seeds()`** only when `data/` lacks the file, with atomic writes (temp + fsync + `os.link`) so a seed can never overwrite learned state. **Any file this batch adds must follow that mechanism.** The implementation note below about coordinating with batch 79 on force-tracking is therefore **resolved** — ignore it and use `seeds/`.
+>
+> **One live hazard batch 79 surfaced that lands squarely on this batch's subject.** `seeds/seasonal_weights.json`'s `summer` entry had lost its `"_uncalibrated"` flag, so `_blend_weights` treated summer as *calibrated at uniform weights* and suppressed the days-out schedule. Batch 79 repaired the seed. The lesson for this batch: **an all-uniform weight dict without `_uncalibrated` is indistinguishable from a real fit at the tier check**, and that is exactly the failure mode a new same-day tier can reintroduce. Whatever "declined to fit" shape you choose must set the flag, and a test should pin that an undecorated uniform dict does not satisfy the tier.
 
 **Files owned (once unblocked): `calibration.py`, `weather_markets.py`, `ml_bias.py`, `main.py`, `tracker.py`.**
 

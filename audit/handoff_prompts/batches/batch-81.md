@@ -4,9 +4,20 @@
 
 Repo: weather1. Written 2026-08-26 against master `6b116698` — **re-verify current before starting**.
 
-> ## ⛔ BLOCKED ON BATCHES 76–80. Do not start until all five have landed.
+> ## ✅ UNBLOCKED 2026-08-26. All five prerequisites landed.
 >
-> This batch touches `weather_markets.py` (owned by 76), `tracker.py` and `cron.py` (78), `main.py` (79) and `order_executor.py` (80). It is the one batch in this set that cannot run in parallel with anything. Check `git log origin/master` for all five before beginning, and rebase onto whatever they landed.
+> `703e2c86` (76), `aaf76d67` (77), `96ffc611` (78), `2af1daef` (79), `0b645aca` (80), plus `aa7c15ed`, `4bfa93f2` and `202be163` as follow-ups. **Re-anchor onto `0b645aca` or later.** Every one of this batch's five files was modified by that set, so treat all line numbers below as approximate and re-locate by symbol.
+>
+> **Re-verified against `0b645aca`:**
+>
+> | Claim | Status |
+> |---|---|
+> | Twelve `_SignalRegistryEntry` blocks, **ten** on `sample_floor=20`, two on `None` | holds — batch 76 did not change the count |
+> | `floor_cleared = count >= entry.sample_floor` | moved `~:10388` → **`:10409`** |
+> | `_notify_feature_activation` | moved `~:9900` → **`:9921`** |
+> | `analysis_attempts` has no signal columns | **holds** — batch 78 added a per-day scan record but left this table's columns untouched: `ticker, city, condition, target_date, analyzed_at, forecast_prob, market_prob, days_out, was_traded, outcome, status, not_found_at, last_checked_at` |
+>
+> So **item 2 is fully intact** and is still the larger half of the batch. Batch 78's retention work chose 730 days for `ensemble_member_values` (`4bfa93f2`) — that is the window to coordinate with, not a number to re-litigate.
 
 **Files owned (once unblocked): `weather_markets.py`, `main.py`, `tracker.py`, `cron.py`, `order_executor.py`.**
 

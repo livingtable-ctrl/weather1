@@ -1,5 +1,7 @@
 # Batch 79: process bootstrap and config durability — three ways config silently isn't what you think
 
+> **Date convention note (added 2026-08-25 local).** Several dates in this batch set read `2026-08-26`. That is the **UTC** date; `git log` local time for every commit referenced here is **2026-08-25**. Where a time is given as UTC (e.g. the 00:28 UTC cron run) the date is correct as written; bare dates are off by one. Verified against `git log --date=iso`.
+
 ## Context
 
 Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant. Items 1 and 2 both concern a process reading configuration that differs from the operator's intent, silently.
@@ -14,7 +16,13 @@ Source: three `backlog.txt` entries, cited by title:
 
 ## Items
 
-### 1. [MEDIUM] `py web.py` never loads `.env`
+### 1. [MEDIUM] `py web.py` never loads `.env` — **the file is `web_app.py`; `web.py` does not exist**
+
+> **Verified against master `21e40ca0`.** `ls web*.py` returns only `web_app.py`, and `git log --all -- web.py` returns nothing: there has never been a `web.py` in this repo's history. The defect is real — the standalone entry point is `python web_app.py`, whose `if __name__ == "__main__":` block at `web_app.py:4710` constructs `KalshiClient()` directly, and `grep load_dotenv web_app.py` finds only a *comment*, never a call.
+>
+> **The wrong filename is baked into the source too, which is presumably where the backlog entry got it:** `web_app.py:3932` ("standalone `py web.py` runs, which never call load_dotenv") and `utils.py:260`. So there are two deliverables, not one — fix the behaviour, and fix the places that name a command an operator cannot run.
+>
+> The import-time-binding trap below is confirmed: `config.py` binds credentials as module constants at import, so `load_dotenv()` must precede the import, not merely exist in the process.
 
 **Files:** `web.py`, `web_app.py`, `config.py`, `utils.py`. `main.py` is the **correct** reference — it calls `load_dotenv()` at import (~`:41`) — read it, don't change it for this item.
 
@@ -26,6 +34,10 @@ Confirmed live this session, and it is not a theoretical concern: a `python -c` 
 
 ### 2. [MEDIUM] `git restore .` silently resets five learned-calibration files to seed values
 
+> **Verified: `git ls-files data/` returns precisely the five named.** Two cautions before untracking. `data/condition_weights.json` currently holds **real fitted values**, not neutral seeds — `above {ens .60, clim .05, nws .35}`, `below {.05, .75, .20}`, `between {.093, .004, .903}` — as does `data/temperature_scale.json` (`above T=1.274 n=44`, `global T=4.601 n=68`, `sameday T=3.829 n=102`). A fresh clone that receives no seeds at all silently prices on hardcoded defaults, which is a *different* failure from this one, not obviously a better one. And **batch 82 is queued behind this and plans to ADD files to this set**, so whatever shape is chosen has to generalise.
+>
+> Citation drift: `.gitignore`'s `data/` is line **12**, not `:9`. `main.py:8590` for `metar_lockout_calibration` is wrong — the only occurrence in `main.py` is `:898`, a filename inside a list.
+
 **Files:** `.gitignore` (`data/` at `:9`), `calibration.py` (writes `city_weights`, `condition_weights`, `seasonal_weights`), `ml_bias.py` + `web_app.py` (write `temperature_scale`), `ml_bias.py` + `main.py` (~`:8590`, write `metar_lockout_calibration`), `paths.py`.
 
 Five learned-calibration files are force-tracked in git despite `data/` being gitignored, so a routine `git restore .` or `git checkout -- data/` reverts them to their committed **uncalibrated seed** values — no warning, no error, and nothing downstream notices it is now running on seeds.
@@ -34,7 +46,24 @@ Five learned-calibration files are force-tracked in git despite `data/` being gi
 
 **`AskUserQuestion`:** the entry's own plan says option (a) needs a first-run-seed path designed per file plus a decision about **where the seeds live**. That is the question — untrack them and ship seeds elsewhere, keep tracking but add a guard, or leave and document. Not hard, but it touches five loaders and wants doing once.
 
-### 3. [LOW] `cmd_walkforward`'s per-condition Brier silently drops `'between'`
+### 3. [LOW] `cmd_walkforward`'s per-condition Brier silently drops `'between'` — **real, but this brief has the shape wrong**
+
+> **The location is the query, `main.py:8335-8344`, not the breakdown printer:**
+>
+> ```sql
+> SELECT p.our_prob, p.condition_type, o.settled_yes
+> FROM predictions p JOIN outcomes_valid o ON p.ticker = o.ticker
+> WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
+>   AND (p.condition_type IS NULL OR p.condition_type != 'between')
+> ```
+>
+> Two things this brief missed, pointing in opposite directions.
+>
+> **(a) The filter also diverges the other way, silently.** It hardcodes the literal `'between'` rather than using `_condition_type_not_in_sql()` / `_excluded_brier_condition_types()`. That helper excludes `'between'` **and** six gate-coupled shadow-only families (rain/snow/hurricane/storm-order etc.). So `cmd_walkforward` *agrees* with the module on `'between'` and silently **includes** every shadow family the rest of the Brier surface excludes. That is arguably the larger defect and it is not in the backlog entry at all.
+>
+> **(b) The module's stated reason for excluding `'between'` does not apply here.** `_excluded_brier_condition_types()`'s docstring says `'between'` is excluded because its structurally larger calibration gap (T is about 6.8) "would distort a shared **aggregate** Brier score meant to represent overall model quality." This output is a **per-condition breakdown** — every condition gets its own row, so there is no aggregate to distort. That is the real argument for keeping `'between'` here, and it is stronger than the `get_station_bias_by_lead` analogy below (which is accurate, `tracker.py:11463-11467`, but concerns degF error rather than probability calibration).
+>
+> While in there: the block opens a raw `_sql.connect(str(_DB_PATH))` and never closes it, rather than going through `tracker._conn()`.
 
 **Files:** `main.py` (`cmd_walkforward`'s "Per-condition Brier" breakdown).
 

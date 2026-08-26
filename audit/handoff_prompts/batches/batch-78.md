@@ -1,5 +1,7 @@
 # Batch 78: observability and retention — three things the operator cannot currently see
 
+> **Date convention note (added 2026-08-25 local).** Several dates in this batch set read `2026-08-26`. That is the **UTC** date; `git log` local time for every commit referenced here is **2026-08-25**. Where a time is given as UTC (e.g. the 00:28 UTC cron run) the date is correct as written; bare dates are off by one. Verified against `git log --date=iso`.
+
 ## Context
 
 Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant. All three items are observation/plumbing; none changes a trading decision.
@@ -36,13 +38,44 @@ Design note worth deciding rather than assuming: a row saying "a scan ran" is ch
 
 **`AskUserQuestion` for the window, per table — they are not the same question.** A15b's rank histogram is explicitly long-horizon ("needs months, not days"), so member values likely want keeping far longer than depth snapshots, which A4/A17 use for short-horizon replay. Do **not** pick a single number for both. Re-run the row counts before choosing; this figure has already been wrong once by 50×.
 
-### 3. [LOW] `brier_skill_score()` has no `condition_type` filter
+### 3. ~~[LOW] `brier_skill_score()` has no `condition_type` filter~~ — **ALREADY FIXED, DROP IT**
+
+> **Verified against master `21e40ca0`: this landed in batch-57 (item 1) on 2026-08-24.** `tracker.py:4571` reads
+>
+> ```python
+> cond_clause, cond_params = _condition_type_not_in_sql(
+>     _excluded_brier_condition_types()
+> )
+> ```
+>
+> with `AND {cond_clause}` in the WHERE clause, and the function's own docstring names this entry's exact title and records the measured impact (BSS −0.147866 n=152 → −0.272531 n=94 on the 2026-08-24 corpus).
+>
+> **Why it reached this batch as open:** `backlog.txt:27479` still carries an `[OPEN 2026-08-20 …]` header above its own `Resolution (2026-08-24, batch-57 item 1)`, and `backlog_index.py` keys off the first bracket. Fourth instance of that stale-header pattern; three others were corrected 2026-08-25. **Correcting that header to `[RESOLVED]` is the entire remaining deliverable for this item.**
+>
+> The `'between'` question below is also already answered, and more carefully than this brief implies: `_excluded_brier_condition_types()`'s docstring states `'between'` is excluded **unconditionally and permanently by design** — not gate-coupled — because its calibration gap is structurally larger (T≈6.8 vs the much smaller global/above/below correction) and would distort a shared aggregate. Nothing to decide.
+
+_Original item text, retained for the record:_
+
 
 **Files:** `tracker.py` (`brier_skill_score`). `web_app.py` is its only non-test caller — **read-only in this batch**.
 
 The query selects `p.our_prob` / `p.market_prob` / `o.settled_yes` with no exclusion at all, so a shadow-only rain/snow/hurricane/storm-order or `'between'` row can freely enter the calculation — the same contamination class the rest of the Brier family was fixed for in batch-06.
 
 Note this is **not** a "will now disagree" case: it never had the hardcoded tuple batch-06 unified, it was always unfiltered. Use the module's existing `_condition_type_not_in_sql()` / `_excluded_brier_condition_types()` helpers rather than a fresh literal, and read `get_station_bias_by_lead`'s docstring first — it documents a deliberate exception where `'between'` is *kept*, and the reasoning there (a °F error is a valid sample for a between market even though its probability calibration differs) may or may not apply to a Brier skill score. Decide explicitly.
+
+## Verification pass (master `21e40ca0`)
+
+**Items 1 and 2 confirmed real.** `grep "DELETE FROM ensemble_member_values|DELETE FROM orderbook_depth_snapshots"` across `tracker.py`, `cron.py` and `main.py` returns **nothing**; `purge_old_predictions` (`tracker.py:918`) has exactly three DELETEs, all against `predictions` and `outcomes`. `_maybe_persist_depth` at `kalshi_ws.py:464` (called `:764`), `DEPTH_SNAPSHOT_INTERVAL_SECS` read at `:226` with a 60 s default. `get_scan_activity` at `tracker.py:13296`; `batch_log_analysis_attempts` at `tracker.py:12821`. `_SCHEMA_VERSION = 76` at `tracker.py:114`, so this batch's migration is v77 as stated.
+
+**Citation drift — these have moved:**
+
+| Cited | Actual |
+|---|---|
+| `trade_cycle.py` `if not analysis` ~`:566` | `:572` |
+| `trade_cycle.py` `all_results.append` ~`:612` | `:618` |
+| `cron.py` `batch_log_analysis_attempts` ~`:2389` | `:2426` |
+
+**Read `trade_cycle.py:503-505` before wiring item 1.** It carries an explicit warning that a related structure "must NOT be derived from `all_results` (narrower)" — the same narrowness argument applies to whatever per-day count this item adds.
 
 ## Process — follow the 29-step implementation workflow in full
 
