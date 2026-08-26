@@ -37169,3 +37169,110 @@ Plan:
   Related but separately owned: several TESTS also write into the real data/
   dir (including one that creates the production .kill_switch) -- that is its
   own spun-off task, not this entry.
+
+[OPEN 2026-08-25 -- surfaced while answering "how do we get more data faster".
+  Full reasoning and the measured tables live in audit/DATA_ACCRUAL_PLAN.md.]
+  EVERY SAMPLE-COUNT FLOOR SHOULD BE AUDITED FOR WHICH QUESTION IT GATES --
+  CALIBRATION IS ~16x CHEAPER TO ANSWER THAN EDGE AND MAY ALREADY BE ANSWERED
+Priority: Medium -- nothing is broken; this is unspent time. Cheapest item on
+  the whole accrual list, and it needs measurement rather than new machinery.
+Files: the floors themselves -- weather_markets.py (_SignalRegistryEntry
+  sample_floor, _hourly_gates_active), tracker.py (get_dynamic_station_bias's
+  min_samples=10, STATION_BIAS_MIN_SAMPLES/BRIER_POLICY_MIN_SAMPLES),
+  ml_bias.py (EMOS/T-scaling training floors), paper.py (_method_kelly_
+  multiplier's min_samples)
+
+Problem:
+  The two questions this bot asks have wildly different sample costs, because
+  they use estimators with wildly different variance:
+
+    question              estimator            sd       n for effect
+    is it calibrated?     forecast error, F    2.889    262  (0.5F)
+    does it beat market?  realized PnL, $/ct   0.4698   4,331 (2c)
+
+  (Two-sided 95% + 80% power. The PnL column reproduces the existing
+  "SETTLE analysis_attempts.outcome" entry's 693/1,925/4,331/17,323 table
+  exactly, which is how the convention was confirmed.)
+
+  Measured on the live DB 2026-08-25: on 208 clean ensemble rows a 0.56F bias
+  is already detectable, and 1.0F needs only n=66. On 321 settled rows the
+  smallest detectable edge is 7.3c/contract -- larger than any plausible real
+  edge, and batch-66 measured skill NEGATIVE anyway.
+
+  So any floor that gates a CALIBRATION decision (station bias, sigma, EMOS,
+  per-city offsets) behind a PnL-sized n is costing calendar time for no
+  statistical reason. Nobody has checked which floors are in that category.
+
+Plan:
+  1. Enumerate every sample-count floor and classify what each one gates:
+     a calibration statistic (F, continuous, cheap) or a P&L/skill statistic
+     (binary, expensive).
+  2. For the calibration ones, re-derive the floor from the actual variance of
+     the quantity being estimated and the effect size worth acting on, instead
+     of a round number.
+  3. Do NOT touch floors gating live-money skill claims -- those are correctly
+     expensive, and are the only thing between a negative-skill model and real
+     orders.
+  4. Anything re-floored needs its own before/after note; a floor that drops
+     is a claim that the old one was measuring the wrong thing, and should
+     read that way in the diff.
+
+Why not now:
+  Wants doing deliberately with the user, one floor at a time -- several of
+  these are live gates, and "lower the floor" is exactly the move that looks
+  like progress while removing a safety property.
+
+
+[OPEN 2026-08-25 -- same origin; see audit/DATA_ACCRUAL_PLAN.md.]
+  A ONE-OFF previous-runs-api BACKFILL WOULD ~4x CALIBRATION RESOLUTION
+  IMMEDIATELY, AND THE ARCHIVE WINDOW CANNOT BE BOUGHT RETROACTIVELY
+Priority: Medium -- the one-off half is a large, immediate gain with no
+  waiting; the daily-harvest half is low-urgency but its cost compounds the
+  longer it is deferred.
+Files: backtest.py (_PREV_RUN_MODELS and the previous-runs-api call site,
+  grep `previous-runs-api`), tracker.py (wherever the pairs would land),
+  acis_temps.py / metar.py (ground truth)
+
+Problem / opportunity:
+  backtest.py already reads archived forecasts from
+  previous-runs-api.open-meteo.com. Over 21 cities x 2 vars, a single backfill
+  across the available window yields roughly:
+
+    window        pairs    smallest detectable bias
+    today (live)    208    0.561F
+    past_days=41  ~1,722   0.195F
+    past_days=92   ~3,864  0.130F
+
+  i.e. a ~4x improvement in calibration resolution available with NO waiting.
+  Ground truth is already reachable via ACIS/METAR, both already used here.
+
+  Three constraints, all real and all already documented in this repo:
+  - temperature_2m_previous_day0 is NOT a real field (silently ignored), so
+    the minimum reconstructable lead is previous_day1 (~24h). This cannot
+    reconstruct a same-day 15Z decision.
+  - The API exposes whole-day run offsets only, not intraday run selection.
+  - It measures the DETERMINISTIC 3-model blend, a different estimator from
+    the live ensemble mean. Usable for station bias (largely estimator-
+    independent) and sigma; NOT a substitute for measuring the live blend.
+    Same caveat as batch-75's model_forecast_temp_f column.
+
+  The second half: the window is bounded, so history beyond it cannot be
+  bought retroactively at any price. Storing previous_day1 daily costs almost
+  nothing and in a year yields an archive nothing can reconstruct later.
+
+Plan:
+  1. VERIFY the real past_days ceiling first. The existing call site passes
+     max(41, days_out + 2), which is evidence of that caller's needs, not of
+     the API's limit. Every number above scales off this.
+  2. One-off backfill into a table that records the ESTIMATOR alongside the
+     value, so these pairs can never be silently pooled with live-blend rows
+     (the exact confusion batch-75 existed to remove).
+  3. Re-derive station bias and sigma on the enlarged sample; compare against
+     the live-blend figures rather than replacing them.
+  4. Separately decide whether to harvest daily going forward.
+
+Why not now:
+  Step 1 is a live API probe and step 2 is a schema decision; both want doing
+  deliberately. Also genuinely lower priority than settling analysis_attempts,
+  which fixes the SELECTION BIAS this does not touch -- a bigger sample of the
+  same biased population answers a different question than an unbiased one.
