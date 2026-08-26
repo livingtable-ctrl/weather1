@@ -1,0 +1,42 @@
+# Batch 84: operator alerting and dashboard resilience — three ways a signal never reaches the operator
+
+## Context
+
+Repo: weather1. Written 2026-08-26 against master `0c332140` — **re-verify current before starting**. Live trading dormant.
+
+**Files owned: `notify.py`, `watchdog.py`, `frontend/src/App.jsx`, `frontend/src/shared.jsx`, `frontend/src/tabs/AnalyticsTab.jsx`, `frontend/src/tabs/PositionsTab.jsx`, `frontend/src/tabs/SettingsTab.jsx`, `frontend/src/tabs/SignalsTab.jsx`.**
+
+Three `backlog.txt` entries, all filed by batch-80, all about a message that does not arrive. No file here is touched by any other open batch.
+
+### 1. [LOW] `notify.py` records the desktop channel as delivered when plyer merely started a thread
+
+> `NOTIFY.PY RECORDS THE DESKTOP CHANNEL AS DELIVERED WHENEVER PLYER'S notify() RETURNS, BUT ON WINDOWS THAT ONLY MEANS "A THREAD WAS STARTED"`
+
+Verified 2026-08-26 by inspecting the installed backend: `plyer.platforms.win.notification.WindowsNotification._notify` is exactly `thread(target=balloon_tip, kwargs=kwargs).start()`. Fire-and-forget, so the `try/except Exception` around `_notif.notify(...)` is decorative and `successes.append(True)` always runs.
+
+**The consequence is not cosmetic.** `send_system_alert` returns `status != "failed"`, and its own docstring says `alerts.check_halt_transition` uses a `False` return to roll back edge-triggered state so the next cycle retries. A phantom `True` defeats exactly that. The "all N channel(s) failed" warning also cannot fire on a desktop-only failure.
+
+The LOW rating rests on `NOTIFY_CHANNELS` defaulting to all five, not on anything in the code. One `NOTIFY_CHANNELS=desktop` and a halt transition is marked delivered and never retried. **`AskUserQuestion`:** stop appending `True` for desktop, or bypass `plyer.notification` and own the thread.
+
+### 2. [LOW] `py watchdog.py` never calls `load_dotenv`
+
+> `\`py watchdog.py\` NEVER CALLS load_dotenv, SO ITS ntfy PUSH ALERT CANNOT BE CONFIGURED FROM .env`
+
+Zero impact today — `NTFY_TOPIC` is unset in this deployment — which is precisely why it can rot unnoticed on a dead-man's-switch path. The correct reference is `main.py`'s `load_dotenv()` at import; batch-79 established that **position, not presence, is what matters** (a `load_dotenv()` after the first env-reading import is a no-op that looks like a fix). Verify empirically in an isolated child process, as batch-79 did.
+
+### 3. [LOW] Every other raw `fetch()` in the frontend still has no timeout
+
+> `EVERY OTHER RAW fetch() IN THE FRONTEND STILL HAS NO REQUEST TIMEOUT`
+
+Batch-80 fixed `useData.js`'s `apiFetch` but did not own these files. Operator-initiated actions and per-tab loads, so a hang stalls one button rather than the whole dashboard — hence LOW.
+
+**Reuse batch-80's shape, don't invent a second one.** Read what it did to `apiFetch` first. This repo's frontend has no component-render tests; only pure functions are unit-tested and the convention is to extract logic into `shared.jsx`. Plan for that rather than discovering it.
+
+
+## Process — follow the 29-step implementation workflow
+
+Read `C:\Users\thesa\.claude\projects\C--Users-thesa-claude-kalshi\memory\feedback_implementation_workflow.md` and follow it.
+
+(1) Re-verify every claim below against live code first — these were measured 2026-08-26 and the repo moved fast that day. (3) `AskUserQuestion` for any item marked as needing a decision. (7) Mutation-test via the **Edit** tool, never a string-replace script — a scripted revert has left a silent third state in this repo before. Pair every absence-assertion with a positive control. (8) Scoped tests only — **never the bare full suite**. (9) Lint via the real pre-commit hook, not the repo `.venv`'s mypy; the versions disagree. (11) Independent opus review at `effort: high`. (13) Address every finding including LOW. (14) Memory before commit. (15) Explicit user confirmation before commit/push. (16) `git fetch` + rebase immediately before push. (19) `python backlog_index.py`.
+
+**Two standing hazards.** Scripts run outside pytest bypass conftest's real-`data/`-write blocker and its default-deny network guard — redirect `safe_io.project_root()` or the specific `paths.py` constant before running any scratch script. And do not run `git restore .` or `git checkout -- data/`.
