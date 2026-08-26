@@ -21,6 +21,8 @@ Repo: weather1. Written 2026-08-26 against master `c9cd4426` — **re-verify cur
 
 **Files owned (once unblocked): `calibration.py`, `weather_markets.py`, `ml_bias.py`, `main.py`, `tracker.py`.**
 
+Plus `backlog.txt` for the two record repairs in “Also while you are here” below.
+
 **This is not a new proposal.** Separate calibration for single-day and multi-day was the original design intent, confirmed by the user 2026-08-26. Temperature scaling already implements it; blend-weight calibration never did. This batch closes that gap.
 
 ## The asymmetry
@@ -112,6 +114,41 @@ Note `calibration.py` already has machinery for "declined to fit" — it logs a 
 - The output files gain a horizon level. Decide the shape deliberately: nesting (`{"sameday": {"winter": {...}}}`) versus sibling files (`seasonal_weights_sameday.json`). **Whichever you pick, note that these five calibration files are force-tracked in git despite `data/` being gitignored, and a `git restore .` silently reverts them to uncalibrated seeds** — that is its own open backlog entry, and adding files makes it worse. Coordinate with batch 79, which owns that entry.
 - `weather_markets.py`'s module-level `_SEASONAL_WEIGHTS` / `_CONDITION_WEIGHTS` are loaded once at import. A horizon-aware read must not turn into a per-call file read on the pricing path.
 - Do **not** fold `metar_lockout` rows into any of this. They carry none of the three inputs, and batch-75 spent a session removing exactly this kind of population mixing from `forecast_temp_f`.
+
+## Also while you are here — two backlog-record repairs in this batch's own area
+
+Both are documentation, not behaviour. They are folded in here (user decision, 2026-08-26) because this batch owns the calibration surface and both records are about it. Neither should be allowed to grow into scope creep: together they are one commit's worth of editing, and they must not delay the main item.
+
+### A. A user decision recorded in `backlog.txt` was reversed by batch 79, and the record still describes the old world
+
+`backlog.txt` ~`:2368`, inside the `RESOLUTION 2026-08-24 (batch-37 items 3/7)` note on the entry titled *"METAR SETTLEMENT-LAG CALIBRATION MAKES CRON.PY'S >=0.80 FORCE-CLOSE GATE MATHEMATICALLY UNREACHABLE…"*, states:
+
+> AskUserQuestion asked (git-track vs fail-closed vs both). User chose git-track only. `data/metar_lockout_calibration.json` force-added to git (`git add -f`, matching the other calibration artifacts — seasonal/city/condition_weights.json and temperature_scale.json are already tracked the same way despite `data/` being gitignored) and committed directly to master (main-clone commit `1faf7b58`…)
+
+**Every factual clause in that parenthetical is now false.** Batch 79 (`2af1daef`) untracked all five; `git ls-files data/` is empty; the file moved as a pure rename, `{data => seeds}/metar_lockout_calibration.json`. Batch 79's commit message never referenced this entry, so the reversal is undocumented on both sides.
+
+**Do not "restore" the old behaviour.** The user's stated intent was that a fresh clone gets a usable calibration file, and `seeds/` + `paths.materialize_missing_seeds()` serves it strictly better: a seed can never overwrite learned state, and `git restore .` no longer reverts it — which was that entry's sibling bug. Add a dated addendum to the resolution note saying the mechanism changed, why the intent survives, and that `1faf7b58`'s force-add has been undone. Cross-reference `2af1daef`.
+
+**Check one consequence while you are in there.** That entry also records that `_calibrate_metar_settlement_confidence` **fails open** to raw confidence on a missing calibration (its docstring wrongly says "fails closed" — a doc fix the entry left explicitly outstanding). Under `seeds/`, the file is now materialised on every fresh clone, so the fail-open path may no longer be reachable at all. Determine whether that makes the mislabelled docstring moot or more misleading, and say which.
+
+### B. The calibration compression in this file's subject area was independently derived twice
+
+The same backlog entry's `Problem:` section already contains, from 2026-08-16:
+
+```
+max(calibrated) = 0.7661 (YES) / 0.5954 (NO)
+yes_ceiling=0.7660884869913979   no_ceiling=0.5953683796913031
+```
+
+Batch 76 re-derived that compression from scratch on 2026-08-25 without finding this entry. **The two figure sets look contradictory and are not** — they report different quantities, and the reconciliation is worth writing down once so a third session does not repeat the work:
+
+- The entry reports **P(NO)** at the *highest* lock confidence: `1 − g(0.03) = 0.59536837969` where `g` is `apply_metar_calibration`.
+- Batch 76 reports **P(YES)** at the *lowest*: `g(0.28) = 0.54647607`.
+- They agree: for a 0.97 NO lock, `g(0.03) = 0.4046` and `0.4046 + 0.5954 = 1.0`.
+
+Add a cross-reference in both directions — from that backlog entry to `weather_markets.py:17307` (section 10b, the METAR lock side-agreement override, with `rec_side = _lock_outcome` at `:17416`), and from 10b's comment block back to the entry.
+
+**One thing neither record has, and it belongs in the note you write.** The `[0.72, 0.97]` bound exists in **two** places, not one: `metar.py:104` in `_dynamic_lock_in_confidence` and `metar.py:146` in `_between_dynamic_lock_in_confidence`. Both are `round(min(0.97, max(0.72, conf)), 3)`. Raising "the cap" therefore means two edits — and **the `between` variant is not protected by section 10b**, which deliberately excludes between-YES as not monotone-safe. So the ceiling/floor arithmetic that 10b makes safe does *not* transfer to the between path. State that explicitly; it is the kind of asymmetry that reads as an oversight later.
 
 ## Process — follow the 29-step implementation workflow in full
 
