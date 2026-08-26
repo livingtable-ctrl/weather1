@@ -2,7 +2,7 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-26 against master `f5cbbf70` — **re-verify current before starting**. Live trading dormant. All three items are observation/plumbing; none changes a trading decision.
+Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant. All three items are observation/plumbing; none changes a trading decision.
 
 **Files owned: `tracker.py`, `cron.py`, `trade_cycle.py`, `kalshi_ws.py`.**
 **Read-only here (owned by other batches): `web_app.py` (batch 79), `weather_markets.py` (batch 76).** Item 2 references `batch_prewarm_ensemble` as the volume driver and item 3 has a `web_app.py` caller — read both, change neither.

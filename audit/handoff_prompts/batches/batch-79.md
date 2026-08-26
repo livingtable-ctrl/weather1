@@ -2,7 +2,7 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-26 against master `f5cbbf70` — **re-verify current before starting**. Live trading dormant. Items 1 and 2 both concern a process reading configuration that differs from the operator's intent, silently.
+Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant. Items 1 and 2 both concern a process reading configuration that differs from the operator's intent, silently.
 
 **Files owned: `web.py`, `web_app.py`, `config.py`, `utils.py`, `calibration.py`, `ml_bias.py`, `paths.py`, `main.py`, `.gitignore`.**
 **Read-only here (owned by other batches): `tracker.py` (batch 78), `weather_markets.py` (batch 76).**

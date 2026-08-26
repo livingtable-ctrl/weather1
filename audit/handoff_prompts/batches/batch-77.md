@@ -2,7 +2,7 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-26 against master `f5cbbf70` — **re-verify current before starting**. Live trading dormant; in paper mode this costs simulated money, but the same cascade with `LIVE_TRADING_ENABLED` leaves **real positions unprotected**, and the run that exposed it was banner-flagged `REAL MONEY TRADES ENABLED`.
+Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant; in paper mode this costs simulated money, but the same cascade with `LIVE_TRADING_ENABLED` leaves **real positions unprotected**, and the run that exposed it was banner-flagged `REAL MONEY TRADES ENABLED`.
 
 **Files owned: `kalshi_client.py`, `paper.py`.** No other batch in this set touches either.
 

@@ -2,9 +2,11 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-26 against master `f5cbbf70` — **re-verify current before starting** (`git fetch` + `git log origin/master`). Live trading dormant; item 1 is nonetheless on the **live trade-entry path** and is unblocked by any existing gate.
+Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting** (`git fetch` + `git log origin/master`). Live trading dormant; item 1 is nonetheless on the **live trade-entry path** and is unblocked by any existing gate.
 
 **Files owned: `weather_markets.py`, `metar.py`.** No other batch in this set touches either.
+
+**`weather_markets.py` changed under this batch on 2026-08-26** — `e8d178f1` dropped its last six re-exports (`nws_prob`, `obs_prob`, `fetch_nbm_forecast`, `climatological_prob`, `get_enso_index`, `temperature_adjustment`), retargeting ~150 test patch sites to the source modules. If a test you add patches `weather_markets.<one of those>` it will raise `AttributeError` immediately rather than silently no-opping — retarget it to the owning module.
 
 Source: two `backlog.txt` entries, cited **by title** (`L`-numbers drift constantly — grep the title):
 - `METAR-LOCKED PATH'S RECOMMENDED SIDE CAN CONTRADICT THE LOCK'S OWN OUTCOME -- AND THE DIVERGENCE GATE IS SKIPPED THERE`

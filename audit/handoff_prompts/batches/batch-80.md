@@ -2,7 +2,7 @@
 
 ## Context
 
-Repo: weather1. Written 2026-08-26 against master `f5cbbf70` — **re-verify current before starting**. Live trading dormant. Nothing here touches a trading decision. This is the batch that can run alongside everything else with the least coordination.
+Repo: weather1. Written 2026-08-26 against master `e8d178f1` — **re-verify current before starting**. Live trading dormant. Nothing here touches a trading decision. This is the batch that can run alongside everything else with the least coordination.
 
 **Files owned: `frontend/src/useData.js`, `frontend/src/tabs/OverviewTab.jsx`, `frontend/src/tabs/RiskTab.jsx`, `notify.py`, `tests/test_trade_improvements.py`, `tests/test_kelly_property.py`, `order_executor.py`.** No other batch in this set touches any of them.
 

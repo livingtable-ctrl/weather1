@@ -1,6 +1,6 @@
 # Weather1 Remediation Batch Set 76–80 — Report
 
-Repo: `C:\Users\thesa\claude kalshi` (branch `master`, HEAD `f5cbbf70`)
+Repo: `C:\Users\thesa\claude kalshi` (branch `master`, HEAD `e8d178f1`)
 Report date: 2026-08-26
 Companion data: `audit/REMEDIATION_REPORT.json` (13 findings, structured)
 Handoff prompts: `audit/handoff_prompts/batches/batch-76.md` … `batch-80.md`

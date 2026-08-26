@@ -3,7 +3,7 @@
     "report": "Weather1 Remediation Batch Set 76-80",
     "generated": "2026-08-26",
     "source_branch": "master",
-    "source_commit": "f5cbbf70",
+    "source_commit": "e8d178f1",
     "method": "Derived from the 61 open backlog.txt entries by filtering for items completable in a single session, then grouped so that no two batches share a touched file. Every entry was verified against its own body text rather than its title -- three entries in the same pass proved to be already resolved and were closed.",
     "counts": {
       "total": 13,
