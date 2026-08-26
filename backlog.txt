@@ -41772,3 +41772,85 @@ When to revisit:
   analysis_attempts covers only markets the scanner actually looked at. That is
   enough to reject "the model beats the market", not enough to characterise a
   seasonal effect.
+
+
+[OPEN 2026-08-26 -- follow-up to the entry above ("THE MODEL'S 'EDGE' IS ITS OWN
+  MISCALIBRATION"). That entry established the model loses to the market. This
+  one records the three exits that were then tested, two of which are now dead
+  and one of which is the only positive result in the whole analysis. Filed so
+  nobody re-runs the negatives.]
+  TWO WAYS OUT OF THE NO-EDGE RESULT ARE NOW CLOSED; THE ONE THAT SURVIVES
+  NEEDS NO WEATHER MODEL AT ALL (FAVOURITE-LONGSHOT BIAS IN THE LADDER)
+Priority: HIGH as a decision input -- it changes what "keep going" would mean.
+  No code implied yet; item I below is a hypothesis to validate FORWARD, not a
+  strategy to wire in.
+Files: measurement only (analysis_attempts). Method as the parent entry: core
+  temperature families (KXHIGH/KXLOWT), 538 rows, temporal split 322 train /
+  216 test, everything below evaluated ONLY on the held-out later window.
+
+CLOSED -- G. Does the model add information ON TOP OF the price?
+  The standard test when a signal loses to a benchmark: fit
+  y ~ a + b*logit(market) + c*logit(model) and ask whether c is non-zero.
+
+    market-only    a=-0.123  b=1.487
+    market+model   a=-0.120  b=1.507   c = -0.0408
+    HELD-OUT Brier  market-only 0.1078   +model 0.1080
+    (+model) - (market-only)  diff +0.00014   t = +1.01
+
+  The model's marginal weight is ~zero and slightly negative. It carries NO
+  orthogonal information. This is the strongest available form of the no-edge
+  test and it comes back clean -- blending the model with the price does not
+  help. Do not revisit without new inputs, not just a retuned blend.
+
+CLOSED -- H. Fade the model (use its direction as a contrarian filter).
+  Motivated by the parent entry's 10.9% direction rate. Held-out:
+
+    |f-m| >= 0.15  leans YES -> buy NO  n=97  edge +0.012  z=+0.37
+                   leans NO  -> buy YES n=25  edge -0.054  z=-0.67
+    |f-m| >= 0.08  leans YES -> buy NO  n=123 edge +0.024  z=+0.77
+                   leans NO  -> buy YES n=53  edge -0.021  z=-0.39
+
+  Opposite signs, |z| < 1 everywhere. The ~3.5pp that appeared in-sample did
+  not survive the split. There is no anti-signal to harvest.
+
+OPEN -- I. The market itself is compressed. Model-free.
+  Fell out of G: recalibrating the PRICE ALONE improved held-out Brier with no
+  model input whatsoever.
+
+    y ~ a + b*logit(market)     b = 1.4871    z = +3.03 vs 1
+    HELD-OUT Brier  raw 0.1106  recalibrated 0.1078  (diff -0.0028, t=-0.94)
+
+  Classic favourite-longshot bias: prices compressed toward 0.5, favourites
+  underpriced. Betting the side recalibration favours, held-out, gross and net
+  of Kalshi's ~0.07*p*(1-p):
+
+    thr    n    mean price   win rate   gross     z      net
+    0.05  135      0.791      0.852    +6.06%  +1.98   +4.98%
+    0.08   42      0.739      0.857   +11.77%  +2.18  +10.46%
+
+  WHY THIS IS NOT YET AN EDGE, and these caveats are the entry:
+   - z~2 across FOUR thresholds tried, after two failed hypotheses on the same
+     data. Corrected for that search it is not significant. Garden of forking
+     paths -- I found this by looking for it.
+   - The Brier improvement is NOT significant (t=-0.94), which sits badly with
+     a real effect of this size.
+   - Every pick is a favourite at 0.74-0.86. Risking 0.79 to win 0.21 is severe
+     downside skew: small Kelly, and a few losses erase many wins.
+   - Liquidity untested. Filling at 0.79 in these books is exactly the "a gap
+     against the mid of a thin spread is not edge" trap this repo has hit before.
+   - One month, summer, scanner-visible markets only.
+
+  Correct next step: log the rule's picks in SHADOW for ~60 days and judge it
+  on data it was not found in. Do not size anything off this table.
+
+OPEN -- J. Ladder-internal coherence arbitrage. Untested, model-free.
+  Strikes on one underlying must form a monotone CDF; mutually inconsistent
+  rungs are arbitrage requiring no forecast at all. `compute_market_implied_
+  distributions()` already exists. Blocked on data: orderbook_depth_snapshots
+  holds 0 rows because the WS depth path has never run. Turning that on is the
+  prerequisite, and it is cheap.
+
+When to revisit:
+  I and J together are the only paths here that do not require beating a price
+  that is already better than the model. Any decision to continue the project
+  as a TRADING system should be argued from these two, not from the forecast.
