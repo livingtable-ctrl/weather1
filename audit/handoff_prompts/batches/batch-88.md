@@ -9,48 +9,29 @@ Repo: weather1. Written 2026-08-26 against master `0d69c25d` — **re-verify cur
 
 This is option 7 of `backlog.txt`'s *"PROJECT DIRECTION AFTER THE NO-EDGE RESULT"*, and its own entry *"gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max..."*. **Step 1 of that entry's plan is already done — the diagnosis below is the result. Start from it.**
 
-## CORRECTION 2026-08-26 -- THE TABLE BELOW WAS WRONG. Read this first.
+## CORRECTIONS 2026-08-26 — TWO ROUNDS. Read both; the first correction was also wrong.
 
-An earlier revision of this file named the blend as `gfs_seamless` / `ecmwf_ifs025` / `icon_seamless` at weights 1.0 / 1.5 / 1.0. **That is not the live blend.** `get_ensemble_temps` (`:5467`) iterates `_QUARANTINE_CANDIDATE_MODELS` (`:4611`):
+**Round 1 (the original file): wrong blend membership.** This file first named the blend as `gfs_seamless` / `ecmwf_ifs025` / `icon_seamless`. `get_ensemble_temps` (`:5467`) iterates `_QUARANTINE_CANDIDATE_MODELS` (`:4611`) = `("icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble")`, and the comment at `:2637` calls that the single source of truth. `ecmwf_ifs025` is **not** in the blend. Corroborated by the 08:46 UTC cron log, where `[OM batch]` fetches `ecmwf_ifs025` and `[ENS batch]` fetches `ecmwf_aifs025_ensemble` — two paths, two products.
 
-```python
-(*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble")
-  == ("icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble")
-```
+**Round 2 (my correction to round 1): also wrong, and wrong the same way.** That correction claimed `weights.get(model, 1.0)` silently defaults `ecmwf_aifs025_ensemble` to 1.0, making the whole `ecmwf_w` computation dead code. **That is false.** There are TWO weight functions and I conflated them twice:
 
-and the code's own comment at `:2637` calls that *"the single source of truth for the 3 real ensemble-blend models"*. **`ecmwf_ifs025` is not one of them.** Confirmed in the live 2026-08-26 08:46 UTC cron log, which shows the two paths fetching different ECMWF products:
-
-```
-[OM batch]  [2/3] ecmwf_ifs025              OK    <- daily-forecast prewarm
-[ENS batch] [5/10] ecmwf_aifs025_ensemble   OK    <- the ensemble blend
-```
-
-**The real defect is bigger.** `_model_weights` (`:2148`) returns keys `gfs_seamless` / `ecmwf_ifs025` / `icon_seamless`; the loop does `weights.get(model, 1.0)`. For `ecmwf_aifs025_ensemble` that key is **absent**, so it takes the **1.0 default** — and the entire `ecmwf_w` computation (1.5 summer, 2.5 winter, El Nino +0.5, La Nina +0.3) **never reaches the blend at all**. Every member resolves to 1.0, `repeats = 2`, and the effective split collapses to raw vendor member count. Measured live:
-
-| product | series | entries | effective |
+| function | line | baseline keys | ecmwf_w |
 |---|---|---|---|
-| `ecmwf_aifs025_ensemble` | 51 | 102 | **41.8%** |
-| `icon_seamless_eps` | 40 | 80 | **32.8%** |
-| `ncep_gefs_seamless` | 31 | 62 | **25.4%** |
+| `_forecast_model_weights` | **`:2123`** | `gfs_seamless`, **`ecmwf_ifs025`**, `icon_seamless` | 2.5 winter + ENSO bump |
+| `_model_weights` | **`:5235`** | `icon_seamless`, `gfs_seamless`, **`ecmwf_aifs025_ensemble`** | 2.0 winter / 1.5 summer, no ENSO |
 
-**And the member the blend excludes is the best one measured.** Per-member MAE:
+`get_ensemble_temps` calls **`_model_weights`**, whose baseline (`:5326`) *does* contain `ecmwf_aifs025_ensemble`. **There is no missing key and no dead code.** `_forecast_model_weights` is the separate deterministic daily blend. Both of my errors came from grepping a pattern, taking the first hit, and never checking which function the line sat in.
 
-```
-                         max     min
-  ecmwf_ifs025           2.138   1.914   <- BEST both. NOT blended.
-  icon_seamless          2.461   2.063
-  gfs_seamless           2.878   2.465
-  ecmwf_aifs025_ensemble 3.150   2.329   <- WORST on max. IS blended.
-```
+**What survives, and it is the real finding** (re-derived by the batch-88 session from `predictions.db`, 284 rows / 60 days):
 
-**Whether AIFS-in-blend is deliberate or drift is now question one, ahead of any weighting change.** Do not assume it is a bug — `git log` when `ecmwf_aifs025_ensemble` entered `_QUARANTINE_CANDIDATE_MODELS` against the last edit of `_model_weights`' baseline dict. AIFS may have been chosen on purpose and the weights dict simply left stale.
+- All three models genuinely resolve to `repeats = 2` today, so the effective split *is* raw member count — but the cause is **quantisation**, not a key mismatch.
+- **Tier 1 (`_weights_from_mae`) fires for every city**, because per-city `n < min_n=20` for all 19 cities, so every city falls back to global MAE: `icon_seamless 1.124`, `gfs_seamless 0.834`, `ecmwf_aifs025_ensemble 1.065` (Aug) / `1.215` (Jan). `round(w*2) = 2` for all three in both seasons.
+- **Therefore the `baseline` dict never applies in production, and `learned_weights.json` (tier 2) never fires at all** — tier 1 always wins. Its content is NYC-only, `icon 1.111 / gfs 0.889`, both also `repeats=2`.
+- Corrected member counts: **39 / 30 / 50** (icon / gefs / aifs), not 40/31/51. `_fetch_model_ensemble` filters `k.startswith("temperature_2m_member")`, which excludes the unnumbered control series my count included. Effective split **32.8 / 25.2 / 42.0%**.
 
-Revised order of work:
-1. Establish deliberate-vs-drift for AIFS.
-2. Fix the silent `.get(model, 1.0)` over a hand-maintained dict — that lookup is what let this hide. Make it fail loudly or key it to the models actually blended.
-3. Only then per-member vs per-model normalisation and the `round(w*2)` quantisation. **Both are currently inert** — all weights resolve to 1.0 and `city_weights.json` is empty — but bite the moment either changes.
+**One genuinely new defect, from the batch-88 session:** `_model_weights`' docstring at `:5303` justifies excluding `ecmwf_ifs025` on the grounds that it *"has no ensemble members"*. That is **factually false** — `ensemble-api.open-meteo.com` returns `ecmwf_ifs025_ensemble` with 50 members, verified live. The exclusion may still be correct on other grounds, but its stated reason is not, and given `ecmwf_ifs025` measures best on MAE of any member (2.138 max / 1.914 min) while the blended `ecmwf_aifs025_ensemble` measures worst on max (3.150), the reason being wrong matters.
 
-Everything below is retained for context; treat its weight table as superseded.
+Everything below is retained for context. **Treat its weight table and its member counts as superseded.**
 
 ## What the diagnosis found
 
