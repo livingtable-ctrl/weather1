@@ -41854,3 +41854,91 @@ When to revisit:
   I and J together are the only paths here that do not require beating a price
   that is already better than the model. Any decision to continue the project
   as a TRADING system should be argued from these two, not from the forecast.
+
+
+[OPEN 2026-08-26 -- the live decision list, consolidating the two measurement
+  entries above. Kept as one entry so the options and the evidence for each do
+  not drift apart. Update this entry rather than re-deriving it.]
+  PROJECT DIRECTION AFTER THE NO-EDGE RESULT -- THE FIVE REMAINING OPTIONS
+Priority: HIGH -- this is the decision every other open item now hangs off.
+  Nothing in the backlog aimed at "improving edge" should start before it is
+  taken.
+Files: none (decision record).
+
+Two eliminated by measurement, one by the user. Recorded so they are not
+re-proposed:
+  * BLEND MODEL WITH PRICE -- dead. c = -0.0408, held-out t = +1.01. The model
+    carries no information orthogonal to the price. See the entry above.
+  * FADE THE MODEL -- dead. Opposite signs, |z| < 1 at both thresholds.
+  * WIND DOWN -- removed by the user, 2026-08-26. The argument against it: the
+    marginal cost of leaving it running is ~zero (cron is unattended, ~23
+    analysed markets/day), the apparatus produced its first real answer only
+    this week, and winding down forfeits the 60-day forward test that option 5
+    needs. Its only real case was the user's own attention cost, and option 1
+    covers that at the same price while preserving the option value.
+
+THE FIVE THAT REMAIN
+
+ 1. STOP DEVELOPMENT, KEEP MEASURING.
+    For: zero risk, near-zero cost, data keeps accruing so the seasonal
+      question answers itself. The guards/sweep/audit trail are what produced
+      the result; they run unattended.
+    Against: no revenue path; "measurement platform" can quietly become
+      "abandoned".
+
+ 2. RECALIBRATE, THEN RE-MEASURE IN ~60 DAYS.
+    For: the one unambiguously-correct code change available. Held-out
+      0.1756 -> 0.1473 against a market at 0.1106 -- removes ~44% of the excess
+      Brier. Every current calibration fit is trained on `predictions`, the one
+      population where the compression is invisible. Cheap, well-scoped.
+    Against: does NOT create edge (t = +3.50 held-out). Real sunk-cost risk --
+      only defensible if named as hygiene, not as an edge play.
+
+ 3. STRUCTURAL EDGE -- MARKET-MAKING / SPREAD CAPTURE.
+    For: a well-calibrated market is an asset here, not an obstacle; the WS
+      feed, execution log and risk gates already exist.
+    Against: a different discipline (inventory, adverse selection, latency);
+      the forecasting code becomes irrelevant; orderbook_depth_snapshots holds
+      0 rows, so there is ZERO measurement on the thing it depends on; needs
+      real capital to test.
+
+ 4. THIN / LESS-EFFICIENT MARKETS.
+    For: the no-edge finding is specific to daily temperature ladders where the
+      crowd is sharp; shadow models already exist for rain, snow, hurricane
+      count, storm order, tornado.
+    Against: wide spreads and low size make profit hard even with real edge,
+      and verification is glacial -- rain has 17 settled rows after months. A
+      year per family per answer.
+
+ 5. MODEL-FREE FAVOURITE-LONGSHOT CAPTURE.   <-- the only positive result
+    For: needs no weather model at all. b = 1.4871 (z = +3.03 vs 1); held-out
+      thr=0.05 gives n=135, gross +6.06%, net +4.98% after fees. Requires no
+      new infrastructure and is measurable with what already exists.
+    Against: z~2 across four thresholds tried AFTER two failed hypotheses on
+      the same data -- forking paths, not significant once corrected; the Brier
+      improvement itself is not significant (t=-0.94); every pick is a
+      favourite at 0.74-0.86 with severe downside skew; liquidity untested;
+      one month of summer.
+    Status: a hypothesis to validate FORWARD. Shadow-log its picks ~60 days and
+      judge on data it was not found in. Size nothing off the discovery table.
+
+ 6. LADDER-INTERNAL COHERENCE ARBITRAGE.  (untested)
+    For: model-free; strikes on one underlying must form a monotone CDF, so
+      inconsistent rungs are arbitrage. compute_market_implied_distributions()
+      already exists.
+    Against: unmeasured, because orderbook_depth_snapshots has never been
+      written. Turning the WS depth path on is the cheap prerequisite.
+
+RECOMMENDATION AS OF 2026-08-26
+  Do 2, then 1, with 5 running in shadow alongside. Explicitly do not do the
+  "improve the forecast" work that most of the remaining backlog consists of --
+  0 of 18 cities, both horizons, all three methods and both families lose, and
+  recalibration (the single largest available improvement) closes less than
+  half the gap.
+  If the goal is a trading system rather than a research platform, argue it
+  from 5 or 6 -- they are the only paths that do not require beating a price
+  that is already better than the model. 3 is viable but is a new project.
+
+When to revisit:
+  Immediately on any live-trading proposal, and at the 60-day mark
+  (~2026-10-25) when autumn data makes the seasonal caveat testable.
