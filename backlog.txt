@@ -26150,8 +26150,6 @@ Resolution (2026-08-24, batch-62 item 3):
   skipped-bad-key path, the documented deletion limitation, and a
   lock-held-across-the-read probe.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
-
 [RESOLVED 2026-08-24 -- batch-61 item 2; comment path taken first by b755498e (batch-14), decorators and the helper itself now actually removed] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
 
 Priority: INFO (audit id AUD-0075, status CONFIRMED, confidence VERY HIGH, evidence E1)
@@ -26602,8 +26600,6 @@ Resolution (2026-08-24, batch-62 item 1):
   test_trade_improvements.py, test_starting_balance.py,
   test_conftest_paper_isolation.py all pass. The isolation test was verified to
   FAIL before the fix and pass after.
-
-[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0009); filed separately as a different consumer (a dashboard stat) than that batch's own gate-fix scope] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
 
 [RESOLVED 2026-08-25 -- batch-58 item 3] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
 
