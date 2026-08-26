@@ -16,7 +16,15 @@ Verified 2026-08-26 by inspecting the installed backend: `plyer.platforms.win.no
 
 **The consequence is not cosmetic.** `send_system_alert` returns `status != "failed"`, and its own docstring says `alerts.check_halt_transition` uses a `False` return to roll back edge-triggered state so the next cycle retries. A phantom `True` defeats exactly that. The "all N channel(s) failed" warning also cannot fire on a desktop-only failure.
 
-The LOW rating rests on `NOTIFY_CHANNELS` defaulting to all five, not on anything in the code. One `NOTIFY_CHANNELS=desktop` and a halt transition is marked delivered and never retried. **`AskUserQuestion`:** stop appending `True` for desktop, or bypass `plyer.notification` and own the thread.
+~~The LOW rating rests on `NOTIFY_CHANNELS` defaulting to all five, not on anything in the code.~~
+
+**CORRECTION 2026-08-26 — the LOW rating rests on a premise that is FALSE in this deployment, and the entry's own first-listed fix would have been a live regression.** Found by the batch-84 session; verified independently here.
+
+`NOTIFY_CHANNELS` is unset, so all five channels are nominally enabled — but every alternate channel's credentials are unset too: `NTFY_TOPIC`, `PUSHOVER_TOKEN`, `PUSHOVER_USER`, `DISCORD_WEBHOOK_URL`, `DISCORD_WEBHOOK_URLS`, `SMTP_HOST`, `SMTP_USER` — all absent. And `_send_pushover`, `_send_ntfy`, `_send_discord` and `_send_email` each early-return `False` when unconfigured.
+
+**So desktop's phantom `True` is the only reason `send_system_alert` ever returns `True` today.** The entry's first suggestion — stop treating desktop as a channel that can report success — would therefore have made *every* system alert `status="failed"`, rolling back the notify cooldown **and** `alerts.rollback_halt_transition` on every call, and re-firing each halt alert every cron cycle for as long as the condition lasted. The five-channel default does none of the protecting the entry credits it with.
+
+Take the measurement to the user with both options; do not pick the cheap one on the entry's say-so. **`AskUserQuestion`:** stop appending `True` for desktop, or bypass `plyer.notification` and own the thread.
 
 ### 2. [LOW] `py watchdog.py` never calls `load_dotenv`
 
@@ -29,6 +37,10 @@ Zero impact today — `NTFY_TOPIC` is unset in this deployment — which is prec
 > `EVERY OTHER RAW fetch() IN THE FRONTEND STILL HAS NO REQUEST TIMEOUT`
 
 Batch-80 fixed `useData.js`'s `apiFetch` but did not own these files. Operator-initiated actions and per-tab loads, so a hang stalls one button rather than the whole dashboard — hence LOW.
+
+**Count them yourself: it is 14 call sites, and both numbers already in circulation are wrong.** `grep "fetch(" <the six files> | grep -v apiFetch` returns 15 *lines*, but `frontend/src/shared.jsx:709` is a comment inside `haltOrResume` quoting the code it replaced. The backlog entry's own prose says "Thirteen other call sites" while its `Files:` list enumerates 14 — so one circulating number is high and the other low. Verified breakdown: `App.jsx` 4, `shared.jsx` 1, `AnalyticsTab` 2, `PositionsTab` 2, `SettingsTab` 3, `SignalsTab` 2 = **14**.
+
+**Build step, easy to miss:** `static/dist/` is **tracked** (11 content-hashed files), so a frontend change needs `npm run build` committed alongside it — every prior frontend commit did. `frontend/node_modules` does not exist in a fresh worktree; run `npm install` first.
 
 **Reuse batch-80's shape, don't invent a second one.** Read what it did to `apiFetch` first. This repo's frontend has no component-render tests; only pure functions are unit-tested and the convention is to extract logic into `shared.jsx`. Plan for that rather than discovering it.
 
