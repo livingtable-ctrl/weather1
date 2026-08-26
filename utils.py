@@ -325,7 +325,17 @@ MIN_PROB_EDGE = float(os.getenv("MIN_PROB_EDGE", "0.08"))
 # Per-city probability-edge overrides for high-variance markets.
 # Dallas Brier (0.33) is worse than the naive baseline — requires stronger conviction.
 # Miami Brier (0.51, bias -0.71, worst of any tracked city as of 2026-07-23) —
-# forecast_temp_f runs ~4.6F cold vs settled_temp_f on average (6/7 samples).
+# forecast_temp_f runs cold vs settled_temp_f. CORRECTED 2026-08-25 (batch-75):
+# the "~4.6F cold (6/7 samples)" figure this line used to state was
+# contaminated. Of Miami's 7 settled rows, 2 are method='metar_lockout', whose
+# forecast_temp_f held a METAR running daily extreme rather than a forecast --
+# those 2 average -10.98F and drag the pooled mean down. On the 5 uncontaminated
+# rows the bias is -3.25F (ensemble -3.20F on 4, normal_dist -3.45F on 1).
+# The direction holds; the magnitude was overstated by ~40%.
+# The gate below is UNCHANGED at 0.20 deliberately: n=5 is far too thin to
+# justify loosening a live conviction gate, and the suspected root cause is the
+# _STATION_BIAS_HIGH overcorrection named below rather than this number. See
+# the backlog entry "CITY_MIN_PROB_EDGE['Miami'] ..." for the re-tune trigger.
 # Root cause is likely _STATION_BIAS_HIGH["Miami"] = 3.0 in weather_markets.py
 # overcorrecting, but the settled-trade sample (n=7) is too thin to safely
 # retune that constant. No per-city GBM/Platt model exists yet to override it

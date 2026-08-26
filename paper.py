@@ -1160,6 +1160,14 @@ def place_paper_order(
     model_forecast_means: dict[str, float | None] | None = None,
     forecast_temp: float
     | None = None,  # blended forecast temp used for probability (exact bias baseline)
+    # batch-75: mutually exclusive with forecast_temp above -- a metar_lockout
+    # trade produces no daily-extreme forecast at all, so forecast_temp is
+    # None and these two carry what the lock path DID produce. Stored on the
+    # trade record so _score_ensemble_members() can log them under their own
+    # model keys at settlement instead of mislabelling one as "blended".
+    observed_extreme: float | None = None,  # METAR running daily extreme at lock time
+    model_forecast_temp: float
+    | None = None,  # raw deterministic model fc (shadow-only)
     condition_threshold: float | None = None,  # market threshold (e.g. 70°F)
     ab_variant: str | None = None,
     close_time: str
@@ -1306,6 +1314,17 @@ def place_paper_order(
             "thesis": thesis,
             "model_forecast_means": model_forecast_means or {},
             "forecast_temp": forecast_temp,
+            # batch-75. `method` was already a parameter here (it scales Kelly
+            # via _method_kelly_multiplier) but was never stored, so nothing
+            # downstream could tell a metar_lockout trade from an ensemble one
+            # -- which is precisely why _score_ensemble_members() logged a
+            # METAR running extreme as a "blended" model forecast for months.
+            # Single source of truth, same shape and same reasoning as `var`
+            # below; trades placed before this field existed fall back to the
+            # predictions lookup _score_ensemble_members() already performs.
+            "method": method,
+            "observed_extreme": observed_extreme,
+            "model_forecast_temp": model_forecast_temp,
             "condition_threshold": condition_threshold,
             "ab_variant": ab_variant,
             "close_time": close_time,
@@ -1538,17 +1557,53 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # quick-buy paths never call log_prediction(), so this can legitimately
     # come back None -- Brier logging is skipped for those, MAE logging
     # below still fires (soft degradation, not an error).
+    #
+    # batch-75 also reads `method` and `observed_extreme_f` from this SAME
+    # row rather than adding a second query. The trade record carries `method`
+    # itself since batch-75, but trades placed BEFORE that field existed do
+    # not, and those are exactly the historical rows that need classifying --
+    # so the trade value is preferred and this is the fallback, mirroring the
+    # `var` resolution above.
     condition_type = None
+    method_row: str | None = None
+    observed_extreme_row: float | None = None
+    model_fc_row: float | None = None
+    # Distinguishes "this row says the method is X" from "we never got to
+    # ask" (opus review M1). A legacy trade -- one placed before batch-75
+    # started storing `method` on the record -- is classified ENTIRELY by
+    # this lookup, so a swallowed DB error must not read as "not a lockout".
+    # It previously would have: the except reset only condition_type, and the
+    # else branch below then wrote trade["forecast_temp"] as a 'blended'
+    # sample. On a legacy lockout trade that value IS the running extreme, so
+    # a transient sqlite lock during settlement could re-inject the exact
+    # contamination this batch removes, straight into the table
+    # get_dynamic_station_bias prefers, after the one-off repair pass has
+    # already run and will not be run again.
+    method_resolved = False
     try:
         with _conn() as con:
             row2 = con.execute(
-                "SELECT condition_type FROM predictions WHERE ticker = ? "
+                "SELECT condition_type, method, observed_extreme_f, "
+                "       model_forecast_temp_f "
+                "FROM predictions WHERE ticker = ? "
                 "ORDER BY predicted_at DESC LIMIT 1",
                 (trade.get("ticker", ""),),
             ).fetchone()
-            condition_type = row2[0] if row2 else None
+            if row2:
+                condition_type = row2[0]
+                method_row = row2[1]
+                observed_extreme_row = row2[2]
+                model_fc_row = row2[3]
+            # Resolved even when there is no row: "no predictions row exists"
+            # is a real answer for a quick-buy trade, not a failure. Only an
+            # EXCEPTION leaves this False.
+            method_resolved = True
     except Exception:
         condition_type = None
+        method_row = None
+        observed_extreme_row = None
+        model_fc_row = None
+        method_resolved = False
     # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" (2026-07-23):
     # generic model->forecast_mean mapping, replacing the old hardcoded
     # icon_forecast_mean/gfs_forecast_mean/ecmwf_*_forecast_mean fields — any
@@ -1567,7 +1622,92 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # doesn't consume is ignored there), just not the fully independent
     # pipelines this might suggest at a glance.
     model_means: dict[str, float | None] = dict(trade.get("model_forecast_means") or {})
-    model_means["blended"] = trade.get("forecast_temp")
+    # batch-75: this line used to be unconditional, and on a metar_lockout
+    # trade trade["forecast_temp"] is not a forecast -- it was the METAR
+    # running daily extreme at lock time, a hard bound on the day rather than
+    # an estimate of it. get_dynamic_station_bias() PREFERS model='blended'
+    # rows and its output is subtracted from live forecasts, so 69 of 151
+    # blended rows (46%) were poisoning the live corrector at +/-8-10F with
+    # opposite signs by var. Measured live: OklahomaCity/max moved 14.33F
+    # across batch-68's repair of the OTHER half of the same table.
+    # (151, not 176: 176 is the table's total blended count including rows
+    # with a NULL var that no join can reach. 69/151 is the figure every
+    # other citation of this uses -- opus review L1 caught 176 here.)
+    #
+    # Resolution order matches `var` above: the trade record first (set since
+    # batch-75), the predictions row as the fallback for trades placed before
+    # that field existed. `or` rather than `is None` is deliberate and
+    # equivalent here -- no code path can produce an empty-string method
+    # (every assignment in weather_markets is a non-empty literal, and the
+    # column is either a real value or NULL) -- but it is NOT the exact
+    # mirror of `var`'s `is None` that an earlier comment claimed (L8).
+    #
+    # What the fallback row means (opus review M2): predictions is unique on
+    # (ticker, predicted_date) and the UPSERT overwrites `method` plainly, so
+    # this reads the LATEST scan's method, not necessarily the scan the trade
+    # was placed from. For a ticker re-scanned on its target day and locked,
+    # a legacy ensemble trade can be relabelled. Bounded in practice: the
+    # shadow logger skips already-open tickers and the real loop only logs
+    # after a placement, so a held ticker is not normally re-logged, and
+    # trades placed since batch-75 carry their own method and never consult
+    # this at all.
+    _method = trade.get("method") or method_row
+    if not method_resolved and not trade.get("method"):
+        # Fail CLOSED: provenance unknown, so write nothing rather than
+        # guess "blended". Losing one sample is recoverable; injecting a
+        # running extreme into the live bias corrector is not.
+        _log.warning(
+            "_score_ensemble_members: %s — predictions lookup failed and the "
+            "trade carries no method; skipping model-score logging rather "
+            "than risking a contaminated 'blended' row",
+            trade.get("ticker", "?"),
+        )
+        return
+    if _method == "metar_lockout":
+        # Log BOTH values under their own keys rather than dropping the row.
+        # The observation is real data -- just not a forecast -- and an
+        # explicit row makes the exclusion visible in the table, where a
+        # silent skip is how this class of bug hides in the first place.
+        # Neither key reaches a per-model statistic or the live corrector:
+        # tracker.NON_MODEL_SCORE_KEYS excludes both from all six per-model
+        # queries, two of which feed live blend weights.
+        # Three-step fallback, and the last step is the LEGACY shape: on a
+        # trade placed before batch-75 the running extreme lives nowhere but
+        # trade["forecast_temp"], because that is the column it was wrongly
+        # written to in the first place. Dropping it would silently lose the
+        # observation for every legacy lockout trade still settling after
+        # this lands -- the repair pass only covers rows already written.
+        # Safe to route here: metar_lock_extreme is in
+        # tracker.NON_MODEL_SCORE_KEYS, so it reaches no per-model statistic
+        # and never the live corrector. Relabelling it is the whole fix; the
+        # value itself was always real data.
+        _obs = trade.get("observed_extreme")
+        if _obs is None:
+            _obs = observed_extreme_row
+        if _obs is None:
+            _obs = trade.get("forecast_temp")
+        model_means["metar_lock_extreme"] = _obs
+        # Symmetric fallback to the predictions row, same as the line above
+        # (opus review L4). The same SELECT already reads the column, and
+        # without this a lockout trade placed through a call site that does
+        # not thread model_forecast_temp silently drops the shadow sample
+        # that v76's whole sample-accrual-rate rationale rests on.
+        model_means["metar_lock_model_fc"] = (
+            trade.get("model_forecast_temp")
+            if trade.get("model_forecast_temp") is not None
+            else model_fc_row
+        )
+    else:
+        # A None here is harmless: the logging loop below skips every
+        # None-valued entry, so no row is written. That skip is load-bearing
+        # rather than tidy-up -- idx_ems_dedup is UNIQUE on
+        # (city, model, target_date, var) and the insert is INSERT OR IGNORE,
+        # so a NULL-predicted_temp 'blended' row would permanently block a
+        # genuine one for the same city-day from ever landing. An earlier
+        # draft of batch-75 re-guarded it here too; mutation testing showed
+        # that guard could be deleted with every test still green, i.e. it was
+        # redundant, so it is not duplicated.
+        model_means["blended"] = trade.get("forecast_temp")
     raw_threshold = trade.get("condition_threshold")
     # Per-model implied probability + Brier score, feeding the quarantine
     # mechanism's Brier-based detection statistic (get_member_brier()).

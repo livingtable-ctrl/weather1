@@ -31,7 +31,87 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 74  # increment when _MIGRATIONS list grows
+# batch-75: ensemble_member_scores.model is NOT always a forecast model. Some
+# rows are synthetic keys that record a number worth keeping but which must
+# never enter a per-MODEL statistic. 'blended' has always been one (it is the
+# bias-corrected forecast_temp, i.e. a derivative of the other rows, so
+# counting it alongside them double-counts); batch-75 adds two more for the
+# METAR lock path, whose stored value is a running daily extreme observed so
+# far -- a hard bound on the day, not a forecast of it.
+#
+# WHY A CONSTANT AND NOT A THIRD `model != 'blended'`: six queries in this
+# module filtered that literal independently. Named exactly, because an
+# earlier draft of this comment listed two functions that do not exist and
+# omitted one that does (opus review L4), which would send a future auditor
+# checking "were all six covered" chasing ghosts:
+#   get_member_accuracy, get_member_brier, get_member_bias,
+#   get_model_brier_scores, get_ensemble_member_accuracy, get_model_weights.
+# Two of those six
+# feed LIVE blend weights, and get_model_weights reads its model names from
+# the table rather than from a declared list -- so any new key silently joins
+# the softmax the moment it clears the 10-observation floor and perturbs
+# every real model's normalized weight through the shared denominator. That
+# is the exact leak TRACKING_ONLY_MODEL_NAMES's own docstring in
+# weather_markets.py describes for track-only models.
+#
+# NOT weather_markets.TRACKING_ONLY_MODEL_NAMES, which is the wrong home
+# despite looking adjacent: that set means "a real model we DO fetch but do
+# not weight", and batch_prewarm_ensemble() iterates it to issue actual
+# Open-Meteo requests (see its `TRACKING_ONLY_MODEL_NAMES - {"ncep_hrrr_conus"}`
+# fetch list) while _model_weights() treats its members as ensemble
+# candidates. Putting a non-model key there would send the bot fetching a
+# dataset named "metar_lock_extreme".
+NON_MODEL_SCORE_KEYS = frozenset(
+    {
+        # The bias-corrected blended forecast_temp used at trade entry.
+        # get_dynamic_station_bias() deliberately PREFERS these rows; every
+        # per-model query below must exclude them.
+        "blended",
+        # batch-75: the METAR running daily extreme at lock time -- the value
+        # that actually decided the lock. Kept as an audit trail of what the
+        # lock saw, never as a forecast.
+        "metar_lock_extreme",
+        # batch-75: the raw (uncorrected) deterministic 3-model daily-extreme
+        # forecast on a METAR-locked row. Shadow-only measurement: nothing
+        # reads it yet. It exists so the question "could a lockout row ever
+        # contribute a real forecast sample" becomes answerable, which today
+        # it is not -- the deterministic blend's own bias has never been
+        # measured (method='normal_dist' is its only other consumer, n=2).
+        # Do NOT promote it into a live path without that measurement.
+        "metar_lock_model_fc",
+    }
+)
+
+
+def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
+    """SQL fragment excluding NON_MODEL_SCORE_KEYS, plus its bound params.
+
+    Returns e.g. ("model NOT IN (?, ?, ?)", ["blended", ...]). `alias`
+    prefixes the column for queries that join (e.g. "s" -> "s.model").
+
+    `alias` currently has no production caller -- every one of the six
+    consumers queries ensemble_member_scores unaliased (opus review L7). It is
+    kept rather than deleted because the only aliased query over this table,
+    repair_metar_lockout_rows' `s`-aliased join, is exactly the shape that
+    would need it if it ever filters on the key set, and a caller adding an
+    alias without it would silently produce ambiguous-column SQL. Its
+    behaviour is pinned by a test.
+
+    Deliberately parameterised rather than f-stringed into the query: the set
+    is a module constant today, but a literal-interpolating helper is the
+    shape that invites a caller-supplied value later.
+
+    Sorted so the emitted SQL and its params are stable across runs --
+    frozenset iteration order is not, and an unstable query string defeats
+    SQLite's statement cache and makes test assertions on the SQL flaky.
+    """
+    col = f"{alias}.model" if alias else "model"
+    keys = sorted(NON_MODEL_SCORE_KEYS)
+    placeholders = ", ".join("?" for _ in keys)
+    return f"{col} NOT IN ({placeholders})", keys
+
+
+_SCHEMA_VERSION = 76  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -580,6 +660,53 @@ _MIGRATIONS = [
     # forever, burning the whole cap every cycle and never reaching a new
     # arrival.
     "ALTER TABLE analysis_attempts ADD COLUMN last_checked_at TEXT",
+    # v75: batch-75. On a METAR-locked row, analyze_trade used to persist the
+    # running daily extreme observed so far into forecast_temp_f -- a column
+    # whose every other row holds a forecast of the day's finished extreme.
+    # The two are different quantities: the running extreme is a hard BOUND
+    # (systematically below the eventual high, above the eventual low), which
+    # is exactly why it is the right input for the lock decision and exactly
+    # why it is wrong as a forecast. Measured on 103 settled lockout rows:
+    # +8.63F bias on max markets, -10.42F on min, against +0.19/+1.57 for
+    # ensemble rows on the same days. The tell is that the HIGH-market stored
+    # value (78.40F mean) was COLDER than the LOW-market one (82.21F), which
+    # is impossible for daily extremes.
+    #
+    # forecast_temp_f is now NULL on those rows and the observation moves
+    # here, rather than being deleted: it is a genuine measurement (the
+    # running extreme at decision time) that was simply sitting in a column
+    # whose NAME misdescribed it. Renaming the destination fixes the category
+    # error without discarding the evidence.
+    #
+    # APPENDED, never inserted -- see the analysis_attempts block above and
+    # _run_migrations' own comment for why _MIGRATIONS is append-only.
+    "ALTER TABLE predictions ADD COLUMN observed_extreme_f REAL",
+    # v76: batch-75, and this one exists for SAMPLE-ACCRUAL RATE rather than
+    # for correctness. On a metar_lockout row the model's own daily-extreme
+    # forecast was computed (analyze_trade needs it as the fallback when the
+    # METAR value is missing) and then thrown away, because the lock decides
+    # the trade and the forecast is not what was acted on.
+    #
+    # Keeping it costs nothing and is the difference between a measurable and
+    # an unmeasurable question. The shadow member-score row
+    # (model='metar_lock_model_fc') only lands when a lockout trade is PLACED
+    # and later SETTLES; a predictions row is written for every market
+    # SCANNED. Historically that is 106 lockout predictions rows against 70
+    # blended member-score rows, and forward the ratio is far worse since most
+    # scanned markets are never traded. Every live-trading gate in this repo
+    # is a sample-count floor, and at the old accrual rate several are not
+    # reachable on a realistic timeline -- so a column that multiplies the
+    # usable sample for free is worth more than its schema cost.
+    #
+    # RAW, uncorrected, and read by NOTHING. It is deliberately not wired to
+    # get_dynamic_station_bias or any per-model statistic: the deterministic
+    # 3-model blend that produces it is a DIFFERENT estimator from the
+    # ensemble mean that fills forecast_temp_f on other rows, and its own bias
+    # has never been measured (method='normal_dist' is its only other
+    # consumer, n=2). Measure it here first; promoting it to a live path
+    # without that measurement would trade a known contamination for an
+    # unmeasured one.
+    "ALTER TABLE predictions ADD COLUMN model_forecast_temp_f REAL",
 ]
 
 
@@ -1185,8 +1312,9 @@ def log_prediction(
            liquidity_edge_scale, gated_edge, is_probation, var,
            ensemble_spread_f, model_disagreement_f, precip_sum_in,
            nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values,
-           forecast_run_inits, blend_exclusions)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           forecast_run_inits, blend_exclusions, observed_extreme_f,
+           model_forecast_temp_f)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -1249,7 +1377,26 @@ def log_prediction(
             ),
             blend_exclusions      = COALESCE(
                 excluded.blend_exclusions, predictions.blend_exclusions
-            )
+            ),
+            -- batch-75. Plain overwrite, NOT the COALESCE its two neighbours
+            -- above use, and the difference is deliberate. This column is one
+            -- of a mutually-exclusive TRIPLE with `method` and
+            -- `forecast_temp_f`: a metar_lockout write sets method='metar_
+            -- lockout', forecast_temp_f=NULL and observed_extreme_f=<the
+            -- running extreme>, while every other method sets the mirror
+            -- image. All three are written together by the same analysis and
+            -- must move together. COALESCE would let an observation survive
+            -- onto a row that a later ensemble scan has since relabelled
+            -- method='ensemble' -- two fields in one row disagreeing about
+            -- what the row is, which is the exact category error batch-75
+            -- exists to remove, reintroduced one column over.
+            observed_extreme_f = excluded.observed_extreme_f,
+            -- Same plain-overwrite reasoning as observed_extreme_f above:
+            -- both are written together with `method` by one analysis and
+            -- must move together, so a later non-lockout scan of the same
+            -- (ticker, predicted_date) clears them rather than stranding a
+            -- lockout-only value on a row now labelled method='ensemble'.
+            model_forecast_temp_f = excluded.model_forecast_temp_f
         """
     params = (
         ticker,
@@ -1298,6 +1445,8 @@ def log_prediction(
         signal_values_json,
         forecast_run_inits_json,
         blend_exclusions_json,
+        analysis.get("observed_extreme"),
+        analysis.get("model_forecast_temp"),
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
@@ -4004,9 +4153,10 @@ def count_model_observations(model: str) -> int:
     Used by the signal-graduation registry's sample-floor check for tracked
     ensemble models that aren't per-prediction columns (GEM/UKMO graduation,
     3-way ECMWF consensus) — mirrors get_member_accuracy()'s own filter
-    (predicted_temp/actual_temp both non-NULL, model != 'blended' is
-    irrelevant here since callers always pass a real model name) but scoped
-    to one model and returning a plain count instead of a full MAE breakdown.
+    (predicted_temp/actual_temp both non-NULL; the NON_MODEL_SCORE_KEYS
+    exclusion those queries apply is irrelevant here since callers always
+    pass a real model name) but scoped to one model and returning a plain
+    count instead of a full MAE breakdown.
     """
     init_db()
     with _conn() as con:
@@ -5804,6 +5954,20 @@ def get_model_distribution_for_event(
     max_age_hours: float = MODEL_LADDER_MAX_ANCHOR_AGE_HOURS,
 ) -> dict | None:
     """The model's Normal(mean, sigma) for one (city, target_date, var) event.
+
+    BEHAVIOUR CHANGE, batch-75 (flagged by opus review as worth stating
+    rather than leaving for someone to discover): this sources `mean` from
+    `_newest_with("forecast_temp_f")`, falling back to `ens_mean`. On a
+    METAR-locked row BOTH are now NULL -- forecast_temp_f because no forecast
+    was produced on that path, ens_mean because the whole ensemble block sits
+    behind `if not metar_locked:`. So a city-day whose rungs are ALL locked
+    now returns None and the panel renders `available: false`, where it
+    previously rendered a ladder centred on the METAR running extreme.
+    That is the honest outcome -- a ladder centred on a hard bound on the
+    day, presented as a forecast distribution, is worse than no ladder -- and
+    it is usually partial in practice, since _metar_lock_in only locks rungs
+    already clear of the threshold by margin, so near-the-money rungs
+    normally still supply a mean.
 
     Supplies the model side of A16's strike-ladder view. The ladder itself is
     fetched live -- no stored artifact holds one, verified 2026-08-25: the
@@ -10202,6 +10366,263 @@ def backfill_member_actual_temp(
     return updated, skipped, conflicts, errored, unreachable
 
 
+# The ems -> predictions join batch-75's repair uses, kept as one constant so
+# the dry-run preview, the UPDATE and the tests cannot drift apart.
+#
+# var comes from the TICKER's HIGH/LOW substring, not predictions.var, and
+# this is not a style choice: predictions.var is NULL on every one of the 106
+# metar_lockout rows (it postdates them), so joining on it matches ZERO rows
+# and the repair would silently no-op while reporting success. Same
+# derivation and same reason as get_station_bias_by_lead().
+_LOCKOUT_EMS_JOIN = """
+    FROM ensemble_member_scores s
+    LEFT JOIN predictions p
+      ON p.city = s.city
+     AND p.market_date = s.target_date
+     AND s.var = CASE
+                   WHEN UPPER(p.ticker) LIKE '%HIGH%' THEN 'max'
+                   WHEN UPPER(p.ticker) LIKE '%LOW%'  THEN 'min'
+                 END
+"""
+
+
+def repair_metar_lockout_rows(dry_run: bool = False) -> dict:
+    """One-off, re-runnable repair for batch-75's METAR-lock contamination.
+
+    Two independent corrections, applied in ONE transaction so a crash cannot
+    leave the two tables disagreeing about what a lockout row is:
+
+    1. `predictions`: on method='metar_lockout' rows, move forecast_temp_f to
+       observed_extreme_f and NULL the former. The stored value is the METAR
+       running daily extreme at lock time -- a hard BOUND on the day, not a
+       forecast of it -- so it belongs in a column whose name says so.
+
+    2. `ensemble_member_scores`: re-key model='blended' rows that trace back
+       to a lockout trade to model='metar_lock_extreme'. This is the half
+       that matters for live money: get_dynamic_station_bias() PREFERS
+       model='blended' rows and feeds weather_markets._DYNAMIC_BIAS_CACHE,
+       which is subtracted from live forecasts. 69 of the 151 JOINABLE
+       blended rows are
+       contaminated at +/-8-10F with OPPOSITE SIGNS BY VAR (max -8.213,
+       min +9.706 at audit time) -- and the per-var query the corrector
+       actually runs never sees those cancel.
+
+    Fixing only the writer is not enough: nothing ages these rows out
+    (ensemble_member_scores has no retention sweep), so without this pass the
+    corrector keeps training on them indefinitely.
+
+    AMBIGUOUS ROWS ARE LEFT ALONE, not guessed at. An ems row keyed only on
+    (city, target_date, var) can match both a lockout and a non-lockout
+    prediction for the same city-day -- 1 row does today. Re-keying it would
+    assert a provenance the data does not support, so it is counted and
+    skipped, matching backfill_ensemble_member_scores_var()'s own
+    leave-NULL-where-ambiguous discipline.
+
+    Re-runnable by construction, and deliberately so: it selects on the
+    CURRENT state (forecast_temp_f IS NOT NULL / model='blended'), never on a
+    date, so rows written by scans between this landing and the next run are
+    picked up by a later pass. A second run over unchanged data reports
+    zeroes.
+
+    Returns a dict of counts -- see the keys set below. The ems_* buckets are
+    DISJOINT and sum to the table's own `model='blended'` row count, so an
+    operator can add them up and confirm nothing fell through a crack.
+
+    `dry_run=True` writes nothing and computes every count EXCEPT
+    `ems_conflicts` and the two *_raced counters, which are only observable by
+    attempting the write (opus review L1): a dry run cannot know that a
+    re-key would collide with an existing metar_lock_extreme row for the same
+    dedup key, so a preview can report 0 conflicts and the real run still find
+    some. Treat a dry run's ems_rekeyed as an UPPER BOUND, not a promise.
+
+    WARNING FOR THE OPERATOR (opus review M4): running this can make
+    get_dynamic_station_bias go inert for a city. On the live DB,
+    OklahomaCity/max is the only (city, var) above the 10-sample floor, and 6
+    of its 10 blended rows are contaminated -- so after the repair it drops to
+    n=4, falls through to the icon+gfs branch (n=8, also below the floor) and
+    returns (0.0, 8). The dynamic correction reverts to the static table, a
+    7.06F change in a value SUBTRACTED from live forecasts on the next scan.
+    That is the contamination being removed rather than a regression, but it
+    is a large, immediate change to live forecast inputs and should be a
+    deliberate choice, not a surprise.
+    """
+    init_db()
+    out = {
+        "predictions_moved": 0,
+        "ems_rekeyed": 0,
+        "ems_ambiguous": 0,
+        "ems_unreachable_null_var": 0,
+        "ems_conflicts": 0,
+        # opus review M1: a row whose state changed between the read and the
+        # write (concurrent scan). Not an error -- the write is skipped and a
+        # later run picks it up -- but silence here would look like success.
+        "predictions_raced": 0,
+        "ems_raced": 0,
+        # opus review M2/L2: a blended row the join reaches NO predictions row
+        # for at all. paper.py's own comment records that quick-buy paths never
+        # call log_prediction(), so a legitimate ensemble trade can leave a
+        # blended score with no prediction behind it. Re-keying those would
+        # permanently delete a good sample from get_dynamic_station_bias's pool
+        # (idx_ems_dedup is UNIQUE, so there is exactly one blended row per
+        # city-day-var). They are counted and left alone.
+        "ems_unmatched": 0,
+        # opus review M3: matched, but every matching prediction has a NULL
+        # method, so provenance is unknown rather than known-clean. A minimal
+        # log_prediction writer (e.g. web_app's manual approve path) NULLs
+        # method via the plain-overwrite UPSERT, and this repair's decision
+        # keys off it. Counted so a misclassification cannot look like a
+        # clean pass.
+        "ems_unknown_method": 0,
+        "ems_clean": 0,
+        "dry_run": dry_run,
+    }
+
+    with _conn() as con:
+        # (1) predictions. Guarded on forecast_temp_f IS NOT NULL so a re-run
+        # is a no-op, and on observed_extreme_f IS NULL so a row somehow
+        # carrying BOTH is left alone rather than having its existing
+        # observation overwritten. It is deliberately not counted: such a row
+        # should not exist (the writer sets the two mutually exclusively), and
+        # inventing a bucket for an impossible state would imply this pass can
+        # diagnose it. An earlier version of this comment claimed the row was
+        # "reported" -- it never was (opus review L3).
+        pred_rows = con.execute(
+            """
+            SELECT id, forecast_temp_f FROM predictions
+            WHERE method = 'metar_lockout'
+              AND forecast_temp_f IS NOT NULL
+              AND observed_extreme_f IS NULL
+            """
+        ).fetchall()
+        out["predictions_moved"] = len(pred_rows)
+
+        # (2) ensemble_member_scores. Ambiguity is decided BEFORE any update:
+        # MIN(...) != MAX(...) over the per-match lockout flag is true exactly
+        # when one ems row matches both a lockout and a non-lockout prediction.
+        # LEFT JOIN, not INNER (opus review M2): an INNER JOIN silently drops
+        # blended rows that reach no predictions row at all, and those looked
+        # identical to "not a lockout" -- they were counted nowhere. A blended
+        # row CAN legitimately exist with no prediction behind it, because
+        # paper.py's own comment records that the quick-buy paths never call
+        # log_prediction(). Re-keying one would permanently delete a good
+        # sample: idx_ems_dedup is UNIQUE on (city, model, target_date, var),
+        # so there is exactly one blended row per city-day-var and nothing
+        # would re-create it.
+        #
+        # n_matched counts real prediction matches; n_known counts those whose
+        # method is actually recorded. A row is re-keyed ONLY when it matched
+        # at least one prediction, every match has a known method, and every
+        # known method is metar_lockout.
+        ems_rows = con.execute(
+            f"""
+            SELECT s.id AS id,
+                   s.var AS var,
+                   COUNT(p.ticker) AS n_matched,
+                   SUM(CASE WHEN p.method IS NOT NULL THEN 1 ELSE 0 END) AS n_known,
+                   MIN(CASE WHEN p.method = 'metar_lockout' THEN 1 ELSE 0 END) AS lo_min,
+                   MAX(CASE WHEN p.method = 'metar_lockout' THEN 1 ELSE 0 END) AS lo_max
+            {_LOCKOUT_EMS_JOIN}
+            WHERE s.model = 'blended'
+            GROUP BY s.id
+            """
+        ).fetchall()
+
+        to_rekey = []
+        for r in ems_rows:
+            if r["var"] is None:
+                # Counted by ems_unreachable_null_var below instead. Kept
+                # disjoint deliberately: under the LEFT JOIN a NULL var can
+                # never satisfy the var CASE, so without this branch every
+                # such row ALSO landed in ems_unmatched and the two buckets
+                # reported the same 25 rows twice, making the totals unusable
+                # as a reconciliation.
+                continue
+            if not r["n_matched"]:
+                out["ems_unmatched"] += 1
+            elif not r["n_known"]:
+                # opus review M3: matched, but provenance unrecorded. NOT the
+                # same as "not a lockout" -- a later minimal log_prediction
+                # write NULLs method, and this repair keys off it.
+                out["ems_unknown_method"] += 1
+            elif r["lo_min"] != r["lo_max"]:
+                out["ems_ambiguous"] += 1
+            elif r["lo_min"] == 1:
+                to_rekey.append(r["id"])
+            else:
+                # Matched, method known, and not a lockout: a genuine blended
+                # forecast that needs no action. Counted anyway so the buckets
+                # RECONCILE against the table's own blended row count -- an
+                # operator can add them up and see nothing fell through a
+                # crack, which is the property "counted nowhere" destroyed.
+                out["ems_clean"] += 1
+
+        # Rows the join can never reach: no var to match on. Reported rather
+        # than folded into a success count -- backfill_ensemble_member_scores_var()
+        # is the pass that makes them reachable and should be run first.
+        _u = con.execute(
+            "SELECT COUNT(*) FROM ensemble_member_scores "
+            "WHERE model = 'blended' AND var IS NULL"
+        ).fetchone()
+        out["ems_unreachable_null_var"] = _u[0] if _u else 0
+
+        if dry_run:
+            out["ems_rekeyed"] = len(to_rekey)
+            return out
+
+        for _id, _temp in ((r["id"], r["forecast_temp_f"]) for r in pred_rows):
+            # WHERE repeats the SELECT's predicates, not just the id
+            # (opus review M1). Python's sqlite3 does not open a transaction
+            # for a SELECT -- BEGIN is issued at the first DML -- so the reads
+            # above ran in autocommit and a concurrent cron scan can re-analyse
+            # a ticker between the read and this write. Without these clauses
+            # the repair would NULL a fresh ensemble forecast and stamp a stale
+            # observation onto a row now labelled method='ensemble', which is
+            # precisely the mismatched-triple state the UPSERT's own comment
+            # exists to prevent. Re-checking here makes the write a no-op
+            # instead (rowcount 0), and the row is picked up by a later run.
+            _r = con.execute(
+                "UPDATE predictions "
+                "SET observed_extreme_f = ?, forecast_temp_f = NULL "
+                "WHERE id = ? AND method = 'metar_lockout' "
+                "  AND forecast_temp_f IS NOT NULL "
+                "  AND observed_extreme_f IS NULL",
+                (_temp, _id),
+            )
+            if _r.rowcount == 0:
+                out["predictions_raced"] += 1
+
+        # Row-by-row, not one bulk UPDATE: idx_ems_dedup is UNIQUE on
+        # (city, model, target_date, var), so a re-key collides if a
+        # metar_lock_extreme row for the same key already exists (possible on
+        # a later run, once the fixed writer has been logging). A bulk
+        # statement would abort the whole transaction on the first collision
+        # and lose every good row with it; per-row lets the collision be
+        # counted and the rest applied. Same shape as
+        # backfill_ensemble_member_scores_var()'s duplicate_conflict return.
+        for _id in to_rekey:
+            try:
+                _r = con.execute(
+                    "UPDATE ensemble_member_scores "
+                    "SET model = 'metar_lock_extreme' "
+                    "WHERE id = ? AND model = 'blended'",
+                    (_id,),
+                )
+                if _r.rowcount:
+                    out["ems_rekeyed"] += 1
+                else:
+                    out["ems_raced"] += 1
+            except sqlite3.IntegrityError:
+                out["ems_conflicts"] += 1
+                _log.warning(
+                    "repair_metar_lockout_rows: ems id=%s collides with an "
+                    "existing metar_lock_extreme row for its dedup key; left "
+                    "as model='blended'",
+                    _id,
+                )
+
+    return out
+
+
 def log_member_score(
     city: str,
     model: str,
@@ -10436,17 +10857,18 @@ def get_member_accuracy(days_back: int = 60) -> dict:
     import statistics as _stats
 
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT model, city, predicted_temp, actual_temp
             FROM ensemble_member_scores
             WHERE predicted_temp IS NOT NULL
               AND actual_temp IS NOT NULL
-              AND model != 'blended'
+              AND {_nm_sql}
               AND logged_at >= datetime('now', ? || ' days')
             """,
-            (f"-{days_back}",),
+            (*_nm_params, f"-{days_back}"),
         ).fetchall()
 
     if not rows:
@@ -10497,16 +10919,17 @@ def get_member_brier(days_back: int = 14) -> dict:
     import statistics as _stats
 
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT model, city, brier
             FROM ensemble_member_scores
             WHERE brier IS NOT NULL
-              AND model != 'blended'
+              AND {_nm_sql}
               AND logged_at >= datetime('now', ? || ' days')
             """,
-            (f"-{days_back}",),
+            (*_nm_params, f"-{days_back}"),
         ).fetchall()
 
     if not rows:
@@ -10556,18 +10979,19 @@ def get_member_bias(days_back: int = 60) -> dict:
     city_n_breakdown: {city: n}}}}.
     """
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT model, city, var, predicted_temp, actual_temp
             FROM ensemble_member_scores
             WHERE predicted_temp IS NOT NULL
               AND actual_temp IS NOT NULL
               AND var IS NOT NULL
-              AND model != 'blended'
+              AND {_nm_sql}
               AND logged_at >= datetime('now', ? || ' days')
             """,
-            (f"-{days_back}",),
+            (*_nm_params, f"-{days_back}"),
         ).fetchall()
 
     if not rows:
@@ -10603,9 +11027,10 @@ def get_model_brier_scores(days: int = 30) -> dict[str, float]:
     Lower MAE = better model. Returns empty dict when no data available.
     """
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT model,
                    AVG(ABS(predicted_temp - actual_temp)) AS mae,
                    COUNT(*) AS n
@@ -10613,11 +11038,11 @@ def get_model_brier_scores(days: int = 30) -> dict[str, float]:
             WHERE  logged_at >= datetime('now', ? || ' days')
               AND  actual_temp IS NOT NULL
               AND  predicted_temp IS NOT NULL
-              AND  model != 'blended'
+              AND  {_nm_sql}
             GROUP  BY model
             HAVING COUNT(*) >= 10
             """,
-            (f"-{days}",),
+            (f"-{days}", *_nm_params),
         ).fetchall()
     return {r[0]: float(r[1]) for r in rows}
 
@@ -10632,14 +11057,15 @@ def get_ensemble_member_accuracy(
     Returns {model: {mae, count}} or None if table is empty after filtering.
     """
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
-        query = """
+        query = f"""
             SELECT model, city, predicted_temp, actual_temp, target_date
             FROM ensemble_member_scores
             WHERE predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
-              AND model != 'blended'
+              AND {_nm_sql}
         """
-        params: list = []
+        params: list = [*_nm_params]
         if city:
             query += " AND city = ?"
             params.append(city)
@@ -10687,18 +11113,19 @@ def get_model_weights(city: str, window_days: int = 30) -> dict[str, float]:
 
     MIN_OBSERVATIONS = 10
     init_db()
+    _nm_sql, _nm_params = _non_model_keys_sql()
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT model, predicted_temp, actual_temp
             FROM ensemble_member_scores
             WHERE city = ?
               AND predicted_temp IS NOT NULL
               AND actual_temp IS NOT NULL
-              AND model != 'blended'
+              AND {_nm_sql}
               AND logged_at >= datetime('now', ? || ' days')
             """,
-            (city, f"-{window_days}"),
+            (city, *_nm_params, f"-{window_days}"),
         ).fetchall()
 
     if not rows:
@@ -11012,9 +11439,11 @@ def get_station_bias_by_lead(min_samples: int = STATION_BIAS_MIN_SAMPLES) -> dic
     32.96°F, against sd 2.82 (D+1) and 3.00 (D+0) for the ensemble rows.
     Pooling them would swamp the signal with a different quantity's noise.
     (Those same rows DO reach get_dynamic_station_bias's live corrector via
-    ensemble_member_scores' model='blended' rows -- 69 of 151 at audit time
-    -- which is filed as its own backlog entry, not fixed here: changing
-    what the live corrector counts changes live forecasts.)
+    ensemble_member_scores' model='blended' rows -- 69 of 151 at audit time.
+    That WAS filed as its own backlog entry and deferred here because
+    changing what the live corrector counts changes live forecasts; batch-75
+    has since fixed it, at the writer and with a repair pass over the
+    existing rows, so those rows no longer reach the corrector.)
 
     'between' is deliberately KEPT, unlike every Brier-quality query in this
     module. The shared exclusion exists because between-brackets have a
@@ -13168,6 +13597,26 @@ def get_regional_recent_bias(
                 FROM predictions
                 WHERE city IN ({placeholders})
                   AND forecast_temp_f IS NOT NULL
+                  -- batch-75: a metar_lockout row's forecast_temp_f is the
+                  -- METAR running daily extreme observed so far, not a
+                  -- forecast -- so its "error" is the gap between an
+                  -- incomplete observation and the finished day, a different
+                  -- quantity entirely. Same exclusion, same reasoning and
+                  -- same COALESCE idiom as get_station_bias_by_lead().
+                  --
+                  -- COALESCE, not a bare `!=`: SQLite evaluates
+                  -- `NULL != 'x'` to NULL (falsy), so a plain inequality
+                  -- would silently drop every row whose method was never
+                  -- recorded. Those rows have unknown provenance but are not
+                  -- known-contaminated, so they are kept.
+                  --
+                  -- Do NOT read this as likely to rescue the cross-city
+                  -- pooling signal. Its post-contamination-fix validation
+                  -- already measured r=0.08 (n=35), sign agreement 51% -- a
+                  -- coin flip -- and a method filter shrinks n further rather
+                  -- than revealing anything. See this function's registry
+                  -- entry note in weather_markets (key="cross_city_pooling").
+                  AND COALESCE(method, '') != 'metar_lockout'
                   AND UPPER(ticker) LIKE ?
                   AND predicted_at <= datetime(?)
             ) sub
@@ -13204,10 +13653,15 @@ def get_regional_recent_bias(
     # into every correlated neighbour's lean every day, not just on days with
     # a genuine shared-regime signal. Concrete case this guards: Atlanta's
     # only correlated partner is Miami (paper.py _CORRELATED_CITY_GROUPS),
-    # and Miami has a documented ~4.6°F persistent cold residual (utils.py
+    # and Miami has a documented persistent cold residual (utils.py
     # CITY_MIN_PROB_EDGE comment) that its own dynamic bias can't yet
     # override (too few samples) -- without this filter, Atlanta's lean would
-    # equal Miami's stale residual on every call. Cached per distinct source
+    # equal Miami's stale residual on every call. (That residual was quoted
+    # here as "~4.6°F" until batch-75 re-measured it: 2 of Miami's 7 settled
+    # rows were method='metar_lockout' and averaged -10.98°F, dragging the
+    # pooled figure. On the 5 uncontaminated rows it is -3.25°F. The
+    # direction and therefore this filter's rationale are unchanged; only the
+    # magnitude was overstated.) Cached per distinct source
     # city within this call (not module-level) since it only needs to run
     # once per get_regional_recent_bias() call, not once per row.
     _maturity_cache: dict[str, bool] = {}

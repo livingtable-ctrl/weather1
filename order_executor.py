@@ -5158,6 +5158,11 @@ def _auto_place_trades(
                     method=a.get("method"),
                     model_forecast_means=a.get("model_forecast_means"),
                     forecast_temp=a.get("forecast_temp"),
+                    # batch-75: None on every non-lockout path; on a lockout
+                    # trade these carry the observation and the shadow model
+                    # forecast that forecast_temp no longer (wrongly) holds.
+                    observed_extreme=a.get("observed_extreme"),
+                    model_forecast_temp=a.get("model_forecast_temp"),
                     condition_threshold=a.get("condition", {}).get("threshold"),
                     ab_variant=a.get("_ab_variant"),
                     close_time=m.get(

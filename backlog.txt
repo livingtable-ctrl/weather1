@@ -14767,10 +14767,15 @@ RESOLVED-then-REVERTED 2026-08-22 (batch-16): re-ran the retrospective
   Independent opus review (effort=high) of that wiring caught a real HIGH-
   severity contamination path, verified directly against live data before
   accepting: Atlanta's only _CORRELATED_CITY_GROUPS partner is Miami
-  (paper.py:354), and Miami has a DOCUMENTED, persistent ~4.6°F cold
+  (paper.py:354), and Miami has a DOCUMENTED, persistent cold
   residual (utils.py's CITY_MIN_PROB_EDGE comment: "forecast_temp_f runs
-  ~4.6F cold vs settled_temp_f... sample (n=7) too thin to safely retune"
-  _STATION_BIAS_HIGH["Miami"]=3.0). Since Miami is Atlanta's ONLY
+  cold vs settled_temp_f... sample too thin to safely retune"
+  _STATION_BIAS_HIGH["Miami"]=3.0). [batch-75 2026-08-25: that comment said
+  "~4.6F cold (6/7 samples)" when this was written and now says -3.25F on
+  n=5. Two of Miami's 7 settled rows were method='metar_lockout', whose
+  forecast_temp_f held a METAR running extreme rather than a forecast, and
+  they averaged -10.98F. The residual is real and the reasoning below still
+  holds; only the magnitude was overstated.] Since Miami is Atlanta's ONLY
   correlated partner, Atlanta's lean would equal Miami's stale residual on
   literally every call (clipped to -0.5°F) -- not a transient regime signal,
   a standing miscalibration leaking into a different city every day.
@@ -35534,6 +35539,25 @@ Recommendation: regenerate the Obsidian vault + graph.html + GRAPH_REPORT.md
   merge to match the committed graph's own resolved-edges-only convention.
   Both are extractor behaviour changes worth confirming as intended before a
   full rebuild bakes them in everywhere.
+
+  ADDED 2026-08-25 (batch-75, at workflow step 29): TWO further facts, both
+  checked directly rather than assumed.
+  1. GOOD NEWS -- the graph.json repair HELD. Re-verified on the committed
+     artifact: 22,298 links, 0 disagreeing with their own _src/_tgt pair
+     (0.0%). So the edge-direction corruption above is genuinely gone from
+     graph.json and only the derived views remain stale.
+  2. NEW PROBLEM -- graph.json's `built_at_commit` is
+     5f1b4290b097675361724779c64a6ef8992d748b, and `git cat-file -t` reports
+     that as "Not a valid object name" in this repo. The commit it was built
+     from does not exist in history (rebased away, or built in another clone).
+     So the graph's provenance cannot be resolved and its staleness relative
+     to current source cannot be MEASURED -- `git diff <built_at>..master`
+     simply errors. Whoever does the dedicated regen should treat
+     built_at_commit as unusable and re-derive from scratch rather than
+     attempting a scoped/incremental refresh against it, and should make the
+     rebuild stamp a commit that actually exists.
+  Batch-75 therefore SKIPPED its step-29 scoped refresh deliberately rather
+  than merging new AST nodes onto an artifact whose base commit is unknown.
   Full record: none -- surfaced by batch-59's graphify refresh.
 [OPEN -- filed 2026-08-24 by batch-61's opus review (F1), out of scope for
   that batch's display fix] useData.js's apiFetch has no request timeout, so
@@ -36182,10 +36206,16 @@ Why this is closed rather than deferred:
   (e.g. a covariate-conditioned IDR, which is a different proposal), not
   simply a larger settled sample.
 
-[OPEN 2026-08-25 -- found by batch-53's replay experiment, then isolated and
-  confirmed by that replay's opus review; filed separately because it is a
-  data-integrity bug in its own right and has nothing to do with
-  calibration.] predictions.forecast_temp_f IS WRITTEN WITH AN INSTANTANEOUS
+[RESOLVED 2026-08-25 (batch-75) -- found by batch-53's replay experiment, then
+  isolated and confirmed by that replay's opus review; filed separately because
+  it is a data-integrity bug in its own right and has nothing to do with
+  calibration. See the RESOLVED block at the end of this entry; the original
+  problem/plan text above it is kept for history. NOTE the title below is the
+  original one and its diagnosis was refined during the fix: the stored value
+  is the RUNNING DAILY EXTREME at lock time, not an instantaneous reading --
+  which matters, because it means the number is a hard BOUND on the day and is
+  therefore exactly right for the lock decision and exactly wrong as a
+  forecast.] predictions.forecast_temp_f IS WRITTEN WITH AN INSTANTANEOUS
   METAR TEMPERATURE ON method='metar_lockout' ROWS, NOT A DAILY-EXTREME
   FORECAST -- SILENTLY CORRUPTS ANY ANALYSIS KEYED ON THAT COLUMN
 Priority: HIGH -- RAISED 2026-08-25, see the CORRECTION under "Live impact"
@@ -36353,6 +36383,188 @@ When to revisit:
   data-driven sigma in [DATA-DRIVEN SIGMA FROM SETTLED HISTORY]; or any
   future analysis that joins forecast_temp_f to settled_temp_f. All three
   would silently inherit the corruption.
+
+RESOLVED 2026-08-25 (batch-75). Note the "Why not now" paragraph above was
+  itself stale when this was picked up -- it still read "No live path is
+  currently reading the bad values, so there is no urgency", contradicting
+  the CORRECTION under "Live impact" directly above it. The live path was
+  real; that sentence is superseded.
+
+  User decisions (AskUserQuestion, both halves asked before any code):
+  (1) new column + distinct model key + a shadow sample; (2) repair BOTH
+  tables rather than forward-only.
+
+  What shipped:
+  - weather_markets.analyze_trade's METAR-locked branch no longer assigns
+    the running extreme to forecast_temp. It now sets forecast_temp=None,
+    observed_extreme=<running extreme> and model_forecast_temp=<the RAW,
+    uncorrected deterministic 3-model daily-extreme forecast>. Both new
+    fields are initialised beside disagree_f OUTSIDE the locked branch --
+    the result dict reads them unconditionally, so scoping them inside it
+    would UnboundLocalError on every non-locked scan (the same bug an opus
+    review caught for blend_exclusions in batch-64).
+  - Schema v76 adds a SECOND column, predictions.model_forecast_temp_f, for
+    a reason that is about DATA ACCRUAL RATE rather than correctness, and is
+    recorded here because it is not derivable from the diff. Every
+    live-trading gate in this repo is a sample-count floor, and at the rate
+    samples were accruing several are not reachable on any realistic
+    timeline -- that pressure is why the METAR value was being written into
+    forecast_temp_f in the first place. On a lockout row the model's own
+    daily-extreme forecast is already computed (analyze_trade uses it as the
+    fallback when the METAR value is missing) and was then discarded.
+    Persisting it costs one nullable column and multiplies the usable sample:
+    the metar_lock_model_fc member-score row only lands when a lockout trade
+    is PLACED and later SETTLES, whereas a predictions row is written for
+    every market SCANNED -- historically 106 vs 70, and far wider going
+    forward since most scanned markets are never traded. RAW, uncorrected,
+    and read by NOTHING; it is a measurement substrate, not a signal. Do not
+    promote it into a live path before its own bias is measured, or the fix
+    trades a known contamination for an unmeasured one.
+  - Schema v75: predictions.observed_extreme_f. Plain overwrite in the
+    UPSERT, deliberately NOT the COALESCE its forecast_run_inits/
+    blend_exclusions neighbours use -- it is one of a mutually-exclusive
+    TRIPLE with method and forecast_temp_f, and COALESCE would let an
+    observation survive onto a row a later ensemble scan has relabelled
+    method='ensemble'.
+  - paper.place_paper_order now STORES `method` on the trade record (it was
+    already a parameter, used only for Kelly scaling, and never persisted --
+    which is precisely why _score_ensemble_members could not tell a lockout
+    trade from an ensemble one), plus observed_extreme/model_forecast_temp.
+    _score_ensemble_members resolves method from the trade first and falls
+    back to the predictions row for trades placed before the field existed.
+  - On a lockout trade it logs metar_lock_extreme + metar_lock_model_fc
+    instead of 'blended'. The observation is preserved and RELABELLED rather
+    than dropped -- a silent skip is how this class of bug hides.
+  - tracker.repair_metar_lockout_rows() + `py main.py repair-metar-lockout-rows
+    [--dry-run]`. One transaction; re-runnable by construction (selects on
+    current state, never on a date, so rows written between this landing and
+    the next run are picked up later). Ambiguous rows -- an ems row matching
+    BOTH a lockout and a non-lockout prediction for one (city,target_date,var)
+    -- are counted and LEFT ALONE, matching backfill_ensemble_member_scores_var's
+    leave-NULL-where-ambiguous discipline. Measured on the live DB before
+    landing: 106 predictions rows to move, 70 blended rows tracing to a
+    lockout of which 1 is ambiguous, i.e. 69 re-keyable -- which reconciles
+    exactly with the 69/151 and the separate "mixed n=1" this entry reported.
+
+  THE FINDING THAT WAS NOT IN THE BATCH FILE, and the reason this took a
+  constant rather than a third literal: ensemble_member_scores has SIX
+  per-model queries that each hardcoded `model != 'blended'` --
+  get_member_accuracy, get_member_brier, get_member_bias,
+  get_model_brier_scores, get_ensemble_member_accuracy and get_model_weights.
+  get_model_weights reads its model names FROM THE TABLE, not from a declared
+  list, so BOTH new keys would have silently joined the live blend-weight
+  softmax the moment they cleared its 10-observation floor, perturbing every
+  real model's normalised weight through the shared denominator -- the exact
+  leak TRACKING_ONLY_MODEL_NAMES's own docstring describes. Replaced all six
+  with tracker.NON_MODEL_SCORE_KEYS / _non_model_keys_sql().
+  NOT added to weather_markets.TRACKING_ONLY_MODEL_NAMES despite the apparent
+  fit: that set means "a real model we DO fetch but do not weight", and
+  batch_prewarm_ensemble iterates it to issue actual Open-Meteo requests
+  (`TRACKING_ONLY_MODEL_NAMES - {"ncep_hrrr_conus"}`) while _model_weights()
+  treats its members as ensemble candidates. Putting a non-model key there
+  would have sent the bot fetching a dataset named "metar_lock_extreme".
+
+  Item 4 (registry note): weather_markets' _SignalRegistryEntry(
+  key="cross_city_pooling") advertised "Last check (2026-07-23): Pearson
+  r~=0.35". Replaced with the post-contamination-fix 2026-08-22 result
+  (r=0.08, n=35, sign agreement 51% -- no signal), which was buried in
+  tests/test_dead_code_scan.py's allowlist string while the registry -- the
+  surface a future session actually consults -- kept the optimistic number.
+  get_regional_recent_bias also gained the method filter, using
+  get_station_bias_by_lead's COALESCE idiom (a bare `!=` drops rows whose
+  method is NULL, since SQLite's NULL != 'x' is NULL).
+
+  Item 3 (ticker column on ensemble_member_scores): DELIBERATELY SKIPPED.
+  The batch re-scoped it to optional after batch-68's repair made the
+  (city,target_date,var) join exact, and it is not needed to verify this fix.
+
+  ADJACENT, fixed here because it is the same contamination in a LIVE GATE:
+  utils.py's CITY_MIN_PROB_EDGE comment justified Miami's 0.20 conviction bar
+  with "forecast_temp_f runs ~4.6F cold (6/7 samples)". 2 of Miami's 7 settled
+  rows are metar_lockout and average -10.98F; on the 5 clean rows the bias is
+  -3.25F. Direction holds, magnitude overstated ~40%. Comment corrected; the
+  0.20 constant left UNCHANGED (user decision -- n=5 is far too thin to loosen
+  a live gate, and the suspected root cause is the _STATION_BIAS_HIGH
+  overcorrection). See the separate re-tune entry. The same "~4.6F" figure is
+  quoted inside the CROSS-CITY RECENT-ERROR POOLING entry and in
+  get_regional_recent_bias's maturity-gate comment; both updated.
+
+  Tests: tests/test_batch75_metar_lock_contamination.py, 19 tests, all
+  mutation-tested individually via Edit-revert. Every absence assertion
+  carries a positive control in the same test -- which earned its keep twice:
+  the regional-bias test's control initially FAILED, exposing that its absence
+  assertion was passing vacuously because the source city's own bias had not
+  cleared the maturity floor, so no candidate ever reached the method filter.
+  Mutation testing also DELETED code: a guard against writing a NULL 'blended'
+  row survived its own mutation, proving the real protection is
+  _score_ensemble_members' existing `if predicted_temp is None: continue`;
+  the redundant guard was removed rather than left as reassuring dead weight.
+  Because every other test feeds forecast_temp in explicitly, none of them
+  would catch someone restoring `forecast_temp = _metar_ct` at the writer
+  site, so two source-level guards pin that assignment (the AST/source-pinning
+  convention batch-65 established for SCAN_GATES); both mutation-tested, and
+  the regex absence assertions carry their own positive control.
+  Scoped run: 22 files, 2467 passed, 4 skipped, 0 failed (19 of those the
+  new file's own). Three failures seen during development
+  (test_analyze_trade_captures_hrrr_forecast_mean_same_day,
+  test_analyze_trade_survives_hrrr_fetch_exception,
+  TestBatchPrewarmEnsembleRateLimitTiering::test_tier1_before_sleep_tier2_after)
+  were PRE-EXISTING at the base commit 5a10664d and fixed by df7cd97f, not by
+  this batch -- verified by running them at both commits in a detached
+  baseline worktree.
+
+  TWO INDEPENDENT OPUS REVIEWS (effort=high), scoped by subsystem. Neither
+  found a HIGH. Every finding was addressed; the ones that changed behaviour:
+  - M1 (data): the repair's UPDATEs keyed on id alone while its SELECTs ran
+    in autocommit (sqlite3 issues BEGIN at the first DML, not the first
+    SELECT), so a concurrent scan between read and write could NULL a fresh
+    ensemble forecast and stamp a stale observation on a row now labelled
+    'ensemble'. Both UPDATEs now repeat the SELECT's predicates and count
+    skipped rows as *_raced.
+  - M1 (writer): _score_ensemble_members classified LEGACY trades (no
+    `method` on the record) entirely from the predictions lookup, and the
+    except reset only condition_type -- so a transient sqlite lock at
+    settlement fell through to the else branch and re-wrote the running
+    extreme as a 'blended' sample, re-injecting the contamination AFTER the
+    one-off repair had run. Now fails CLOSED: unresolvable provenance logs a
+    warning and writes nothing.
+  - M2 (data): the ems join was INNER, so a blended row with no predictions
+    row behind it (paper.py's own comment records that quick-buy paths never
+    call log_prediction) was indistinguishable from "not a lockout" and could
+    be re-keyed -- permanently deleting a legitimate sample, since
+    idx_ems_dedup is UNIQUE per city/date/var. Now LEFT JOIN with an explicit
+    ems_unmatched bucket.
+  - M3 (data): a minimal log_prediction write NULLs `method` via the plain
+    overwrite, and the repair keys its decision off it. Such rows are now
+    counted as ems_unknown_method rather than silently classified clean.
+  - L4 (writer): metar_lock_model_fc had no fallback to the predictions row,
+    so a call site not threading it dropped the shadow sample v76 exists for.
+  - L5 (writer): cmd_today's place path threaded neither new field.
+  - A legacy-shape fallback was added while fixing M1: on a pre-batch-75
+    lockout trade the running extreme lives ONLY in trade["forecast_temp"],
+    so without a third fallback every such trade still settling would lose
+    its observation entirely.
+  The ems_* buckets are now DISJOINT and sum to the table's own blended row
+  count (69 + 1 + 25 + 81 = 176 on the live DB), so the operator output is
+  self-reconciling -- the "counted nowhere" gap the review found is closed by
+  construction rather than by adding one more counter.
+
+  Mutation testing during the review fixes was worth more than the fixes:
+  THREE tests passed with their target deleted and had to be rewritten. The
+  fail-closed test needed two mock revisions (an always-raise mock broke the
+  earlier settled_temp_f lookup, so the function returned before reaching the
+  guard; a raise-after-first mock broke the WRITE instead -- only failing
+  exactly the second _conn() call tests the guard). The migration test needed
+  rebuilding entirely: rewinding schema_version on a migrated DB proves
+  nothing because the columns already exist, so it now builds a genuine v74
+  DB from a truncated _MIGRATIONS list. Verified by moving the v76 entry to
+  the FRONT of the list -- the append-only violation -- which the rewritten
+  test correctly fails and the original passed.
+
+  NOT DONE, filed separately: several tests write into the REAL data/ dir
+  (including one that creates the production .kill_switch); batch-64's
+  ensemble_member_values holds synthetic test rows; and cron.report_anomalies
+  reads a "forecast_temp_raw" key nothing has ever written.
 
 [OPEN 2026-08-25 -- found by batch-53's replay while trying to test whether
   the market prices temperature uncertainty wider than realized; the test
@@ -36807,3 +37019,121 @@ When to revisit:
   during exactly that operation. Otherwise, next time anyone touches
   calibration.py's write path.
 
+
+[OPEN 2026-08-25 -- surfaced by batch-75 while tracing every consumer of the
+  metar_lockout contamination.] CITY_MIN_PROB_EDGE["Miami"]=0.20 RESTS ON A
+  CONTAMINATED MEASUREMENT AND HAS NEVER BEEN RE-DERIVED ON CLEAN DATA
+Priority: Low -- the gate is CONSERVATIVE (it demands MORE conviction), so
+  being wrong here costs missed trades, not bad ones. Filed because the number
+  justifying it was measured on rows that were not forecasts.
+Files: utils.py (CITY_MIN_PROB_EDGE, and the comment above it -- corrected by
+  batch-75 but the constant deliberately untouched), weather_markets.py
+  (_STATION_BIAS_HIGH["Miami"]=3.0, the suspected real root cause)
+
+Problem:
+  The comment justified Miami's 0.20 bar (vs the 0.08 default) with
+  "forecast_temp_f runs ~4.6F cold vs settled_temp_f on average (6/7
+  samples)". Measured 2026-08-25 across Miami's 7 settled rows:
+    ensemble       n=4   -3.200F
+    normal_dist    n=1   -3.450F
+    metar_lockout  n=2  -10.980F   <- not forecasts; a METAR running extreme
+  So the clean figure is -3.25F on n=5, not -4.6F on 7. Direction unchanged,
+  magnitude overstated by ~40%.
+
+Why not now (user decision, batch-75):
+  n=5 is far too thin to justify loosening a LIVE conviction gate, and the
+  comment's own stated suspicion -- that the real cause is
+  _STATION_BIAS_HIGH["Miami"]=3.0 overcorrecting -- is untouched by this
+  correction. Fixing the evidence without moving the constant is the honest
+  intermediate state.
+
+When to revisit:
+  When Miami's clean (non-metar_lockout) settled sample reaches ~20 rows, or
+  whenever _STATION_BIAS_HIGH["Miami"] is retuned. Re-derive the residual with
+  a method filter, decide the static-table entry FIRST, and only then ask
+  whether the conviction bar is still earning its keep. Note Miami is also
+  Atlanta's only _CORRELATED_CITY_GROUPS partner, so its residual is what
+  get_regional_recent_bias's maturity gate exists to keep out of Atlanta.
+
+
+[OPEN 2026-08-25 -- found by batch-75's consumer trace of forecast_temp.]
+  cron.report_anomalies READS A "forecast_temp_raw" KEY THAT NOTHING IN THE
+  REPO HAS EVER WRITTEN, SO ITS "raw=" COLUMN HAS NEVER PRINTED
+Priority: Low -- console cosmetics on an operator-facing anomaly report. No
+  data path, no live-money effect.
+Files: cron.py (report_anomalies, grep `a.get("forecast_temp_raw")`),
+  weather_markets.py (analyze_trade's local `forecast_temp_raw`)
+
+Problem:
+  report_anomalies does `raw_temp = a.get("forecast_temp_raw")` and appends a
+  `raw=NN.N°F` suffix when it is not None. A repo-wide grep for the QUOTED key
+  `"forecast_temp_raw"` returns exactly that one read and no write: analyze_trade
+  has a local variable of that name but never puts it in the returned dict. So
+  the suffix is unreachable and always has been.
+
+  Not introduced by batch-75, though batch-75 touched the neighbouring line:
+  the locked branch's `forecast_temp_raw = ...` is a dead store either way,
+  since its only reader (the ensemble branch's disagree_f computation) runs
+  earlier in the function and in a different branch.
+
+A SECOND, INDEPENDENT INSTANCE OF THE SAME DEFECT (found 2026-08-25 by
+  batch-75's opus review of the writer path, filed here rather than separately
+  because it is the identical bug class -- a reader keyed on a name no writer
+  produces):
+    trade_cycle.py:927 writes the signals-cache key `forecast_temp_f`, but
+    frontend/src/tabs/SignalsTab.jsx:526 reads `o.forecast_temp`, and nothing
+    in web_app.py maps between the two. That dashboard tile has always
+    rendered blank. Pre-existing and unrelated to batch-75, which only
+    happened to be tracing every consumer of this value.
+    Fix is a one-word rename on one side -- but pick the side deliberately:
+    `forecast_temp_f` matches the predictions COLUMN name, `forecast_temp`
+    matches the analysis DICT key, and both conventions are used elsewhere.
+
+Plan:
+  Decide whether the operator actually wants the raw pre-bias forecast on that
+  line. If yes, add "forecast_temp_raw" to analyze_trade's return dict -- and
+  note it must stay None on metar_lockout rows, where there is no forecast at
+  all (batch-75). If no, delete the dead read and the local. Do not "fix" it by
+  reviving it on the lockout path; that would re-introduce exactly the
+  observation-labelled-as-a-forecast confusion batch-75 removed.
+
+
+[OPEN 2026-08-25 -- found by batch-75 while checking whether batch-64's
+  writers had accumulated any rows yet.] THE PRODUCTION predictions.db HOLDS
+  SYNTHETIC TEST ROWS IN ensemble_member_values, AND THEY ARE 100% OF THAT
+  TABLE
+Priority: Medium -- small today, but batches 70/71 are specified to read this
+  table as observations, and right now every row in it is fake.
+Files: data/predictions.db (ensemble_member_values), tests/test_batch64_forward_writers.py
+
+Problem:
+  As of 2026-08-25 the live table holds 12 rows and all 12 are synthetic:
+  values_json='[70.0]' -- the identical value across five different models --
+  with n_members=1, city NYC. Real ensemble members are never all exactly 70.0
+  and n_members=1 is not an ensemble. Two rows carry run_init='RUN-X', a
+  sentinel that appears in exactly one place in the repo
+  (tests/test_batch64_forward_writers.py, the get_model_run_init patch). The
+  other ten landed at 16:24:40Z the same day and applied schema migrations
+  72-74 to the production DB as a side effect.
+
+  tests/conftest.py's autouse isolate_tracker_db DOES redirect tracker.DB_PATH
+  and tracker._conn() reads that module global, so the guard holds INSIDE
+  pytest. These therefore came from something run outside pytest -- a manual
+  `python -c` repro -- which is the documented scratch-script failure mode.
+
+  Consequence beyond the junk rows: batch-64's four forward-only writers have
+  produced ZERO real production rows. forecast_run_inits, blend_exclusions and
+  orderbook_depth_snapshots are all still empty, and the newest `predictions`
+  row is 2026-08-25 06:36:13Z -- i.e. no scan has run since batch-64 landed at
+  08:46Z. INDEX.md's "the sample clocks are running" is not true yet, and
+  INDEX-PANEL-BACKENDS.md marks batches 70/71 READY on that premise.
+
+Plan:
+  1. Delete the 12 synthetic rows (all have n_members=1 and values_json
+     '[70.0]'; verify before deleting rather than trusting that shape).
+  2. Get a real scan to run, then re-check the four writers' counts before
+     anyone starts 70/71.
+  3. Correct the two INDEX files: 70/71 are blocked on data, not READY.
+  Related but separately owned: several TESTS also write into the real data/
+  dir (including one that creates the production .kill_switch) -- that is its
+  own spun-off task, not this entry.

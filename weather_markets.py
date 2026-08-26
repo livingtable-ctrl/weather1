@@ -10299,10 +10299,24 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
         correlation_note=(
             "No fixed floor or count query — re-run the retrospective "
             "validation (tracker.get_regional_recent_bias vs settled_temp_f) "
-            "once more settled data accumulates. Last check (2026-07-23): "
-            "Pearson r~=0.35, but thin per-estimate coverage (85/229 "
-            "candidate rows had any signal, averaging 1.67 correlated-city "
-            "samples each) — too sparse to trust yet."
+            "once more settled data accumulates. "
+            "LAST CHECK (2026-08-22): Pearson r=0.08 (n=35), sign agreement "
+            "51% — a coin flip. NO SIGNAL. This SUPERSEDES the 2026-07-23 "
+            "reading of r~=0.35 that this note used to advertise, which was "
+            "substantially an artifact of contamination: the function was "
+            "briefly wired into _get_combined_station_bias() on 2026-08-22, "
+            "an opus review caught a correlated city with a thin static-bias "
+            "entry leaking its persistent residual into a neighbour, it was "
+            "fixed at the source, and re-running the validation AGAINST THE "
+            "FIXED version collapsed r from 0.38 to 0.08. The wiring was "
+            "reverted. Reasoning is recorded in tests/test_dead_code_scan.py's "
+            "allowlist entry for tracker.get_regional_recent_bias. "
+            "Separately (batch-75), that query also inherited the "
+            "method='metar_lockout' contamination — forecast_temp_f held a "
+            "METAR running extreme, not a forecast — and now filters it out. "
+            "Do NOT expect that filter to rescue the signal: it starts from "
+            "r=0.08 on n=35 and shrinks n further. Do not wire this live "
+            "without a fresh validation that clears a pre-registered bar."
         ),
         backlog_ref="CROSS-CITY RECENT-ERROR POOLING",
     ),
@@ -15700,6 +15714,33 @@ def analyze_trade(
     # Initialize here so the return dict can reference it regardless of which path runs.
     disagree_f = None
 
+    # batch-75. Both initialised HERE, beside disagree_f and for the identical
+    # reason: only the METAR-locked branch assigns them, and the result dict
+    # below reads them unconditionally, so scoping them inside that branch
+    # would raise UnboundLocalError on every non-locked path (the exact bug an
+    # opus review caught for blend_exclusions just below).
+    #
+    # observed_extreme: the METAR running daily extreme at lock time -- the
+    # value that actually decided the lock. It is a hard BOUND on the finished
+    # day (max-so-far for a HIGH market, min-so-far for a LOW), which is
+    # precisely why it is the correct input to the lock decision and precisely
+    # why it is NOT a forecast: it sits systematically below the eventual high
+    # and above the eventual low. This file's own measurement, over 22,799
+    # real station-days, puts P(running max still rises >= 3F) at 26.9% at
+    # 14:00 local and 4.4% at 16:00.
+    observed_extreme = None
+    # model_forecast_temp: the RAW deterministic 3-model daily-extreme
+    # forecast for the same city-day. Raw, not bias-corrected, deliberately --
+    # this exists to measure that estimator's OWN bias, and subtracting a
+    # correction derived from the very rows batch-75 is cleaning would measure
+    # a residual instead. Shadow-only: nothing reads it, and it is excluded
+    # from every per-model statistic via tracker.NON_MODEL_SCORE_KEYS. It is
+    # here so that "could a lockout row ever contribute a real forecast
+    # sample" becomes answerable -- today it is not, because the deterministic
+    # blend's bias has never been measured (method='normal_dist' is its only
+    # other consumer, n=2).
+    model_forecast_temp = None
+
     # batch-64 item 3 / panels A3 + A7: blend_sources below records only the
     # sources that SURVIVED (its comprehension filters `v > 0`), so a source
     # that was considered and dropped is indistinguishable from one that was
@@ -16694,12 +16735,25 @@ def analyze_trade(
         condition["var"] = var
         days_out = max(0, (target_date - _local_today).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
-        # Explicit None-check — a legitimate 0.0°F METAR observation (routine
-        # deep-winter reading) is falsy and would otherwise be replaced by the
-        # model forecast. blended_prob itself is unaffected (it comes from the
-        # lockout confidence, not forecast_temp), but forecast_temp is
-        # persisted in the result/tracker and would corrupt downstream
-        # calibration data keyed on it.
+        # NOTE (opus review L2/L3): the ".get(a, .get(b))" form below still
+        # matters, but NOT for the reason this comment used to give. It
+        # described an explicit `is not None` check guarding against a
+        # legitimate 0.0°F reading being treated as falsy and replaced by the
+        # model forecast -- batch-75 deleted that substitution entirely, so
+        # there is nothing left to guard. The form is kept because
+        # `.get("comp_temp_f", default)` returns None when the key is PRESENT
+        # and null, which is the ordinary case on a lock that never ran a
+        # comparison branch.
+        #
+        # Consequence, deliberate and new: when both keys are absent/null,
+        # observed_extreme AND forecast_temp are both None, so the predictions
+        # row records no temperature at all (only model_forecast_temp_f).
+        # That is the honest state -- no forecast was produced and no
+        # observation was captured -- and every consumer reads these with
+        # .get()/IS NOT NULL, so a temperature-less row is skipped rather than
+        # mis-read. Previously this case silently became `_fallback_temp or
+        # 0.0`, i.e. a model forecast wearing the lock's label, or literally
+        # 0.0°F.
         # Use comp_temp_f (the value that actually decided the lock — the
         # daily extreme when available) rather than current_temp_f (always
         # the instantaneous reading): recording the instantaneous reading as
@@ -16713,8 +16767,41 @@ def analyze_trade(
         _metar_ct = metar_lockout.get(
             "comp_temp_f", metar_lockout.get("current_temp_f")
         )
-        forecast_temp = _metar_ct if _metar_ct is not None else (_fallback_temp or 0.0)
-        forecast_temp_raw = forecast_temp
+        # batch-75. The comment above records an EARLIER fix at this line --
+        # current_temp_f -> comp_temp_f -- made for exactly the right reason
+        # (this value reaches get_dynamic_station_bias's live corrector) but
+        # only halfway: comp_temp_f is closer to the daily extreme than an
+        # instantaneous reading, yet it is still a BOUND rather than an
+        # estimate of it, so it stayed systematically wrong. Measured on 103
+        # settled lockout rows: +8.63F bias on max markets, -10.42F on min,
+        # against +0.19/+1.57 for ensemble rows on the same days. The tell is
+        # that the mean HIGH-market stored value (78.40F) was COLDER than the
+        # mean LOW-market one (82.21F) -- impossible for daily extremes.
+        #
+        # So the observation moves to its own field and forecast_temp becomes
+        # None: on this path no daily-extreme forecast was produced at all
+        # (the whole ensemble/Gaussian block sits behind `if not
+        # metar_locked:`, and blended_prob comes from _metar_blended_prob),
+        # and None is the honest representation of that. Every consumer that
+        # joins forecast_temp_f to a settled temperature becomes correct with
+        # no query change.
+        #
+        # NOTE the lock logic itself is untouched and must stay that way --
+        # _metar_lock_in and its margins are CORRECT to reason about the
+        # running extreme. The defect was only ever in what got persisted and
+        # who read it. The between-market station-gap clearance check earlier
+        # in this function also still reads comp_temp_f directly and is also
+        # deliberately unchanged: it asks "is the value that decided the lock
+        # comfortably inside the band", for which the observation is the right
+        # input and a model forecast would weaken a safety gate.
+        observed_extreme = _metar_ct
+        model_forecast_temp = _fallback_temp
+        forecast_temp = None
+        # No forecast means no raw forecast either. This is read only by
+        # cron.report_anomalies' console "raw=" suffix, which reads the key
+        # "forecast_temp_raw" that nothing in the repo has ever written --
+        # i.e. it is already dead. Set for internal consistency, not effect.
+        forecast_temp_raw = None
         temps = []
         ens_prob = None
         ens_stats = None
@@ -17224,6 +17311,15 @@ def analyze_trade(
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_temp,
+        # batch-75: mutually exclusive with forecast_temp above. On a
+        # metar_lockout row forecast_temp is None and these carry the
+        # observation and the shadow model forecast; on every other method
+        # they are None and forecast_temp carries the forecast. Persisted as
+        # predictions.observed_extreme_f (the first) and logged to
+        # ensemble_member_scores under the metar_lock_* keys (both) --
+        # neither reaches any per-model statistic or the live bias corrector.
+        "observed_extreme": observed_extreme,
+        "model_forecast_temp": model_forecast_temp,
         # Sources
         "ensemble_prob": ens_prob,
         "nws_prob": _nws_prob,

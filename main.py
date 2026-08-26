@@ -3956,6 +3956,17 @@ def cmd_today(client: KalshiClient) -> None:
                         city=best_m.get("_city"),
                         target_date=best_a.get("target_date"),
                         method=best_a.get("method"),
+                        # batch-75 (opus review L5): this site had `method`
+                        # but not the temperature fields, so a lockout trade
+                        # placed from `today` captured no observation and no
+                        # shadow forecast -- and cmd_today never calls
+                        # log_prediction, so the predictions-row fallback is
+                        # empty too, leaving _score_ensemble_members nothing
+                        # to log. Not a regression, but it silently defeated
+                        # the sample-accrual capture v76 exists for.
+                        forecast_temp=best_a.get("forecast_temp"),
+                        observed_extreme=best_a.get("observed_extreme"),
+                        model_forecast_temp=best_a.get("model_forecast_temp"),
                         # Opus round-2 review (I2): without close_time,
                         # positions._passes_exit_gates fails CLOSED, so
                         # place_paper_order's own guard comment is literal --
@@ -6749,6 +6760,11 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                     method=_analysis.get("method"),
                     model_forecast_means=_analysis.get("model_forecast_means"),
                     forecast_temp=_analysis.get("forecast_temp"),
+                    # batch-75: None on every non-lockout path; on a lockout
+                    # trade these carry the observation and the shadow model
+                    # forecast that forecast_temp no longer (wrongly) holds.
+                    observed_extreme=_analysis.get("observed_extreme"),
+                    model_forecast_temp=_analysis.get("model_forecast_temp"),
                     condition_threshold=_analysis.get("condition", {}).get("threshold"),
                     close_time=_market.get("close_time"),
                     days_out=_days_out,
@@ -9592,6 +9608,127 @@ def cmd_backfill_member_brier() -> None:
             yellow(
                 f"  {errored} trade(s) errored while computing (malformed record) "
                 "— counted and skipped, rest of the batch still ran."
+            )
+        )
+
+
+def cmd_repair_metar_lockout_rows(dry_run: bool = False) -> None:
+    """One-off, re-runnable repair for batch-75's METAR-lock contamination.
+
+    On method='metar_lockout' rows, analyze_trade used to persist the METAR
+    running daily extreme at lock time into forecast_temp_f -- a hard BOUND on
+    the day, not a forecast of it. That value reached live money:
+    paper._score_ensemble_members logged it to ensemble_member_scores as
+    model='blended', and get_dynamic_station_bias() PREFERS those rows and
+    feeds the live forecast bias correction. 69 of the 151 joinable blended
+    rows were
+    contaminated at +/-8-10F with opposite signs by var.
+
+    The writer is fixed; this cleans what it already wrote. Two corrections in
+    one transaction: predictions rows move forecast_temp_f -> observed_extreme_f,
+    and contaminated ensemble_member_scores rows are re-keyed to
+    model='metar_lock_extreme' (excluded from every per-model statistic via
+    tracker.NON_MODEL_SCORE_KEYS). Rows whose provenance is genuinely ambiguous
+    are counted and left alone rather than guessed at.
+
+    Safe to re-run: it selects on current state, not on a date, so rows written
+    by scans between the fix landing and this run are picked up by a later
+    pass. Pass --dry-run to report the counts without writing.
+    """
+    from tracker import repair_metar_lockout_rows
+
+    print(
+        "Repairing batch-75 METAR-lock contamination"
+        + (" (DRY RUN — nothing will be written)…" if dry_run else "…")
+    )
+    out = repair_metar_lockout_rows(dry_run=dry_run)
+    if dry_run:
+        # Past tense would claim work that did not happen (opus review L7),
+        # and ems_conflicts is structurally always 0 in a preview since the
+        # early return precedes the write loop -- so the red collision banner
+        # below can never fire during a dry run even when a real run would
+        # hit one.
+        print(
+            f"\nWould move {out['predictions_moved']} predictions row(s) and "
+            f"re-key {out['ems_rekeyed']} member-score row(s)."
+        )
+        print(
+            dim(
+                "  Preview only: a dry run cannot detect dedup-key "
+                "collisions, so treat the re-key figure as an upper bound."
+            )
+        )
+    else:
+        print(
+            f"\nDone: {out['predictions_moved']} predictions row(s) moved, "
+            f"{out['ems_rekeyed']} member-score row(s) re-keyed."
+        )
+    # The ems_* buckets are disjoint and sum to the table's own blended row
+    # count, so this lets an operator confirm nothing fell through a crack.
+    print(
+        dim(
+            f"  Member-score rows accounted for: {out['ems_rekeyed']} re-keyed, "
+            f"{out['ems_clean']} already clean, {out['ems_ambiguous']} ambiguous, "
+            f"{out['ems_unmatched']} unmatched, "
+            f"{out['ems_unknown_method']} unknown-method, "
+            f"{out['ems_unreachable_null_var']} NULL-var."
+        )
+    )
+    if out["predictions_raced"] or out["ems_raced"]:
+        print(
+            yellow(
+                f"  {out['predictions_raced']} predictions row(s) and "
+                f"{out['ems_raced']} member-score row(s) changed state between "
+                "the read and the write (a concurrent scan) and were skipped. "
+                "Not an error -- re-run to pick them up."
+            )
+        )
+    if out["ems_unmatched"]:
+        print(
+            yellow(
+                f"  {out['ems_unmatched']} blended row(s) match NO predictions "
+                "row and were left alone -- provenance cannot be established, "
+                "and re-keying one would permanently delete a legitimate "
+                "sample (the dedup index is UNIQUE per city/date/var)."
+            )
+        )
+    if out["ems_unknown_method"]:
+        print(
+            yellow(
+                f"  {out['ems_unknown_method']} blended row(s) matched a "
+                "prediction whose `method` is NULL, so they could not be "
+                "classified either way and were left alone."
+            )
+        )
+    if out["ems_ambiguous"]:
+        print(
+            yellow(
+                f"  {out['ems_ambiguous']} member-score row(s) match BOTH a "
+                "lockout and a non-lockout prediction for the same "
+                "(city, target_date, var) and were left as model='blended' — "
+                "their provenance cannot be established from that key alone, "
+                "so they are skipped rather than guessed at."
+            )
+        )
+    if out["ems_unreachable_null_var"]:
+        print(
+            yellow(
+                f"  {out['ems_unreachable_null_var']} blended row(s) have a NULL "
+                "var and are structurally unreachable by this pass. Run "
+                "`backfill-ensemble-var` first, then re-run this."
+            )
+        )
+    if out["ems_conflicts"]:
+        # red, not yellow: a collision means a metar_lock_extreme row already
+        # exists for that dedup key, so the contaminated row could not be
+        # re-keyed and is STILL being read as 'blended' by the live corrector.
+        print(
+            red(
+                f"  {out['ems_conflicts']} row(s) COLLIDED with an existing "
+                "metar_lock_extreme row for their dedup key and remain "
+                "model='blended' — they are still reaching "
+                "get_dynamic_station_bias(). Investigate before trusting the "
+                "corrected bias."
             )
         )
 
@@ -13162,6 +13299,8 @@ def main():
         cmd_backfill_member_brier()
     elif cmd in ("backfill-member-actual-temp", "backfill_member_actual_temp"):
         cmd_backfill_member_actual_temp()
+    elif cmd in ("repair-metar-lockout-rows", "repair_metar_lockout_rows"):
+        cmd_repair_metar_lockout_rows("--dry-run" in args)
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":
