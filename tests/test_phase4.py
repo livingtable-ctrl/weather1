@@ -123,16 +123,16 @@ class TestEnsoPhase:
         """_get_enso_phase always returns one of three valid values."""
         from weather_markets import _get_enso_phase
 
-        with patch("weather_markets.get_enso_index", return_value=1.2):
+        with patch("climate_indices.get_enso_index", return_value=1.2):
             assert _get_enso_phase() == "el_nino"
 
-        with patch("weather_markets.get_enso_index", return_value=-0.8):
+        with patch("climate_indices.get_enso_index", return_value=-0.8):
             assert _get_enso_phase() == "la_nina"
 
-        with patch("weather_markets.get_enso_index", return_value=0.1):
+        with patch("climate_indices.get_enso_index", return_value=0.1):
             assert _get_enso_phase() == "neutral"
 
-        with patch("weather_markets.get_enso_index", return_value=None):
+        with patch("climate_indices.get_enso_index", return_value=None):
             assert _get_enso_phase() == "neutral"
 
 

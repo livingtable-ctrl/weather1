@@ -64,15 +64,13 @@ def _stub_heavy_deps(monkeypatch):
         "weather_markets._metar_lock_in",
         lambda city, date, cond, ticker="": (False, None, {}),
     )
+    monkeypatch.setattr("nws.nws_prob", lambda city, coords, date, cond: 0.60)
     monkeypatch.setattr(
-        "weather_markets.nws_prob", lambda city, coords, date, cond: 0.60
-    )
-    monkeypatch.setattr(
-        "weather_markets.climatological_prob",
+        "climatology.climatological_prob",
         lambda city, coords, date, cond: 0.55,
     )
     monkeypatch.setattr(
-        "weather_markets.temperature_adjustment", lambda city, date: 0.0
+        "climate_indices.temperature_adjustment", lambda city, date: 0.0
     )
     monkeypatch.setattr("nws.get_live_observation", lambda city, coords: None)
     monkeypatch.setattr(

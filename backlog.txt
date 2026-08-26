@@ -37960,12 +37960,11 @@ Left open, filed as its own entry below: get_live_observation was one of
   several names weather_markets.py re-exports from another module, and the
   same two-binding trap still exists for the rest.
 
-[OPEN 2026-08-25 -- adjacency from the default-deny network guard above.
-  Filed rather than fixed there: that entry's scope was one name
-  (get_live_observation), and each remaining name is its own set of test
-  call sites, not a shared edit.]
-  weather_markets.py STILL RE-EXPORTS SIX NAMES FROM OTHER MODULES, SO EACH
-  ONE HAS TWO PATCHABLE BINDINGS THAT CAN DISAGREE
+[RESOLVED 2026-08-26 -- filed as adjacency from the default-deny network
+  guard above (that entry's scope was one name, get_live_observation), and
+  done as its own change immediately after.]
+  weather_markets.py RE-EXPORTED SIX NAMES FROM OTHER MODULES, SO EACH ONE HAD
+  TWO PATCHABLE BINDINGS THAT COULD DISAGREE
 Priority: Low -- the default-deny guard now catches the consequence loudly
   (a mis-aimed patch fails the test naming the URL) instead of silently
   serving live data. This is about removing the trap, not about a live bug.
@@ -38022,12 +38021,87 @@ When to revisit:
   Next time one of these six is at the centre of a flaky-test investigation,
   or if the guard surfaces a third instance of the same trap.
 
+RESOLVED 2026-08-26: All six removed. weather_markets.py gained `import
+  climatology` (nws and `climate_indices as _ci` were already imported as
+  modules) and its nine call sites are now qualified -- nws.nws_prob(...),
+  climatology.climatological_prob(...), _ci.temperature_adjustment(...), and so
+  on. 152 test patch sites across 15 files retargeted from
+  "weather_markets.<name>" to the source module; three of those files
+  (test_forecast_accuracy.py, test_price_and_size.py, and extra sites in
+  test_weather_markets.py) were not in this entry's own per-name counts, which
+  is why the sweep was driven by an exhaustive pattern match with a
+  no-leftovers assertion rather than by the numbers above.
+
+  WHY A MISSED SITE COULD NOT PASS SILENTLY, which matters more than the green
+  suite: four of the six names reach the network, so a patch that failed to
+  take would leave the process and the default-deny guard would fail the test
+  with the URL attached. The other two get no signal from it -- obs_prob is a
+  pure function, and climatological_prob's network is already blocked by
+  isolate_climatology_data_dir -- and were probed separately. Independently,
+  every stale target now raises AttributeError rather than no-opping, because
+  monkeypatch.setattr and patch.object both refuse a missing attribute.
+
+  tests/test_reexport_guard.py (new, 10 tests) keeps it that way: an AST scan
+  of weather_markets.py's MODULE-SCOPE ImportFrom nodes against
+  {nws, climatology, climate_indices}, plus a hasattr sweep over all seven
+  formerly-re-exported names, plus a positive control proving the scan can
+  fail. Call-time imports inside function bodies are deliberately allowed and
+  the guard does not walk into them -- weather_markets has five, and they are
+  safe because they re-resolve per call. Mutation-tested: re-adding
+  `from nws import nws_prob` fails two of its tests naming the line.
+
+  Independent opus review (effort: high) raised 8 findings, all addressed. The
+  one that mattered was not about this change at all -- it was a live CI
+  breakage from the network-guard entry above. tests/test_weather_markets.py's
+  TestNoSideEntryEdgeSign builds its fixture at today+5 days, which exceeds the
+  operator's own .env MAX_DAYS_OUT=3, so all three of its analyze_trade tests
+  hit their `pytest.skip` on every local run and had never executed. CI has no
+  .env, MAX_DAYS_OUT defaults to 5, the gate passes, and the tests reach an
+  unmocked mos.fetch_nbm_quantiles -- which the new guard turns from a silent
+  real request into a hard failure. Reproduced: 2 failed under a CI-equivalent
+  environment. Reviving them found three more defects that had been invisible
+  for as long as the tests had: the YES test pinned 20 identical members and
+  tripped the degenerate-ensemble gate; the circuit-open test pinned no source
+  that carried any weight (measured, this fixture's weights are ensemble 1.0 /
+  climatology 0.0 / nws 0.0, so removing the ensemble correctly left nothing
+  and the renormalization it exists to check was unreachable); and the
+  "clim carries ~8% renorm weight" arithmetic in the passing sibling's
+  docstring was fiction. All fixed, with the measured numbers written down.
+
+  Also from that review: three comment blocks still told future readers that
+  weather_markets re-exports these names and that both bindings must be
+  patched -- an instruction to reintroduce the bug -- along with the duplicate
+  patch lines the sweep left beside them; the new import-block comment said
+  "never re-exports" when five call-time imports exist; the regex had qualified
+  a name inside English prose in a docstring; and two nws.obs_prob patches were
+  inert because obs_prob is only reachable inside `if live_obs:` and both sites
+  pin get_live_observation to None. Removing those last two exposed a real
+  coverage hole: every existing test of analyze_trade's section-5 obs override
+  asserts it does NOT fire ("between" markets), and nothing asserted it fires
+  at all -- so all of them would have passed with section 5 deleted. That is
+  the branch df7cd97f traced the original incident to. Added
+  test_same_day_obs_override_is_actually_applied as the missing positive
+  control, mutation-tested by disabling section 5.
+
+  A HARNESS GAP THIS EXPOSED, worth more than the change itself: every
+  verification run in this batch had been picking up the operator's .env (14
+  behaviour-affecting settings, MAX_DAYS_OUT among them) because
+  conftest imports main, which calls load_dotenv() at import. CI has none of
+  them. "Cold cache == CI" was only half true; cold cache AND no .env is CI.
+  The cold-run harness now neutralises dotenv as well as redirecting
+  safe_io.project_root, and it arms the production-data guard against the REAL
+  data dir before conftest can arm it against the temp one -- so the run
+  additionally proves it never wrote to the operator's data/.
+
+Verification: full suite against a cold data dir with no .env. ruff +
+  ruff-format + mypy clean via python -m pre_commit run --files.
+
 [OPEN 2026-08-25 -- adjacency from the default-deny network guard above.
   Pre-existing, not caused by that change; none of the four sites is inside
   one of its hunks. Filed rather than fixed there because each needs its own
   fixture retuning, not a shared edit.]
-  FOUR `if result is None: pytest.skip(...)` TRAPDOORS IN test_weather_markets.py
-  ARE CURRENTLY SKIPPING ON EVERY RUN
+  ONE `if result is None: pytest.skip(...)` TRAPDOOR LEFT IN
+  test_weather_markets.py (was four; three closed 2026-08-26)
 Priority: Medium -- these are not flaky-and-occasionally-skipped. All four skip
   on EVERY run today (`pytest tests/test_weather_markets.py -rs`: 430 passed,
   4 skipped, always the same four), so the assertions below them have not
@@ -38066,6 +38140,19 @@ Why not now:
   retuning exercise with its own hand-computed expected values to re-derive --
   not a mechanical edit. Doing them under one commit would also make it hard
   to tell which retune caused which assertion to start running again.
+
+UPDATE 2026-08-26: three of the four are fixed, as fallout from the six-binding
+  entry above -- TestNoSideEntryEdgeSign's trio turned out to be not merely
+  skipping but a live CI breakage once the network guard landed (see that
+  entry). Their fixture date, ensemble pins, blend weights and market prices
+  were all corrected and the skips are now asserts; the YES test's
+  `if recommended_side == "yes":` wrapper, a second trapdoor around the same
+  assertion, is gone too. test_weather_markets.py is down from 4 skips to 1.
+
+  STILL OPEN, and the reason this entry stays: tests/test_weather_markets.py:1207,
+  `pytest.skip("analyze_trade returned None for this enriched dict")`, in a
+  different class with its own fixture. Same treatment needed -- find the gate
+  via get_gate_counts(), retune, replace the skip with an assert.
 
 When to revisit:
   Next time anyone touches the entry-side-edge / model_mkt_gap area, and

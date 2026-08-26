@@ -25,28 +25,37 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 import climate_indices as _ci
-import metar as _metar
 
-# get_live_observation is deliberately NOT imported into this module's own
-# namespace: a `from nws import ...` binding is a separate object that
-# monkeypatching `nws.get_live_observation` does not rebind, so it gave the
-# same name two resolution behaviours -- section 5 below used this module's
-# copy while _compute_persistence_prob's call-time import saw nws's. Tests
-# aimed at the source module therefore missed section 5 entirely and it
-# fetched real live temperatures, moving the model probability with the
-# weather (df7cd97f). Both call sites now go through `nws.` so there is
-# exactly one patchable target.
+# This module deliberately imports nws, climatology and climate_indices as
+# MODULES and re-exports no name out of them AT MODULE SCOPE. (A `from x
+# import y` INSIDE a function body is fine, and there are several -- it
+# re-resolves from the source module on every call, so a patch of x.y is
+# always seen. Only the module-scope form freezes a second copy.) A `from x import y` binding
+# is a separate object that monkeypatching `x.y` does not rebind, so every such
+# name had two resolution behaviours and a test could patch the wrong one and
+# silently get the real function. Not hypothetical: get_live_observation was
+# reached both ways, analyze_trade's section-5 obs override kept fetching NYC's
+# real temperature through the module-level copy, and the model probability
+# moved with the weather until the >0.25 model-market gap gate tripped
+# (df7cd97f). Keep it this way -- one patchable target per name;
+# tests/test_reexport_guard.py fails the build if a module-scope re-export
+# comes back.
+#
+# climatology and nws are left UNALIASED, unlike _ci/_metar/_safe_io, so a call
+# site reads exactly like the target its tests patch
+# ("climatology.climatological_prob" in both places). Patching
+# weather_markets.climatology itself would swap the whole module rather than
+# one bound function, which is not the hazard described above.
+import climatology
+import metar as _metar
 import nws
 import safe_io as _safe_io
 from calibration import load_city_weights as _load_city_weights
 from calibration import load_condition_weights as _load_condition_weights
 from calibration import load_seasonal_weights as _load_seasonal_weights
 from circuit_breaker import CircuitBreaker
-from climate_indices import get_enso_index, temperature_adjustment
-from climatology import climatological_prob
 from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
-from nws import fetch_nbm_forecast, nws_prob, obs_prob
 from paths import (
     CATALOG_DRIFT_PATH,
     CITIES_JSON_PATH,
@@ -2047,7 +2056,7 @@ def _get_enso_phase() -> str:
     Uses ONI threshold of ±0.5 (standard NOAA definition).
     """
     try:
-        oni = get_enso_index()
+        oni = _ci.get_enso_index()
         if oni is None:
             return "neutral"
         if oni >= 0.5:
@@ -2233,7 +2242,7 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
     if not highs:
         # Open-Meteo unavailable — try NBM (NWS gridpoints) + weatherapi first,
         # then fall back to Pirate Weather as a last resort.
-        nbm_data = fetch_nbm_forecast(city, coords, target_date)
+        nbm_data = nws.fetch_nbm_forecast(city, coords, target_date)
         if nbm_data is not None:
             if nbm_data.get("high_f") is not None:
                 highs.append((nbm_data["high_f"], 1.0))
@@ -11485,7 +11494,10 @@ def _analyze_precip_trade(
     # to 0.0 when no precip model actually returned data) ────────────────────
     city = enriched.get("_city", "")
     try:
-        clim_prior = climatological_prob(city, coords, target_date, condition) or 0.30
+        clim_prior = (
+            climatology.climatological_prob(city, coords, target_date, condition)
+            or 0.30
+        )
     except Exception:
         clim_prior = 0.30
 
@@ -11706,7 +11718,7 @@ def _analyze_snow_trade(
     _snow_default = 0.20 if is_winter_month else 0.05
     try:
         clim_prior = (
-            climatological_prob(
+            climatology.climatological_prob(
                 enriched.get("_city", ""), coords, target_date, condition
             )
             or _snow_default
@@ -16209,7 +16221,7 @@ def analyze_trade(
         # ── 2. NWS forecast probability ──────────────────────────────────────────
         _nws_prob: float | None = None
         try:
-            _nws_prob = nws_prob(city, coords, target_date, condition)
+            _nws_prob = nws.nws_prob(city, coords, target_date, condition)
         except Exception as _e:
             _log.warning(
                 "analyze_trade: nws_prob failed for %s: %s",
@@ -16221,8 +16233,10 @@ def analyze_trade(
         clim_prob_raw: float | None = None
         index_adj: float = 0.0
         try:
-            clim_prob_raw = climatological_prob(city, coords, target_date, condition)
-            index_adj = temperature_adjustment(city, target_date)
+            clim_prob_raw = climatology.climatological_prob(
+                city, coords, target_date, condition
+            )
+            index_adj = _ci.temperature_adjustment(city, target_date)
         except Exception as _e:
             _log.warning(
                 "analyze_trade: climatological_prob failed for %s: %s",
@@ -16244,7 +16258,9 @@ def analyze_trade(
             elif condition["type"] == "between":
                 adj_condition["lower"] = condition["lower"] - index_adj
                 adj_condition["upper"] = condition["upper"] - index_adj
-            clim_prob = climatological_prob(city, coords, target_date, adj_condition)
+            clim_prob = climatology.climatological_prob(
+                city, coords, target_date, adj_condition
+            )
             if clim_prob is None:
                 clim_prob = clim_prob_raw
 
@@ -16260,7 +16276,7 @@ def analyze_trade(
             try:
                 live_obs = nws.get_live_observation(city, coords)
                 if live_obs:
-                    obs_override = obs_prob(live_obs, condition)
+                    obs_override = nws.obs_prob(live_obs, condition)
             except Exception:
                 pass
 

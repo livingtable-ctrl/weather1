@@ -113,7 +113,7 @@ class TestForecastAccuracyFixtures:
         rsps.add(rsps.GET, wm.ENSEMBLE_BASE, json=payload, status=200)
 
         # Stub out NWS and Pirate Weather so they don't make real network calls
-        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a, **kw: None)
+        monkeypatch.setattr("nws.fetch_nbm_forecast", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm,
             "fetch_temperature_weatherapi",
@@ -154,7 +154,7 @@ class TestForecastAccuracyFixtures:
         rsps.add(rsps.GET, wm.FORECAST_BASE, json=payload, status=200)
         rsps.add(rsps.GET, wm.ENSEMBLE_BASE, json=payload, status=200)
 
-        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a, **kw: None)
+        monkeypatch.setattr("nws.fetch_nbm_forecast", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm, "fetch_temperature_pirate_weather", lambda *a, **kw: None
@@ -176,7 +176,7 @@ class TestForecastAccuracyFixtures:
         rsps.add(rsps.GET, wm.FORECAST_BASE, status=429)
         rsps.add(rsps.GET, wm.ENSEMBLE_BASE, status=429)
 
-        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a, **kw: None)
+        monkeypatch.setattr("nws.fetch_nbm_forecast", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm, "fetch_temperature_pirate_weather", lambda *a, **kw: None

@@ -367,8 +367,10 @@ class TestAnalyzeTradeHourlyModel:
         )
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
         monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
         monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
 

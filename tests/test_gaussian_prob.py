@@ -317,11 +317,11 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.55),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.55),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -363,11 +363,11 @@ class TestGaussianBlendSeparateSource:
             patch.object(wm, "fetch_temperature_nbm", return_value=73.0),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.55),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.55),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -462,10 +462,10 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -526,10 +526,10 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -581,10 +581,10 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -703,10 +703,10 @@ class TestBetweenMarketGaussian:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -825,22 +825,16 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
             patch("climatology.climatological_prob", return_value=0.55),
-            # BOTH bindings: weather_markets.py still does `from nws import
-            # nws_prob` at import, so patching only the source module leaves
-            # analyze_trade's own call site fetching a real api.weather.gov
-            # gridpoint forecast.
+            # One target: weather_markets calls nws.nws_prob and re-exports
+            # nothing, so the source module is the whole job.
             patch("nws.nws_prob", return_value=0.60),
-            patch.object(wm, "nws_prob", return_value=0.60),
             patch("nws.get_live_observation", return_value=None),
             # Runs its own per-model Open-Meteo fetch; track-only here, and
             # this test asserts only on blend_sources normalisation.
             patch.object(
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
-            # BOTH bindings, same reason as nws_prob above (weather_markets
-            # does `from climate_indices import temperature_adjustment`).
             patch("climate_indices.temperature_adjustment", return_value=0.0),
-            patch.object(wm, "temperature_adjustment", return_value=0.0),
             patch.dict("sys.modules", {"mos": _fake_mos}),
         ):
             result = wm.analyze_trade(enriched)
@@ -904,10 +898,10 @@ class TestBlendSourcesNormalisation:
             patch.object(wm, "fetch_temperature_nbm", return_value=72.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.55),
-            patch("weather_markets.nws_prob", return_value=0.60),
+            patch("climatology.climatological_prob", return_value=0.55),
+            patch("nws.nws_prob", return_value=0.60),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.dict("sys.modules", {"mos": _fake_mos_no_station}),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
@@ -1029,10 +1023,10 @@ class TestBetweenObsDisabled:
             patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=fake_obs),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -1087,10 +1081,10 @@ class TestBetweenObsDisabled:
             patch.object(wm, "fetch_temperature_nbm", return_value=73.5),
             patch.object(wm, "fetch_temperature_ecmwf", return_value=74.0),
             patch.object(wm, "get_ensemble_members", return_value=None),
-            patch("weather_markets.climatological_prob", return_value=0.10),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.10),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=obs_in_band),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -1306,10 +1300,7 @@ def test_analyze_trade_includes_ensemble_cdf_in_blend_sources(monkeypatch):
         patch.object(wm, "fetch_temperature_ecmwf", return_value=73.0),
         patch.object(wm, "get_ensemble_members", return_value=fake_members),
         patch("climatology.climatological_prob", return_value=0.50),
-        # BOTH bindings -- see the note in
-        # test_blend_sources_weights_sum_to_one_with_mos above.
         patch("nws.nws_prob", return_value=None),
-        patch.object(wm, "nws_prob", return_value=None),
         patch("nws.get_live_observation", return_value=None),
         patch("mos.fetch_nbm_quantiles", return_value=None),
         # Runs its own per-model Open-Meteo fetch; track-only here, and this
@@ -1317,9 +1308,7 @@ def test_analyze_trade_includes_ensemble_cdf_in_blend_sources(monkeypatch):
         patch.object(
             wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
         ),
-        # BOTH bindings, same reason as nws_prob above.
         patch("climate_indices.temperature_adjustment", return_value=0.0),
-        patch.object(wm, "temperature_adjustment", return_value=0.0),
     ):
         result = wm.analyze_trade(enriched)
 

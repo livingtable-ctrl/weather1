@@ -157,11 +157,11 @@ class TestPersistenceProb:
                     72.0,
                 ],
             ),
-            patch("weather_markets.climatological_prob", return_value=0.6),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.6),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=71.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=71.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),
@@ -184,25 +184,25 @@ class TestEnsoPhase:
     def test_el_nino_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("weather_markets.get_enso_index", return_value=0.7):
+        with patch("climate_indices.get_enso_index", return_value=0.7):
             assert _get_enso_phase() == "el_nino"
 
     def test_la_nina_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("weather_markets.get_enso_index", return_value=-0.6):
+        with patch("climate_indices.get_enso_index", return_value=-0.6):
             assert _get_enso_phase() == "la_nina"
 
     def test_neutral_returns_correct_label(self):
         from weather_markets import _get_enso_phase
 
-        with patch("weather_markets.get_enso_index", return_value=0.2):
+        with patch("climate_indices.get_enso_index", return_value=0.2):
             assert _get_enso_phase() == "neutral"
 
     def test_none_oni_returns_neutral(self):
         from weather_markets import _get_enso_phase
 
-        with patch("weather_markets.get_enso_index", return_value=None):
+        with patch("climate_indices.get_enso_index", return_value=None):
             assert _get_enso_phase() == "neutral"
 
     def test_el_nino_boosts_ecmwf_in_winter(self):
@@ -608,11 +608,11 @@ class TestTimeDecayEdge:
                     65.0,
                 ],
             ),
-            patch("weather_markets.climatological_prob", return_value=0.5),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.5),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=69.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),
@@ -980,15 +980,16 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.fetch_temperature_nbm", return_value=80.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=80.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),
-            patch("weather_markets.climatological_prob", return_value=0.5),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.5),
+            patch("nws.nws_prob", return_value=None),
             # Keeps obs_override None. weather_markets no longer re-exports
             # get_live_observation (it calls nws.get_live_observation directly),
             # so this single source-module patch reaches every call site.
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.obs_prob", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            # No obs_prob pin needed: it is only reached inside `if live_obs:`,
+            # and get_live_observation is pinned to None right above.
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             # Disable METAR lock-in: it gates on city-local (NY) date, not
             # UTC -- when target_date == NY-local-today, it fires and
             # bypasses the ensemble/Gaussian path this test exercises.
@@ -1062,11 +1063,11 @@ class TestGaussianEnsembleBlend:
             patch("weather_markets.fetch_temperature_nbm", return_value=68.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=68.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),
-            patch("weather_markets.climatological_prob", return_value=0.4),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.4),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
@@ -1287,11 +1288,11 @@ class TestBimodalEnsemble:
             patch.object(
                 wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
             ),
-            patch("weather_markets.climatological_prob", return_value=0.25),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.25),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
             patch("mos.fetch_nbm_quantiles", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch("weather_markets.fetch_temperature_nbm", return_value=65.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=65.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),

@@ -307,7 +307,7 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         )
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
         # Pinned explicitly, not left to conftest: climatological_prob returns
         # None today only because isolate_climatology_data_dir blocks
         # climatology's session, which drops climatology from the blend
@@ -315,8 +315,10 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         # unrelated fixture -- with a live SF winter climatology the TMIN
         # blend moved far enough to trip the model_mkt_gap gate
         # (opus-review-caught, reproduced).
-        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
         monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
         monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
         # A second, independent METAR fetch: the dew-point coastal correction

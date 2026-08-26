@@ -282,7 +282,7 @@ class TestPrecipTradeWiring:
             mock.patch.object(
                 wm, "_fetch_ensemble_precip", lambda *a, **kw: [0.02] * 12
             ),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.30),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.30),
         ):
             enriched = {
                 "_city": "NYC",
@@ -309,7 +309,7 @@ class TestPrecipTradeWiring:
             mock.patch.object(
                 wm, "_fetch_ensemble_precip", lambda *a, **kw: [0.001] * 12
             ),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.30),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.30),
         ):
             enriched = {
                 "_city": "NYC",
@@ -345,7 +345,7 @@ class TestSnowTradeWiring:
             mock.patch.object(
                 wm, "_fetch_ensemble_precip", lambda *a, **kw: [0.3] * 12
             ),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.20),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.20),
         ):
             enriched = {
                 "_city": "NYC",
@@ -373,7 +373,7 @@ class TestSnowTradeWiring:
             mock.patch.object(
                 wm, "_fetch_ensemble_precip", lambda *a, **kw: [0.001] * 12
             ),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.20),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.20),
         ):
             enriched = {
                 "_city": "NYC",
@@ -422,7 +422,7 @@ class TestSnowTradeWiring:
         )
         with (
             mock.patch.object(wm, "_fetch_ensemble_precip", lambda *a, **kw: members),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.90),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.90),
             mock.patch.object(
                 wm, "_bootstrap_ci_precip", lambda *a, **kw: (0.4167, 0.9167)
             ),
@@ -430,7 +430,7 @@ class TestSnowTradeWiring:
             r_consensus = wm._analyze_snow_trade(**common)
         with (
             mock.patch.object(wm, "_fetch_ensemble_precip", lambda *a, **kw: members),
-            mock.patch.object(wm, "climatological_prob", lambda *a, **kw: 0.05),
+            mock.patch("climatology.climatological_prob", lambda *a, **kw: 0.05),
             mock.patch.object(
                 wm, "_bootstrap_ci_precip", lambda *a, **kw: (0.4167, 0.9167)
             ),

@@ -108,9 +108,9 @@ class TestAnalyzePipeline:
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
     @patch("weather_markets.get_ensemble_members", return_value=None)
-    @patch("weather_markets.nws_prob", return_value=0.62)
-    @patch("weather_markets.climatological_prob", return_value=0.58)
-    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch("nws.nws_prob", return_value=0.62)
+    @patch("climatology.climatological_prob", return_value=0.58)
+    @patch("climate_indices.temperature_adjustment", return_value=0.0)
     @patch(
         "weather_markets.get_ensemble_temps",
         return_value=[
@@ -164,9 +164,9 @@ class TestAnalyzePipeline:
         assert isinstance(result["edge"], float)
 
     @patch("nws.get_live_observation", return_value=None)
-    @patch("weather_markets.nws_prob", side_effect=Exception("NWS unavailable"))
-    @patch("weather_markets.climatological_prob", return_value=None)
-    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch("nws.nws_prob", side_effect=Exception("NWS unavailable"))
+    @patch("climatology.climatological_prob", return_value=None)
+    @patch("climate_indices.temperature_adjustment", return_value=0.0)
     @patch("weather_markets.get_ensemble_temps", return_value=[])
     def test_analyze_trade_handles_missing_forecast(
         self,
@@ -187,9 +187,9 @@ class TestAnalyzePipeline:
         assert result is None
 
     @patch("nws.get_live_observation", return_value=None)
-    @patch("weather_markets.nws_prob", return_value=None)
-    @patch("weather_markets.climatological_prob", return_value=None)
-    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch("nws.nws_prob", return_value=None)
+    @patch("climatology.climatological_prob", return_value=None)
+    @patch("climate_indices.temperature_adjustment", return_value=0.0)
     @patch(
         "weather_markets.get_ensemble_temps",
         return_value=[
@@ -284,9 +284,9 @@ class TestAnalyzePipelineExtra:
     @patch("weather_markets.get_ensemble_members", return_value=None)
     @patch("weather_markets.fetch_temperature_nbm", return_value=None)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=None)
-    @patch("weather_markets.nws_prob", return_value=0.45)
-    @patch("weather_markets.climatological_prob", return_value=0.40)
-    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch("nws.nws_prob", return_value=0.45)
+    @patch("climatology.climatological_prob", return_value=0.40)
+    @patch("climate_indices.temperature_adjustment", return_value=0.0)
     @patch(
         "weather_markets.get_ensemble_temps",
         return_value=[
@@ -396,9 +396,9 @@ class TestAnalyzePipelineExtra:
     @patch("weather_markets.fetch_temperature_nbm", return_value=69.0)
     @patch("weather_markets.fetch_temperature_ecmwf", return_value=69.0)
     @patch("weather_markets.get_ensemble_members", return_value=None)
-    @patch("weather_markets.nws_prob", return_value=0.70)
-    @patch("weather_markets.climatological_prob", return_value=0.65)
-    @patch("weather_markets.temperature_adjustment", return_value=0.0)
+    @patch("nws.nws_prob", return_value=0.70)
+    @patch("climatology.climatological_prob", return_value=0.65)
+    @patch("climate_indices.temperature_adjustment", return_value=0.0)
     @patch(
         "weather_markets.get_ensemble_temps",
         return_value=[

@@ -65,13 +65,14 @@ def _patch_analyze_prereqs():
             ],
         ),
         # Skip NWS (return None = not available)
-        patch("weather_markets.nws_prob", return_value=None),
+        patch("nws.nws_prob", return_value=None),
         # Skip climatology
-        patch("weather_markets.climatological_prob", return_value=None),
-        patch("weather_markets.temperature_adjustment", return_value=0.0),
+        patch("climatology.climatological_prob", return_value=None),
+        patch("climate_indices.temperature_adjustment", return_value=0.0),
         # Skip observation override
         patch("nws.get_live_observation", return_value=None),
-        patch("weather_markets.obs_prob", return_value=None),
+        # No obs_prob pin needed: it is only reached inside `if live_obs:`,
+        # and get_live_observation is pinned to None right above.
         # Disable METAR lock-in: _metar_lock_in compares target_date against
         # datetime.now(ZoneInfo(city_tz)).date() (city-local). When the local
         # "tomorrow" equals that city-local date (target_date set to tomorrow
@@ -146,7 +147,7 @@ def test_analyze_trade_logs_nws_prob_failure(caplog):
         # Entered last so it wins over the baseline's nws_prob -> None.
         # See the ordering note in the consensus test above.
         boom = stack.enter_context(
-            patch("weather_markets.nws_prob", side_effect=RuntimeError("nws down"))
+            patch("nws.nws_prob", side_effect=RuntimeError("nws down"))
         )
         analyze_trade(_make_enriched())
         assert boom.call_count == 1, (
@@ -180,7 +181,7 @@ def test_analyze_trade_logs_climatological_failure(caplog):
         # See the ordering note in the consensus test above.
         boom = stack.enter_context(
             patch(
-                "weather_markets.climatological_prob",
+                "climatology.climatological_prob",
                 side_effect=RuntimeError("clim error"),
             )
         )

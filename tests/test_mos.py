@@ -340,8 +340,8 @@ class TestMosIntegration:
         # Patch external calls so analyze_trade returns a result
         with (
             patch("weather_markets.get_ensemble_temps", return_value=[65.0] * 15),
-            patch("weather_markets.nws_prob", return_value=0.55),
-            patch("weather_markets.climatological_prob", return_value=0.50),
+            patch("nws.nws_prob", return_value=0.55),
+            patch("climatology.climatological_prob", return_value=0.50),
             patch("nws.get_live_observation", return_value=None),
         ):
             result = weather_markets.analyze_trade(enriched)

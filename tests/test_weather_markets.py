@@ -1196,9 +1196,11 @@ class TestAdjustedEdgeInAnalyzeTrade:
             "close_time": "",
         }
 
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.50)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.50)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
 
         result = wm.analyze_trade(enriched)
         if result is None:
@@ -1403,9 +1405,9 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1480,9 +1482,9 @@ def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1562,9 +1564,9 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1625,13 +1627,13 @@ def _analyze_trade_base_mocks(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     # Default -- the 3 nbm_quantile_prob tests below override this
     # immediately after calling this helper (monkeypatch's "last setattr
     # wins" rule), so this default only actually matters for callers (e.g.
     # the network-call guard below) that don't override it.
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1865,9 +1867,9 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     # model_mkt_gap gate (>0.25) and returning None.
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 76.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
-    monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.20)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: 0.15)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
 
     from datetime import datetime, timedelta
@@ -1938,9 +1940,9 @@ def _consensus_disagree_setup(monkeypatch):
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 76.0)
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 77.0)
-    monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.20)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.20)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: 0.15)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
 
     from datetime import datetime, timedelta
@@ -2056,9 +2058,9 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -2152,9 +2154,9 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -2298,9 +2300,9 @@ def _mock_hrrr_wiring_common(monkeypatch, wm, mos):
     # gone (weather_markets.py now calls nws.get_live_observation directly), so
     # the source module is the only target there is.
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -2464,9 +2466,9 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -2568,9 +2570,9 @@ def _stub_ecmwf_gap_common(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
     monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
-    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -3388,8 +3390,7 @@ class TestGetWeatherForecastFallbackChain:
 
         # NBM returns data
         monkeypatch.setattr(
-            wm,
-            "fetch_nbm_forecast",
+            "nws.fetch_nbm_forecast",
             lambda city, coords, dt: {"high_f": 71.0, "low_f": 54.0},
         )
         # weatherapi unavailable
@@ -3426,7 +3427,7 @@ class TestGetWeatherForecastFallbackChain:
         )
 
         # NBM + weatherapi both fail
-        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a: None)
+        monkeypatch.setattr("nws.fetch_nbm_forecast", lambda *a: None)
         monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a: None)
 
         # Pirate Weather succeeds
@@ -3477,7 +3478,7 @@ class TestGetWeatherForecastValidatesResponse:
             return resp
 
         monkeypatch.setattr(wm, "_om_request", _fake_om_request)
-        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a, **kw: None)
+        monkeypatch.setattr("nws.fetch_nbm_forecast", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm, "fetch_temperature_pirate_weather", lambda *a, **kw: None
@@ -4387,6 +4388,79 @@ def test_analyze_trade_accepts_today_and_future(monkeypatch):
             pytest.fail(f"analyze_trade raised for delta={delta}: {exc}")
 
 
+def test_same_day_obs_override_is_actually_applied(monkeypatch):
+    """The POSITIVE control for analyze_trade's section-5 obs override.
+
+    Every existing test of this branch asserts it does NOT fire -- the three
+    "between" markets must not get an obs weight. Nothing asserted it fires at
+    all, so all of them would have passed just as happily if section 5 had been
+    deleted outright. That absence is not academic: section 5 is the branch that
+    was silently fetching NYC's real temperature and moving the model
+    probability with the weather (df7cd97f), and the branch whose two-binding
+    resolution bug motivated removing weather_markets' re-exports.
+    """
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    calls = []
+    live_obs = {"temp_f": 91.0, "timestamp": datetime.now(UTC).isoformat()}
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: live_obs)
+    monkeypatch.setattr("nws.obs_prob", lambda *a, **kw: calls.append(a) or 0.88)
+    # days_out == 0 with a live obs also opens _compute_persistence_prob's
+    # running-daily-extreme path, which fetches real METAR.
+    monkeypatch.setattr("metar.fetch_metar_daily_extreme", lambda *a, **kw: None)
+    monkeypatch.setattr("metar.fetch_metar", lambda *a, **kw: None)
+    # Ensemble AGREES with the obs (all members above the 80 threshold, so
+    # ens_prob == 1.0). blended_prob is then _obs_w*0.88 + _ens_w*1.0, i.e.
+    # bounded in [0.88, 1.0] whatever weight split the local hour produces --
+    # so the 0.90 market mid below stays inside the model_mkt_gap gate at any
+    # time of day. Pinning the obs against a disagreeing ensemble would make
+    # this test pass or fail depending on the hour it runs.
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [85.0] * 14 + [87.0] * 6
+    )
+
+    today = datetime.now(ZoneInfo(wm._CITY_TZ["NYC"])).date()
+    enriched = {
+        "_city": "NYC",
+        "_date": today,  # days_out == 0 -- section 5 is gated on this
+        "_hour": None,
+        "_forecast": {
+            "high_f": 88.0,
+            "low_f": 70.0,
+            "precip_in": 0.0,
+            "models_used": 3,
+            "high_range": (86.0, 90.0),
+        },
+        "ticker": "KXHIGHNY-OBS-T80",
+        "series_ticker": "KXHIGHNY",
+        "title": "NYC high above 80°F",
+        "yes_ask": 90,
+        "yes_bid": 84,
+        "volume": 500,
+        "volume_fp": 500,
+        "open_interest": 200,
+        "open_interest_fp": 200,
+        "close_time": (datetime.now(UTC) + timedelta(hours=8)).isoformat(),
+    }
+
+    wm.reset_gate_counts()
+    result = wm.analyze_trade(enriched)
+
+    assert result is not None, (
+        f"obs-override fixture was gated out; gates: {wm.get_gate_counts()}"
+    )
+    assert calls, "nws.obs_prob was never called -- section 5 did not run"
+    assert result.get("obs_prob") == 0.88, (
+        f"the obs override must reach the result; got {result.get('obs_prob')}"
+    )
+    blend = result.get("blend_sources", {})
+    assert blend.get("obs", 0.0) > 0.0, (
+        f"obs must carry real blend weight on a same-day market; got {blend}"
+    )
+
+
 # ── P0-14: NO-side entry_side_edge sign fix ───────────────────────────────────
 
 
@@ -4401,7 +4475,12 @@ class TestNoSideEntryEdgeSign:
         """Build a minimal enriched dict for analyze_trade targeting a NO recommendation."""
         from datetime import date, datetime, timedelta
 
-        target = date.today() + timedelta(days=5)
+        # days=2, not 5: the operator's own .env sets MAX_DAYS_OUT=3, so a
+        # 5-day target died at the days_out gate and every analyze_trade test
+        # in this class skipped -- silently, on every local run since the class
+        # was written. CI has no .env and defaults to 5, where the gate instead
+        # passes and the tests reach a live network call. 2 is inside both.
+        target = date.today() + timedelta(days=2)
         ticker = f"KXHIGHNYC-{target.strftime('%y%b%d').upper()}-T80"
         close_time = (datetime.now(UTC) + timedelta(hours=48)).isoformat()
         return {
@@ -4431,19 +4510,26 @@ class TestNoSideEntryEdgeSign:
         """A valid NO trade must have entry_side_edge > 0 after P0-14 fix.
 
         Market: yes_bid=22, yes_ask=28 → market_mid=25% YES, no_ask=78%.
-        Ensemble temps [65°F×14, 67°F×6] vs T80 → ens_prob=0%, Gaussian≈0%.
-        Clim (0.30) carries only ~8% renorm weight → blended_prob≈5%.
-        model_mkt_gap = |0.05 − 0.25| = 0.20 < 0.25 (gate does not fire).
-        NO edge = (1 − 0.05) − 0.78 = +0.17 > 0.
+        Ensemble temps [65°F×14, 67°F×6] vs T80 → ens_prob=0%, Gaussian≈0%,
+        so blended_prob≈0. model_mkt_gap = |0.00 − 0.25| = 0.25, just inside
+        the >0.25 gate. NO edge = (1 − 0.00) − 0.78 = +0.22 > 0.
+
+        The clim=0.30 pin below is defensive only: measured, this fixture's
+        blend weights are ensemble 1.0 / climatology 0.0 / nws 0.0, so
+        climatology contributes nothing. (An earlier version of this docstring
+        claimed it carried ~8% -- it never did, and nobody noticed because the
+        whole test skipped on every run until the days_out fixture was fixed.)
         """
         import weather_markets as wm
 
         # Patch all live API calls so blended_prob is fully deterministic.
         # _get_consensus_probs hits Open-Meteo directly even when get_ensemble_temps
         # is patched — both must be suppressed (Jun25 conftest note).
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.30)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.30)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
         # Non-degenerate temps (two distinct values) all below T80 → ens_prob=0.
         # All-identical members trigger the degenerate-ensemble guard (return None).
@@ -4453,6 +4539,9 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        # Reached through a call-time `import mos`, so no weather_markets.*
+        # patch covers it; unmocked it fetches a real NBP bulletin.
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
         )
@@ -4461,10 +4550,12 @@ class TestNoSideEntryEdgeSign:
         # 8% renorm weight; neutral_temperature_scaling autouse sets T=1.0 identity).
         # NO edge = (1 − 0.05) − 0.78 = +0.17 > 0. Spread = 6¢/25¢ = 24% < 30%.
         enriched = self._make_enriched(yes_bid_cents=22, yes_ask_cents=28)
+        wm.reset_gate_counts()
         result = wm.analyze_trade(enriched)
 
-        if result is None:
-            pytest.skip("analyze_trade returned None (edge or liquidity guard fired)")
+        assert result is not None, (
+            f"analyze_trade returned no result; gate counts: {wm.get_gate_counts()}"
+        )
 
         assert result["recommended_side"] == "no", (
             f"Expected NO recommendation, got {result['recommended_side']} "
@@ -4479,29 +4570,62 @@ class TestNoSideEntryEdgeSign:
         """YES trade entry_side_edge is still positive after the fix (no regression)."""
         import weather_markets as wm
 
-        # yes_bid=35, yes_ask=40 → our prob ~0.75 → YES trade, edge = 0.75 - 0.40 = +0.35
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.75)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        # Measured: 15 of 20 members above T80 gives forecast_prob 0.734 against
+        # a 0.585 market mid -- a 0.149 gap, inside the 0.25 model_mkt_gap gate --
+        # and entry_side_edge = +0.114 on the YES side.
+        #
+        # The old fixture said "yes_bid=35, yes_ask=40 → our prob ~0.75 → edge
+        # +0.35", which cannot happen: |0.75 − 0.375| = 0.375 trips the gap gate
+        # outright. It went unnoticed because this test skipped on every run
+        # (its target date exceeded the operator's own MAX_DAYS_OUT).
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.75)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
         # Pin all network/file sources so blended_prob is deterministic across envs
-        monkeypatch.setattr(wm, "get_ensemble_temps", lambda *a, **kw: [95.0] * 20)
+        # Two distinct values, not [95.0] * 20: all-identical members trip the
+        # degenerate-ensemble gate and analyze_trade returns None. Both above
+        # T80, so ens_prob is still 1.0.
+        monkeypatch.setattr(
+            wm,
+            "get_ensemble_temps",
+            lambda *a, **kw: [95.0] * 14 + [97.0] * 1 + [70.0] * 5,
+        )
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        # Reached through a call-time `import mos`, so no weather_markets.*
+        # patch covers it; unmocked it fetches a real NBP bulletin.
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
+        # Runs its own per-model Open-Meteo fetch, independent of
+        # get_ensemble_temps above -- the two sibling tests already pin it.
+        monkeypatch.setattr(
+            wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
+        )
 
-        enriched = self._make_enriched(yes_bid_cents=35, yes_ask_cents=40)
+        enriched = self._make_enriched(yes_bid_cents=55, yes_ask_cents=62)
         enriched["_forecast"]["high_f"] = 95.0
 
+        wm.reset_gate_counts()
         result = wm.analyze_trade(enriched)
 
-        if result is None:
-            pytest.skip("analyze_trade returned None (edge or liquidity guard fired)")
+        assert result is not None, (
+            f"analyze_trade returned no result; gate counts: {wm.get_gate_counts()}"
+        )
 
-        if result["recommended_side"] == "yes":
-            assert result["entry_side_edge"] > 0, (
-                f"entry_side_edge={result['entry_side_edge']} must be > 0 for YES trade"
-            )
+        # Unconditional: the `if recommended_side == "yes"` this used to be
+        # wrapped in was a second trapdoor -- the whole assertion vanished the
+        # moment the fixture stopped producing a YES. Measured, it does.
+        assert result["recommended_side"] == "yes", (
+            f"expected a YES recommendation, got {result['recommended_side']} "
+            f"(forecast_prob={result.get('forecast_prob')}, "
+            f"market_prob={result.get('market_prob')})"
+        )
+        assert result["entry_side_edge"] > 0, (
+            f"entry_side_edge={result['entry_side_edge']} must be > 0 for YES trade"
+        )
 
     def test_ensemble_excluded_from_blend_when_circuit_open(self, monkeypatch, caplog):
         """When the ensemble circuit breaker is OPEN, analyze_trade must exclude
@@ -4520,9 +4644,22 @@ class TestNoSideEntryEdgeSign:
         import weather_markets as wm
 
         monkeypatch.setattr(wm, "_ensemble_circuit_is_open", lambda: True)
-        monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
-        monkeypatch.setattr(wm, "climatological_prob", lambda *a, **kw: 0.30)
-        monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+        # Give climatology real weight. Measured, this fixture's natural
+        # weights are ensemble 1.0 / climatology 0.0 / nws 0.0 -- so removing
+        # the ensemble leaves genuinely nothing, analyze_trade correctly
+        # returns None, and the renormalization this test exists to check is
+        # never reached. Pinning a weight set with a surviving source is what
+        # makes the assertion below mean anything.
+        monkeypatch.setattr(
+            wm,
+            "_confidence_scaled_blend_weights",
+            lambda *a, **kw: {"ensemble": 0.6, "climatology": 0.3, "nws": 0.1},
+        )
+        monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+        monkeypatch.setattr("climatology.climatological_prob", lambda *a, **kw: 0.30)
+        monkeypatch.setattr(
+            "climate_indices.temperature_adjustment", lambda *a, **kw: 0.0
+        )
         monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
         monkeypatch.setattr(
             wm, "get_ensemble_temps", lambda *a, **kw: [65.0] * 14 + [67.0] * 6
@@ -4530,17 +4667,22 @@ class TestNoSideEntryEdgeSign:
         monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: None)
         monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: [])
+        # Reached through a call-time `import mos`, so no weather_markets.*
+        # patch covers it; unmocked it fetches a real NBP bulletin.
+        monkeypatch.setattr("mos.fetch_nbm_quantiles", lambda *a, **kw: None)
         monkeypatch.setattr(
             wm, "_get_consensus_probs", lambda *a, **kw: (None, None, None, None, None)
         )
 
         enriched = self._make_enriched(yes_bid_cents=22, yes_ask_cents=28)
 
+        wm.reset_gate_counts()
         with caplog.at_level(logging.WARNING, logger="weather_markets"):
             result = wm.analyze_trade(enriched)
 
-        if result is None:
-            pytest.skip("analyze_trade returned None (edge or liquidity guard fired)")
+        assert result is not None, (
+            f"analyze_trade returned no result; gate counts: {wm.get_gate_counts()}"
+        )
 
         assert any(
             "ensemble circuit OPEN" in msg and "excluding ens_prob" in msg
@@ -8012,10 +8154,10 @@ class TestMosBlendNoCrossVariableFallback:
             patch("weather_markets.fetch_temperature_nbm", return_value=60.0),
             patch("weather_markets.fetch_temperature_ecmwf", return_value=60.0),
             patch("weather_markets.get_ensemble_members", return_value=[]),
-            patch("weather_markets.climatological_prob", return_value=0.5),
-            patch("weather_markets.nws_prob", return_value=None),
+            patch("climatology.climatological_prob", return_value=0.5),
+            patch("nws.nws_prob", return_value=None),
             patch("nws.get_live_observation", return_value=None),
-            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch("climate_indices.temperature_adjustment", return_value=0.0),
             patch.object(wm, "_SEASONAL_WEIGHTS", {}),
             patch.object(wm, "_CONDITION_WEIGHTS", {}),
             patch.object(wm, "_CITY_WEIGHTS", {}),
