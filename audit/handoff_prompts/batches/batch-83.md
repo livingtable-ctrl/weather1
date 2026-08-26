@@ -4,7 +4,9 @@
 
 Repo: weather1. Written 2026-08-26 against master `0c332140` — **re-verify current before starting**. Live trading dormant.
 
-**Files owned: `tests/conftest.py`, `circuit_breaker.py`, `paths.py`, `prod_data_guard.py`, `tests/test_weather_markets.py`, `audit/reproductions/*`.**
+**Files owned: `tests/conftest.py`, `circuit_breaker.py`, `paths.py`, `tests/prod_data_guard.py`, `tests/test_weather_markets.py`, `audit/reproductions/*`.**
+
+Verified anchors, 2026-08-26 against `bc8bcb09` — spot-check, don't inherit: the guard lives at **`tests/prod_data_guard.py`** (not the repo root) and is armed by `tests/conftest.py:60` via `prod_data_guard.install(paths.DATA_DIR)`, with `paths.py:254` referencing its `ProdDataWriteError`. Exactly **one** `pytest.skip` remains in `tests/test_weather_markets.py`, at **`:1206`** (`if result is None`). `isolate_tracker_db` is at `tests/conftest.py:751` and `reset_open_meteo_circuit_breaker` at `:811`.
 
 Three `backlog.txt` entries, cited by title. All three share `tests/conftest.py` or its immediate surface, which is why they are one batch.
 
