@@ -47,15 +47,37 @@ Held-out CRPS  (12 rows) new = 2.4096   baseline (raw ensemble) = 1.9794
 
 Revisit these on their own triggers. None is work that can be started today.
 
-## C. The real queue — sequential, because they all pass through `weather_markets.py`
+## C. There is no real queue — CORRECTED 2026-08-26
 
-Ordered by value, all blocked until batch 82 lands:
+**An earlier revision of this section listed five entries as "the real queue, ordered by value". That was wrong, and the way it was wrong is the point.** Those five were classified from entry *titles* and from inference about which files they touch. Reading each entry's own *Still open* text instead shows that **none of them is startable today.** Every one is data-gated, deliberately deferred, or already shipped.
 
-1. **Rain monthly model has no day-specific forecast signal** (L6064) — MEDIUM. Real modelling work behind the `RAIN_TRADING_ENABLED` shadow gate. The largest genuine item here.
-2. **Rain / snow / hurricane category surface** (L9533) — MEDIUM for rain and snow. Includes a deferred `_parse_market_condition()` bug the entry says is still not fixed; confirm that independently before scoping.
-3. **Richer ML calibration features** (L12989) — MEDIUM. Unchanged since original scoping; `feature_importance.py` is the one non-hub file it touches.
-4. **Forecast run-to-run trend signal** (L12827) — logging half shipped, wiring half open. Now LOW, and note batch 81 re-floored `run_trend` to the new threshold, so re-check its sample position first.
-5. **Far-tail rain dry-tilt floor-clip** (L26622) — INFO. Batch 62 narrowed the scope and deliberately deferred the fix to graduation; do not widen it back without a reason.
+Verified entry by entry, with the gates re-measured against the live DB rather than quoted:
+
+| Entry | What its own text says is left | Gate, measured today |
+|---|---|---|
+| Rain monthly day-specific (L6064) | Both halves **shipped** — near-term ≤16-day ensemble signal 2026-07-28, >16-day far-tail blend 2026-08-17. Left: the graduation decision only. | **17 of 20** settled rain predictions. The entry still says "6 of the 20" — stale, and it is close to clearing. |
+| Run-to-run trend (L12827) | "data-collection phase, not an active development item" | **28 of 60** rows (`run_trend_delta IS NOT NULL AND settled_temp_f IS NOT NULL`). Entry says 24 as of 2026-08-22 → ~1/day → **~32 days out**. Its second gate (does positive delta correlate with settling above forecast) has never been run either. |
+| Richer ML features (L12989) | "retraining/feature-vector wiring still gated on accumulation, as this entry's own *when to revisit* always said" | re-verified 2026-08-22: "not yet actionable given the per-city sample" |
+| Rain/snow/hurricane surface (L9533) | Rain Step 1+2, St. Petersburg onboarding, Snow Step 1+2 **all shipped**; three hurricane sub-models shipped since. Genuinely open: **KXHURCAT and per-city landfall have no model at all.** | Not "finishing" work — that is two new shadow models, greenfield, at Low priority. |
+| Far-tail rain dry-tilt (L26622) | "scope narrowed, fix **deliberately deferred** to graduation" (batch-62 item 6) | Do not widen it back without a reason. |
+
+**Two stale counts worth correcting in `backlog.txt` while nearby:** L6064 says 6 of 20 and is actually 17 of 20; L12827 says 24 and is actually 28.
+
+### So the complete answer to "what is achievable now"
+
+**Nothing in this set.** Of the 15:
+
+- **2 should be closed** — EMOS and cross-city pooling (section A). Evidence in hand, no code.
+- **1 is already in flight** — fixture latency, inside batch 83.
+- **2 are deliberate deferrals** — `/api/trades` and far-tail dry-tilt. Someone decided; leave them.
+- **9 are data-gated**, none clearing today. Nearest is rain graduation at 17/20.
+- **1 is greenfield** at Low priority — the two missing hurricane models.
+
+The soonest thing to become real is the **rain monthly graduation decision at 17/20**. Watch that one; three more settled rain predictions and it is a genuine, well-scoped piece of work with both halves of its implementation already shipped.
+
+### Why the earlier revision got this wrong
+
+It classified by title and by inferred file set, and never read what each entry said was left. This repo's backlog titles describe the *original* problem, not the residual — an entry titled "MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL" now has that signal, twice over, and is waiting on twenty settlements. Any triage pass over this file has to read the `[PARTIALLY RESOLVED ...]` bracket and the trailing status lines, not the headline.
 
 ## D. Free right now, but deliberately deferred
 
