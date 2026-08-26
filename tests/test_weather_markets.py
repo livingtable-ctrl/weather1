@@ -10063,3 +10063,545 @@ class TestTornadoAnalyzeTradeDispatch:
         result = wm.analyze_trade(enriched)
         assert result is not None
         assert result["condition"]["type"] == "tornado_count"
+
+
+# ── batch-76 item 1: the METAR lock side-agreement override ───────────────────
+# backlog.txt "METAR-LOCKED PATH'S RECOMMENDED SIDE CAN CONTRADICT THE LOCK'S
+# OWN OUTCOME -- AND THE DIVERGENCE GATE IS SKIPPED THERE".
+
+
+def _lockout(outcome: str, *, monotone_safe: bool = True, **extra) -> dict:
+    """Build a lockout dict with the FULL shape _metar_lock_in really returns.
+
+    Deliberately not the four-key minimum analyze_trade happens to read
+    today: a mock whose shape the real function never produces is exactly
+    how this repo has previously shipped a fix that passed its own tests.
+    Mirrors the tail of _metar_lock_in (locked/outcome/confidence/reason,
+    plus current_temp_f and comp_temp_f from its two setdefaults, plus
+    monotone_safe from the per-branch tags).
+    """
+    return {
+        "locked": True,
+        "outcome": outcome,
+        "confidence": 0.72,
+        "reason": "test fixture",
+        "current_temp_f": 79.0,
+        "comp_temp_f": 79.0,
+        "monotone_safe": monotone_safe,
+        **extra,
+    }
+
+
+def _metar_lock_fixture(
+    *, yes_bid: float, yes_ask: float, ticker: str = "KXHIGHNY-26APR09-T72"
+) -> dict:
+    """An enriched same-day NYC daily-HIGH market, priced to order.
+
+    Anchored to NYC's own local date rather than UTC's for the same reason
+    test_metar_locked_trade_has_ecmwf_forecast_mean_keys is: analyze_trade's
+    past-date gate runs before _metar_lock_in is called, so a mocked lock
+    does not shield the fixture from it.
+    """
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": datetime.now(ZoneInfo("America/New_York")).date(),
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": ticker,
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": yes_ask,
+        "yes_bid": yes_bid,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
+    }
+
+
+def test_monotone_safe_yes_lock_never_recommends_no(monkeypatch):
+    """The inversion this override exists for, pinned at the exact arithmetic
+    the backlog entry verified: a monotone-safe YES lock reports blended_prob
+    = 0.72 (_dynamic_lock_in_confidence's floor) against a market at 0.90, so
+    `rec_side = "yes" if blended_prob > market_prob else "no"` returns "no" --
+    a NO recommendation on an outcome the observed running max has already
+    settled.
+
+    The primary assertion is deliberately "!= 'no'", not "== 'yes'": what
+    must never happen is analyze_trade handing a caller a NO recommendation
+    on a YES lock. Overriding is how this implementation achieves that; the
+    metar_side_override field pins that specific choice.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.72, _lockout("yes"))
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.88, yes_ask=0.92))
+
+    assert result is not None
+    assert result["recommended_side"] != "no"
+    assert result["recommended_side"] == "yes"
+    assert result["metar_side_override"] == "yes"
+    # The override must leave the market UNPLACEABLE rather than merely
+    # re-labelled: order_executor._validate_trade_opportunity refuses a YES
+    # recommendation whose raw edge is <= 0, and refuses any net_edge <= 0.
+    # Both hold here, which is what makes overriding safe without a skip.
+    assert result["edge"] < 0
+    assert result["net_edge"] <= 0
+
+
+def test_yes_lock_agreeing_with_the_market_still_trades(monkeypatch):
+    """Positive control for the test above. Same fixture, same lock, only the
+    price moved: at a market of 0.50 the bare magnitude comparison already
+    picks "yes", which agrees with the lock, so no override happens and the
+    market comes back as a real, tradeable METAR-locked analysis.
+
+    Without this, the assertion above would pass vacuously if any earlier
+    gate (past-date, spread, extreme-price, days-out) started rejecting the
+    fixture before the lock branch was ever reached -- the failure mode step
+    28 of the workflow exists for.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.72, _lockout("yes"))
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.48, yes_ask=0.52))
+
+    assert result is not None
+    assert result["method"] == "metar_lockout"
+    assert result["recommended_side"] == "yes"
+    assert result["metar_side_override"] is None
+    assert result["edge"] > 0
+
+
+def test_monotone_safe_no_lock_never_recommends_yes(monkeypatch):
+    """The mirror inversion: a NO lock reports blended_prob = 1 - confidence
+    = 0.28, which against a market at 0.10 selects "yes" -- a YES
+    recommendation on the outcome the lock just ruled out. Priced with a 2c
+    spread so the 30%-of-mid spread gate does not reject the fixture before
+    the lock branch is reached.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.28, _lockout("no"))
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.09, yes_ask=0.11))
+
+    assert result is not None
+    assert result["recommended_side"] != "yes"
+    assert result["recommended_side"] == "no"
+    assert result["metar_side_override"] == "no"
+    # Mirror of the YES case: raw edge is positive while the recommended side
+    # is "no", which _validate_trade_opportunity refuses outright.
+    assert result["edge"] > 0
+    assert result["net_edge"] <= 0
+
+
+def test_no_lock_agreeing_with_the_market_still_trades(monkeypatch):
+    """Positive control for the mirror, same reasoning as the YES one."""
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.28, _lockout("no"))
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.48, yes_ask=0.52))
+
+    assert result is not None
+    assert result["method"] == "metar_lockout"
+    assert result["recommended_side"] == "no"
+    assert result["metar_side_override"] is None
+
+
+def test_between_yes_lock_keeps_its_contrarian_side(monkeypatch):
+    """The scope decision, pinned. A between-YES lock is the ONE locked
+    branch _metar_lock_in marks monotone_safe=False: its extreme is inside
+    the band and can still drift to the edge the monotonic direction has not
+    foreclosed, so the probability -- not the categorical verdict -- is the
+    honest signal there. Overriding it would permanently forfeit the NO side
+    of a genuinely mispriced in-band lock.
+
+    Mutation target: dropping `and metar_lockout.get("monotone_safe")` from
+    section 10b makes this fail.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm,
+        "_metar_lock_in",
+        lambda *a, **kw: (
+            True,
+            0.72,
+            # comp_temp_f centred in the B74.5 band [73.5, 75.5]: the
+            # between-bucket station-gap gate earlier in analyze_trade
+            # rejects a YES lock whose deciding value is not comfortably
+            # inside the band, and would otherwise drop this fixture before
+            # section 10b ever ran.
+            _lockout("yes", monotone_safe=False, comp_temp_f=74.5, current_temp_f=74.5),
+        ),
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(
+        _metar_lock_fixture(yes_bid=0.78, yes_ask=0.82, ticker="KXHIGHNY-26APR09-B74.5")
+    )
+
+    assert result is not None
+    # Positive control on the two absence-style assertions below: the market
+    # really did travel the between branch of the locked path, so a "no
+    # override happened" result cannot be an earlier gate rejecting it.
+    assert result["condition"]["type"] == "between"
+    assert result["method"] == "metar_lockout"
+    assert result["recommended_side"] == "no"
+    assert result["metar_side_override"] is None
+
+
+def test_between_no_lock_is_still_overridden(monkeypatch):
+    """The other half of the scope decision: a between-NO lock IS
+    monotone-safe (the running extreme has already cleared the band by the
+    margin and cannot return), so it must still be corrected. Without this
+    test, scoping to monotone_safe could silently degrade into "never
+    override any between market".
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm,
+        "_metar_lock_in",
+        lambda *a, **kw: (True, 0.28, _lockout("no", monotone_safe=True)),
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(
+        _metar_lock_fixture(yes_bid=0.11, yes_ask=0.13, ticker="KXHIGHNY-26APR09-B74.5")
+    )
+
+    assert result is not None
+    assert result["condition"]["type"] == "between"
+    assert result["recommended_side"] == "no"
+    assert result["metar_side_override"] == "no"
+
+
+def test_a_lock_outcome_outside_yes_no_is_never_written_to_the_side(monkeypatch):
+    """Pins the `_lock_outcome in ("yes", "no")` membership test, which is
+    load-bearing now that this section ASSIGNS rec_side rather than skipping:
+    without it a malformed lockout dict would put its own outcome string
+    straight into recommended_side, and every downstream consumer branches on
+    exactly "yes"/"no".
+
+    Mutation target: replacing the membership test with `is not None` makes
+    recommended_side come back as "maybe" and this fail.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm,
+        "_metar_lock_in",
+        lambda *a, **kw: (True, 0.72, _lockout("maybe")),
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.88, yes_ask=0.92))
+
+    assert result is not None
+    assert result["recommended_side"] in ("yes", "no")
+    assert result["metar_side_override"] is None
+
+
+def test_side_override_does_not_touch_an_unlocked_market(monkeypatch):
+    """The override is scoped to metar_locked. An ordinary ensemble-path
+    market whose model disagrees with the market must still produce its NO
+    recommendation -- otherwise this "fix" would silently rewrite the
+    non-locked NO-side book, which is where the between path's 16/26 NO wins
+    came from.
+
+    _metar_lock_in is mocked to return locked=False WITH a populated
+    "outcome" and monotone_safe -- not the empty dict its real not-locked
+    paths happen to return today. That is deliberate and is what makes the
+    `if metar_locked` guard load-bearing rather than merely redundant with
+    the checks inside it: mutating that guard away makes this test fail.
+    """
+    import mos
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm, "_get_consensus_probs", lambda *a, **kw: (0.73, 0.75, 74.0, 74.0, None)
+    )
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(
+        wm,
+        "_metar_lock_in",
+        lambda *a, **kw: (False, 0.0, {"outcome": "yes", "monotone_safe": True}),
+    )
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr("nws.nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr("climate_indices.temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+    from datetime import UTC, datetime, timedelta
+
+    # Tomorrow, not today: a same-day unlocked market routes into the live-
+    # observation branch this test deliberately does not wire up. Same UTC-vs-
+    # local reasoning as test_analyze_trade_result_has_model_consensus_field.
+    enriched = _metar_lock_fixture(yes_bid=0.76, yes_ask=0.80)
+    enriched["_date"] = datetime.now(UTC).date() + timedelta(days=1)
+
+    result = wm.analyze_trade(enriched)
+
+    # Positive control on the absence assertion: without it, an input gate
+    # rejecting the fixture before the side comparison ever ran would make it
+    # pass vacuously (workflow step 28).
+    assert result is not None
+    assert result["method"] != "metar_lockout"
+    assert result["recommended_side"] == "no"
+    assert result["metar_side_override"] is None
+
+
+def test_calibration_driven_inversion_is_also_corrected(monkeypatch):
+    """The inversion mechanism that actually reaches a live order.
+
+    The 0.72-floor case above cannot clear trade_cycle's own
+    MIN_MARKET_PROB_TO_BET_WITH (0.25) and min_prob_edge_for_days_out(0)
+    (0.12) simultaneously, so it stops at the analysis dict. The METAR
+    beta-calibration block a few hundred lines above rec_side removes that
+    protection: it rewrites blended_prob in place, by up to ±0.60, BEFORE
+    the side is chosen. The shape below is the one measured on the real fit
+    -- a NO lock whose raw P(yes)=0.221 calibrates UP past a market at 0.275
+    -- and it clears every downstream gate (mkt_dir 0.275 >= 0.25, prob_edge
+    0.26 >= 0.12, divergence ratio 1.95 < 2.0).
+
+    Note what the two assertions before the call are doing: they pin that the
+    RAW probability agreed with the lock and only the calibrated one does
+    not, so this test cannot pass by accidentally re-testing the floor case
+    above.
+    """
+    import ml_bias
+    import weather_markets as wm
+
+    # a == b (the Platt special case fit_metar_calibration actually
+    # produces), chosen so 0.221 lands near the measured 0.536.
+    params = (0.2, 0.2, 0.3963)
+    raw = 0.221
+    market = 0.275
+    calibrated = ml_bias.apply_metar_calibration(raw, params)
+    assert raw < market, "precondition: the RAW probability agrees with the NO lock"
+    assert calibrated > market, (
+        "precondition: calibration is what inverts the side -- if this fails "
+        "the fixture no longer reproduces the bug and the test below is vacuous"
+    )
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, raw, _lockout("no"))
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: params)
+
+    result = wm.analyze_trade(_metar_lock_fixture(yes_bid=0.27, yes_ask=0.28))
+
+    assert result is not None
+    assert result["recommended_side"] != "yes"
+    assert result["metar_side_override"] == "no"
+    # The calibrated probability itself is untouched -- only the side is
+    # overridden -- so forecast_prob still reports what the model believed.
+    assert result["forecast_prob"] == pytest.approx(calibrated, abs=1e-6)
+
+
+# ── batch-76 item 2: KXHOLIDAYTMIN is a daily MINIMUM market ──────────────────
+# backlog.txt "_var_from_ticker_prefix RETURNS None FOR KXHOLIDAYTMIN, SO THE
+# WHOLE DAILY PATH TREATS A DAILY-MINIMUM MARKET AS A DAILY-MAXIMUM ONE".
+
+
+def _run_metar_lock_in_for(
+    ticker: str,
+    *,
+    daily_max: float,
+    daily_min: float,
+    condition: dict | None = None,
+    current_temp_f: float = 35.0,
+):
+    """Drive _metar_lock_in with mocked METAR I/O and report both the lock
+    result and which daily extreme it asked for.
+
+    Mirrors tests/test_phase2_batch_d.py's _call_metar_lock_in harness; the
+    extra return value is the point of this one -- the extreme actually
+    requested is the observable that separates "analysed as a daily minimum"
+    from "analysed as a daily maximum".
+
+    `condition` defaults to the above/below branch; pass a between condition
+    to drive that branch instead (it keys off the same helper via its own
+    `_between_var`).
+    """
+    from datetime import datetime
+    from unittest.mock import MagicMock, patch
+    from zoneinfo import ZoneInfo
+
+    import metar as _metar
+    import weather_markets as wm
+
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    fake_obs_time = MagicMock()
+    fake_obs_local = MagicMock(hour=15)
+    fake_obs_local.date.return_value = today
+    fake_obs_time.astimezone.return_value = fake_obs_local
+    obs = {"current_temp_f": current_temp_f, "obs_time": fake_obs_time}
+
+    requested: list[str] = []
+
+    def _fake_daily_extreme(_station, _city_tz, _target_date, extreme):
+        requested.append(extreme)
+        return daily_max if extreme == "max" else daily_min
+
+    with (
+        patch.object(wm, "_metar_station_for_city", return_value="KJFK"),
+        patch.object(_metar, "fetch_metar", return_value=obs),
+        patch.object(
+            _metar, "fetch_metar_daily_extreme", side_effect=_fake_daily_extreme
+        ),
+    ):
+        locked, prob, details = wm._metar_lock_in(
+            city="NYC",
+            target_date=today,
+            condition=condition or {"type": "above", "threshold": 40.0},
+            ticker=ticker,
+        )
+    return locked, prob, details, requested
+
+
+def test_holiday_tmin_lock_reads_the_daily_minimum():
+    """End-to-end consequence of item 2, on the branch where it decides real
+    money: _metar_lock_in keys `_is_low_mkt` off _var_from_ticker_prefix, so
+    while KXHOLIDAYTMIN resolved to None the whole daily path treated a
+    daily-MINIMUM market as a daily-MAXIMUM one -- it fetched the running
+    max, combined it with max() instead of min(), and applied the HIGH
+    monotonic-safety veto instead of the LOW one.
+
+    Hand-computed: threshold 40°F, margin 3°F, current reading 35.0°F.
+    Correct (min) path -- running min 30.0, comp = min(35.0, 30.0) = 30.0,
+    which is <= 40 - 3, so check_metar_lockout returns "no" for an "above"
+    market and the LOW veto (which rejects comp > 37.0) leaves it standing.
+    The pre-fix (max) path would instead have fetched the running max 45.0,
+    comp = max(35.0, 45.0) = 45.0 >= 40 + 3, and locked the OPPOSITE outcome
+    "yes" -- so this test's assertions separate the two by outcome, not only
+    by which extreme was requested.
+    """
+    locked, prob, details, requested = _run_metar_lock_in_for(
+        "KXHOLIDAYTMIN-26122550-NYC", daily_max=45.0, daily_min=30.0
+    )
+
+    assert requested == ["min"]
+    assert locked is True
+    assert details["outcome"] == "no"
+    assert details["comp_temp_f"] == 30.0
+    assert prob < 0.5
+
+
+def test_holiday_tmax_lock_still_reads_the_daily_maximum():
+    """Positive control on the sibling series: the `or "max"` fallback was
+    RIGHT for KXHOLIDAYTMAX, so teaching the helper the family must not
+    change it. Same fixture, same numbers, opposite series -- and therefore
+    the opposite lock.
+    """
+    locked, prob, details, requested = _run_metar_lock_in_for(
+        "KXHOLIDAYTMAX-261225100-NYC", daily_max=45.0, daily_min=30.0
+    )
+
+    assert requested == ["max"]
+    assert locked is True
+    assert details["outcome"] == "yes"
+    assert details["comp_temp_f"] == 45.0
+    assert prob > 0.5
+
+
+def test_holiday_tmin_between_lock_uses_the_low_side_logic():
+    """The between branch of _metar_lock_in reads the same helper through its
+    own `_between_var`, and it flipped for this family too -- the diff's
+    other tests only drive the above/below branch.
+
+    Hand-computed: band [48, 50], margin 3°F, current reading 35.0°F,
+    running min 30.0°F. `_is_low_mkt` True → the LOW-var NO branch fires
+    (comp = min(35.0, 30.0) = 30.0 <= 48 - 3 = 45), a monotone-safe lock:
+    the running min has already cleared the band's lower edge and cannot
+    rise back into it.
+
+    Pre-fix, `_between_var` was None, which the branch's own fail-closed
+    guard turns into "refusing to guess" -- so the observable difference is
+    locked False vs True, not merely a different extreme. (That guard is why
+    this half was never actively wrong, only inert.)
+    """
+    locked, _prob, details, requested = _run_metar_lock_in_for(
+        "KXHOLIDAYTMIN-26122550-NYC",
+        daily_max=45.0,
+        daily_min=30.0,
+        condition={"type": "between", "lower": 48.0, "upper": 50.0},
+    )
+
+    assert requested == ["min"]
+    assert locked is True
+    assert details["outcome"] == "no"
+    assert details["monotone_safe"] is True
+    assert "running min cannot" in details["reason"]
+
+
+def test_between_yes_lock_is_marked_not_monotone_safe():
+    """The flag analyze_trade's side-agreement override keys off, pinned at
+    its source. A between-YES lock is the one locked branch whose outcome is
+    NOT structurally settled -- the extreme is inside the band and can still
+    drift to the edge the monotonic direction hasn't foreclosed.
+
+    Band [48, 50], running min 49.5 inside it, current reading 49.5 so the
+    combine can't tighten past it: `_risk_clearance` = 49.5 - 48 = 1.5 >=
+    `_yes_inband_margin` = (50 - 48) / 2 = 1.0, so the YES lock fires.
+    """
+    locked, prob, details, requested = _run_metar_lock_in_for(
+        "KXHOLIDAYTMIN-26122550-NYC",
+        daily_max=60.0,
+        daily_min=49.5,
+        condition={"type": "between", "lower": 48.0, "upper": 50.0},
+        current_temp_f=49.5,
+    )
+
+    assert requested == ["min"]
+    assert locked is True
+    assert details["outcome"] == "yes"
+    assert details["monotone_safe"] is False
+    assert prob > 0.5
+
+
+def test_above_below_lock_is_marked_monotone_safe():
+    """Positive control for the flag: the above/below branch tags every lock
+    that survives its two vetoes as monotone-safe, so a False on the
+    between-YES branch above is a real distinction and not just an absent
+    key reading as falsy.
+    """
+    locked, _prob, details, _requested = _run_metar_lock_in_for(
+        "KXHOLIDAYTMIN-26122550-NYC", daily_max=45.0, daily_min=30.0
+    )
+
+    assert locked is True
+    assert details["monotone_safe"] is True

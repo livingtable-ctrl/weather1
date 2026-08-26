@@ -35697,7 +35697,9 @@ Why not now: it changes `py main.py walkforward` output, which is a
   simply deleting the predicate.
 
 
-[OPEN 2026-08-25 -- adjacency found while tracing batch-59 item 1's HIGH-market
+[RESOLVED 2026-08-26 by batch-76 item 1 -- resolution at the end of this
+  entry. Originally filed 2026-08-25 as adjacency found while tracing
+  batch-59 item 1's HIGH-market
   veto; filed as its own entry per workflow step 27 rather than stretched into
   that change, because it affects the monotone-SAFE locks item 1 does not touch
   and needs its own design decision] METAR-LOCKED PATH'S RECOMMENDED SIDE CAN
@@ -35755,7 +35757,142 @@ Recommendation: a design decision, not a mechanical fix -- take it to
   with a test asserting recommended_side agrees with the lock outcome.
   Full record: none -- surfaced by batch-59, not by the original audit.
 
-[OPEN 2026-08-25 -- found during batch-59 item 1's review, independently
+Resolution 2026-08-26 (batch-76 item 1, verified against master 6b116698):
+  analyze_trade now has a "10b. METAR lock side-agreement override" section,
+  placed immediately after `rec_side` is chosen and -- deliberately -- AFTER
+  the METAR beta-calibration block, so it sees the probability the side was
+  actually chosen from. When the lock is monotone-safe and its categorical
+  outcome disagrees with `rec_side`, `rec_side` is set to the lock's outcome
+  and the new write-only field `metar_side_override` records which side was
+  enforced. Chosen over the three alternatives via AskUserQuestion; see below
+  for why each was rejected, since two of them were this entry's own
+  recommendation.
+
+  THE ENTRY UNDERSTATED THE PROBLEM AND MISATTRIBUTED ITS CAUSE.
+  - The 0.72 floor alone CANNOT reach a live order, contrary to "unblocked by
+    any existing gate". trade_cycle requires mkt_dir >= MIN_MARKET_PROB_TO_BET
+    _WITH (0.25) and prob_edge >= max(CITY_MIN_PROB_EDGE[city],
+    min_prob_edge_for_days_out(0) = 0.12). An inverted YES lock needs market
+    <= 0.75 to clear the first and blended <= 0.63 to clear the second, while
+    the raw lock probability is >= 0.72 by construction; the NO mirror needs
+    blended >= 0.37 against a raw <= 0.28. Both jointly unsatisfiable. What
+    the floor mechanism did reach is the analysis DICT, rendered verbatim as
+    "BUY NO" by cmd_market and the market table an operator reads before
+    typing a manual cmd_order.
+  - What IS unblocked is the beta-calibration path, which this entry credited
+    to apply_metar_calibration in settlement_monitor. It is in analyze_trade
+    too, via a local import, and it rewrites blended_prob in place by up to
+    _METAR_CORRECTION_LIMIT (0.60) BEFORE the side is chosen. Under the fit
+    live at the time of writing (data/metar_lockout_calibration.json,
+    a=b=0.2262 c=0.4001 n=33, fitted 2026-08-24, no env gate) every YES lock
+    arrives at rec_side at 0.649-0.766 and every NO lock at 0.405-0.547. The
+    entry's own cited example -- raw P(yes) 0.221 calibrated to ~0.536
+    against a 0.275 market -- clears mkt_dir 0.275, prob_edge 0.261 and
+    divergence ratio 1.949, i.e. every downstream gate, and WOULD place a
+    real order on the ruled-out side. So the entry's HIGH rating is right,
+    for a reason it attributed elsewhere.
+  - And it is not a corner case, which a parallel session's independent
+    re-derivation sharpened. The calibration floors every NO lock near 0.40
+    however certain the lock was, and the most marginal one (conf 0.72)
+    lands at 0.5465 -- above even money -- so a NO lock recommends YES
+    against any market priced below it. Solving all three downstream gates
+    (mkt_dir >= 0.25, prob_edge >= 0.12, divergence ratio <= 2.0) for the
+    market range that would actually trade the wrong side:
+        lock conf 0.72  blended 0.5465  ->  market [0.273, 0.427]
+        lock conf 0.90  blended 0.4758  ->  market [0.250, 0.356]
+        lock conf 0.97  blended 0.4046  ->  market [0.250, 0.285]
+    Open at every confidence level, widening as the lock gets LESS certain.
+    The ~0.40 floor under those blended values is NOT a property of the
+    calibration -- unclamped the beta map runs to 0.062 -- it is
+    _dynamic_lock_in_confidence's 0.97 cap seen through a strictly
+    increasing map (a = b > 0). The two live in different files with
+    nothing connecting them, so raising the cap silently drops the floor
+    (0.99 -> 0.345, 0.999 -> 0.238) and widens every range above. Named in
+    BOTH places this session: metar.py's docstring now carries the table
+    and points at analyze_trade's section 10b, and 10b points back.
+    The raw floor's window is empty at every level by contrast: prob_edge
+    >= 0.12 forces market >= raw + 0.12 >= 0.84, so mkt_dir = 1 - market
+    <= 0.16 < 0.25, and it only gets more impossible as raw rises.
+  - Note the floor half's impossibility survives by only ~1.9pp under that
+    same fit (calibrated YES minimum 0.6488 vs the 0.63 bar), and the fit is
+    a JSON file a weekly cron retrains. It is not a permanent protection.
+  - The entry's `entry_side_edge = (1-0.72)-(1-0.90) = +0.18` is really
+    `edge`; `_esmp` on the NO side is `1 - yes_bid` and only falls back to
+    `1 - market_prob` on an empty bid book, and the whole thing is scaled by
+    time_decay. At the regression test's own prices (bid 0.88 / ask 0.92) the
+    real figures are entry_side_edge +0.16 and net_edge +1.33 -- net_edge
+    being the number that drives tier classification and
+    paper.check_model_exits, and the more alarming of the two. batch-76.md
+    was corrected in place.
+
+  SCOPE: monotone-safe locks ONLY, which is narrower than this entry asked
+  for. _metar_lock_in now tags each locked dict with `monotone_safe`. Every
+  lock surviving the above/below branch is safe by construction of batch-59's
+  two vetoes (all four market-side x direction combinations checked), as are
+  both between-NO branches. The between-YES branch is tagged False: its
+  extreme is INSIDE the band and can still drift to the edge the monotonic
+  direction has not foreclosed -- its own comment and analyze_trade's
+  between_edge gate both say so. There the probability, not the verdict, is
+  the honest signal, and overriding would permanently forfeit the contrarian
+  side of a genuinely mispriced in-band lock (opus review, MEDIUM). Note
+  "monotone-safe" means only that further intraday drift AT OUR STATION
+  cannot reverse the verdict; it is not a confidence claim, and this module's
+  own measured lock accuracy (70.4% actual vs 89.6% predicted for YES locks,
+  n=27) is why the beta-calibration exists at all.
+
+  WHY OVERRIDE RATHER THAN SKIP. Returning None was implemented first and
+  rejected on review. It takes forecast_prob with it, and cmd_order records
+  `entry_prob=_analysis.get("forecast_prob") if _analysis else None` --
+  so a manual order on a dropped market logs entry_prob=None, which
+  order_executor._check_live_model_exits skips on, leaving that live position
+  invisible to the model-exit checker. cmd_market would also have printed
+  "no forecast or unrecognised ticker format", false on both counts, on
+  exactly the markets whose display this change exists to fix. Overriding
+  keeps the market visible and honest; placement is still refused, by two
+  independent pre-existing checks in _validate_trade_opportunity (net_edge
+  <= 0, and raw edge's sign must agree with the recommended side), both of
+  which a forced side fails by construction -- asserted directly in the
+  tests. Because nothing is rejected, this is NOT a scan-funnel gate and has
+  no ScanGate entry; an interim implementation that added one was removed.
+
+  WHY NOT (c), THIS ENTRY'S THIRD OPTION. Re-enabling the skipped
+  model-vs-market gates fixes nothing. The divergence gate fires only on
+  market>0.70 & ours<0.25 or market<0.30 & ours>0.75; on the raw lock
+  probability an inverted YES lock has ours >= 0.72 and an inverted NO lock
+  has ours <= 0.28, so no inversion satisfies either clause, and both gates
+  would instead suppress locked trades that AGREE with the lock. (A parallel
+  session correctly pointed out that model_mkt_gap is a SECOND gate skipped
+  the same way, in a different `if not metar_locked:` block -- so (c) was
+  really two changes. Same conclusion applies to both.) Left untouched.
+
+  WHY NOT (a)/(b), RAISING THE FLOOR. It fixes the magnitude but leaves side
+  selection a bare magnitude comparison, so any future under-confident lock
+  re-opens the identical inversion; and it would raise Kelly sizing and newly
+  qualify trades that today fail the 12pp same-day prob-edge gate, on a
+  calibration nobody has refit. batch-37 still owns that refit.
+
+  OPERATIONAL CONSEQUENCE, stated deliberately rather than discovered later:
+  under the current calibration this override fires on essentially every
+  above/below NO lock (calibrated 0.405-0.547 against a market of 0.05-0.20)
+  and on every YES lock the market has repriced past ~0.77. Those were all
+  inverted recommendations, so correcting them is right -- but the practical
+  effect is that the METAR-locked book goes largely quiet until the
+  calibration is refit. Logged at INFO, not WARNING, for that reason.
+
+  Tests: 10 new in tests/test_weather_markets.py covering both inversion
+  polarities, both agreeing controls, the between-YES exemption, the
+  between-NO inclusion, the non-"yes"/"no" outcome guard, the unlocked path,
+  and the calibration-driven case; 3 more pinning the monotone_safe tags at
+  their source in _metar_lock_in. Every causal claim mutation-tested
+  individually via Edit-revert: disabling the override reproduces
+  recommended_side="no" at adjusted_edge +0.33 on a YES lock; removing the
+  `metar_locked` guard, the `monotone_safe` scope, or the `in ("yes","no")`
+  membership test each fails exactly one dedicated test (the last also fails
+  8 pre-existing ones). Full record: none -- surfaced by batch-59.
+
+[RESOLVED 2026-08-26 by batch-76 item 2 -- resolution at the end of this
+  entry. Originally filed 2026-08-25, found during batch-59 item 1's
+  review, independently
   confirmed by an opus reviewer enumerating all 120 series names in the
   module's KNOWN_* registries] _var_from_ticker_prefix RETURNS None FOR
   KXHOLIDAYTMIN, SO THE WHOLE DAILY PATH TREATS A DAILY-MINIMUM MARKET AS A
@@ -35822,6 +35959,83 @@ Recommendation: teach the shared var derivation about the TMAX/TMIN naming
   daily-path consumer of `var`, not just the veto batch-59 touched. Do NOT
   "fix" it by making _metar_lock_in fail closed on None -- that would also
   disable KXHOLIDAYTMAX, for which the current default is correct.
+  Full record: none -- surfaced by batch-59.
+
+Resolution 2026-08-26 (batch-76 item 2, verified against master 6b116698):
+  _var_from_ticker_prefix now resolves the family from a new
+  _KXHOLIDAY_TEMP_SERIES_VAR map ({"KXHOLIDAYTMAX": "max", "KXHOLIDAYTMIN":
+  "min"}), keyed on the ticker's first hyphen-delimited segment -- the same
+  shape is_holiday_temp_ticker() uses, whose membership frozenset is now
+  DERIVED from that map so the two cannot disagree at import about which
+  series belong to the family. Every other neither-match family (hourly,
+  monthly rain/snow, hurricane, tornado) still returns None, so each caller's
+  own distinct fallback tail is unchanged for them.
+
+  NOT the substring test this entry recommended. KXHIGHTMIN and KXLOWTMIN --
+  the two Minneapolis daily ladders, both live and traded -- each CONTAIN the
+  substring "TMIN". A `if "TMIN" in ticker` rule is correct for them only
+  because "HIGH"/"LOW" happen to be checked first, so it is one reordering
+  away from silently inverting a real city's var. An exhaustive sweep of all
+  121 entries across KNOWN_WEATHER_SERIES / KNOWN_DEAD_WEATHER_SERIES /
+  KNOWN_UNTRACKED_RAIN_SERIES / KNOWN_UNTRACKED_SNOW_SERIES (opus review)
+  confirms those two are the only registry entries containing TMIN/TMAX
+  outside the map, that nothing else is newly matched, and that nothing else
+  should have been included. The entry's own "widening the HIGH/LOW substring
+  test is not obviously right" caution was correct, for a more concrete
+  reason than it gave.
+
+  `.split("-")[0]` rather than a whole-string match is load-bearing, not
+  cosmetic: analyze_trade passes `series_ticker or ticker`, and
+  series_ticker is empty on real Kalshi responses, so in production this
+  helper receives the FULL ticker. A whole-string match would have resolved
+  a bare series in tests and returned None for every live market.
+  _daily_var_from_series's docstring, which described its input as a series,
+  now says so.
+
+  DOWNSTREAM, verified call site by call site (13 of them, plus one this
+  entry and its UPDATE both missed -- web_app.py's ladder sibling filter,
+  unreachable because tracker._is_excluded_ladder_ticker already excludes
+  holiday upstream). All strict improvements or exact no-ops:
+  analyze_trade's two branches, _metar_lock_in's above/below AND between
+  branches, backtest.py (already fetching settled holiday markets today and
+  scoring every TMIN against archive maxima), order_executor's
+  _opp_event_key (a TMIN opp shared joint-bracket exposure room with the
+  city's HIGH ladder; now with the LOW ladder), paper._score_ensemble_members
+  and tracker's backfill_emos_data / backfill_member_brier (all ticker- or
+  var-keyed UPDATEs). compute_market_implied_distributions is untouched on
+  both sides -- produce `continue`s holiday out before the key is built,
+  consume returns None before it -- so no holiday rung joins the pooled
+  Normal fit that live daily analysis reads. consistency.py and main.py
+  hardcode the same substrings for different purposes and are unreachable for
+  this family; neither now contradicts the helper.
+
+  ONE CALL SITE CHANGES FROM SKIP TO WRITE and is flagged rather than
+  buried: tracker.backfill_member_actual_temp fail-closed-skipped holiday
+  tickers precisely because this helper returned None, and now proceeds with
+  its keyless (city, target_date, var) UPDATE. The var it writes is correct,
+  which is the whole point -- but two consequences got their own follow-up
+  entries (see "backfill_member_actual_temp's fail-closed comment" and
+  "holiday-vs-daily settlement station equivalence" below), because
+  tracker.py is batch-78's file this cycle and was not edited here. Live
+  exposure today is zero: predictions.db holds 0 rows matching KXHOLIDAY%,
+  and the family is shadow-gated.
+
+  Tests: 7 new in tests/test_weather.py (both series, both spellings of the
+  input, the Minneapolis collision, the prefix-vs-exact distinction, the
+  still-None families, the derived-set invariant); 5 new in
+  tests/test_weather_markets.py driving _metar_lock_in's above/below AND
+  between branches for both series; and condition["var"] is now asserted in
+  tests/test_batch51_holiday_rain.py's two existing end-to-end holiday tests,
+  which previously passed identically before and after the fix -- the field
+  this entry's whole rationale is written around was the one nothing pinned
+  (opus review, MEDIUM). tests/test_tracker.py's
+  test_ticker_with_unresolvable_var_fails_closed was retargeted from
+  KXHOLIDAYTMIN (which now resolves) to a monthly-rain ticker, and gained a
+  positive counterpart asserting the holiday ticker now repairs the MIN cell
+  and leaves the day's MAX cell alone. Mutation-tested individually via
+  Edit-revert: reverting the helper fails 8 tests across 4 files, and both
+  wrong implementations (substring-first, and startswith instead of exact
+  segment) each fail exactly the test written to catch them.
   Full record: none -- surfaced by batch-59.
 
 [RESOLVED 2026-08-25 by commit 6b721383 -- originally filed during
@@ -38308,3 +38522,134 @@ Plan:
 When to revisit:
   Next time anyone adds a script to audit/reproductions/, or before running
   any existing one against the main clone.
+
+[OPEN 2026-08-26 -- opus review of batch-76 item 2; not fixed there because
+  tracker.py is batch-78's file this cycle] backfill_member_actual_temp'S
+  FAIL-CLOSED COMMENT IS FACTUALLY WRONG ABOUT HOLIDAY TEMP TICKERS
+Priority: LOW -- documentation, not behaviour. But it is load-bearing
+  documentation: it is the stated reason a fail-closed skip "costs nothing
+  real", and batch-76 has just made that skip stop happening for the one
+  family the comment names.
+Files: tracker.py (backfill_member_actual_temp's var-derivation comment, and
+  reason 1 above it), tests/test_tracker.py
+  (test_trade_var_field_is_ignored_in_favour_of_the_ticker's docstring --
+  already corrected by batch-76 since it was editing that file)
+
+Problem:
+  The comment reads "every family whose ticker lacks HIGH/LOW (hourly,
+  monthly rain/snow, holiday) writes settled_value rather than
+  settled_temp_f, so those trades are skipped by the join below regardless."
+  Traced branch by branch through audit_settlement: rain-monthly, snow-monthly
+  and hourly each have an explicit branch writing settled_value, but a
+  KXHOLIDAYTMAX/TMIN ticker matches none of them -- it resolves a real city
+  and target_date, its condition parses as above/below, and it falls through
+  to the DAILY branch, which writes settled_temp_f. `awk` over
+  audit_settlement's whole body finds zero occurrences of "holiday", and
+  backfill_settled_temps_from_kalshi's exclusion SQL excludes only the two
+  monthly families, so holiday rows are actively re-selected for
+  settled_temp_f filling. The comment's premise is false for exactly the
+  family it names.
+  Reason 1 above it is also now stale: it cites
+  `_daily_var_from_series("KXHOLIDAYTMIN") -> "max"` as live-verified
+  2026-08-25, which batch-76 fixed.
+Recommendation: rewrite both. The DECISION the comment defends (derive var
+  from the ticker, fail closed when it can't be resolved) is still right and
+  should not change -- only its cited evidence. Suggested replacement text is
+  in the opus review; the honest version is "failing closed is still right,
+  but it is not free the way it is for hourly/monthly: holiday temp tickers
+  DO write settled_temp_f and DO join, so before batch-76 they were silently
+  excluded from repair here."
+  Full record: none -- surfaced by batch-76's review.
+
+[OPEN 2026-08-26 -- opus review of batch-76 item 2; the reviewer disclosed
+  this specific check as one it could NOT complete offline, so treat it as an
+  open question rather than a confirmed defect] IS A HOLIDAY-TEMP MARKET
+  SETTLED FROM THE SAME STATION AS THAT CITY'S DAILY HIGH/LOW LADDER?
+Priority: LOW today, MEDIUM the day holiday temp markets graduate -- live
+  exposure is currently zero (predictions.db holds 0 rows matching
+  KXHOLIDAY%, and the family is shadow-gated behind
+  _holiday_temp_gates_active()).
+Files: tracker.py (backfill_member_actual_temp's `applied` conflict guard and
+  _MEMBER_ACTUAL_TEMP_TOLERANCE_F), weather_markets.py
+  (_KXHOLIDAY_TEMP_SERIES_VAR's consumers)
+
+Problem:
+  batch-76 made _var_from_ticker_prefix resolve KXHOLIDAYTMIN -> "min", which
+  means a settled holiday-TMIN trade and an ordinary KXLOWT* trade for the
+  SAME city and date now both claim the ensemble_member_scores cell
+  (city, target_date, "min"). _MEMBER_ACTUAL_TEMP_TOLERANCE_F is 0.05, so any
+  difference >= 0.1F between the two events' expiration_values trips the
+  conflict guard -- which refuses BOTH writes and reports a warning. Since
+  cmd_backfill_member_actual_temp always passes the full get_all_trades()
+  set, every re-run reproduces the same conflict and the cell becomes
+  permanently unrepairable.
+  Whether that can happen turns entirely on the unanswered question in the
+  title. If Kalshi settles KXHOLIDAYTMIN-...-SFO from the same CLI station as
+  KXLOWTSFO, the values agree and this never fires. If it does not, the merge
+  is also SEMANTICALLY wrong, not merely conflicting -- and the old None
+  return was accidentally shielding it.
+Recommendation: one live client.get_market() comparison on a settled holiday
+  event against the same city-day's daily ladder answers it. If the stations
+  differ, either exclude holiday tickers from this backfill explicitly, or
+  key the cell on something finer than (city, date, var). Consider separately
+  whether the conflict guard's "refuse both, forever" should prefer the
+  ticker whose own series matches the cell's var family, since a permanent
+  stall reported only as a WARNING is a poor terminal state either way.
+  Full record: none -- surfaced by batch-76's review.
+
+[OPEN 2026-08-26 -- opus review of batch-76 item 2; not fixed there because
+  tracker.py is batch-78's file this cycle] A HOLIDAY TICKER CAN NOW RESOLVE
+  A var FOR ensemble_member_scores ROWS THAT PREDATE THE FIX
+Priority: LOW -- currently unreachable (0 holiday rows in predictions, and
+  the 49 rows with var IS NULL all predate the family), and it is a one-off
+  operator pass rather than a loop.
+Files: tracker.py (backfill_ensemble_member_scores_var's candidate_vars
+  comprehension, and its "Known limitation" paragraph)
+
+Problem:
+  candidate_vars is built from every prediction ticker for a (city,
+  market_date) pair, filtered on `_var_from_ticker_prefix(...) is not None`,
+  and the pair resolves only when exactly one distinct var survives. batch-76
+  makes holiday tickers contribute a candidate, which changes two cases:
+  (a) a pair carrying {KXHIGHT*, KXHOLIDAYTMIN} was resolvable and is now
+      ambiguous -- fewer rows repaired, but honestly so, since
+      ensemble_member_scores has no ticker to disambiguate. Net safer.
+  (b) a pair carrying ONLY {KXHOLIDAYTMIN} was unresolved and now resolves to
+      "min" -- and that is the risky direction. Any row with var IS NULL
+      predates var-logging, hence predates batch-76, so its stored member
+      forecasts were computed as a daily MAX (the very bug batch-76 fixed).
+      Labelling them "min" admits max-derived forecasts into the min bias
+      cell, where they read as a ~20-30F bias.
+Recommendation: exclude holiday tickers from candidate_vars in this one
+  function -- its rows are all pre-fix by construction, so the resolution it
+  would produce for them is knowingly wrong -- or, at minimum, extend the
+  existing "Known limitation" paragraph (which already documents the
+  mirror-image hourly gap) to cover this.
+  Full record: none -- surfaced by batch-76's review.
+
+[OPEN 2026-08-26 -- surfaced by batch-76 item 1's own fix; not fixed there
+  because main.py is batch-79's file this cycle] cmd_order AND cmd_market
+  RE-DERIVE THE MODEL'S SIDE FROM forecast_prob vs market_prob, IGNORING
+  analyze_trade'S OWN recommended_side
+Priority: MEDIUM -- operator-facing, on the manual live-order path.
+Files: main.py (cmd_order's `_model_side = "YES" if _fp > _mp else "NO"` and
+  the opposite-side warning below it; any display site doing the same)
+
+Problem:
+  batch-76 item 1 added a side-agreement override in analyze_trade: when a
+  monotone-safe METAR lock's categorical outcome contradicts the bare
+  `blended_prob > market_prob` comparison, recommended_side is set to the
+  lock's outcome and the new field metar_side_override records it. cmd_order
+  does not read recommended_side at all -- it recomputes the side from
+  forecast_prob vs market_prob, which is precisely the comparison the
+  override exists to correct. So on a locked, overridden market cmd_order
+  still prints the INVERTED side, and its "[Warning] Your side is opposite to
+  the model recommendation" fires when the operator types the CORRECT side.
+  That warning is worse than absent: it actively argues for the wrong trade.
+Recommendation: read `recommended_side` (falling back to the existing
+  comparison only when the key is absent), and surface `metar_side_override`
+  when set -- "the METAR lock has already settled this outcome" is the single
+  most useful thing that screen can say. The field was added write-only for
+  exactly this consumer. Audit the other display sites that recompute a side
+  the same way (main.py's runner-up lines and market table both do).
+  Full record: none -- surfaced by batch-76.

@@ -375,6 +375,11 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         assert result["condition"]["threshold"] == 75.0
         assert "forecast_prob" in result
         assert "edge" in result
+        # batch-76 item 2, the no-op control for its TMIN sibling below: the
+        # `or "max"` tail was RIGHT for this series, so teaching
+        # _var_from_ticker_prefix the family must not disturb it. Pinned so
+        # the two are asserted the same way and can't drift apart.
+        assert result["condition"]["var"] == "max"
 
     def test_holiday_tmin_reaches_the_real_daily_temp_model(self, monkeypatch):
         import weather_markets as wm
@@ -418,6 +423,16 @@ class TestAnalyzeTradeHolidayTempEndToEnd:
         )
         assert result["condition"]["type"] == "below"
         assert result["condition"]["threshold"] == 50.0
+        # batch-76 item 2. THE field the whole fix is written around, and it
+        # was unpinned here: condition["var"] is threaded onto the paper
+        # trade, becomes ensemble_member_scores.var, and is what
+        # get_dynamic_station_bias reads for the max cell. While
+        # _var_from_ticker_prefix returned None for this family, the `or
+        # "max"` tail in _daily_var_from_series labelled this daily MINIMUM
+        # market "max" end to end. Mutation target: reverting that helper
+        # makes this line fail while every other assertion here still
+        # passes -- which is exactly how it went unnoticed.
+        assert result["condition"]["var"] == "min"
 
 
 # ── parse_city_date ──────────────────────────────────────────────────────────

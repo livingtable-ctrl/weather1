@@ -91,7 +91,7 @@ class TestDeclaredGateOrder:
         The daily_* pair is deliberately NOT excluded: it is emitted from the
         non-hourly branch at source lines that DO fall in declared order, so
         excluding it would drop real coverage of its position for no reason.
-        The remaining 33 are pinned to source order exactly.
+        The remaining 34 are pinned to source order exactly.
         """
         src = Path(wm.__file__).read_text(encoding="utf-8")
         first_line: dict[str, int] = {}

@@ -27,12 +27,26 @@ Because side selection is a bare `blended_prob > market_prob`, that understateme
 ```
 monotone-SAFE YES lock, blended_prob = 0.72, market = 0.90
   rec_side          = "no"                      (0.72 > 0.90 is false)
-  entry_side_edge   = (1-0.72) - (1-0.90) = +0.18
+  edge              = 0.72 - 0.90         = -0.18   (YES-signed mid comparison)
+  entry_side_edge   = (1-0.72) - _esmp
 ```
 
-A positive 18% edge on the side the lock has already ruled out. An opus reviewer independently reproduced the same inversion end-to-end through `analyze_trade` on the OKC/SATX incident shape.
+**Correction (2026-08-26, made while executing this batch).** The `+0.18`
+figure above is `edge`, not `entry_side_edge`. The real line is
+`weather_markets.py`'s `entry_side_edge = ((1.0 - blended_prob) - _esmp) *
+time_decay`, where `_esmp` on the NO side is `1 - yes_bid` and falls back to
+`1 - market_prob` only when there is no usable bid — so `(1-0.72)-(1-0.90) =
++0.18` holds *only for an empty bid book*, and is scaled by `time_decay`
+besides. Against this batch's own regression-test prices (bid 0.88 / ask
+0.92) the real figures are `entry_side_edge = +0.16` and **`net_edge =
++1.33`** — and `net_edge`, not `entry_side_edge`, is what drives tier
+classification and `paper.check_model_exits`, so it is the more alarming of
+the two and was omitted here entirely. Sign and inversion are unchanged;
+only the magnitudes were wrong.
 
-Compounding it: the market-divergence gate that would normally catch a large model-vs-market disagreement sits behind `if not metar_locked:`, so it never runs on exactly the path that can produce this.
+A positive edge on the side the lock has already ruled out. An opus reviewer independently reproduced the same inversion end-to-end through `analyze_trade` on the OKC/SATX incident shape.
+
+Compounding it: the market-divergence gate that would normally catch a large model-vs-market disagreement sits behind `if not metar_locked:`, so it never runs on exactly the path that can produce this. A second model-vs-market gate, `model_mkt_gap`, sits inside a *different* `if not metar_locked:` block further up and is skipped the same way — so option (c) below is really "stop skipping two gates, in two separate places". (Neither, in the event, can catch an inversion: both fire only on model-vs-market disagreements too large or too one-sided for an inverted lock probability to produce. See the resolution.)
 
 **This needs an `AskUserQuestion` before any code.** At least three defensible fixes, and they are not equivalent:
 - **(a)** Raise the confidence floor for monotone-safe locks specifically, so the probability reflects a settled outcome.

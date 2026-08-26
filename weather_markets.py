@@ -7365,9 +7365,30 @@ _KXRAIN_DAILY_CITY_SUFFIX = {
 # checked by suffix, not prefix, so callers can't reuse the startswith()
 # dicts above by mistake for these.
 _KXRAIN_DAILY_SUFFIX_SERIES: frozenset[str] = frozenset({"KXRAIN", "KXRAINWKND"})
-_KXHOLIDAY_TEMP_SUFFIX_SERIES: frozenset[str] = frozenset(
-    {"KXHOLIDAYTMAX", "KXHOLIDAYTMIN"}
-)
+# Which daily temperature variable each holiday-temp series measures.
+# _var_from_ticker_prefix() reads this; is_holiday_temp_ticker()'s membership
+# set below is DERIVED from it, so at import time the two cannot disagree
+# about which series belong to this family. Note that is a statement about
+# import, not about runtime: tests/test_batch51_holiday_rain.py monkeypatches
+# _KXHOLIDAY_TEMP_SUFFIX_SERIES alone (to simulate the family being
+# unregistered), and inside that window the derivation no longer holds --
+# is_holiday_temp_ticker says False while this map still resolves a var.
+# Harmless there, but don't read the derivation as a runtime invariant.
+#
+# An explicit series->var map rather than a "TMIN"/"TMAX" substring test
+# (which is what this entry's backlog recommendation suggested): KXHIGHTMIN
+# and KXLOWTMIN -- the two Minneapolis daily ladders, both live and traded --
+# each CONTAIN the substring "TMIN". A substring rule is correct for them
+# only because _var_from_ticker_prefix happens to check "HIGH"/"LOW" first,
+# so reordering those two checks (or adding a third family whose city code
+# collides) would silently invert a real city's var. Exact series match has
+# no such ordering dependency and cannot collide with a future ticker that
+# merely contains the letters.
+_KXHOLIDAY_TEMP_SERIES_VAR: dict[str, str] = {
+    "KXHOLIDAYTMAX": "max",
+    "KXHOLIDAYTMIN": "min",
+}
+_KXHOLIDAY_TEMP_SUFFIX_SERIES: frozenset[str] = frozenset(_KXHOLIDAY_TEMP_SERIES_VAR)
 
 
 def _is_suffix_keyed_series(ticker: str) -> bool:
@@ -14411,6 +14432,27 @@ def _metar_lock_in(
                 # have to re-derive it from current_temp_f, which is always
                 # the instantaneous reading and can differ.
                 _lockout["comp_temp_f"] = _comp_temp
+                # batch-76 item 1. EVERY lock that survives this branch is
+                # monotone-safe, by construction of the two vetoes just
+                # above: a LOW market can only still be locked with
+                # _comp_temp <= threshold - margin (running min, can only
+                # fall further) and a HIGH market only with _comp_temp >=
+                # threshold + margin (running max, can only rise further).
+                # Both hold for either `direction`, so all four
+                # (market-side x direction) combinations are covered --
+                # which is exactly why the vetoes reject on the temperature
+                # comparison rather than on outcome/direction.
+                #
+                # "Monotone-safe" means ONLY that further intraday drift at
+                # OUR station cannot reverse the verdict. It does NOT mean
+                # the verdict is certain: Kalshi settles from its own CLI
+                # station, 1-3°F away, and this module's measured lock
+                # accuracy (see analyze_trade's beta-calibration block) is
+                # 70.4% actual against 89.6% predicted for YES locks. The
+                # flag is a statement about monotonicity, not confidence --
+                # do not use it as one.
+                if _lockout.get("locked"):
+                    _lockout["monotone_safe"] = True
 
         elif _cond_type == "between":
             # Re-enabled (backlog.txt "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN
@@ -14529,6 +14571,10 @@ def _metar_lock_in(
                         f"{_hi}°F + margin {_margin}°F — running max cannot "
                         "fall back into the band"
                     ),
+                    # batch-76 item 1: the branch's own comment above is the
+                    # justification -- the running max has already cleared
+                    # the band and cannot come back down.
+                    "monotone_safe": True,
                 }
             elif _is_low_mkt and _comp_temp <= _lo - _margin:
                 # LOW-var between market: a running daily-low-so-far cannot
@@ -14550,6 +14596,10 @@ def _metar_lock_in(
                         f"{_lo}°F - margin {_margin}°F — running min cannot "
                         "rise back into the band"
                     ),
+                    # batch-76 item 1: mirror of the HIGH-var NO branch
+                    # above -- the running min has already cleared the band
+                    # and cannot come back up.
+                    "monotone_safe": True,
                 }
             elif _daily_ext is None:
                 # No real daily extreme available (station doesn't report
@@ -14652,6 +14702,21 @@ def _metar_lock_in(
                             f"to the at-risk edge measured from comp_temp "
                             f"{_comp_temp:.1f}°F"
                         ),
+                        # batch-76 item 1: the ONLY locked branch in this
+                        # function that is NOT monotone-safe, and it is
+                        # marked False rather than simply left unset so that
+                        # is a stated property rather than an omission. The
+                        # extreme is INSIDE the band and can still move
+                        # toward the one edge the monotonic direction has
+                        # not foreclosed -- _yes_inband_margin and
+                        # analyze_trade's own between_edge gate both exist
+                        # precisely because this outcome is not settled.
+                        # analyze_trade's side-agreement override reads this
+                        # flag and therefore leaves this branch's
+                        # recommended side alone, so a genuinely mispriced
+                        # in-band lock can still be traded from the
+                        # contrarian side.
+                        "monotone_safe": False,
                     }
                 else:
                     _lockout = {
@@ -14725,8 +14790,10 @@ def _var_from_ticker_prefix(ticker_upper: str) -> str | None:
     """Codebase-wide single source of truth for the "does this ticker's
     market measure the daily HIGH or LOW" substring check (backlog.txt
     "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND
-    analyze_trade()"). Returns None -- not a guessed default -- when
-    `ticker_upper` contains neither "HIGH" nor "LOW", since callers differ
+    analyze_trade()"), plus the one family that names its variable a
+    different way (KXHOLIDAYTMAX/TMIN, resolved by exact series match --
+    see _KXHOLIDAY_TEMP_SERIES_VAR). Returns None -- not a guessed default
+    -- for a ticker that matches neither, since callers differ
     genuinely on what to do then: some fall back to a market's cond_type
     (above/below), one returns/skips entirely for a ticker whose cond_type
     is neither, others default to "max" for a between-market. Consolidating
@@ -14774,7 +14841,22 @@ def _var_from_ticker_prefix(ticker_upper: str) -> str | None:
         return "max"
     if "LOW" in ticker_upper:
         return "min"
-    return None
+    # KXHOLIDAYTMAX/KXHOLIDAYTMIN contain neither substring -- they use the
+    # TMAX/TMIN naming instead -- so before this they returned None and every
+    # caller's `or "max"` tail analysed a daily-MINIMUM market as a daily-
+    # MAXIMUM one end to end (wrong ensemble variable, wrong daily extreme
+    # fetched in _metar_lock_in, wrong monotonic-safety veto, and -- via
+    # condition["var"] threaded onto the paper trade -- an
+    # ensemble_member_scores row logged under var="max" whose actual_temp is
+    # the day's minimum, which get_dynamic_station_bias then subtracts from
+    # every daily-HIGH forecast for that city). Resolved by exact series
+    # match, not a "TMIN"/"TMAX" substring test -- see
+    # _KXHOLIDAY_TEMP_SERIES_VAR for why the substring form is unsafe here.
+    #
+    # Still returns None for every other neither-match family (hourly,
+    # monthly rain/snow, hurricane), so each caller's own distinct fallback
+    # tail is unchanged for them.
+    return _KXHOLIDAY_TEMP_SERIES_VAR.get(ticker_upper.split("-")[0])
 
 
 def _daily_var_from_series(series: str) -> str:
@@ -14802,6 +14884,16 @@ def _daily_var_from_series(series: str) -> str:
     Uppercases defensively -- every current caller already passes an
     upper-cased `series`, but a helper billed as a shared source of truth
     should not silently return the wrong side for a lowercase input.
+
+    Despite the name, `series` is usually a FULL TICKER in production.
+    analyze_trade passes `enriched.get("series_ticker") or
+    enriched.get("ticker", "")`, and series_ticker is empty on real Kalshi
+    market responses (see consistency.py's own note on this), so the
+    fallback is what actually runs. That is why
+    _var_from_ticker_prefix()'s holiday lookup keys off
+    `ticker_upper.split("-")[0]` rather than matching the whole string --
+    a whole-string match would resolve a bare series in tests and return
+    None for every real market.
     """
     return _var_from_ticker_prefix(series.upper()) or "max"
 
@@ -17212,6 +17304,118 @@ def analyze_trade(
     market_prob = prices["implied_prob"]
     rec_side = "yes" if blended_prob > market_prob else "no"
 
+    # ── 10b. METAR lock side-agreement override ──────────────────────────────
+    # A METAR lock produces BOTH a categorical verdict (metar_lockout
+    # ["outcome"]) and a probability, and until this block nothing enforced
+    # agreement between them. Because the `rec_side` line above is a bare
+    # magnitude comparison, an understated probability does not merely
+    # under-bet: it FLIPS THE SIDE. Two independent mechanisms understate it.
+    #
+    # (i) The floor. blended_prob on this path starts as
+    #     _dynamic_lock_in_confidence's output (or the between-fork's),
+    #     floored at 0.72 and capped at 0.97. For a monotone-safe lock --
+    #     one whose observed running extreme has already crossed the
+    #     threshold by the margin, in the only direction it can still move
+    #     -- 0.72 understates a verdict that further intraday drift at our
+    #     own station cannot reverse. Against a market at 0.90 that yields
+    #     rec_side="no" on a lock that says "yes", with `edge` = 0.72 - 0.90
+    #     = -0.18 (the YES-signed mid comparison), entry_side_edge = +0.16
+    #     and net_edge = +1.33 at this file's own regression-test prices
+    #     (bid 0.88 / ask 0.92) -- net_edge being the number that drives
+    #     tier classification and paper.check_model_exits, and by far the
+    #     more alarming of the two. On its own this mechanism cannot reach a
+    #     live order: trade_cycle requires mkt_dir >= MIN_MARKET_PROB_TO_BET
+    #     _WITH (0.25) and prob_edge >= max(CITY_MIN_PROB_EDGE[city],
+    #     min_prob_edge_for_days_out(0) = 0.12), and an inverted YES lock
+    #     needs market <= 0.75 and blended <= 0.63 against a raw >= 0.72
+    #     (the NO mirror needs blended >= 0.37 against a raw <= 0.28). What
+    #     it did reach is the analysis DICT, rendered verbatim as "BUY NO"
+    #     by cmd_market and by the market table an operator reads before
+    #     typing a manual cmd_order.
+    #
+    # (ii) The beta-calibration block above, which is what makes this a live
+    #     concern rather than a display bug. It rewrites blended_prob in
+    #     place by up to _METAR_CORRECTION_LIMIT (0.60, a local defined in
+    #     that block) BEFORE the side is chosen, so "raw >= 0.72" stops
+    #     holding. Under the fit live at the time of writing
+    #     (data/metar_lockout_calibration.json, a=b=0.2262 c=0.4001 n=33)
+    #     every YES lock arrives here at 0.649-0.766 and every NO lock at
+    #     0.405-0.547. A NO lock at 0.536 against a 0.275 market clears
+    #     every downstream gate (mkt_dir 0.275, prob_edge 0.261, divergence
+    #     ratio 1.949) and WOULD place a real order on the ruled-out side.
+    #     That is not a corner case. Every NO lock is floored near 0.40
+    #     regardless of how certain the lock was, and the most marginal one
+    #     (conf 0.72) lands at 0.5465 -- above even money, so a NO lock
+    #     recommends YES against any market priced below it. That 0.40 is
+    #     NOT a property of the calibration, which runs to 0.062 unclamped;
+    #     it is _dynamic_lock_in_confidence's 0.97 cap seen through a
+    #     strictly-increasing map. Raise the cap in metar.py and this floor
+    #     drops with it (0.99 -> 0.345, 0.999 -> 0.238), widening the ranges
+    #     below. That docstring carries the same table from its own side.
+    #     Solving all three downstream gates for the tradeable window:
+    #
+    #       lock conf   blended   market range that trades the WRONG side
+    #         0.72       0.5465        [0.273, 0.427]   (15pp wide)
+    #         0.90       0.4758        [0.250, 0.356]
+    #         0.97       0.4046        [0.250, 0.285]
+    #
+    #     Open at every confidence level, widening as the lock gets less
+    #     certain. The raw floor's window, by contrast, is empty at every
+    #     level: prob_edge >= 0.12 forces market >= raw + 0.12 >= 0.84, so
+    #     mkt_dir = 1 - market <= 0.16 < 0.25, and it only gets more
+    #     impossible as raw rises (at 0.97 it would need market > 1.09).
+    #     Note (i)'s impossibility argument survives by only ~1.9pp under
+    #     that same fit (calibrated YES minimum 0.649 vs the 0.63 bar) and
+    #     is a property of one JSON file a weekly cron retrains -- do not
+    #     read it as permanent.
+    #
+    # Scoped to monotone_safe locks ONLY. The between-YES branch of
+    # _metar_lock_in sets monotone_safe=False because its extreme is inside
+    # the band and can still drift to the edge it has not foreclosed; there
+    # the probability, not the verdict, is the honest signal, and overriding
+    # it would permanently forfeit the contrarian side of a genuinely
+    # mispriced in-band lock. See that branch's own comment.
+    #
+    # Overrides the side rather than returning None (the other option
+    # considered). Dropping the market would take forecast_prob with it, and
+    # cmd_order records `entry_prob=_analysis.get("forecast_prob") if
+    # _analysis else None` -- so a manual order on a gated market would be
+    # logged with entry_prob=None, which order_executor._check_live_model_
+    # exits skips on, leaving that live position invisible to the model-exit
+    # checker. cmd_market would also print "no forecast or unrecognised
+    # ticker format", which would be false on both counts. Overriding keeps
+    # the market visible and honest; placement is refused anyway, by two
+    # independent pre-existing checks in _validate_trade_opportunity (net_
+    # edge <= 0, and raw edge's sign must agree with the recommended side),
+    # both of which a forced side fails by construction.
+    #
+    # NOT re-enabling the two model-vs-market gates this path also skips
+    # (the divergence gate just below, and the model_mkt_gap gate inside the
+    # earlier `if not metar_locked:` block): neither can catch an inversion.
+    # The divergence gate fires only on market>0.70 & ours<0.25 or
+    # market<0.30 & ours>0.75, and on the raw lock probability no inversion
+    # satisfies either clause; both would instead suppress locked trades
+    # that AGREE with the lock. Left exactly as they were.
+    metar_side_override = None
+    if metar_locked and metar_lockout.get("monotone_safe"):
+        _lock_outcome = metar_lockout.get("outcome")
+        # The membership test is load-bearing now that this ASSIGNS rec_side:
+        # a lockout dict carrying anything other than "yes"/"no" would
+        # otherwise put that value straight into recommended_side.
+        if _lock_outcome in ("yes", "no") and rec_side != _lock_outcome:
+            _log.info(
+                "analyze_trade: %s — recommended side %r contradicted the "
+                "monotone-safe METAR lock's outcome %r (our=%.3f "
+                "market=%.3f); overriding to the lock's side",
+                enriched.get("ticker", "?"),
+                rec_side,
+                _lock_outcome,
+                blended_prob,
+                market_prob,
+            )
+            rec_side = _lock_outcome
+            metar_side_override = _lock_outcome
+
     # Market divergence gate: if the market is highly confident (>70%) AND our
     # model is on the opposite side (<25%), the crowd has information we lack.
     # Skip rather than bet against a confident, well-informed market.
@@ -17335,6 +17539,15 @@ def analyze_trade(
         "edge_confidence_factor": _edge_conf,
         "net_signal": net_signal,
         "recommended_side": rec_side,
+        # batch-76 item 1. None on every ordinary market; "yes"/"no" when
+        # section 10b above overrode a recommended side that contradicted a
+        # monotone-safe METAR lock. Write-only today -- nothing reads it --
+        # but it is the only record of the override outside a log line, and
+        # it is what an operator-facing consumer (cmd_market, cmd_order's
+        # opposite-side warning) should key off rather than re-deriving the
+        # side from forecast_prob vs market_prob, which is the very
+        # comparison this section exists to correct.
+        "metar_side_override": metar_side_override,
         "condition": condition,
         "forecast_temp": forecast_temp,
         # batch-75: mutually exclusive with forecast_temp above. On a

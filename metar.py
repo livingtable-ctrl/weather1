@@ -75,6 +75,27 @@ def _dynamic_lock_in_confidence(
       - 3 °F clearance at 8 PM  → 0.790
       - 10 °F clearance at 5 PM → 0.881
       - 13 °F clearance at 8 PM → 0.970
+
+    **The 0.97 cap has a consumer in another file that nothing here points
+    at, so read this before widening it.** weather_markets.analyze_trade
+    runs the output of this function through ml_bias.apply_metar_calibration
+    (a beta calibration fitted on settled lockout outcomes) BEFORE choosing
+    which side to trade, and its section 10b relies on the resulting
+    probability range. The beta map is strictly increasing (a = b > 0), so
+    the calibrated value for a NO lock is bounded below by whatever this cap
+    is: at 0.97 the floor is 0.4046, and it drops with the cap --
+
+        cap 0.97 → 0.405    cap 0.99  → 0.345    cap 0.999 → 0.238
+        cap 0.98 → 0.382    cap 0.995 → 0.311    no cap    → 0.062
+
+    -- which widens the band of market prices where a NO lock's calibrated
+    probability sits ABOVE the price and the bare `blended_prob >
+    market_prob` comparison therefore recommends YES on an outcome the lock
+    ruled out. Section 10b corrects that side, so raising the cap is not
+    unsafe; it just moves a boundary documented over there in terms of a
+    number chosen here. Figures are for the fit live on 2026-08-26
+    (data/metar_lockout_calibration.json, a=b=0.2262 c=0.4001, n=33) and
+    move with any refit -- recompute rather than trusting them.
     """
     extra_f = max(0.0, clearance_f - margin_f)
     c_factor = min(1.0, extra_f / 10.0)

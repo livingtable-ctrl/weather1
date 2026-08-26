@@ -11443,13 +11443,18 @@ class TestBackfillMemberActualTemp(unittest.TestCase):
 
     def test_trade_var_field_is_ignored_in_favour_of_the_ticker(self):
         """The opus-review HIGH. trade["var"] comes from
-        weather_markets._daily_var_from_series, which is
-        `_var_from_ticker_prefix(series) or "max"` -- so a KXHOLIDAYTMIN
-        trade (a real daily MINIMUM series with no "LOW" substring) arrives
-        labelled "max". Trusting it would write a daily minimum into every
-        daily-MAX row for that city and date, including rows a normal KXHIGH*
-        ladder created, feeding a ~20-30F sign-flipped error into the live
+        weather_markets._daily_var_from_series, whose `or "max"` tail can
+        label a trade with a variable its ticker contradicts. Trusting it
+        would write one extreme into every row of the OTHER extreme's cell
+        for that city and date -- the UPDATE has no ticker or model
+        constraint -- feeding a ~20-30F sign-flipped error into the live
         bias corrector.
+
+        The original example was KXHOLIDAYTMIN, a real daily MINIMUM series
+        that arrived labelled "max" because it contains no "LOW" substring.
+        batch-76 fixed that at the source, so this test now demonstrates the
+        principle with a KXLOWT* ticker carrying a hand-set wrong var: the
+        rule is "derive from the ticker", not "distrust one family".
 
         Mutation target: restoring `trade.get("var") or ...` makes this fail.
         """
@@ -11475,15 +11480,61 @@ class TestBackfillMemberActualTemp(unittest.TestCase):
     def test_ticker_with_unresolvable_var_fails_closed(self):
         """A ticker whose var cannot be read off its own prefix is skipped
         outright rather than defaulted to "max" -- the keyless UPDATE has no
-        ticker constraint, so a guessed var corrupts an entire cell."""
-        self._seed_outcome("KXHOLIDAYTMIN-26DEC25-T20", 18.0)
-        self._seed_member("NYC", "2026-12-25", "max", 91.0)
-        trade = self._trade("KXHOLIDAYTMIN-26DEC25-T20", "NYC", "2026-12-25", var="max")
+        ticker constraint, so a guessed var corrupts an entire cell.
+
+        Uses a monthly-rain ticker, not the KXHOLIDAYTMIN one this test was
+        originally written with: batch-76 taught _var_from_ticker_prefix the
+        KXHOLIDAYTMAX/TMIN naming, so that ticker now resolves to "min"
+        (correctly) and no longer exercises the fail-closed branch at all.
+        Monthly rain/snow, hourly and hurricane families still resolve to
+        None, which is what this branch exists for.
+        """
+        self._seed_outcome("KXRAINNYCM-26DEC-3", 18.0)
+        self._seed_member("NYC", "2026-12-01", "max", 91.0)
+        trade = self._trade("KXRAINNYCM-26DEC-3", "NYC", "2026-12-01", var="max")
 
         updated, skipped, _, _, _ = tracker.backfill_member_actual_temp([trade])
 
         self.assertEqual((updated, skipped), (0, 1))
         self.assertEqual(self._actuals(), [91.0])
+
+    def test_holiday_tmin_repairs_the_min_cell_not_the_max_cell(self):
+        """batch-76 item 2's downstream consequence, pinned here because this
+        is the call site whose behaviour actually FLIPS: while
+        _var_from_ticker_prefix returned None for KXHOLIDAYTMIN this trade
+        fell out through the fail-closed branch above; now it resolves to
+        "min" and is repaired like any other daily ticker.
+
+        Note this also re-pins the surrounding rule from the other side --
+        the trade's own var says "max" (the pre-fix mislabel a settled
+        holiday trade would be carrying) and must still be ignored in favour
+        of the ticker, leaving the city-day's MAX cell untouched.
+
+        Mutation target: reverting _var_from_ticker_prefix makes this skip
+        instead of repair, i.e. (0, 1) rather than (1, 0).
+        """
+        self._seed_outcome("KXHOLIDAYTMIN-26070450-SFO", 48.0)
+        self._seed_member("SanFrancisco", "2026-07-04", "min", 62.6)
+        self._seed_member(
+            "SanFrancisco", "2026-07-04", "max", 91.0, model="icon_seamless"
+        )
+        trade = self._trade(
+            "KXHOLIDAYTMIN-26070450-SFO", "SanFrancisco", "2026-07-04", var="max"
+        )
+
+        updated, skipped, conflicts, _, _ = tracker.backfill_member_actual_temp([trade])
+
+        self.assertEqual((updated, skipped, conflicts), (1, 0, 0))
+        with tracker._conn() as con:
+            rows = dict(
+                con.execute(
+                    "SELECT var, actual_temp FROM ensemble_member_scores"
+                ).fetchall()
+            )
+        self.assertEqual(rows["min"], 48.0)
+        self.assertEqual(
+            rows["max"], 91.0, "the max cell must be untouched by a min ticker"
+        )
 
     def test_hourly_ticker_is_skipped(self):
         """Hourly/monthly rows write settled_value, never settled_temp_f, so

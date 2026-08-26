@@ -385,6 +385,81 @@ class TestVarFromTickerPrefix(unittest.TestCase):
         self.assertEqual(_var_from_ticker_prefix("HIGHANDLOW"), "max")
 
 
+class TestHolidayTempVar(unittest.TestCase):
+    """batch-76 item 2, backlog.txt "_var_from_ticker_prefix RETURNS None FOR
+    KXHOLIDAYTMIN, SO THE WHOLE DAILY PATH TREATS A DAILY-MINIMUM MARKET AS A
+    DAILY-MAXIMUM ONE". The KXHOLIDAYTMAX/TMIN family names its variable
+    TMAX/TMIN, so it contains neither "HIGH" nor "LOW"; the helper returned
+    None and every caller's `or "max"` tail then analysed a daily MINIMUM as
+    a daily MAXIMUM."""
+
+    def test_holiday_tmin_returns_min(self):
+        self.assertEqual(_var_from_ticker_prefix("KXHOLIDAYTMIN-26070450-SFO"), "min")
+
+    def test_holiday_tmax_returns_max(self):
+        self.assertEqual(_var_from_ticker_prefix("KXHOLIDAYTMAX-260704100-SFO"), "max")
+
+    def test_daily_var_from_series_agrees(self):
+        """_daily_var_from_series is what analyze_trade actually calls, and
+        its `or "max"` default is what turned the None into the wrong
+        answer, so it must resolve too.
+
+        Both spellings are asserted deliberately. Despite the parameter
+        name, the value analyze_trade passes is `series_ticker or ticker`,
+        and series_ticker is empty on real Kalshi responses -- so the FULL
+        ticker is what production actually feeds this helper. Asserting only
+        the bare series would leave a whole-string implementation passing
+        here while returning None for every live market.
+        """
+        self.assertEqual(_daily_var_from_series("KXHOLIDAYTMIN"), "min")
+        self.assertEqual(_daily_var_from_series("KXHOLIDAYTMAX"), "max")
+        self.assertEqual(_daily_var_from_series("KXHOLIDAYTMIN-26070450-SFO"), "min")
+        self.assertEqual(_daily_var_from_series("KXHOLIDAYTMAX-260704100-SFO"), "max")
+
+    def test_minneapolis_daily_ladders_are_not_captured_by_tmin(self):
+        """Why this is an exact series match and not a "TMIN"/"TMAX"
+        substring test, which is what the backlog entry recommended:
+        KXHIGHTMIN and KXLOWTMIN are the two Minneapolis daily ladders --
+        both live, both traded -- and both CONTAIN the substring "TMIN".
+
+        What this pins precisely: check ORDER, not exactness. Both
+        assertions also hold under a substring rule placed AFTER the
+        HIGH/LOW checks; they fail only if such a rule is placed before
+        them. Exactness itself is pinned by
+        test_series_must_match_exactly_not_as_a_prefix below, which a
+        substring rule fails wherever it sits. Verified by mutation, both
+        ways round.
+        """
+        self.assertEqual(_var_from_ticker_prefix("KXHIGHTMIN-26AUG01-B84.5"), "max")
+        self.assertEqual(_var_from_ticker_prefix("KXLOWTMIN-26AUG01-B71.5"), "min")
+
+    def test_other_neither_match_families_still_return_none(self):
+        """The change is scoped to the two holiday series. Every other
+        family that matches neither substring must still get None so each
+        caller's own distinct fallback tail is unchanged -- notably
+        tracker.backfill_member_actual_temp, whose keyless UPDATE depends on
+        None to fail closed."""
+        self.assertIsNone(_var_from_ticker_prefix("KXTEMPNYCH-26JUL2015-T75"))
+        self.assertIsNone(_var_from_ticker_prefix("KXRAINDENM-26JUL-7"))
+        self.assertIsNone(_var_from_ticker_prefix("KXHURCTOTMAJ-26-3"))
+
+    def test_series_must_match_exactly_not_as_a_prefix(self):
+        """Matched on the ticker's first hyphen-delimited segment, the same
+        shape is_holiday_temp_ticker() uses -- a longer series that merely
+        starts with one of these names is a different market."""
+        self.assertIsNone(_var_from_ticker_prefix("KXHOLIDAYTMINX-26070450-SFO"))
+
+    def test_membership_set_is_derived_from_the_var_map(self):
+        """is_holiday_temp_ticker()'s family set and the var map are one
+        source of truth, so a series can never be in the family but have no
+        var (or vice versa)."""
+        import weather_markets as wm
+
+        self.assertEqual(
+            set(wm._KXHOLIDAY_TEMP_SERIES_VAR), wm._KXHOLIDAY_TEMP_SUFFIX_SERIES
+        )
+
+
 class TestForecastModelWeights(unittest.TestCase):
     def test_ecmwf_weight_winter(self):
         """ECMWF should have weight 2.5 in winter months (Oct–Mar), ENSO-neutral."""
