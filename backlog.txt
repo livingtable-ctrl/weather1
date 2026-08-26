@@ -38054,3 +38054,82 @@ When to revisit:
   Before live trading. In paper mode this costs simulated money; the same
   cascade with LIVE_TRADING_ENABLED leaves real positions unprotected, and
   the same run's banner read "REAL MONEY TRADES ENABLED".
+
+[OPEN 2026-08-26 -- narrowed down across three parallel sessions while tracing
+  how a MagicMock repr reached a live settlement guard. Filed here by the
+  batch-75 session at the network-guard session's suggestion; neither of the
+  other two owns it.] audit/reproductions/ SCRIPTS RUN OUTSIDE PYTEST AND SO
+  BYPASS EVERY TEST GUARD -- THEY NEED AN ISOLATION CONVENTION OF THEIR OWN
+Priority: Medium -- no known active damage, and the one incident that
+  motivated it has self-healed and been separately fixed at its own site. This
+  closes the last structural hole rather than a live bug.
+Files: audit/reproductions/*.py (~10+ standalone scripts), tests/conftest.py
+  and tests/prod_data_guard.py (the guards that do NOT cover them),
+  safe_io.project_root(), paths.py
+
+Why this is the remaining hole:
+  Two guards now protect the suite -- 3cca1e8e default-denies outbound network
+  for every test, and 27949ffa blocks any test write to the real data/ dir.
+  Both hook pytest. A script executed directly (`py audit/reproductions/x.py`)
+  loads neither, so it inherits the real project_root(), the real data/ and
+  unrestricted network.
+
+  This is not hypothetical. On 2026-08-25/26 a MagicMock repr was persisted
+  into data/miami_index_state.json as the stored config_version, and the next
+  real cron cycle read it back, diffed it against the live value and fired
+  kalshi_weather_index's red "Miami settlement methodology may have changed"
+  alert via notify.send_system_alert. Miami is the ONLY settlement source for
+  KXTEMPMIAH, so a test artifact burned a real operator alert on a live
+  settlement guard -- and, worse than the false positive, it overwrote the
+  BASELINE the guard diffs against, so a genuine methodology change in that
+  window would have been indistinguishable from the artifact.
+
+  That specific path is now fixed (conftest patches
+  kalshi_weather_index._STATE_PATH, commit 2aa04bc3) and the suite is measured
+  hermetic (10,324-file snapshot across 205 cmd_cron tests, zero diffs, twice).
+  So the pytest side is closed. What is not closed is the out-of-pytest side.
+
+  Attribution, as far as three sessions could take it: NO production module
+  imports unittest.mock -- verified repo-wide; the only non-test hits are a
+  docstring in order_executor.py and two scripts under audit/reproductions/.
+  So main.py's ~70 subcommands are EXONERATED as the source: they cannot
+  produce a MagicMock. The vector is code that imports unittest.mock, run
+  outside pytest. The two reproductions scripts that do import it
+  (repro_target_date_due.py, test_csrf_header_gap_repro.py) were checked and
+  touch none of the affected paths, so they are not the source either -- but
+  they are the SHAPE of thing that can be.
+
+The distinction that must survive into any fix:
+  Writing data/ outside pytest is CORRECT and intended -- it is what ~70
+  main.py operator subcommands exist to do (repair-metar-lockout-rows,
+  backfill-attempt-outcomes, backfill-ensemble-var all wrote real data this
+  session, deliberately). A guard built on "no out-of-pytest write to data/"
+  would break the maintenance tooling it is meant to protect. The defect is
+  narrower: TEST-OR-MOCK-IMPORTING code executing outside pytest against the
+  real data dir.
+
+Plan:
+  1. A convention, documented at the top of audit/reproductions/ (a README or
+     a shared helper): any script there must redirect safe_io.project_root()
+     or the specific paths.py constant it touches BEFORE importing anything
+     that binds it. At least one script already does this correctly --
+     cron_lock_race_repro.py redirects cron.LOCK_PATH to a tempdir -- so this
+     is codifying existing good practice, not inventing it.
+  2. Prefer a shared import-first helper over per-script discipline, e.g.
+     `from audit.reproductions._isolate import isolate_all` as line 1. Per
+     -script discipline is what failed here.
+  3. When auditing which constant a script must redirect, the answer is a
+     (consumer, binding-site, import-timing) triple, NOT a per-constant
+     verdict: `from paths import X` at module scope needs the IMPORTER's
+     binding patched, a call-time `from paths import X` inside a function
+     needs paths.X, and a module doing both needs both. A name-match of
+     paths.py constants against conftest text cannot see the first case --
+     that error was made and retracted during this investigation.
+  4. Optionally make an out-of-pytest write to data/ VISIBLE (logged) rather
+     than blocked, so the legitimate operator commands stay working while an
+     unexpected writer is attributable next time. Attribution was the thing
+     three sessions could not do.
+
+When to revisit:
+  Next time anyone adds a script to audit/reproductions/, or before running
+  any existing one against the main clone.
