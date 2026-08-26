@@ -1674,18 +1674,35 @@ def _cmd_cron_body(
                 # another week, on one warning line. These three are new
                 # failure surface added ahead of the VACUUM, so they must not
                 # be able to take the rest of the sweep down with them.
-                for _pruner, _days, _what in (
-                    (_prune_member_values, 730, "ensemble_member_values"),
-                    (_prune_depth, 30, "orderbook_depth_snapshots"),
-                ):
-                    try:
-                        _pruner(days=_days)
-                    except Exception as _prune_exc:
-                        _log.warning(
-                            "cmd_cron: %s retention sweep failed: %s",
-                            _what,
-                            _prune_exc,
-                        )
+                #
+                # Written as separate direct calls rather than a loop over a
+                # tuple of function references, matching _prune_scan_runs
+                # just below. The loop was equivalent at runtime but put the
+                # only occurrence of each name inside a tuple and called it
+                # through a loop variable, so tests/test_dead_code_scan.py's
+                # call-site scan -- which resolves `alias(` for an aliased
+                # import -- could not see either call and reported both
+                # pruners FULLY DEAD. Same failure mode, and same fix, as
+                # weather_markets._count_market_implied_rain in 2026-08-02:
+                # match the convention the scanner reads rather than
+                # allowlisting a genuinely-called function, which would
+                # exempt it from ever being detected as dead for real.
+                try:
+                    _prune_member_values(days=730)
+                except Exception as _prune_exc:
+                    _log.warning(
+                        "cmd_cron: ensemble_member_values retention sweep failed: %s",
+                        _prune_exc,
+                    )
+
+                try:
+                    _prune_depth(days=30)
+                except Exception as _prune_exc:
+                    _log.warning(
+                        "cmd_cron: orderbook_depth_snapshots retention sweep "
+                        "failed: %s",
+                        _prune_exc,
+                    )
 
                 # batch-78 item 1: one row per cron cycle, so this is
                 # negligible next to the two above -- swept on the same

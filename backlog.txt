@@ -55,10 +55,11 @@ Why not now:
   functions in front of it.
 
 
-[OPEN 2026-08-26 -- found by batch-81 while running its scoped regression
-  suite; confirmed pre-existing by running the same test against a clean
-  detached worktree at origin/master, so it is batch-78's to answer, not
-  batch-81's] tests/test_dead_code_scan.py IS RED ON MASTER -- BATCH-78'S
+[RESOLVED 2026-08-26 -- option (b), unrolled the loop into direct calls;
+  see the RESOLUTION block at the end of this entry. Filed by batch-81,
+  which found it while running its scoped suite and confirmed it
+  pre-existing against a clean detached worktree at origin/master.]
+  tests/test_dead_code_scan.py IS RED ON MASTER -- BATCH-78'S
   TWO PRUNERS ARE WIRED BUT INVISIBLE TO THE SCANNER
 Priority: Medium -- nothing is wrong in production (both functions really
   are called every Monday), but a permanently-red test is worse than a
@@ -99,6 +100,42 @@ Why not now:
   allowlist demands a concrete reason its author is best placed to write.
   batch-81 found it, verified it was not its own, and left it rather than
   quietly widening its scope into another batch's design.
+
+RESOLUTION 2026-08-26: took option (b).
+
+  cron.py's Monday sweep now calls the two pruners directly, each in its
+  own try/except, exactly like _prune_scan_runs ten lines below it -- the
+  sibling that was never flagged, because a plain aliased call is a shape
+  the scanner already resolves. The `for _pruner, _days, _what in (...)`
+  loop is gone.
+
+  Option (b) over (a) because an allowlist entry would have exempted two
+  genuinely-called functions from dead-code detection permanently: if
+  either were later unwired for real, nothing would notice. The repo has
+  the same precedent on record -- weather_markets._count_market_implied_
+  rain hit this in 2026-08-02 and was fixed by matching the call
+  convention rather than by allowlisting.
+
+  The loop existed for a real reason (reviewer B #7: the sweep body is one
+  try/except with a `finally` that stamps the 7-day marker, so an unguarded
+  exception from any one pruner would skip the VACUUM and suppress the
+  whole sweep for another week). Unrolling preserves that per-pruner
+  isolation -- but NOTHING WAS TESTING IT, so collapsing the guards back
+  would have been a silent regression. Two tests added to
+  TestBatch78MondaySweepWindows: one fails the first pruner and asserts the
+  second, the third and the VACUUM all still run; the mirror fails the
+  SECOND pruner, since guarding only the first would satisfy the other test
+  while still letting the sweep abort.
+
+  Mutation-tested three ways: restoring the loop makes the dead-code scan
+  fail again (so the unroll is what fixes it, not something incidental);
+  removing both guards kills the two new tests; guarding only the first
+  kills the mirror.
+
+  Not changed: the scanner itself. Teaching it to follow a name into a
+  tuple and out through a loop variable is a much larger change to a guard
+  test, with real false-negative risk, to accommodate one indirection that
+  had no reason to exist.
 
 
 [OPEN 2026-08-26 -- found by the opus review (effort=high) of batch-78

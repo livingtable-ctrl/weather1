@@ -3355,6 +3355,104 @@ class TestBatch78MondaySweepWindows:
         # one without the other is a failure rather than a silent divergence.
         assert calls["scan_runs"] == calls["member_values"]
 
+    def test_one_pruner_failing_does_not_take_the_rest_of_the_sweep_down(
+        self, cron_env
+    ):
+        """The property batch-78's reviewer B (#7) required, and which had no
+        test of its own.
+
+        The whole sweep body is one try/except with a `finally` that stamps
+        the 7-day marker, so an unguarded exception from any one pruner would
+        skip the VACUUM *and* suppress the entire sweep for another week --
+        on one warning line. Each pruner is therefore wrapped individually.
+
+        This is pinned now because the structure that used to carry that
+        claim is gone: the two pruners were called through a `for _pruner in
+        (...)` loop, which made both names invisible to
+        tests/test_dead_code_scan.py's call-site scan and got them reported
+        as FULLY DEAD. Unrolling the loop into direct calls fixed the scan
+        and preserves the isolation -- but nothing was checking the
+        isolation, so collapsing the two try/excepts back into one would
+        have been a silent regression.
+        """
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import tracker
+        import trade_cycle
+        import utils
+
+        reached: list[str] = []
+        monday = date(2026, 6, 1)
+        assert monday.weekday() == 0
+
+        def _boom(**_kw):
+            raise RuntimeError("database is locked")
+
+        with (
+            patch.object(utils, "utc_today", return_value=monday),
+            patch.object(trade_cycle, "run_trade_cycle", return_value=None),
+            patch.object(tracker, "prune_ensemble_member_values", side_effect=_boom),
+            patch.object(
+                tracker,
+                "prune_orderbook_depth_snapshots",
+                side_effect=lambda **_kw: reached.append("depth"),
+            ),
+            patch.object(
+                tracker,
+                "prune_scan_runs",
+                side_effect=lambda **_kw: reached.append("scan_runs"),
+            ),
+            patch.object(
+                tracker,
+                "vacuum_database",
+                side_effect=lambda *_a, **_kw: reached.append("vacuum"),
+            ),
+        ):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+
+        # The first pruner blew up; everything downstream of it still ran.
+        assert reached == ["depth", "scan_runs", "vacuum"], reached
+
+    def test_a_later_pruner_failing_also_leaves_the_vacuum_reachable(self, cron_env):
+        """The mirror of the test above. Guarding only the FIRST pruner would
+        satisfy it while still letting the second abort the sweep, so the
+        failure is moved down the chain."""
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import tracker
+        import trade_cycle
+        import utils
+
+        reached: list[str] = []
+        monday = date(2026, 6, 1)
+
+        def _boom(**_kw):
+            raise RuntimeError("database is locked")
+
+        with (
+            patch.object(utils, "utc_today", return_value=monday),
+            patch.object(trade_cycle, "run_trade_cycle", return_value=None),
+            patch.object(
+                tracker,
+                "prune_ensemble_member_values",
+                side_effect=lambda **_kw: reached.append("member_values"),
+            ),
+            patch.object(tracker, "prune_orderbook_depth_snapshots", side_effect=_boom),
+            patch.object(
+                tracker,
+                "prune_scan_runs",
+                side_effect=lambda **_kw: reached.append("scan_runs"),
+            ),
+            patch.object(
+                tracker,
+                "vacuum_database",
+                side_effect=lambda *_a, **_kw: reached.append("vacuum"),
+            ),
+        ):
+            cron._cmd_cron_body(main._build_cron_context(), client)
+
+        assert reached == ["member_values", "scan_runs", "vacuum"], reached
+
     def test_the_call_site_windows_match_the_pruners_own_defaults(self):
         """cron passes every window explicitly, so a default drifting away
         from its call site would be invisible in production AND would make
