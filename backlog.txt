@@ -36561,6 +36561,38 @@ RESOLVED 2026-08-25 (batch-75). Note the "Why not now" paragraph above was
   the FRONT of the list -- the append-only violation -- which the rewritten
   test correctly fails and the original passed.
 
+  RAN LIVE 2026-08-25, against the real predictions.db (backup taken first;
+  a manual snapshot was also kept). Result matched the dry run digit for
+  digit: 106 predictions rows moved to observed_extreme_f, 69 member-score
+  rows re-keyed to metar_lock_extreme, blended 176 -> 107, TOTAL ems row
+  count unchanged at 556 (relabelled, never deleted). Buckets reconciled both
+  before (69+81+1+0+0+25 = 176) and after (0+81+1+0+0+25 = 107). A second run
+  reported all zeros, confirming idempotency against real data rather than
+  only against a fixture.
+
+  Live effect, measured before and after: EXACTLY ONE (city, var) changed.
+  OklahomaCity/max went -7.060F n=10 ACTIVE -> 0.000F n=8 inert, i.e. the
+  corrector drops below its 10-sample floor and reverts to the static table
+  until it re-earns clean samples. 6 of those 10 rows were running extremes,
+  so the correction was measuring the gap between an incomplete observation
+  and a finished day. Denver/max (+0.213, n=10) and NYC/max (+2.536, n=18)
+  were UNCHANGED -- note the opus review's claim that OklahomaCity was "the
+  only (city,var) above the floor" was wrong on the count; those two draw
+  from the icon+gfs fallback branch, not from blended rows. It was right about
+  which one mattered.
+
+  DEAD END, recorded so nobody repeats it: the repair's own output originally
+  advised running `backfill-ensemble-var` first to make the 25 NULL-var
+  blended rows reachable. Run live against exactly those rows it recovered
+  0 of 25 -- 43 rows repo-wide have no matching predictions row or a city-day
+  that traded both a high and a low market (ensemble_member_scores has no
+  ticker to disambiguate), and 6 more collide with an existing dedup slot.
+  Those 25 are permanently unreachable AND harmless: get_dynamic_station_bias
+  filters `var = ?`, which a NULL can never match, and batch-75's
+  NON_MODEL_SCORE_KEYS excludes 'blended' from every per-model query. The
+  misleading hint was corrected in main.py and in backfill_member_actual_temp's
+  own comment, which made the same claim.
+
   NOT DONE, filed separately: several tests write into the REAL data/ dir
   (including one that creates the production .kill_switch); batch-64's
   ensemble_member_values holds synthetic test rows; and cron.report_anomalies

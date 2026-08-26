@@ -10351,8 +10351,23 @@ def backfill_member_actual_temp(
     # get_ensemble_member_accuracy() reads actual_temp with no var filter AND
     # no logged_at window at all, so they never age out. Reported so an
     # operator cannot read "N corrected" as a clean bill of health for the
-    # table -- backfill_ensemble_member_scores_var() is the pass that makes
-    # them reachable, and should be run first.
+    # table.
+    #
+    # CORRECTED 2026-08-25 (batch-75): this used to say
+    # backfill_ensemble_member_scores_var() "is the pass that makes them
+    # reachable, and should be run first". Measured live against the real DB,
+    # it recovers ZERO of them -- 43 rows repo-wide have no matching
+    # predictions row or belong to a city-day that traded BOTH a high and a
+    # low market (ensemble_member_scores has no ticker to disambiguate), and 6
+    # more collide with an existing row in their target dedup slot. Do not
+    # send an operator there expecting a different answer.
+    #
+    # The "NOT inert" warning above still stands, but only for rows of a REAL
+    # model: batch-75's NON_MODEL_SCORE_KEYS now excludes 'blended' (and the
+    # metar_lock_* keys) from get_ensemble_member_accuracy, so the 25 NULL-var
+    # BLENDED rows are inert everywhere -- excluded from the per-model queries
+    # by the key filter, and from get_dynamic_station_bias by its `var = ?`
+    # predicate, which a NULL can never match.
     unreachable = 0
     try:
         with _conn() as con:

@@ -9711,11 +9711,24 @@ def cmd_repair_metar_lockout_rows(dry_run: bool = False) -> None:
             )
         )
     if out["ems_unreachable_null_var"]:
+        # Deliberately does NOT tell the operator to run `backfill-ensemble-var`
+        # first. An earlier version did, and it is a dead end: run live
+        # 2026-08-25 against exactly these rows it recovered 0 of 25 (43 rows
+        # repo-wide have no matching predictions row or a city-day that traded
+        # BOTH a high and a low market, which ensemble_member_scores cannot
+        # disambiguate because it has no ticker; 6 more collide with an
+        # existing row in their target dedup slot). Sending the next operator
+        # to re-run it would burn a cycle for a guaranteed no-op.
         print(
             yellow(
                 f"  {out['ems_unreachable_null_var']} blended row(s) have a NULL "
-                "var and are structurally unreachable by this pass. Run "
-                "`backfill-ensemble-var` first, then re-run this."
+                "var and are structurally unreachable by this pass -- and by "
+                "`backfill-ensemble-var` too, which recovers 0 of them (no "
+                "matching prediction, or a city-day that traded both a high "
+                "and a low market). They are HARMLESS: "
+                "get_dynamic_station_bias filters on `var = ?`, which a NULL "
+                "var can never match, so they have never reached the live "
+                "corrector and never will."
             )
         )
     if out["ems_conflicts"]:
