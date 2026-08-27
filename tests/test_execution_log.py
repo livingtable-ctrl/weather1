@@ -1,6 +1,7 @@
 """Tests for execution_log schema migration and cycle-aware deduplication."""
 
 import json
+import re
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -136,25 +137,30 @@ class TestSchemaVersionMatchesMigrations:
         execution_log.init_log()
         with execution_log._conn() as con:
             cols = {row[1] for row in con.execute("PRAGMA table_info(orders)")}
+        # Derived from _MIGRATIONS rather than hand-listed (batch-89). The
+        # hand-written set this replaces had silently stopped covering
+        # exit_claimed_at (v18) and would have missed entry_prob_precal
+        # (v19) the same way: `expected <= cols` is a subset check, so a
+        # column omitted from the list is not a failure, it is invisible.
+        # Deriving means every future migration is covered on the day it
+        # lands, with no second place to remember to update.
         expected = {
-            "fill_quantity",
-            "error_code",
-            "error_type",
-            "forecast_cycle",
-            "live",
-            "settled_at",
-            "outcome_yes",
-            "pnl",
-            "close_time",
-            "filled_at",
-            "market_mid_at_fill",
-            "replaces_order_id",
-            "peak_profit_pct",
-            "exit_reason",
-            "exit_price",
-            "entry_prob",
-            "closes_position_id",
+            re.search(r"ADD COLUMN (\w+)", sql).group(1)  # type: ignore[union-attr]
+            for sql in execution_log._MIGRATIONS
+            if "ADD COLUMN" in sql
         }
+        # Positive control: the derivation actually produced the columns it
+        # is supposed to, so `expected <= cols` cannot pass vacuously on an
+        # empty set if the regex or the list shape ever changes. Counted
+        # against the ADD COLUMN migrations specifically rather than against
+        # len(_MIGRATIONS), so a future CREATE INDEX migration does not fail
+        # this with a misleading message; the equality still catches a
+        # duplicate column name or a regex that silently stopped matching.
+        add_column_migrations = [
+            sql for sql in execution_log._MIGRATIONS if "ADD COLUMN" in sql
+        ]
+        assert len(expected) == len(add_column_migrations)
+        assert {"entry_prob", "entry_prob_precal", "exit_claimed_at"} <= expected
         assert expected <= cols
 
     def test_genuine_operational_error_is_not_swallowed(self, monkeypatch):

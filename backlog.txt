@@ -43719,7 +43719,11 @@ When to revisit:
 [OPEN 2026-08-26 -- surfaced by batch-87's opus review. Deliberately NOT
   fixed there: the first is an operational sequencing decision the user has to
   make, and the second needs its own measurement rather than a code change.]
-  TWO THINGS TO SETTLE BEFORE THE ANALYSIS CALIBRATION'S FIRST LIVE SCAN
+  IS THE d>=1 POPULATION THE CALIBRATION IS FITTED ON ITSELF SELECTED?
+  (was: TWO THINGS TO SETTLE BEFORE THE ANALYSIS CALIBRATION'S FIRST LIVE
+  SCAN -- item A, the deployment-day mass exit, RESOLVED 2026-08-26 by
+  batch-89; only item B remains, and the title is renamed to match what
+  is actually still open rather than describing a scope that has shrunk)
 Priority: MEDIUM. Neither blocks the code, both bite on the day it runs.
 Files: paper.py (check_model_exits), tracker.py
   (get_analysis_calibration_data's population).
@@ -43809,6 +43813,119 @@ When to revisit: A before the next live-ish scan; B at the 60-day mark
   (~2026-10-25) alongside the seasonal re-measure, or sooner if anyone wants
   to cite the calibration's numbers as evidence about the unbiased population
   rather than about the fit.
+
+  ITEM A RESOLVED 2026-08-26 (batch-89). Item B is untouched and stays OPEN.
+
+  THIS ENTRY NAMED THE WRONG FUNCTION. It said paper.check_model_exits would
+  liquidate open positions. That function cannot liquidate anything: its only
+  non-test callers are cmd_brief (display) and the Paper > Exit-signals menu,
+  which asks y/N per position, and cmd_watch was deliberately migrated OFF it
+  (see main.py's own comment above its _check_early_exits call). The
+  automated vector is order_executor._check_early_exits, run unattended from
+  cron.py and `watch --auto`, and it fires on a 25pp forecast_prob shift
+  (MODEL_EXIT_SHIFT_PP) against entry_prob -- not on a +/-0.10 net_edge
+  crossing. Its live twin is _check_live_model_exits.
+
+  THE REAL DEFECT, which is bigger than "deployment day". entry_prob is
+  analyze_trade's finished forecast_prob AT ENTRY, so its calibration basis
+  is whatever section 9c was doing that day. Comparing it against a
+  differently-based current probability measures 9c's re-basing as if it were
+  a forecast move. That is not a one-time event: 9c is refitted weekly, can
+  decline back to a no-op, stands down while EMOS is active, and never
+  applies at days_out=0 -- four recurring transitions, not one.
+
+  MEASURED, on the fit the next refit will actually write (a=2.5077,
+  b=-0.6624, re-derived read-only from the live 191-row corpus):
+    * max |cal(p) - p| = 0.2516 at p=0.3529, against a 0.25 threshold.
+    * The re-basing ALONE exceeds the threshold for any raw probability in
+      [0.3320, 0.3733].
+    * Over the 58 paper trades recorded at days_out>=1 -- the positions this
+      check re-scores -- entry_prob p25 0.3728 / median 0.4532 / p75 0.5194,
+      and the drift needed to auto-liquidate collapses from 25pp to
+      0.0000 / 0.0229 / 0.0528. At the p25 it fires on NO forecast movement.
+    * Both sides are exposed, not just YES. The fit's fixed point is 0.6081;
+      below it a NO position's measured shift is INFLATED. 4 of the 7 open
+      positions on 2026-08-26 were NO, at 0.4603 / 0.2052 / 0.3893 / 0.5357.
+    * Timing gates narrow it: >=12h held AND >=24h to close, which only 17 of
+      58 (29%) multi-day trades have ever satisfied.
+
+  A DESIGN THAT LOOKS RIGHT AND IS WORSE THAN NOTHING -- do not re-propose
+  it. The obvious fix is a predicate comparing the position's entered_at
+  against the calibration's fitted_at, reading pre-fit positions on the raw
+  basis. fit_and_save_analysis_calibration REWRITES fitted_at on every
+  successful weekly refit, so a week later that predicate reads positions
+  entered under fit #1 as pre-calibration. Worked example, arithmetic
+  executed: a NO position entered at raw 0.30 stores entry_prob =
+  cal(0.30) = 0.0580; the raw model drifts to 0.33 (3pp, nothing); the
+  predicate says "pre-fit" and computes 0.33 - 0.0580 = 0.2720 -> LIQUIDATE.
+  Correct is cal(0.33) - cal(0.30) = 0.0223, and the UNPATCHED code computed
+  exactly that and did nothing. The predicate converts a non-event into a
+  liquidation. Caught by opus review before it shipped.
+
+  WHAT SHIPPED. Store the pre-9c probability at entry (entry_prob_precal) and
+  compare precal-against-precal, so both sides sit on one basis regardless of
+  which regime each was recorded under. New shared helper
+  positions.exit_comparison_probs(), used by BOTH checkers so they cannot
+  drift apart again, with three branches in a load-bearing order:
+    1. analysis carries no forecast_prob_precal -> compare forecast_prob.
+       The precip/snow/rain/hurricane/tornado/hourly analysers return before
+       9c and none of their families are in _DAILY_TEMP_TICKER_PREFIXES, so
+       9c could never have applied and this is exact, not a fallback. Tested
+       FIRST -- testing the stored field first skips every one of those
+       families forever.
+    2. a stored entry_prob_precal -> raw against raw.
+    3. neither -> return None, skipping the model-flip check for that
+       position only, with a throttled warning. Refuses to act on an unknown
+       basis. Stop-loss, breakeven and expiry are unaffected.
+  Plus: execution_log v19 (APPENDED -- the list is positional, so inserting
+  next to entry_prob at v16 would make every DB past that version skip the
+  column forever), _SCHEMA_VERSION 18->19, Position.entry_prob_precal, both
+  store adapters, 6 write sites, and `basis=` on both [EarlyExit] and
+  [LiveModelExit] log lines so an operator can reconcile them.
+
+  WHY THE RAW BASIS AND NOT THE CALIBRATED ONE (reviewer proposed the
+  alternative). Running both sides through the CURRENT fit is equally
+  basis-stable. Rejected because MODEL_EXIT_SHIFT_PP=0.25 was tuned on the
+  raw scale and predates 9c; the fit's slope is 2.51, so mid-range
+  differences are ~2.5x larger calibrated and the same constant silently
+  becomes a much tighter gate. Re-deriving that threshold for the calibrated
+  scale is a separate measurable question -- filed below.
+
+  FOUND WHILE BUILDING IT, all fixed here:
+    * A missed positional call site. entry_prob_precal was inserted BETWEEN
+      entry_prob and net_edge, and main.py's `paper buy` passed both
+      positionally -- silently rebinding net_edge (0.03-0.20) into
+      entry_prob_precal, which then reads as a ~0.25 shift against any real
+      current probability and auto-liquidates on the next scan, while
+      net_edge itself was recorded as None. mypy could not see it (both are
+      Any) and no test could (every cmd_paper test runs without a client, so
+      both values are None). place_paper_order's parameters after
+      entry_price are now KEYWORD-ONLY. Found in round-2 opus review.
+    * _SCHEMA_VERSION was left at 18 -- the repo's own existing schema test
+      caught it.
+    * Two test fixtures that passed for the wrong reason: a market quoted
+      with yes_bid only, which makes liquidation_price return None for every
+      NO position (so three "no exit" assertions were measuring an unpriceable
+      book), and a both-sides-calibrated live fixture that computed 0.0223
+      under the OLD code too. Both found by their own positive controls.
+    * _check_live_model_exits had NO behavioural test at all -- every
+      existing reference stubs it as `lambda *a, **kw: 0` -- so reverting its
+      call site failed nothing. Three added.
+    * test_execution_log's migrated-columns set was hand-listed and had
+      already drifted (missing exit_claimed_at, v18); `expected <= cols`
+      makes an omission invisible. Now derived from _MIGRATIONS.
+
+  TESTS: 354 -> 378 collected across test_early_exits/test_execution_log/
+  test_positions/test_paper (+24). Scoped suite 880 passed. Every new guard
+  mutation-tested individually; the two that survived their first mutation
+  were rewritten until they discriminated.
+
+  WHAT THIS DOES NOT FIX: the 7 positions open on 2026-08-26 have no
+  entry_prob_precal, so they are skipped by the model-flip check. In practice
+  that window is empty -- all 7 settle 2026-08-27 and the first fit is not
+  due until ~2026-08-31 (cron's D5 marker was last touched 2026-08-25 11:52,
+  +6 days). Also unfixed by design: the dashboard manual-approval route and
+  micro-live -- filed as their own entry below.
 
 
 [OPEN 2026-08-26 -- found by batch-87 while landing the analysis_attempts
@@ -44390,3 +44507,66 @@ When to revisit:
   -$213.17, which does not make it wrong to do, but does set what success can
   look like. And before any decision that treats D+0 as the problem: D+0 is
   where both the wins and the losses are.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-89 while landing entry_prob_precal.
+  Deliberately NOT fixed there: the first needs an API + frontend change
+  rather than a call-site one, and the second is pre-existing and unrelated
+  to the calibration.]
+  TWO ROUTES STILL RECORD A POSITION WITH NO CALIBRATION BASIS, SO THEIR
+  MODEL-FLIP EXIT CHECK IS SKIPPED PERMANENTLY
+Priority: MEDIUM. Neither is a correctness bug today; both are silent holes
+  in a safety check that everything else now goes through.
+Files: web_app.py (the manual-approval paper-order route),
+  order_executor.py (the micro-live placement), positions.py
+  (exit_comparison_probs, which is what does the skipping).
+
+1. THE DASHBOARD MANUAL-APPROVAL ROUTE. web_app.py's paper-order endpoint
+   takes entry_prob from the REQUEST PAYLOAD -- it has no analysis dict, and
+   forecast_prob_precal is not on that wire. So it cannot pass
+   entry_prob_precal, exit_comparison_probs returns None for those positions,
+   and they are exempt from the model-flip exit for as long as they are open.
+   Unlike the legacy-row case this does NOT drain: every future manual
+   approval has the same hole. Closing it means putting the pre-calibration
+   probability on the API response the dashboard renders and back on the
+   order payload -- a frontend change, which is why it was not stretched into
+   batch-89. The warning is throttled to one line per (log_tag, ticker) per
+   process, so this will not be loud about itself.
+
+2. MICRO-LIVE WRITES live=1 ROWS WITH NEITHER entry_prob NOR
+   entry_prob_precal. Pre-existing, and NOT a regression from batch-89: those
+   positions were already excluded from _check_live_model_exits by its
+   existing `if entry_prob is None: continue`. Worth recording because an
+   exhaustive audit of "which live positions are model-flip protected" should
+   name it -- the answer is currently "none placed by micro-live, ever".
+
+When to revisit: 1 whenever the dashboard's order payload is next touched;
+  2 before micro-live is armed for anything real.
+
+
+[OPEN 2026-08-26 -- raised by opus review of batch-89 as the alternative
+  design, and worth measuring on its own rather than assuming either answer.]
+  MODEL_EXIT_SHIFT_PP WAS TUNED ON THE RAW PROBABILITY SCALE AND HAS NEVER
+  BEEN RE-DERIVED FOR THE CALIBRATED ONE
+Priority: LOW until section 9c has a real fit live; MEDIUM after.
+Files: utils.py (MODEL_EXIT_SHIFT_PP), positions.py
+  (exit_comparison_probs' basis choice), order_executor.py (both checkers).
+
+batch-89 made both sides of the model-flip comparison sit on the PRE-9c
+  scale, which is basis-stable and preserves the 0.25 threshold's original
+  meaning. The reviewer's alternative -- run both sides through the CURRENT
+  fit instead -- is equally basis-stable and keeps the calibrated
+  sensitivity, and was rejected only because it would silently retune the
+  gate: the fit's slope is 2.51, so mid-range differences are roughly 2.5x
+  larger on the calibrated scale and an unchanged 0.25 constant becomes a far
+  tighter trigger than anyone chose.
+
+That is an argument for not changing it as a SIDE EFFECT, not an argument
+  that raw is the right scale. The open question is which scale the exit
+  threshold should be measured on at all, and what its value should be there
+  -- answerable from settled history once 9c has been live long enough to
+  have a population: for each closed position, compare the exit decision the
+  two bases would have made against the actual settlement outcome.
+
+Do not change the basis without that measurement; the current choice is
+  documented in exit_comparison_probs' docstring and is deliberate.

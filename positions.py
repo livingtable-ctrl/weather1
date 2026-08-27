@@ -64,6 +64,23 @@ class Position:
     close_time: str | None
     entered_at: str | None
     peak_profit_pct: float | None
+    # batch-89. entry_prob's PRE-section-9c twin, so the model-flip exit
+    # checks can compare entry against current on ONE calibration basis.
+    # entry_prob is analyze_trade's finished forecast_prob at entry, which
+    # means its basis is whatever the analysis calibration was doing that
+    # day; the fit is refitted weekly and can also decline, so "which basis
+    # is this number on" is not answerable from the number itself. Carrying
+    # the uncalibrated value alongside it makes the comparison basis-stable
+    # across the first fit, every refit, a decline, an EMOS toggle and the
+    # days_out rollover -- none of which a timestamp comparison against the
+    # calibration's fitted_at can survive (it reads every position entered
+    # before the LATEST refit as pre-calibration, which for a NO position
+    # below the fit's 0.6081 fixed point INFLATES the measured shift and
+    # liquidates on a few pp of real drift).
+    # Defaulted, because every position recorded before this field existed
+    # has no value for it and must not be silently assumed equal -- see each
+    # exit check's own handling of the None case.
+    entry_prob_precal: float | None = None
 
 
 class PositionStore(Protocol):
@@ -122,6 +139,110 @@ def liquidation_price(
         return bid if bid is not None and bid > 0 else None
     ask = quote.get("ask")
     return (1.0 - ask) if ask is not None and ask > 0 else None
+
+
+# batch-89: tickers already warned about a missing entry_prob_precal, so a
+# long-running `watch --auto` process cannot emit one line per position per
+# cycle forever. Deliberately module-level rather than per-call: cron runs one
+# cycle per process, where a line per affected position per run is the right
+# volume, while cmd_watch loops in a single process and would otherwise repeat
+# the same line indefinitely.
+_WARNED_MISSING_ENTRY_PRECAL: set[tuple[str, str]] = set()
+
+
+def exit_comparison_probs(
+    pos: Position, analysis: dict, log_tag: str
+) -> tuple[float, float, str] | None:
+    """(entry_prob, current_prob, basis) on ONE calibration basis, or None to skip.
+
+    The model-flip exit checks fire on `|current - entry| > MODEL_EXIT_SHIFT_PP`
+    against the held side. `entry_prob` is analyze_trade's finished
+    forecast_prob at entry, so its basis is whatever section 9c's analysis
+    calibration was doing that day -- and 9c is refitted weekly, can decline
+    back to a no-op, stands down while EMOS is active, and does not apply at
+    days_out=0. Comparing a number from one basis against a number from
+    another measures the calibration's own re-basing as if it were a forecast
+    move. Measured on the live corpus (a=2.5077, b=-0.6624) that re-basing
+    reaches 0.2516 against a 0.25 threshold, so it can liquidate a position at
+    book prices on a few pp of real drift -- or none at all. Naming the
+    population, because the two candidates give different numbers and an
+    unnamed one was misread once already: over the 58 PAPER TRADES recorded at
+    days_out>=1 (the positions this check actually re-scores), entry_prob p25
+    0.3728 / median 0.4532 / p75 0.5194, the drift required to auto-liquidate
+    is 0.0000 / 0.0229 / 0.0528. Over the 191-row analysis_attempts fit corpus
+    (p25 0.2317 / median 0.3284) it is unreachable / 0.0007. Either way the
+    re-basing alone exceeds the threshold for any raw probability in
+    [0.3320, 0.3733].
+
+    WHY THE RAW BASIS RATHER THAN THE CALIBRATED ONE. Running both sides
+    through the CURRENT fit instead is equally basis-stable, and was
+    considered. It is rejected because MODEL_EXIT_SHIFT_PP (0.25) was tuned
+    against the raw probability scale and predates section 9c entirely: the
+    fit's slope is 2.51, so mid-range differences are ~2.5x larger on the
+    calibrated scale and the same 0.25 constant would silently become a far
+    tighter gate than anyone chose. Re-deriving that threshold for the
+    calibrated scale is a separate, measurable question; quietly retuning an
+    auto-liquidation gate as a side effect of a basis fix is not.
+
+    Comparing the PRE-9c value on both sides is basis-stable across every one
+    of those transitions at once, which is why this keys off a stored
+    `entry_prob_precal` rather than off a timestamp. A timestamp comparison
+    against the calibration's `fitted_at` looks equivalent and is not: it
+    reads every position entered before the LATEST refit as pre-calibration,
+    and for a NO position below the fit's 0.6081 fixed point that INFLATES the
+    measured shift rather than shrinking it -- turning a 3pp non-event into a
+    liquidation, which is strictly worse than leaving the mismatch alone.
+
+    The three cases, in the order they must be tested:
+
+    * No `forecast_prob_precal` on the analysis at all. The precip/snow/rain/
+      hurricane/tornado/hourly analysers return before section 9c and build
+      their own result dicts, and none of their families are in
+      tracker._DAILY_TEMP_TICKER_PREFIXES, so 9c could never have applied to
+      them. Both sides are raw; comparing forecast_prob is exact, not a
+      fallback. Tested FIRST -- testing the stored field first would skip
+      every one of those markets forever.
+    * A stored `entry_prob_precal`. The correct path: raw against raw.
+    * Neither -- a position recorded before this field existed, or by a write
+      site that does not pass it. Returns None: refuse to act on an unknown
+      basis. The caller skips its model-flip check for that position only;
+      stop-loss, breakeven and expiry checks are unaffected. Chosen over
+      assuming the two are equal because that assumption is only true until
+      the first fit lands, and a write site missed later would go quiet
+      instead of loud.
+    """
+    entry = pos.entry_prob
+    if entry is None:
+        return None
+    precal_now = analysis.get("forecast_prob_precal")
+    if precal_now is None:
+        return (entry, analysis.get("forecast_prob", entry), "raw_family")
+    entry_precal = pos.entry_prob_precal
+    if entry_precal is None:
+        ticker = pos.ticker or "?"
+        # Keyed on (log_tag, ticker), not ticker alone: cron runs
+        # _check_live_model_exits and _check_early_exits in the SAME process,
+        # so a live position on ticker X would otherwise silence the paper
+        # position on X later in the same cycle -- the one case where the two
+        # checkers genuinely need separate lines. `pos.ticker or "?"` also
+        # collapses every unticketed position onto one key, which the tag
+        # split at least halves.
+        key = (log_tag, ticker)
+        if key not in _WARNED_MISSING_ENTRY_PRECAL:
+            _WARNED_MISSING_ENTRY_PRECAL.add(key)
+            _log.warning(
+                "%s %s has no entry_prob_precal -- skipping the model-flip "
+                "exit check for it. Its entry_prob is on an unknown "
+                "calibration basis, and comparing it against a calibrated "
+                "current probability can liquidate on the re-basing alone. "
+                "Expected only for positions opened before the field existed; "
+                "if it persists past those draining, a write site is not "
+                "passing it.",
+                log_tag,
+                ticker,
+            )
+        return None
+    return (entry_precal, precal_now, "precal")
 
 
 def _passes_exit_gates(

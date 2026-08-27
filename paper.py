@@ -1148,7 +1148,25 @@ def place_paper_order(
     side: str,  # "yes" or "no"
     quantity: int,
     entry_price: float,
+    # batch-89: everything below is KEYWORD-ONLY. Inserting entry_prob_precal
+    # between entry_prob and net_edge silently rebound one production call
+    # site's 6th positional argument (main.py's `paper buy`), storing a
+    # net_edge as a probability basis -- which then measures as a ~0.25 shift
+    # against any real current probability and auto-liquidates the position on
+    # the next exit scan. mypy could not see it (both values are Any) and no
+    # test could, because every cmd_paper test runs without a client and so
+    # passes None for both. The `*` makes that class of mistake a TypeError
+    # instead of a silent rebinding, for this insertion and every future one.
+    *,
     entry_prob: float | None = None,
+    # batch-89: analyze_trade's forecast_prob BEFORE section 9c, recorded
+    # alongside entry_prob so the model-flip exit checks can compare entry
+    # against current on one calibration basis. See positions.Position's
+    # own field comment for why a timestamp comparison cannot do this job.
+    # None on any caller with no analysis dict to read it from (the manual
+    # web_app entry path), and on the analyser fast paths that return before
+    # section 9c and so were never calibrated at all.
+    entry_prob_precal: float | None = None,
     net_edge: float | None = None,
     city: str | None = None,
     target_date: str | None = None,  # ISO format "2026-04-09"
@@ -1194,6 +1212,10 @@ def place_paper_order(
         raise ValueError(f"side must be 'yes' or 'no', got {side!r}")
     if entry_prob is not None and not (0.0 <= entry_prob <= 1.0):
         raise ValueError(f"entry_prob must be in [0, 1], got {entry_prob}")
+    if entry_prob_precal is not None and not (0.0 <= entry_prob_precal <= 1.0):
+        raise ValueError(
+            f"entry_prob_precal must be in [0, 1], got {entry_prob_precal}"
+        )
     if not (0.0 < entry_price <= 1.0):
         raise ValueError(f"entry_price must be in (0, 1], got {entry_price}")
 
@@ -1300,6 +1322,7 @@ def place_paper_order(
             "quantity": quantity,
             "entry_price": entry_price,
             "entry_prob": entry_prob,
+            "entry_prob_precal": entry_prob_precal,
             "net_edge": net_edge,
             "cost": cost,
             "city": city,
@@ -1885,6 +1908,7 @@ def _trade_to_position(t: dict) -> Position:
         entry_price=entry_price,
         cost=t.get("cost") or entry_price * qty,
         entry_prob=t.get("entry_prob"),
+        entry_prob_precal=t.get("entry_prob_precal"),
         close_time=t.get("close_time") or t.get("expires_at"),
         entered_at=t.get("entered_at"),
         peak_profit_pct=t.get("peak_profit_pct"),

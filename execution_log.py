@@ -51,7 +51,7 @@ _append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 # only has the columns that predate this list; every column added since is
 # expressed as its own migration, matching tracker.py's convention of never
 # touching the base CREATE TABLE again once versioning exists.
-_SCHEMA_VERSION = 18  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 19  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",  # v1
@@ -72,6 +72,11 @@ _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN entry_prob REAL",  # v16
     "ALTER TABLE orders ADD COLUMN closes_position_id INTEGER",  # v17
     "ALTER TABLE orders ADD COLUMN exit_claimed_at TEXT",  # v18
+    # batch-89: entry_prob's PRE-section-9c twin. Appended, never inserted --
+    # this list is positional (version = index + 1), so placing it next to
+    # entry_prob at v16 would renumber everything after it and every DB
+    # already past that version would skip the new column forever.
+    "ALTER TABLE orders ADD COLUMN entry_prob_precal REAL",  # v19
 ]
 
 
@@ -212,6 +217,7 @@ def log_order(
     close_time: str | None = None,
     replaces_order_id: int | None = None,
     entry_prob: float | None = None,
+    entry_prob_precal: float | None = None,
     closes_position_id: int | None = None,
 ) -> int:
     """
@@ -227,6 +233,12 @@ def log_order(
     against the held position (mirrors paper.py's place_paper_order
     entry_prob field). None for a replacement/reprice order — the position's
     entry_prob was already captured on the original placement it replaces.
+
+    entry_prob_precal: the same probability BEFORE section 9c's analysis
+    calibration, so _check_live_model_exits can compare entry against current
+    on one calibration basis rather than measuring the calibration's own
+    re-basing as a forecast move. Follows entry_prob exactly: same source
+    (analyze_trade's result), same None-on-reprice rule.
 
     closes_position_id: id of the OPEN POSITION row (an earlier entry order)
     this order was placed to close, if any -- set only by
@@ -247,8 +259,9 @@ def log_order(
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
                placed_at, fill_quantity, error_code, error_type, forecast_cycle, live,
-               close_time, replaces_order_id, entry_prob, closes_position_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               close_time, replaces_order_id, entry_prob, entry_prob_precal,
+               closes_position_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -268,6 +281,7 @@ def log_order(
                 close_time,
                 replaces_order_id,
                 entry_prob,
+                entry_prob_precal,
                 closes_position_id,
             ),
         )

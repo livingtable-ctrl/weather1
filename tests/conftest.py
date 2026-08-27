@@ -923,6 +923,25 @@ def isolate_metar_calibration_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def reset_missing_entry_precal_warnings():
+    """Clear positions._WARNED_MISSING_ENTRY_PRECAL between tests (batch-89).
+
+    The set is module-level and deliberately never cleared in production --
+    it is what stops cmd_watch's single long-running process re-emitting the
+    same warning per position per cycle. In tests that same persistence makes
+    any assertion about the warning order-dependent: whichever test runs
+    first consumes the (log_tag, ticker) key and every later one sees
+    silence. The new tests clear it by hand; this fixture means a future test
+    in another file does not have to know that.
+    """
+    import positions
+
+    positions._WARNED_MISSING_ENTRY_PRECAL.clear()
+    yield
+    positions._WARNED_MISSING_ENTRY_PRECAL.clear()
+
+
+@pytest.fixture(autouse=True)
 def isolate_analysis_calibration_path(tmp_path, monkeypatch):
     """Redirect ml_bias._ANALYSIS_CAL_PATH and null its read cache (batch-87).
 

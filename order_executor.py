@@ -2532,6 +2532,7 @@ def _get_live_open_positions(include_unfilled: bool = False) -> list[dict]:
                 "close_time": r.get("close_time"),
                 "peak_profit_pct": r.get("peak_profit_pct"),
                 "entry_prob": r.get("entry_prob"),
+                "entry_prob_precal": r.get("entry_prob_precal"),
                 "city": city,
                 "target_date": target_date.isoformat() if target_date else None,
                 "days_out": days_out,
@@ -2560,6 +2561,7 @@ def _live_dict_to_position(d: dict) -> Position:
         entry_price=d["entry_price"],
         cost=d["cost"],
         entry_prob=d.get("entry_prob"),
+        entry_prob_precal=d.get("entry_prob_precal"),
         close_time=d.get("close_time"),
         entered_at=d.get("entered_at"),
         peak_profit_pct=d.get("peak_profit_pct"),
@@ -3102,6 +3104,13 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     than extending _check_early_exits itself, to avoid any risk of
     regressing the existing, already-relied-on paper-only path.
 
+    Batch-89 added a fourth shared gate: both functions now take their
+    (entry, current) pair from positions.exit_comparison_probs(), so the
+    shift is measured on one calibration basis rather than across section
+    9c's re-basing. It is a shared helper rather than duplicated logic
+    specifically so this docstring's "mirrors that function's exact gates"
+    claim cannot quietly stop being true again.
+
     Positions with entry_prob=None (placed before that field existed, or a
     reprice/replacement row) are skipped, same as _check_early_exits does
     for paper trades missing entry_prob.
@@ -3124,7 +3133,7 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     cycle = _current_forecast_cycle()
     store = LivePositionStore(client, cycle)
 
-    from positions import _passes_exit_gates
+    from positions import _passes_exit_gates, exit_comparison_probs
 
     closed = 0
     for d in raw_positions:
@@ -3155,7 +3164,12 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
             analysis = analyze_trade(enriched)
             if not analysis:
                 continue
-            current_prob = analysis.get("forecast_prob", entry_prob)
+            # batch-89: same one-basis comparison the paper path uses, via
+            # the shared helper so the two cannot drift apart again.
+            _probs = exit_comparison_probs(pos, analysis, "[LiveModelExit]")
+            if _probs is None:
+                continue
+            entry_prob, current_prob, _basis = _probs
 
             if side == "yes":
                 shift = entry_prob - current_prob
@@ -3189,11 +3203,13 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
                     continue
                 if store.exit(pos, exit_price, "model_exit"):
                     _log.info(
-                        "[LiveModelExit] %s %s closed: entry_prob=%.2f current=%.2f",
+                        "[LiveModelExit] %s %s closed: entry_prob=%.2f "
+                        "current=%.2f basis=%s",
                         ticker,
                         side.upper(),
                         entry_prob,
                         current_prob,
+                        _basis,
                     )
                     closed += 1
         except Exception as exc:
@@ -3336,6 +3352,7 @@ def _place_live_order(
         live=True,
         close_time=market.get("close_time") or market.get("expiration_time"),
         entry_prob=analysis.get("forecast_prob"),
+        entry_prob_precal=analysis.get("forecast_prob_precal"),
     )
 
     # 6. Place order
@@ -3611,7 +3628,7 @@ def _check_early_exits(client=None) -> int:
     """
     import paper as _paper
     from paper import get_open_trades
-    from positions import _passes_exit_gates
+    from positions import _passes_exit_gates, exit_comparison_probs
 
     if client is None:
         return 0  # cannot fetch live market prices without a client
@@ -3651,7 +3668,13 @@ def _check_early_exits(client=None) -> int:
             analysis = analyze_trade(enriched)
             if not analysis:
                 continue
-            current_prob = analysis.get("forecast_prob", entry_prob)
+            # batch-89: put both sides of the shift on one calibration basis.
+            # Returns None when the basis cannot be established, which skips
+            # this position's model-flip check only -- see the helper.
+            _probs = exit_comparison_probs(pos, analysis, "[EarlyExit]")
+            if _probs is None:
+                continue
+            entry_prob, current_prob, _basis = _probs
 
             # Shift direction check
             if side == "yes":
@@ -3692,10 +3715,22 @@ def _check_early_exits(client=None) -> int:
                     )
                     continue
                 result = store.exit(pos, exit_price)
+                # basis= names which probability BOTH of these numbers are.
+                # As of batch-89 entry_prob here is the value actually
+                # compared, not necessarily the one stored on the trade: on
+                # the "precal" basis both sides are the pre-section-9c
+                # values, so the line reports the pair the decision was
+                # really made on. Printing the stored entry_prob next to a
+                # precal current would put two different bases on one line
+                # and make the shift unreconstructable from the log. Without
+                # the marker an operator checking this against the dashboard
+                # (which shows the calibrated probability) sees an
+                # unexplained mismatch on the one record that says why a
+                # position was liquidated.
                 _log.info(
                     f"[EarlyExit] #{pos.id} {ticker} {side.upper()} closed: "
                     f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
-                    f"pnl=${result['pnl']:.2f}"
+                    f"basis={_basis} pnl=${result['pnl']:.2f}"
                 )
                 closed += 1
         except Exception as exc:
@@ -5288,6 +5323,7 @@ def _auto_place_trades(
                     qty,
                     entry_price,
                     entry_prob=a.get("forecast_prob"),
+                    entry_prob_precal=a.get("forecast_prob_precal"),
                     net_edge=a.get("net_edge"),
                     city=city,
                     target_date=target_date_str,

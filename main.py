@@ -3290,6 +3290,9 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                         else None
                     ),
                     entry_prob=(analysis.get("forecast_prob") if analysis else None),
+                    entry_prob_precal=(
+                        analysis.get("forecast_prob_precal") if analysis else None
+                    ),
                     forecast_cycle=order_executor._current_forecast_cycle(),
                 )
                 try:
@@ -3966,6 +3969,7 @@ def cmd_today(client: KalshiClient) -> None:
                         _qty1,
                         _entry_price1,
                         entry_prob=best_a["forecast_prob"],
+                        entry_prob_precal=best_a.get("forecast_prob_precal"),
                         net_edge=best_a.get("net_edge"),
                         city=best_m.get("_city"),
                         target_date=best_a.get("target_date"),
@@ -6141,6 +6145,9 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         ),
         close_time=_market.get("close_time") if _market else None,
         entry_prob=_analysis.get("forecast_prob") if _analysis else None,
+        entry_prob_precal=(
+            _analysis.get("forecast_prob_precal") if _analysis else None
+        ),
         forecast_cycle=_cycle,
     )
     _placed_order: dict | None = None
@@ -6768,6 +6775,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                     _record_count,
                     price,
                     entry_prob=_analysis.get("forecast_prob"),
+                    entry_prob_precal=_analysis.get("forecast_prob_precal"),
                     net_edge=_analysis.get("net_edge"),
                     city=_city,
                     target_date=_target_date_str,
@@ -11863,8 +11871,20 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 side,
                 qty,
                 price,
-                entry_prob,
-                net_edge,
+                # batch-89: keyword, not positional. These two used to be the
+                # 5th and 6th positional arguments, and inserting
+                # entry_prob_precal between them in place_paper_order's
+                # signature silently rebound net_edge to it -- storing an
+                # edge (0.03-0.20) as a probability basis, which then reads
+                # as a ~0.25 shift against any real current probability and
+                # auto-liquidates the position on the next exit scan. Caught
+                # in round-2 review; place_paper_order's parameters after
+                # entry_price are now keyword-only so it cannot recur.
+                entry_prob=entry_prob,
+                entry_prob_precal=(
+                    analysis.get("forecast_prob_precal") if analysis else None
+                ),
+                net_edge=net_edge,
                 city=city,
                 target_date=target_date_str,
             )

@@ -4187,6 +4187,17 @@ setInterval(() => {{
                     quantity=quantity,
                     entry_price=entry_price,
                     entry_prob=float(entry_prob) if entry_prob is not None else None,
+                    # batch-89: deliberately NOT passing entry_prob_precal.
+                    # entry_prob arrives here in the request payload, having
+                    # come from a signal the dashboard rendered -- the
+                    # pre-section-9c twin is not on that wire, and putting it
+                    # there is an API + frontend change, not a call-site one.
+                    # Consequence, and it is the designed one rather than an
+                    # oversight: positions opened through this route have no
+                    # stored basis, so positions.exit_comparison_probs skips
+                    # their model-flip exit check and says so once per ticker.
+                    # Stop-loss, breakeven and expiry are unaffected. Filed as
+                    # its own backlog entry.
                     net_edge=float(net_edge) if net_edge is not None else None,
                     city=city,
                     target_date=target_date,
