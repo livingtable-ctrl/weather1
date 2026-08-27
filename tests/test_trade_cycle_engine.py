@@ -2528,10 +2528,13 @@ class TestBannerReflectsActualPlacementCount:
     """backlog.txt "STRONG/MED SIGNAL BANNER OVERCLAIMS 'PLACING PAPER
     TRADES' WHEN 0 ACTUALLY GET PLACED" -- ctx.auto_place_trades() can find
     N candidates during analysis but place fewer of them (a whole-batch
-    skip like a position cap, or a per-candidate rejection like a strategy
+    skip like a daily-loss halt, or a per-candidate rejection like a strategy
     retirement mid-cycle -- as happened live on 2026-08-05 when the
     `ensemble` method retired mid-cycle -- can each invalidate candidates
-    between analysis and placement). The banner must describe what
+    between analysis and placement). The position cap, once the obvious
+    example of the whole-batch kind, is as of batch-85 item 1 BOTH: a
+    pre-loop fast path and a per-placement check, so it is no longer a clean
+    illustration of either category. The banner must describe what
     actually got placed, not just the pre-placement candidate count, and
     must NOT claim a specific cause it doesn't actually know."""
 

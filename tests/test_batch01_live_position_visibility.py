@@ -860,10 +860,21 @@ class TestAutoPlaceTradesLiveConcentrationCap:
         Tests the concentration cap directly via its own distinctive log
         message instead of depending on the full signal-scoring pipeline
         (kelly/spread/liquidity/consensus multipliers) succeeding end to
-        end -- MAX_CONCURRENT_POSITIONS' own check
-        (`len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS`) runs ONCE,
-        before any per-candidate sizing, purely off the list length, so
-        this message firing (or not) isolates that one check specifically.
+        end -- the PRE-LOOP `len(_open_trades_list) >= MAX_CONCURRENT_
+        POSITIONS` check runs before any per-candidate sizing, purely off
+        the list length, so this message firing (or not) isolates that one
+        check specifically.
+
+        batch-85 item 1 note: the cap is no longer checked only once. It is
+        now ALSO re-checked per placement inside the loop, so "runs ONCE"
+        (as this docstring previously said) is stale. That does not weaken
+        this test -- the per-placement check appends a `position_cap(n/n)`
+        skip reason and never prints "Position cap reached", which remains
+        unique to the pre-loop check being asserted here. What it does mean
+        is that this test now isolates the pre-loop check specifically
+        rather than the cap in general; the cap's VALUE is pinned by
+        TestMaxConcurrentPositions in tests/test_trade_improvements.py.
+
         Positive control: with zero existing positions, the message does
         NOT fire (even though the trade may still not place for unrelated
         reasons, e.g. the print further down for placed=0 will differ)."""

@@ -2,6 +2,37 @@ BACKLOG — future improvements to implement when ready
 ======================================================
 
 
+[OPEN 2026-08-26 -- opus review of batch-85, LOW-5. Filed rather than fixed
+  ONLY because batch-85 did not own cron.py (batch-86 held it in parallel);
+  it is a one-sentence docstring edit, not a design question.]
+  cron._placement_outcome_phrase's DOCSTRING STILL CALLS THE POSITION CAP A
+  WHOLE-BATCH-ONLY SKIP
+Priority: Low -- docstring accuracy only. No behaviour, no output, no
+  operator-facing text is wrong; the function's actual advice ("do NOT name a
+  specific cause, point at order_executor's own printed lines") stays correct
+  and in fact got MORE accurate, since the cap now also emits a per-signal
+  "[Auto] Skipped N signal(s): <ticker>: position_cap(n/cap)(logged=<bool>)"
+  line.
+Files: cron.py:1121-1122.
+
+Problem:
+  The docstring enumerates the causes a tier's `placed` can fall short of
+  `found`, splitting them into "a whole-batch skip (drawdown pause,
+  daily-loss halt, position cap, spend cap) that never even reaches a
+  per-candidate check" versus "a per-candidate rejection (already-open,
+  stale price, ...)". As of batch-85 item 1 the position cap is BOTH: a
+  pre-loop whole-batch fast path AND a per-placement check inside the loop.
+  So "position cap" now sits in the wrong half of that sentence.
+
+  Note the same sentence already lists "spend cap", which has been both for
+  longer -- the split was loose before this change too, so the fix is worth
+  doing once for both rather than only for the cap.
+
+What it would look like:
+  Move "position cap"/"spend cap" out of the whole-batch parenthetical, or
+  add a clause noting those two appear in both categories. One sentence.
+
+
 [OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS
   SKIPPED ENTIRELY AT days_out=0
 Priority: Medium -- live today for `between` same-day markets, and structural
@@ -34470,8 +34501,10 @@ Resolution (2026-08-24):
 
 [OPEN 2026-08-24 -- filed per batch-49 item 2's own instruction to note the linkage] Queue-position data now exists (execution_log.queue_positions) but nothing reads it back into a reprice/chase decision
 Priority: LOW (data now exists as a forward guard; no decision logic built yet)
-Files: order_executor.py (_reprice_or_cancel_pending_orders, order_executor.py:779 as of 2026-08-24 -- the
-  EXISTING price-movement-triggered reprice-or-cancel logic, unrelated to this item)
+Files: order_executor.py (_reprice_or_cancel_pending_orders, order_executor.py:2125 as of 2026-08-26 --
+  the EXISTING price-movement-triggered reprice-or-cancel logic, unrelated to this item. The ":779 as of
+  2026-08-24" this line carried until 2026-08-26 was ~1350 lines stale and had already been copied
+  forward into batch-85's handoff prompt; re-locate by symbol, not by line.)
 
 Problem:
   batch-49 item 2 (see RESOLVED entry immediately above) added read-only queue-position logging at
@@ -34490,6 +34523,40 @@ Recommendation:
   queue position at placement/poll meaningfully predicts fill outcome, and if so design the actual decision
   rule as its own scoped batch. Do not build this speculatively without real data -- exactly the trap this
   batch's own dossier warned against ("keep it small... may never fire").
+
+Decision 2026-08-26 (batch-85 item 2) -- DELIBERATELY LEFT UNBUILT, entry STAYS OPEN:
+  Batch-85 was handed this item with an explicit instruction to ask before writing anything, since "what
+  should consume it" is a design question and a plausible-looking consumer wired in without a decision is
+  worse than an honest gap. Asked, with three options on the table (reprice aggressiveness, cancel timing,
+  nothing yet). Answer: nothing yet. That matches this entry's own Recommendation above, which is why the
+  Recommendation is left standing verbatim rather than rewritten.
+
+  THE MEASUREMENT that makes it not a judgment call. Queried data/execution_log.db directly:
+
+      queue_positions rows                : 0
+      distinct exchange_order_ids         : 0
+      rows with a non-NULL queue_position : 0
+      orders with status='pending'        : 0
+
+  So there is not merely "not enough" history -- there is NONE. Live trading has never left an order
+  resting long enough to log a single observation. Any threshold, weight or urgency curve wired in today
+  would be a number chosen from zero observations and then defended by the fact that it is in the code.
+
+  REOPENING PRECONDITION, so the next session does not have to re-derive this: enough non-NULL
+  queue_position rows, spread across enough distinct exchange_order_ids and both `source` values
+  ("placement" and "poll"), to test whether queue position at placement predicts fill outcome at all --
+  which requires LIVE_TRADING_ENABLED to have been set and maker orders to have actually rested. Until
+  that query returns something, this entry is a data-collection wait, not an implementation task. Note
+  also that the observation is only useful paired with the order's outcome, and the time series (multiple
+  "poll" rows per order) is what would show queue position IMPROVING or not -- a single placement-time
+  snapshot is much weaker evidence than the schema is capable of carrying.
+
+  SCOPE BAR: the project has since been measured against the market and found to have no edge, and
+  realised P&L agrees (the ensemble path is -$213.17 lifetime; see "PROJECT DIRECTION AFTER THE NO-EDGE
+  RESULT"). This item is fill-quality instrumentation, not a forecast signal, so the no-edge result does
+  not by itself kill it -- but it does mean building a new decision input here would be exactly the kind
+  of speculative expansion that result argues against. Nothing was written for this item: no production
+  code, no tests, no schema change.
 
 [RESOLVED 2026-08-24 -- go/no-go FAILED, google_weathernext2_ensemble NOT onboarded, zero code changed] GOOGLE WEATHERNEXT 2 TRACK-ONLY ONBOARDING -- GATE FAILED
 Priority: Low -- batch-50 Item 1 (dossier B5, score 7.5 rank 4). Not the same
@@ -42007,8 +42074,9 @@ What it would look like:
   rendered as "did not happen".
 
 
-[OPEN 2026-08-25 -- filed by batch-80 item 3, surfaced by making
-  TestMaxConcurrentPositions actually exercise the cap it is named for]
+[RESOLVED 2026-08-26 by batch-85 item 1 -- filed 2026-08-25 by batch-80 item
+  3, surfaced by making TestMaxConcurrentPositions actually exercise the cap
+  it is named for]
   MAX_CONCURRENT_POSITIONS IS A PER-CYCLE ENTRY GATE, SO ONE CYCLE CAN OPEN
   MORE POSITIONS THAN THE CAP ALLOWS
 Priority: Low -- paper trading is dormant and the overshoot is bounded by
@@ -42052,6 +42120,345 @@ What it would look like:
   test repair -- and test_trades_placed_below_cap's `== 5` becomes `== 2`
   when it lands, which is what the batch-62 entry originally expected the
   code to already do.
+
+Resolution 2026-08-26 (batch-85 item 1):
+  Shipped as described above, and the predicted `== 5` -> `== 2` landed
+  exactly: test_trades_placed_below_cap measured 2, with the three skipped
+  signals printing `position_cap(20/20)`.
+
+  WHAT CHANGED (order_executor.py, _auto_place_trades):
+    * The pre-loop `if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
+      ... return 0` is KEPT, unchanged, and re-commented as a FAST PATH
+      rather than the enforcement. Kept deliberately (user decision, asked
+      before writing code): it is the only emitter of the operator-facing
+      "Position cap reached (n/n open)" line. Below the cap it is
+      behaviourally redundant with the new check by construction -- see the
+      test note below for how that redundancy is kept honest rather than left
+      unprotected.
+      WHAT IT SAVES, corrected by opus round-2 MEDIUM-C against an earlier and
+      more flattering claim made here and at two other sites (all three
+      fixed). It does NOT save a live orderbook re-fetch or the 5000-sim VaR
+      run: both sit BELOW the in-loop cap check, so an at-cap cycle skips them
+      either way. It does not save the shadow logging either -- the fast
+      path's own _shadow_suffix() runs _log_shadow_predictions over the WHOLE
+      opps list, the same per-item work the in-loop path's batched flush does.
+      Its real per-item saving is the 9 shadow-family predicates, one
+      duplicate _validate_trade_opportunity and two duplicate execution_log
+      queries, over roughly 250 lines of loop body rather than the "~800"
+      first claimed. Modest -- the operator message is the honest
+      justification, which is why that message is what its test pins.
+    * NEW: the same `len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS`
+      test is re-run PER PLACEMENT inside the opportunity loop, next to the
+      sibling same-day/per-date concentration caps, appending a
+      `position_cap(n/cap)` skip reason and `continue`-ing. No counter was
+      added: `_open_trades_list` is already appended on BOTH placement
+      branches (the paper branch's `_open_trades_list.append(trade)` and
+      F6's live mirror) and nothing in the loop removes from it, so its
+      length is already the live count including this cycle's own fills.
+      That is why the fix reads `len(...)` rather than the
+      `len(...) + placed` this entry sketched -- `placed` would have
+      double-counted.
+    * `continue`, not `break`, so every remaining signal still gets its own
+      line in the printed skip summary, matching the sibling caps.
+
+  WHY THIS STILL MATTERS with the no-edge result standing (see "PROJECT
+  DIRECTION AFTER THE NO-EDGE RESULT"): a position cap that can be exceeded
+  is a risk-control defect independent of whether the strategy makes money.
+  Nothing here is an attempt to improve the forecast.
+
+  THE TEST PROPERTY BATCH-80 ADDED, AND HOW IT SURVIVED. batch-80 built
+  TestMaxConcurrentPositions as a boundary bracket, and its third probe
+  (test_one_below_the_cap_still_places, 19 open) existed solely because the
+  old `>=` gate returned one BIT per probe: 18 open said "did not fire", 20
+  said "fired", and both readings are identical for a cap of 19, so 18+20
+  bracketed the cap only to {19, 20}. Changing the semantics could easily
+  have destroyed that silently. It did not -- it strengthened it. Each probe
+  now returns a COUNT, max(0, min(5, cap - n_open)) -- the outer max matters,
+  since at n_open > cap the inner expression goes negative while the code of
+  course places 0:
+
+        n_open   cap=19   cap=20   cap=21
+          20       0        0        1
+          19       0        1        2
+          18       1        2        3
+
+  Both the 19-open and 18-open probes read differently for all three cap
+  values, so either one ALONE now brackets the cap from both sides -- what
+  previously took a pair. The 20-open probe stays one-sided (a cap of 19
+  also places 0 there) and is documented as such in place.
+
+  MUTATION EVIDENCE (each applied via the Edit tool, each reverted by its
+  exact inverse edit, the revert verified by `git diff --stat` on
+  order_executor.py showing 0 deletions plus a re-run of the class). The
+  first three counts were RE-RUN after the two new tests landed, since those
+  added further cap-sensitive probes and the original counts went stale
+  (opus round-2 LOW-1 derived them; these are the executed results, and all
+  three matched its prediction):
+    * cap default "20" -> "19": 4 fail -- one_below 1->0, below_cap 2->1,
+      the shadow test (an 18-open probe too, so it fails its own `result ==
+      2` guard), and the fast-path test, whose message becomes "(20/19
+      open)". Was 3 before the shadow test existed.
+    * cap default "20" -> "21": 5 fail (at_cap 0->1, one_below 1->2,
+      below_cap 2->3, the shadow test 2->3, fast-path 0->1). Was 4.
+    * in-loop guard deleted: 3 fail, all reverting to the OLD answer of 5
+      (one_below "expected 1, got 5", below_cap "expected 2, got 5", and the
+      shadow test, whose shadow_calls also drops to []) -- i.e. the new check
+      is exactly what produces the new numbers. Was 2.
+    * pre-loop fast path deleted ENTIRELY: exactly 1 fails, the new
+      test_the_pre_loop_fast_path_short_circuits_the_whole_cycle, and
+      test_no_trades_placed_when_at_cap stays GREEN. That is the point of
+      the new test: without it the kept fast path would be an unprotected
+      guard whose deletion no test notices. CORRECTED after opus review
+      (LOW-4): the assertion that fails here is the POSITIVE CONTROL ("the
+      pre-loop fast path's operator message"), not the absence check. The
+      five `KXHIGH-CHI-N: position_cap(20/20)` lines are indeed present in
+      the captured output, but pytest never evaluates the absence assertion
+      -- it stops two lines earlier. The first write-up of this entry
+      credited the absence half with evidence that never reached it.
+    * pre-loop `print` KEPT, only its `return 0` deleted: the message
+      prints, the loop runs anyway, and now the ABSENCE half is what fails
+      ("the placement loop ran at the cap"). This is the mutation that
+      actually pins that assertion, and the refactor it guards against --
+      someone who keeps the operator message but loses the short-circuit.
+      Added because of LOW-4; without it that assertion had no evidence.
+    * `_shadow_batch.append(item)` removed from the new cap branch (i.e.
+      the pre-review behaviour): exactly 1 fails, the new
+      test_cap_skipped_signals_are_shadow_logged_not_dropped, "expected the
+      3 cap-skipped tickers to be shadow-logged, got []". See MEDIUM-1.
+    * `"cost"` deleted from _fake_place: the spend test fails with "got 5
+      placements", confirming the n_open 18 -> 10 move restored the
+      non-vacuity it was about to lose. (At n_open=18 it returns 2 with or
+      without `cost`, which is exactly the trap.)
+
+  TESTS (tests/test_trade_improvements.py, TestMaxConcurrentPositions):
+    * test_no_trades_placed_when_at_cap (20 open): `== 0`, unchanged.
+    * test_one_below_the_cap_still_places (19 open): `== 5` -> `== 1`.
+    * test_trades_placed_below_cap (18 open): `== 5` -> `== 2`.
+    * test_the_spend_cap_counts_each_placed_trade_s_cost: n_open moved 18 ->
+      10, assertion still `== 4`. NOT cosmetic -- at 18 open the position
+      cap now stops the third signal, so the daily-spend accumulator never
+      approaches $200 and the test returned 2, which would have been green
+      at `== 2` while proving nothing about the `cost` key it exists to
+      pin (deleting `cost` also returns 2). 10 open leaves 10 slots for 5
+      signals so the position cap cannot bind and the spend cap is once
+      again the sole gate. Documented in place with the exact condition
+      to keep: `cap - n_open >= n_signals` (n_open=15 would technically work;
+      10 sits clear of that boundary rather than on it).
+    * NEW test_the_pre_loop_fast_path_short_circuits_the_whole_cycle: pins
+      the kept fast path via capsys -- asserts the "Position cap reached
+      (20/20 open)" line IS present (positive control: the function reached
+      that gate rather than returning at an earlier halt) and that no
+      per-signal `position_cap(` skip line is (absence: the loop was never
+      entered). The two halves are each other's control per step 28.
+
+  OPUS REVIEW (effort: high) -- one MEDIUM, five LOW, four INFO, no HIGH.
+  The reviewer independently re-derived the probe table, confirmed every
+  mutation count, re-queried the queue_positions DB, and verified the
+  "largest fixture outside scope is 4" / "25 files reference
+  _auto_place_trades" / "only 3 reference MAX_CONCURRENT_POSITIONS" claims.
+  All findings addressed:
+
+  MEDIUM-1 -- CAP-SKIPPED SIGNALS WERE LOSING THEIR SHADOW PREDICTION. FIXED
+  IN CODE, and this is the one finding that changed the shipped behaviour.
+  _log_shadow_predictions' own docstring names "position/spend caps" as a
+  case it covers, and the PRE-LOOP gate honours that -- its message is built
+  with _shadow_suffix(), which shadow-logs the whole batch. The new in-loop
+  branch did not. Before this batch those opportunities were PLACED and each
+  got a real tracker.log_prediction() row; after it they were skipped with no
+  row at all, silently shrinking the population brier_score_by_method() and
+  the strategy auto-retirement logic read. Worse, `opps` is sorted by
+  edge x kelly descending, so the surviving rows would have been
+  systematically the highest-edge ones -- a selection bias in exactly the
+  sample that drives retirement decisions. The two kept gates would also have
+  disagreed with each other on this axis, which is not a defensible state for
+  a "fast path" that is supposed to be behaviourally equivalent.
+    Fix: the cap branch now appends to _shadow_batch and _shadow_batch_labels
+    instead of to _skip_reasons directly, reusing the existing AUD-0021
+    batched flush after the loop. Routed through the LABELS list, not a
+    separate _skip_reasons append, so the cap detail and the logged= outcome
+    print as ONE line (`TICKER: position_cap(20/20)(logged=False)`) rather
+    than two.
+    New test: test_cap_skipped_signals_are_shadow_logged_not_dropped, which
+    patches tracker.log_prediction with a recorder and asserts the 3
+    cap-skipped tickers reach it with is_shadow=True, paired (step 28) with
+    the absence that the 2 PLACED tickers do NOT (they get real, non-shadow
+    rows; double-logging them would corrupt the same population).
+    WHY THAT TEST ASSERTS ON log_prediction AND NOT ON THE PRINTED `logged=`
+    SUFFIX: the suffix reads False for this fixture and legitimately so --
+    tracker.log_prediction returns False when `city is None` (tracker.py:1351)
+    and _make_opp supplies no city. Asserting on the suffix would pin the
+    fixture's city-lessness, not the branch's behaviour, and would stay green
+    with the shadow append deleted. Caught by actually reading the printed
+    output after the fix rather than trusting the still-green suite.
+    COST, and it is NOT symmetric between modes -- an earlier draft of this
+    paragraph claimed "adds NO network calls relative to master" flatly, which
+    opus round-2 MEDIUM-A showed is true only for paper. _log_shadow_
+    predictions runs _prediction_kwargs_from_analysis per item, and that
+    builder fetches run_trend over HTTP (up to 3 sequential calls per uncached
+    (city, target_date, days_out, var) key).
+      * PAPER cycle: adds nothing over master. The paper placement branch
+        already calls the same builder (order_executor.py:5335, inside the
+        `else:` at 5193), so these exact items paid this cost when placed.
+      * LIVE cycle: DOES add calls master never made. The live branch (5112-
+        5192) never calls that builder -- _prediction_kwargs_from_analysis has
+        exactly two call sites repo-wide, 4095 and 5335, and 5335 is paper-
+        only. Bounded by len(opps), collapsed by the per-key run_trend cache,
+        and executed after the loop so it can never delay an order submission.
+        It is also no worse than what the pre-loop gate already spends via
+        _shadow_suffix() on any cycle that starts at cap.
+    Corollary worth recording: in live mode a cap-skipped signal now gets a
+    predictions row while a PLACED live trade still gets none. That asymmetry
+    is pre-existing (the live branch has never logged predictions) and is not
+    this batch's to fix -- flagged here rather than silently inherited.
+
+  LOW-1 -- the in-loop count is "positions this cycle knows it opened", not
+  "exposure exists": _place_live_order returns False on
+  OrderStatusUnknownError while logging status="unknown" (deliberately not
+  "failed", since the order may be live on the exchange). Documented in the
+  new comment rather than changed -- the next cycle counts it via
+  _get_live_open_positions(include_unfilled=True), which unions 'unknown', so
+  the effect is bounded at one cycle and can only let a cycle finish one over
+  the cap, never block a placement that should have been allowed. Changing
+  _place_live_order's return contract is a different subsystem's decision.
+
+  LOW-2 -- ENABLE_MICRO_LIVE submits a real client.place_order alongside its
+  paper trade and appends nothing; the paired paper trade's own append holds
+  the slot for both. Pre-existing, gated off under PYTEST_CURRENT_TEST, and
+  noted in the same comment because this change is the first thing that makes
+  _open_trades_list's completeness load-bearing WITHIN a cycle.
+
+  LOW-3 -- the mid-cycle drawdown re-check and its "drawdown halt engaged"
+  alert sit below the new guard, so once the cap is hit they are no longer
+  reached this cycle. Deliberate no-op, documented in place. The halt's job is
+  to stop placing, which the cap has already done; only the operator
+  notification is affected. Moving the cap check below it would put it after
+  the live orderbook re-fetch and the 5000-sim VaR run, forfeiting the reason
+  it sits where it does.
+    TWO CORRECTIONS from opus round-2 MEDIUM-B, both to the first write-up of
+    this paragraph. (1) It cited the wrong observer: cron.py's risk-halt block
+    calls check_halt_transition with halt_type f"{_halt_type}_paper" ->
+    "drawdown_paper", a deliberately separate flag (cron.py:2125, split so the
+    paper-only and client-aware observers cannot flip-flop a shared one). The
+    "drawdown" flag is owned entirely by _auto_place_trades -- its cycle-level
+    observer near the top of the function and the mid-cycle one in the loop.
+    The delayed alert therefore fires at the NEXT _auto_place_trades call's
+    own pre-loop observation, not at anything cron does. (2) "DELAYED, not
+    lost" was stated unconditionally and is only true for a PERSISTING breach.
+    is_paused_drawdown prices unrealized MTM, so a transient breach that
+    clears before the next cycle now produces no alert at all, where master's
+    inline branch would have fired immediately. Accepted: enforcement is
+    unaffected (the cap had already stopped placement) and the cost is one
+    notification about a condition that no longer holds.
+
+  LOW-4 -- mutation evidence attributed to the wrong assertion, in this entry
+  and in the test's own comment. Corrected above, and the missing mutation
+  actually run. See the two pre-loop bullets in the mutation list.
+
+  LOW-5 -- cron._placement_outcome_phrase's docstring (cron.py:1120-1121)
+  still calls the position cap a whole-batch-only skip. TRUE and now stale,
+  but cron.py was owned by batch-86 running in parallel, so it was filed as
+  its own OPEN entry at the top of this file rather than edited here.
+
+  INFO items, all applied to the docstrings: the placed-count formula is
+  `max(0, min(n_signals, cap - n_open))` (the outer max matters at
+  n_open > cap); the probe table is only valid under this fixture's pinned
+  MAX_DAILY_SPEND/MAX_VAR_DOLLARS and its structurally-unreachable per-date
+  cap, now stated with the worst-cell figures that show none of them binds;
+  the documented headroom invariant is exactly `cap - n_open >= n_signals`
+  (n_open=15 would technically work), with 10 chosen to sit clear of the
+  boundary rather than on it; and test_no_trades_placed_when_at_cap is now
+  strictly subsumed by the new fast-path test -- kept deliberately, with the
+  reason recorded at the assertion, because the two pin different contracts
+  and the subsuming test would disappear along with the fast path it guards.
+
+  OPUS REVIEW ROUND 2 (effort: high) -- reviewing the ROUND-1 FIXES with fresh
+  eyes, per the workflow's rule that a fix needs its own review because it can
+  introduce new bugs the original findings' checklist would never surface.
+  Three MEDIUM, six LOW, two INFO; no HIGH. Notably, the MEDIUM-1 fix itself
+  was found behaviourally CORRECT -- every MEDIUM was in a CLAIM wrapped
+  around it, which is its own lesson: the code was right and the prose was
+  confidently wrong three times over.
+    MEDIUM-A (cost) and MEDIUM-C (what the fast path saves) and MEDIUM-B (the
+    drawdown observer) are each corrected in place above, at every site.
+    LOW-1: three mutation counts went stale the moment the new tests added
+      further cap-sensitive probes. Re-RUN, not re-reasoned: 4 / 5 / 3, all
+      matching the reviewer's derivation. Header "(all four ...)" over seven
+      bullets and a stale "31 insertions" also fixed.
+    LOW-2 / LOW-3: two round-1 INFO corrections had landed in the test
+      docstrings but never here, leaving this entry contradicting itself on
+      the formula and on the headroom invariant. Both fixed above.
+    LOW-4: the batched shadow flush was the one bookkeeping block in
+      _auto_place_trades with no try/except, and this batch made it far more
+      reachable (before, a paper cycle with no shadow families left the batch
+      empty; now every at-cap cycle goes through it). A locked/corrupt DB
+      therefore propagated out AFTER placements, discarding `placed`, with no
+      enclosing try at the cmd_watch call site. FIXED IN CODE: flush wrapped,
+      _shadow_logged defaults empty so labels render logged=False honestly.
+      New test test_a_failing_shadow_flush_does_not_lose_the_placements;
+      mutation-verified by removing the try/except (exactly 1 fails, and it
+      fails as an ERROR -- the OperationalError propagating out of
+      _auto_place_trades -- which is precisely the reported symptom).
+    LOW-5: _open_trades_list is seeded include_unfilled=True, so resting
+      'pending'/'unknown'/unresolved rows occupy cap slots exactly like filled
+      ones; a backlog of stuck rows can push a cycle to the cap with few
+      genuinely filled positions, and below the cap the only symptom is a
+      position_cap line with no cycle-entry message. Intended (committed
+      capital is exposure) but now stated in the comment.
+    LOW-6: the cron.py filing was mis-cited (1121-1122, not 1120-1121), quoted
+      the skip line without its (logged=<bool>) suffix, and MISSED a second
+      site with the same stale claim -- tests/test_trade_cycle_engine.py's
+      TestBannerReflectsActualPlacementCount docstring, which calls the
+      position cap an example of "a whole-batch skip". That file is in tests/,
+      not owned by batch-86, so it was fixed in place rather than filed.
+    INFO-1: the LOW-4 correction itself contained a fresh instance of the same
+      error -- "under this fixture the absence half is implied by the positive
+      control" generalises a statement that is only true for one mutation, one
+      paragraph before describing the mutation that breaks it. Narrowed.
+    INFO-2: the probe table's 5-placement worst-case spend/VaR figures are not
+      re-derived by any test (nothing asserts above 4), unlike the 1/2/3-cell
+      figures. Now labelled as a manual probe rather than suite-verified.
+    SCOPE CORRECTION: tests/test_shadow_predictions.py and
+    tests/test_between_bracket_shadow.py were not in the originally recorded
+    "Ran:" list even though MEDIUM-1's fix changed shadow routing. Both added
+    and run.
+
+  ADJACENT FIX, same change: tests/test_batch01_live_position_visibility.py
+  ::test_concurrent_cap_blocks_when_only_live_positions_are_open had a
+  docstring asserting the cap check "runs ONCE, before any per-candidate
+  sizing". True when written, false as of this change. The test itself still
+  passes and is still valid -- it asserts the "Position cap reached" message,
+  which remains unique to the pre-loop check -- but the stale rationale was
+  corrected in place rather than left to mislead the next reader, along with
+  a pointer to where the cap's VALUE is now pinned.
+
+  SCOPE, settled statically rather than by widening the run: `_auto_place_
+  trades` appears in 25 test files, which is over half the suite. The
+  in-loop guard can only change behaviour when `len(_open_trades_list)`
+  reaches the cap mid-loop, i.e. at >= 20 open positions by default. Only 3
+  test files reference MAX_CONCURRENT_POSITIONS at all (test_trade_
+  improvements, test_risk_control, test_batch01_live_position_visibility --
+  all run), and the largest open-position fixture in any of the other 22 is
+  4 (test_backlog_batch's `range(4)`; its `range(25)`/`range(30)` fixtures
+  feed get_all_trades for settled-trade analytics, not get_open_trades).
+  Ran: test_trade_improvements, test_queue_position_instrumentation,
+  test_execution_log, test_trading_gates, test_live_execution,
+  test_cron_integration, test_risk_control,
+  test_batch01_live_position_visibility, and -- added after opus round 2
+  pointed out their absence, since MEDIUM-1's fix changed shadow routing --
+  test_shadow_predictions, test_between_bracket_shadow, plus
+  test_trade_cycle_engine (whose docstring this batch corrected) and
+  test_backlog_batch / test_dedup (the largest _auto_place_trades fixtures
+  outside the original scope).
+
+  TEST COUNTS, re-derived at the moment of writing this sentence rather than
+  recalled from an earlier run: TestMaxConcurrentPositions collects 7 (was 4
+  before this batch -- +3: the fast-path test, the shadow-logging test and the
+  failing-flush test). The 13-file scoped run collects 755 and all 755 pass
+  (20 deselected).
+
+  NOT CHANGED: README.md:279 still documents the cap as "Global max open
+  positions before auto-trades pause", which was loose before this change
+  and is simply accurate now.
 
 
 [OPEN 2026-08-26 -- found while writing up an apparent same-day calibration

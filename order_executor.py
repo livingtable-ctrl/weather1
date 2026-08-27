@@ -4364,6 +4364,31 @@ def _auto_place_trades(
     )
 
     # Concurrent-position cap: never hold more than MAX_CONCURRENT_POSITIONS at once.
+    #
+    # This pre-loop check is a FAST PATH, not the enforcement (batch-85 item
+    # 1). Enforcement is the per-placement re-check inside the placement loop
+    # below, which reads this same variable -- one literal governs both, so a
+    # mutation to the default moves both gates together. Below the cap it is
+    # behaviourally redundant with the in-loop check by construction.
+    #
+    # WHAT IT ACTUALLY SAVES, measured by line order rather than assumed
+    # (opus round-2 MEDIUM-C corrected an earlier, more flattering claim
+    # here). It does NOT save the live orderbook re-fetch or the 5000-sim VaR
+    # run: both sit BELOW the in-loop cap check, so an at-cap cycle skips them
+    # either way. It does not save the shadow logging either -- _shadow_suffix()
+    # below runs _log_shadow_predictions over the WHOLE opps list, which is the
+    # same per-item work the in-loop path's batched flush does. What it saves
+    # per item is the 9 shadow-family predicates, one duplicate
+    # _validate_trade_opportunity, and two duplicate execution_log queries --
+    # real, but modest, and roughly 250 lines of loop body rather than the
+    # ~800 an earlier version of this comment claimed.
+    #
+    # The honest reason it is kept is the OPERATOR MESSAGE: this is the only
+    # site that prints "Position cap reached (n/n open)". The in-loop path
+    # reports per-signal `position_cap(n/cap)` skip lines instead and never
+    # prints this. That one line is pinned by its own test
+    # (test_the_pre_loop_fast_path_short_circuits_the_whole_cycle) precisely
+    # because a redundant guard with no test is a guard someone deletes.
     MAX_CONCURRENT_POSITIONS = int(os.getenv("MAX_CONCURRENT_POSITIONS", "20"))
     if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
         print(
@@ -4731,6 +4756,117 @@ def _auto_place_trades(
             elif hasattr(_raw_date, "isoformat"):
                 target_date_obj = _raw_date
         target_date_str = target_date_obj.isoformat() if target_date_obj else None
+
+        # Concurrent-position cap, enforced PER PLACEMENT (batch-85 item 1).
+        # The pre-loop check of the same variable only refuses a cycle that
+        # already STARTS at the cap; below it, nothing here stopped the loop
+        # from placing every qualifying signal, so 18 open plus 5 signals
+        # ended the cycle at 23 open against a documented cap of 20.
+        #
+        # len(_open_trades_list) is a live count, not the entry snapshot: the
+        # list is seeded from the paper ledger plus live positions above and
+        # appended on BOTH placement branches (the paper branch's
+        # `_open_trades_list.append(trade)` and F6's live mirror of it), and
+        # nothing in this loop removes from it. So this re-reads exactly the
+        # quantity the pre-loop gate measured, now including this cycle's own
+        # fills. `continue` rather than `break` so every remaining signal
+        # still gets its own skip reason in the printed summary, matching the
+        # sibling concentration caps below.
+        #
+        # ONE CAVEAT ON "both placement branches", so the next reader does not
+        # over-trust it: this counts what _place_live_order calls PLACED, not
+        # every position that might exist. On OrderStatusUnknownError it logs
+        # status="unknown" (deliberately not "failed" -- the order may be live
+        # on the exchange) and returns False, so an ambiguous order is not
+        # counted for the rest of THIS cycle. The next cycle does count it, via
+        # _get_live_open_positions(include_unfilled=True), which unions
+        # 'unknown'. So the bound this enforces is "positions this cycle knows
+        # it opened", and an ambiguous order can let the cycle finish one over
+        # the cap -- it can never stop a placement that should have been
+        # allowed. Bounded at one cycle either way. Same shape for the
+        # ENABLE_MICRO_LIVE block further down, which submits a real order
+        # alongside its paper trade and lets the paper trade's own append hold
+        # the slot for both.
+        #
+        # Also below this point, and therefore no longer reached once the cap
+        # is hit: the mid-cycle drawdown re-check and its "drawdown halt
+        # engaged" alert. Deliberate, not an oversight. The halt's job is to
+        # STOP placing, which the cap has already done by the time this would
+        # fire, so only the operator notification is affected. Moving this
+        # check below the drawdown re-check would put it after the live
+        # orderbook re-fetch and the 5000-sim VaR run, forfeiting the reason
+        # it sits up here.
+        #
+        # For a PERSISTING breach the notification is delayed, not lost: the
+        # alert is edge-triggered via alerts.check_halt_transition("drawdown",
+        # ...), skipping this branch never advances that stored edge, and the
+        # NEXT _auto_place_trades call re-observes it at the cycle-level
+        # check near the top of this function (which records the real boolean
+        # on both branches) and fires there. Note that observer, not cron's --
+        # cron.py's own risk-halt block uses halt_type "drawdown_paper", a
+        # deliberately separate flag; the "drawdown" flag is owned entirely by
+        # this function (opus round-2 MEDIUM-B corrected an earlier comment
+        # here that cited cron).
+        #
+        # For a TRANSIENT breach that clears before the next cycle, though,
+        # the alert is genuinely lost -- is_paused_drawdown prices unrealized
+        # MTM, so the next call simply observes False and there is no edge to
+        # fire. On master the inline branch would have alerted immediately.
+        # Accepted: enforcement is unaffected (the cap had already stopped
+        # placement), and it costs one notification about a condition that no
+        # longer holds.
+        #
+        # Shadow-logged, not silently dropped (opus review MEDIUM-1).
+        # _log_shadow_predictions' docstring names "position/spend caps"
+        # explicitly, and the pre-loop gate honours that through
+        # _shadow_suffix(). Without the append below, this branch would not:
+        # on a PAPER cycle these opportunities were previously placed and so
+        # got a real tracker.log_prediction() row each, and dropping them would
+        # quietly shrink the population brier_score_by_method() and the
+        # strategy auto-retirement logic read. Worse, `opps` is sorted by
+        # edge x kelly descending, so the rows that survived would be
+        # systematically the highest-edge ones -- a selection bias in exactly
+        # the sample that drives retirement. Routed through
+        # _shadow_batch_labels rather than _skip_reasons directly so the cap
+        # detail and the logged= outcome print as ONE line in the skip summary
+        # (see the flush after the loop); every other _skip_reasons.append here
+        # is for a branch that does no shadow logging.
+        #
+        # COST, stated per mode because it is NOT symmetric (opus round-2
+        # MEDIUM-A). _log_shadow_predictions runs
+        # _prediction_kwargs_from_analysis per item, which fetches run_trend
+        # over HTTP (up to 3 sequential calls per uncached (city, date,
+        # days_out, var) key). On a PAPER cycle this adds nothing over master:
+        # the paper placement branch already calls the same builder, so these
+        # exact items paid this cost when they were placed. On a LIVE cycle it
+        # does add calls master did not make -- the live branch never calls
+        # that builder at all. Bounded by len(opps) and collapsed by the
+        # per-key cache; it runs AFTER the loop, so it can never delay an order
+        # submission; and it is no worse than what the pre-loop gate already
+        # spends via _shadow_suffix() on every cycle that starts at cap. The
+        # corollary is worth knowing: in live mode a cap-skipped signal now
+        # gets a predictions row while a PLACED live trade still gets none.
+        # That asymmetry is pre-existing (the live branch has never logged
+        # predictions) and is not this batch's to fix.
+        #
+        # One more thing this counts that is easy to miss: _open_trades_list is
+        # seeded with include_unfilled=True, so resting 'pending' and ambiguous
+        # 'unknown' live rows occupy slots here exactly like filled ones. A
+        # backlog of stuck unresolved rows can therefore push a cycle to the
+        # cap with few genuinely filled positions, and below the cap the only
+        # symptom is a position_cap(n/cap) skip line -- there is no
+        # cycle-entry message in that case, because the pre-loop gate did not
+        # fire. Intended (committed capital is exposure), but worth knowing
+        # before reading such a line as a bug.
+        if len(_open_trades_list) >= MAX_CONCURRENT_POSITIONS:
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append(
+                (
+                    ticker,
+                    f"position_cap({len(_open_trades_list)}/{MAX_CONCURRENT_POSITIONS})",
+                )
+            )
+            continue
 
         # Per-date concentration cap: same-day and multi-day use separate limits.
         # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain
@@ -5474,8 +5610,33 @@ def _auto_place_trades(
     # AUD-0021: one batched _log_shadow_predictions call for every
     # shadow-routed ticker accumulated across the loop above, instead of one
     # call per ticker -- see _shadow_batch's own comment for why.
+    #
+    # batch-85 item 1 (opus round-2 LOW-4): guarded. _log_shadow_predictions
+    # deliberately does not swallow its own errors -- init_log()/the INSERT,
+    # was_ordered_recently/was_traded_today, and the `with _tracker_conn()`
+    # block can all raise (a locked or corrupt DB, a disk error) -- and this
+    # was the one bookkeeping block in this function with no try/except, so
+    # such an error propagated out of _auto_place_trades AFTER placements had
+    # already happened, discarding the `placed` return value. There is no
+    # enclosing try at the cmd_watch call site, so it could take a persistent
+    # watch process down. Pre-existing, but this batch made it far more
+    # reachable: before, a paper cycle with no active shadow families left
+    # _shadow_batch empty and the flush a no-op; now EVERY cycle that hits the
+    # position cap exercises it. Instrumentation must never kill the path it
+    # observes -- same rule the per-call sites already follow. On failure
+    # _shadow_logged stays empty, so every label below honestly renders
+    # logged=False.
     if _shadow_batch:
-        _shadow_logged = _log_shadow_predictions(_shadow_batch, live=live)
+        _shadow_logged: set[str] = set()
+        try:
+            _shadow_logged = _log_shadow_predictions(_shadow_batch, live=live)
+        except Exception as _sb_exc:
+            _log.warning(
+                "_auto_place_trades: batched shadow-prediction flush failed "
+                "(%d signal(s) left unlogged): %s",
+                len(_shadow_batch),
+                _sb_exc,
+            )
         for _st, _slabel in _shadow_batch_labels:
             _skip_reasons.append(f"{_st}: {_slabel}(logged={_st in _shadow_logged})")
 

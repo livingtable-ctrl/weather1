@@ -7,6 +7,7 @@ Tests for 3 approved trading improvements:
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -22,7 +23,58 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestMaxConcurrentPositions:
-    """_auto_place_trades must refuse new trades once 20 open positions exist."""
+    """_auto_place_trades must never let a cycle END above 20 open positions.
+
+    batch-85 item 1 changed what this class is testing. MAX_CONCURRENT_POSITIONS
+    used to be a single pre-loop entry gate: it refused a cycle that already
+    started at the cap and imposed no limit at all below it, so 18 open plus 5
+    qualifying signals placed all five and finished at 23. It is now re-checked
+    per placement against `_open_trades_list`, which both placement branches
+    append to, so the number placed is `max(0, min(n_signals, cap - n_open))`
+    -- the outer max matters, since at n_open > cap the inner expression goes
+    negative while the code of course places 0.
+
+    WHY THAT MATTERS FOR THE PROBE SET, and what must be preserved if anyone
+    changes these numbers again. batch-80 added
+    test_one_below_the_cap_still_places specifically because the old `>=`
+    boolean gate turned every probe into one bit: 18 open said "did not fire"
+    and 20 open said "fired", which brackets the cap to {19, 20} and no
+    tighter, since 18 >= 19 is False and 20 >= 19 is True. A third probe at 19
+    was the only way to separate 19 from 20.
+
+    Under the new semantics each probe returns a COUNT rather than a bit, so a
+    single probe is two-sided by itself:
+
+        n_open   cap=19   cap=20   cap=21
+          20       0        0        1
+          19       0        1        2
+          18       1        2        3
+
+    Read that table as counts under THIS fixture's pinned gates: MAX_DAILY_
+    SPEND 500, MAX_VAR_DOLLARS 200, and no `target_date` so the per-date cap is
+    structurally unreachable. The worst cell is 5 placements -- ~$220 of spend
+    and 24 position rows of VaR -- so none of those three binds in any cell.
+    Change the fixture and re-derive the table.
+
+    Which cells are actually PROVEN differs, and the difference matters
+    (opus round-2 INFO-2): the 1-, 2- and 3-placement cells are re-derived by
+    a green test on every run. The 5-placement worst case is not -- no test
+    in this class asserts more than 4 -- so that spend/VaR figure rests on a
+    manual probe recorded here, not on anything the suite re-checks. Treat it
+    as documentation, and re-measure before relying on it.
+
+    Both the 19-open and the 18-open probes read differently for all three cap
+    values, so either one alone pins the cap from both directions -- strictly
+    sharper than what batch-80 built, not a regression of it. It holds beyond
+    the three columns shown, too: at cap <= 18 the pre-loop gate fires at
+    n_open=19 and gives 0, and at cap >= 24 the room exceeds the signal count
+    and gives 5, so every cap value other than 20 reads as something other
+    than 1. The 20-open probe is still one-sided (a cap of 19 also places 0
+    there), which is exactly why it is not the only test and why its own
+    `== 0` is documented as an absence needing the siblings as its positive
+    control. Mutation evidence for cap 19 and cap 21 is recorded on
+    test_one_below_the_cap_still_places.
+    """
 
     def _make_open_trades(self, n: int) -> list[dict]:
         # batch-80 item 3: these are internally consistent positions now --
@@ -267,26 +319,104 @@ class TestMaxConcurrentPositions:
         """When 20 positions already open, _auto_place_trades should place 0 new trades."""
         result = self._run_with_open(monkeypatch, repatch_paper_paths, 20)
         # batch-80 item 3: this `== 0` is only meaningful because the five
-        # opportunities are now genuinely placeable -- its sibling
-        # test_trades_placed_below_cap places all five from the identical
-        # fixture with 18 open instead of 20. Before that repair this
-        # assertion passed with the cap deleted too (every opportunity died
-        # at kelly_too_small first), so it proved nothing about the cap.
-        # Mutation-verified 2026-08-25 against order_executor.py:4367, by
-        # editing the default in `int(os.getenv("MAX_CONCURRENT_POSITIONS",
-        # "20"))` and re-running this class. Three mutations, two of them on
-        # the gate's OWN boundary, which is the only pair that separates
-        # "some cap exists" from "the cap is 20":
-        #   "99" -> this test fails, "Expected 0 trades placed, got 5"
-        #   "21" -> this test fails the same way (20 >= 21 is False, so the
-        #           gate stops firing at exactly one above the real value)
-        #   "18" -> test_trades_placed_below_cap fails, "Expected all 5
-        #           trades placed, got 0" (18 >= 18 fires the gate a rung
-        #           early), while THIS test still passes
-        # 21 breaks one half and 18 breaks the other, so the pair brackets
-        # the cap at 20 from both sides. Before the fixture repair, every one
-        # of those three left both tests green.
+        # opportunities are now genuinely placeable -- its siblings place 1
+        # and 2 of them from the identical fixture with 19 and 18 open
+        # instead of 20. Before that repair this assertion passed with the
+        # cap deleted too (every opportunity died at kelly_too_small first),
+        # so it proved nothing about the cap. Those siblings are this
+        # assertion's positive control (step 28): an absence is only evidence
+        # when the thing could have been present.
+        #
+        # batch-85 item 1: this probe is ONE-SIDED and always has been. A cap
+        # mutated DOWN to 19 also places 0 here (20 open is above 19 either
+        # way), so this test alone cannot tell 19 from 20 -- it only catches a
+        # cap raised to 21+. What pins the value from both sides is
+        # test_one_below_the_cap_still_places, whose count now moves for 19,
+        # 20 and 21 alike; see this class's docstring for the full table and
+        # that test for the recorded mutation runs. Left as an equality at 0
+        # rather than deleted because the at-cap case is the one that must
+        # place nothing at all, and because it is the only probe that reaches
+        # the pre-loop fast path (pinned separately by
+        # test_the_pre_loop_fast_path_short_circuits_the_whole_cycle).
+        #
+        # KNOWN REDUNDANCY, kept deliberately (opus review INFO). This test is
+        # strictly subsumed by that fast-path sibling, which asserts this same
+        # `result == 0` first and then two more things: across all five
+        # mutations run for this batch there is no case where this test fails
+        # and that one passes. It stays because the two assert different
+        # CONTRACTS -- "at the cap, nothing is placed" is the risk-control
+        # invariant and must remain readable as its own named test even if the
+        # fast path is someday removed, at which point its sibling goes with it
+        # and this one must not.
         assert result == 0, f"Expected 0 trades placed, got {result}"
+
+    def test_the_pre_loop_fast_path_short_circuits_the_whole_cycle(
+        self, monkeypatch, repatch_paper_paths, capsys
+    ):
+        """At the cap, the pre-loop gate returns before the placement loop runs.
+
+        batch-85 item 1 made the cap a per-placement check, which by itself
+        would produce the right ANSWER at 20 open (nothing placed) through a
+        different path: every signal would enter the loop and be skipped
+        individually. The pre-loop `return 0` was deliberately kept, so it
+        needs a test of its own rather than sitting behind an equality that
+        the in-loop check satisfies just as well.
+
+        What the fast path is kept FOR is the operator-facing "Position cap
+        reached" line, which is the one thing the in-loop path does not
+        produce. It does NOT save the live orderbook re-fetch or the VaR run
+        (opus round-2 MEDIUM-C: both sit below the in-loop cap check, so an
+        at-cap cycle skips them either way); its per-item saving is the
+        shadow-family predicates plus a duplicate validate and two duplicate
+        execution_log queries.
+
+        The two halves are each other's control (step 28). The absence half is
+        "no per-signal position_cap skip line": those are exactly what the
+        in-loop check emits, so they appear if and only if the loop was
+        entered. The positive half is the "Position cap reached" line itself,
+        proving the function actually reached the gate rather than returning
+        earlier at the daily-loss or drawdown halt, in which case "no skip
+        lines" would be true for entirely the wrong reason.
+
+        EACH HALF NEEDS ITS OWN MUTATION, and they are not the same one
+        (opus review LOW-4 -- an earlier version of this docstring credited
+        the absence half with evidence that never reached it):
+
+          * Delete the whole pre-loop block -> the POSITIVE CONTROL fails
+            first, at the "Position cap reached" assertion, and pytest never
+            evaluates the absence line. FOR THAT MUTATION SPECIFICALLY the
+            absence half is implied by the positive control -- deleting the
+            print and the return together means a printed message could only
+            have come from a branch that also returned. That implication does
+            NOT generalise, which is exactly the point of the next bullet:
+            keep the print and the two come apart.
+          * Keep the print, delete ONLY the `return 0` -> the message still
+            prints, the loop runs anyway, and the ABSENCE half is what fails
+            ("the placement loop ran at the cap"). This is the mutation that
+            actually pins the absence assertion, and the refactor it guards
+            against: someone who keeps the operator message but loses the
+            short-circuit.
+
+        Both mutations verified 2026-08-26 via the Edit tool, each reverted
+        by its exact inverse. test_no_trades_placed_when_at_cap stays GREEN
+        under both -- which is the whole reason this test exists separately.
+        """
+        result = self._run_with_open(monkeypatch, repatch_paper_paths, 20)
+        out = capsys.readouterr().out
+        assert result == 0, f"Expected 0 trades placed, got {result}"
+        # POSITIVE CONTROL: the pre-loop gate is the branch that ran.
+        assert "Position cap reached (20/20 open)" in out, (
+            "expected the pre-loop fast path's operator message; got:\n" + out
+        )
+        # ABSENCE: the placement loop was never entered, so no signal got an
+        # individual position_cap skip line. Pinned by the delete-only-the-
+        # `return 0` mutation described in the docstring, NOT by deleting the
+        # whole block (that one fails at the positive control two lines above,
+        # before this line is ever reached).
+        assert "position_cap(" not in out, (
+            "the placement loop ran at the cap — the pre-loop fast path did "
+            "not short-circuit:\n" + out
+        )
 
     def test_the_spend_cap_counts_each_placed_trade_s_cost(
         self, monkeypatch, repatch_paper_paths
@@ -305,53 +435,206 @@ class TestMaxConcurrentPositions:
         Pinning the cap at 200 makes the accumulator load-bearing. Five
         trades at ~$44 each cross it on the fifth, so this expects 4 -- and
         with `cost` removed from _fake_place it would be 5 again.
+
+        batch-85 item 1 moved `n_open` from 18 to 10, and that is not
+        cosmetic. With the cap now re-checked per placement, 18 open leaves
+        room for exactly 2 of the 5 signals, so the position cap stops the
+        third and the spend accumulator never gets near $200 -- measured, it
+        returned 2. The test would still have been green at `== 2` while
+        proving nothing about `cost`, since deleting `cost` also returns 2.
+        10 open leaves 10 slots for 5 signals, so the position cap cannot
+        bind at all here and the daily-spend accumulator is once again the
+        SOLE gate that stops the fifth trade. If you raise this number, keep
+        enough room or you silently hand this test back to the vacuity round-2
+        opus review L4 removed. The exact condition is `cap - n_open >=
+        n_signals` -- at n_open=15 the fifth signal still sees `19 >= 20` False
+        and places, so 15 would technically work. 10 is chosen to sit clear of
+        that boundary rather than on it, so adding a sixth opportunity to the
+        fixture does not silently re-introduce the confound.
         """
         result = self._run_with_open(
-            monkeypatch, repatch_paper_paths, 18, max_daily_spend=200.0
+            monkeypatch, repatch_paper_paths, 10, max_daily_spend=200.0
         )
         assert result == 4, (
             f"expected the 5th trade to be stopped by the $200 daily cap, "
             f"got {result} placements"
         )
 
-    def test_one_below_the_cap_still_places(self, monkeypatch, repatch_paper_paths):
-        """19 open is still below 20, so the gate must not fire.
+    def test_cap_skipped_signals_are_shadow_logged_not_dropped(
+        self, monkeypatch, repatch_paper_paths
+    ):
+        """A signal skipped by the per-placement cap still reaches the shadow logger.
 
-        opus review M-4. With probes only at 18 and 20, the value 19 is
-        indistinguishable from 20 for a `>=` gate: 18 >= 19 is False and
-        20 >= 19 is True, so mutating the cap to 19 left BOTH other tests
-        green -- the pair bracketed the cap to {19, 20}, not to 20. This is
-        the third probe that closes it, and it is the whole difference
-        between "a cap exists somewhere near here" and "the cap is 20".
+        opus review MEDIUM-1. Before batch-85 item 1, 18 open + 5 signals
+        placed all five, so all five got a real tracker.log_prediction() row.
+        After it, three are cap-skipped -- and if that branch just appended a
+        skip reason and moved on, those three rows would vanish from the
+        population brier_score_by_method() and the strategy auto-retirement
+        logic read. `opps` is sorted by edge x kelly descending, so the rows
+        that survived would be systematically the highest-edge ones: a
+        selection bias in exactly the sample that drives retirement. The
+        pre-loop gate never had this problem (it shadow-logs the whole batch
+        via _shadow_suffix), and _log_shadow_predictions' own docstring names
+        "position/spend caps" as a case it covers, so the in-loop branch
+        failing to do it would have been a gap the codebase already claims
+        does not exist.
+
+        WHY THIS ASSERTS ON log_prediction AND NOT ON THE `logged=` SUFFIX
+        printed in the skip summary. That suffix reads False for this fixture,
+        and legitimately so: tracker.log_prediction returns False when
+        `city is None` (tracker.py:1351), and _make_opp deliberately supplies
+        no city -- the same fixture limitation documented on
+        test_trades_placed_below_cap. Asserting on the suffix would therefore
+        pin the fixture's city-lessness rather than this branch's behaviour,
+        and would keep passing if the shadow append were deleted outright.
+        What this batch actually changed is whether the cap-skipped items are
+        HANDED to the shadow logger at all, so that is what is asserted:
+        log_prediction is called for them, with is_shadow=True.
+        """
+        import tracker
+
+        shadow_calls: list[str] = []
+
+        def _record(ticker, city, target_date, a, is_shadow=False, conn=None, **kw):
+            if is_shadow:
+                shadow_calls.append(ticker)
+            return False  # mirror the real return for a city-less opp
+
+        monkeypatch.setattr(tracker, "log_prediction", _record)
+
+        result = self._run_with_open(monkeypatch, repatch_paper_paths, 18)
+        assert result == 2, f"fixture drifted: expected 2 placed, got {result}"
+
+        # POSITIVE CONTROL: the three the cap turned away did reach the
+        # shadow logger. Deleting the `_shadow_batch.append(item)` from the
+        # cap branch in order_executor.py empties this list.
+        assert sorted(shadow_calls) == [
+            "KXHIGH-CHI-2",
+            "KXHIGH-CHI-3",
+            "KXHIGH-CHI-4",
+        ], f"expected the 3 cap-skipped tickers to be shadow-logged, got {shadow_calls}"
+
+        # ABSENCE, paired with the control above: the two that actually
+        # PLACED must not also be shadow-logged -- they get a real
+        # (is_shadow=False) prediction row from the placement path, and
+        # double-counting them would corrupt the same scoring population
+        # this fix exists to keep whole.
+        assert "KXHIGH-CHI-0" not in shadow_calls, (
+            "a placed trade was also shadow-logged: " + str(shadow_calls)
+        )
+        assert "KXHIGH-CHI-1" not in shadow_calls, (
+            "a placed trade was also shadow-logged: " + str(shadow_calls)
+        )
+
+    def test_a_failing_shadow_flush_does_not_lose_the_placements(
+        self, monkeypatch, repatch_paper_paths, capsys
+    ):
+        """A raising shadow flush must not discard the cycle's placed count.
+
+        opus review round-2 LOW-4. _log_shadow_predictions deliberately does
+        not swallow its own errors, and the batched flush after the loop was
+        the one bookkeeping block in _auto_place_trades with no try/except --
+        so a locked/corrupt tracker DB propagated out of the function AFTER
+        placements had already happened, discarding `placed`. There is no
+        enclosing try at the cmd_watch call site, so it could take a
+        persistent watch process down.
+
+        Pre-existing, but batch-85 item 1 is what made it reachable in the
+        common case: before, a paper cycle with no active shadow families left
+        _shadow_batch empty and the flush a no-op; now every cycle that hits
+        the position cap goes through it.
+        """
+        import order_executor
+
+        def _boom(*_a, **_k):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(order_executor, "_log_shadow_predictions", _boom)
+
+        result = self._run_with_open(monkeypatch, repatch_paper_paths, 18)
+
+        # POSITIVE CONTROL, and the whole point: the two placements survive the
+        # failing flush. Without the try/except this line is never reached --
+        # the OperationalError propagates out of _auto_place_trades and pytest
+        # reports an error, not an assertion failure.
+        assert result == 2, (
+            f"a failing shadow flush lost the cycle's placements; got {result}"
+        )
+        out = capsys.readouterr().out
+        # The three cap-skipped signals must still be REPORTED, and reported
+        # honestly as unlogged rather than silently claiming success.
+        assert out.count("(logged=False)") == 3, (
+            "expected 3 cap-skip lines all marked unlogged:\n" + out
+        )
+
+    def test_one_below_the_cap_still_places(self, monkeypatch, repatch_paper_paths):
+        """19 open leaves room for exactly one more, and one is what places.
+
+        opus review M-4 added this probe because, under the old pre-loop `>=`
+        gate, 18 and 20 bracketed the cap only to {19, 20}: 18 >= 19 is False
+        and 20 >= 19 is True, so mutating the cap to 19 left both of those
+        tests green. 19 open was the third probe that closed the gap.
+
+        batch-85 item 1 keeps the probe and sharpens what it proves. The cap
+        is now re-checked per placement, so this no longer answers "did the
+        gate fire" with a bit -- it answers "how much room was left" with a
+        count, and 20 - 19 = 1 is a number that differs for every nearby cap
+        value. THIS SINGLE TEST now brackets the cap from both sides, which
+        the old pair could not do:
+
+          cap 19 -> 0 placed ("expected 1, got 0")
+          cap 20 -> 1 placed (green)
+          cap 21 -> 2 placed ("expected 1, got 2")
+
+        Mutation-verified 2026-08-26 by editing the default literal in
+        `int(os.getenv("MAX_CONCURRENT_POSITIONS", "20"))` at
+        order_executor.py to "19" and then "21" and re-running this class --
+        both values fail here, with the counts above. That is the property
+        batch-80 built and this batch had to preserve under new semantics:
+        the probe set still separates 20 from BOTH 19 and 21, rather than
+        merely from something absurd like 99.
         """
         result = self._run_with_open(monkeypatch, repatch_paper_paths, 19)
-        assert result == 5, f"19 open is below the cap; expected 5, got {result}"
+        # EQUALITY, and specifically not `>= 1`: the point is the exact size
+        # of the remaining room. A bound would accept 2 and hand the cap
+        # value back to guesswork.
+        assert result == 1, (
+            f"19 open leaves room for exactly 1 of the 5 signals; got {result}"
+        )
 
     def test_trades_placed_below_cap(self, monkeypatch, repatch_paper_paths):
-        """Below the cap, the concurrent-position gate blocks nothing.
+        """18 open leaves room for two, and the cycle ends at the cap, not past it.
 
-        Named for the cap, and it does exercise it -- as the negative half of
-        the pair. MAX_CONCURRENT_POSITIONS is a single pre-loop entry gate
-        (order_executor.py:4368), not a per-placement counter: it returns 0
-        for the whole cycle when already at the cap, and imposes no limit at
-        all below it. So the real assertion here is "18 open does not block",
-        and the number placed is set by the OTHER caps, not by 20 - 18.
+        THE TEST THIS BATCH EXISTS FOR. Until batch-85 item 1,
+        MAX_CONCURRENT_POSITIONS was a single pre-loop entry gate
+        (order_executor.py, the `return 0` above the placement loop): it
+        refused a cycle that already started at the cap and imposed no limit
+        at all below it. So this test asserted 5, the whole input surviving,
+        and the cycle finished holding 23 positions against a cap documented
+        as 20 -- which is the defect the batch-62/batch-80 note at the bottom
+        of this test recorded and deliberately left standing.
 
-        WHICH other caps, concretely -- because the next person to make this
-        fixture more realistic will turn 5 into a smaller number and deserves
-        to know why rather than getting a bare red test:
+        The cap is now re-checked per placement against `_open_trades_list`,
+        which both placement branches append to, so 18 + 2 = 20 and the third,
+        fourth and fifth signals are skipped as position_cap(20/20). 2 is the
+        number the batch-62 entry originally expected the code to already
+        produce.
+
+        THE OTHER GATES this fixture sits under, unchanged and still worth
+        knowing before anyone edits the fixture and gets a bare red test:
 
           * MAX_POSITIONS_PER_DATE (default 4). All five tickers are the same
-            city, so giving _make_opp a real `target_date` makes the fifth
-            fail date_cap(4/4) and the answer becomes 4. Measured.
-          * MAX_DAILY_SPEND. _run_with_open pins it at 500.0; the five
-            placements cost ~$220 in total, so it does not bite. It is only
-            unpinned in production, where the operator's .env sets 200 --
-            which WOULD stop the fifth.
+            city, so giving _make_opp a real `target_date` would make the
+            fifth fail date_cap(4/4) -- now moot here, since the position cap
+            stops the third first, but it still binds in the sibling that
+            runs with 10 open.
+          * MAX_DAILY_SPEND. _run_with_open pins it at 500.0; two placements
+            cost ~$88, so it does not bite. Its own dedicated test pins it at
+            200 with enough position headroom to be the sole binding gate.
 
-        Neither is a defect in the code; both are gates this fixture happens
-        to sit under. If you change the fixture, re-derive the number from
-        the printed skip reasons rather than loosening the assertion.
+        Neither is a defect in the code. If you change the fixture, re-derive
+        the number from the printed skip reasons rather than loosening the
+        assertion.
         """
         result = self._run_with_open(monkeypatch, repatch_paper_paths, 18)
 
@@ -365,24 +648,29 @@ class TestMaxConcurrentPositions:
         #
         # EQUALITY, not a bound. `<= 5` would pass at 0 all over again, which
         # is exactly how this test spent months green while proving nothing;
-        # `>= 1` would not notice four of the five silently dying at a gate.
-        # 5 is the whole input surviving, so any new gate that starts biting
-        # this fixture shows up as a number, not as a still-green tick.
+        # `>= 1` would not notice signals silently dying at some other gate.
+        # A count is what makes any new gate that starts biting this fixture
+        # show up as a number rather than as a still-green tick.
         #
         # POSITIVE CONTROL for the sibling test's `== 0` (step 28). That
         # assertion is an absence, and an absence is only evidence if the
         # thing could have been present: this line proves the identical five
         # opportunities DO place when the only difference is 18 open rather
-        # than 20. The two assertions are a matched pair and must be read
-        # together -- the pair, not either line alone, is what pins the cap.
+        # than 20.
         #
-        # Why five and not two: nothing decrements toward the cap during the
-        # cycle. See this test's docstring. Placing five on top of 18 leaves
-        # 23 open, past the 20 the class docstring describes -- real, and
-        # filed as its own backlog entry rather than fixed here, since
-        # changing it would change live sizing behaviour, which this batch is
-        # explicitly scoped out of.
-        assert result == 5, f"Expected all 5 trades placed, got {result}"
+        # Two-sided on its own, like the 19-open probe: cap 19 gives 1 here
+        # and cap 21 gives 3, so this equality separates 20 from both
+        # neighbours by itself. Mutation-verified 2026-08-26 alongside
+        # test_one_below_the_cap_still_places, same two edits to the default
+        # literal.
+        #
+        # WHY TWO AND NOT FIVE: the cap is now spent, not just tested at the
+        # door. 18 open + 2 placed = 20 = the cap, so the remaining three are
+        # skipped as position_cap(20/20). The old answer here was 5, ending
+        # the cycle at 23 open -- see the docstring.
+        assert result == 2, (
+            f"18 open leaves room for exactly 2 of the 5 signals; got {result}"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
