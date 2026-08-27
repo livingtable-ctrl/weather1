@@ -961,6 +961,48 @@ What it would look like:
   be copied; the gap is that it pins the WINDOWS, not the UTC-vs-local
   question this entry is about, so it is not a substitute.
 
+[OPEN 2026-08-26 -- found by batch-86 while running its scoped suite; not
+  caused by that batch, measured identical with and without its changes]
+  test_atomic_write_text_concurrent_writers_never_expose_torn_file FAILS
+  ABOUT HALF THE TIME ON WINDOWS
+Priority: Medium -- CI is not affected (see below), but it makes every local
+  scoped run that includes tests/test_safe_io.py a coin flip, and a test that
+  fails 50% of the time trains readers to ignore red.
+Files: tests/test_safe_io.py (~:521), safe_io.py (atomic_write_text's
+  _replace_with_retry loop)
+
+Problem:
+  Measured 2026-08-26 on this machine: 4 failures in 8 consecutive runs of
+  the single test, and 4 in 8 with tests/conftest.py reverted to
+  origin/master's version -- identical, so batch-86's conftest change is
+  not implicated and neither is anything else in that batch.
+
+  The failure is a real Windows sharing violation, not a wrong assertion:
+  concurrent writers race os.replace onto the same destination, one loses
+  with `[WinError 5] Access is denied`, exhausts atomic_write_text's 3
+  attempts, and the test's `assert write_errors == []` trips. The
+  production code behaves correctly throughout -- it retries, then writes
+  an emergency copy and raises AtomicWriteError, which is the designed
+  behaviour. It is the test's expectation (that no writer ever exhausts
+  its retry budget under deliberate contention) that is too strong for
+  Windows.
+
+  CI does NOT see it. .github/workflows/ci.yml runs the full suite only on
+  ubuntu-latest, where os.replace over an open file does not raise; the
+  windows-latest job runs a hand-listed set that includes only
+  tests/test_safe_io.py::TestCrossProcessLock, not this module-level test.
+  So this is a local-developer-experience defect that CI structurally
+  cannot catch -- which is also why it has survived.
+
+What it would look like:
+  Decide what the test is actually guarding. The name says "never expose a
+  torn file", and THAT property (no reader ever sees a partial write) is
+  worth keeping and is not what fails. The incidental
+  `assert write_errors == []` is the flaky half. Either drop it, or allow a
+  bounded number of retry-budget exhaustions on Windows while keeping the
+  torn-file assertion absolute. Do not "fix" it by raising the retry count
+  -- that just moves the coin flip.
+
 [OPEN 2026-08-26 -- found by batch-86 item 1 while fixing the backup side
   of the same hole; the user's AskUserQuestion answer scoped this batch to
   the backup half, so the restore half is filed rather than bundled]
