@@ -374,3 +374,44 @@ class TestCallOrdering:
         assert ordered.index("check_paper_position_exits") < ordered.index(
             "_log_exit_rule_shadow"
         )
+
+
+class TestOperatorReporting:
+    """The collector writes every cycle and nobody reads the table for ~60
+    days, so silence is indistinguishable from a collector that quietly
+    stopped -- near_settlement_log's own failure, where it reported success
+    while writing zero rows for over a month. The cycle must SAY something.
+    """
+
+    def test_cron_prints_a_shadowlog_line_with_both_counts(self):
+        import ast
+        import inspect
+
+        src = inspect.getsource(cron._cmd_cron_body)
+        tree = ast.parse(src.lstrip())
+        printed = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "print":
+                printed.append(ast.dump(node))
+        shadow = [p for p in printed if "ShadowLog" in p]
+        # Positive control: the function really does print things, so an empty
+        # `shadow` below means the line is missing, not that the scan failed.
+        assert printed, "no print() calls found -- the AST scan is broken"
+
+        # BOTH paths must report: the normal line and the fallback used when
+        # the COUNT query fails. Asserting only "some print mentions
+        # ShadowLog" is satisfied by the fallback alone -- verified by
+        # mutation: renaming the primary marker left this test green.
+        assert len(shadow) >= 2, (
+            "both the normal and the count-unavailable path must print a "
+            f"[ShadowLog] line; found {len(shadow)}"
+        )
+
+        # The primary line carries the per-cycle count AND the running total.
+        # The total is what makes a stalled collector visible: it stops
+        # moving. "across" appears only in the cumulative form, so this
+        # cannot be satisfied by the fallback.
+        cumulative = [p for p in shadow if "across" in p]
+        assert cumulative, "the [ShadowLog] line must report a running total"
+        assert "this cycle" in cumulative[0]
+        assert "row(s)" in cumulative[0]

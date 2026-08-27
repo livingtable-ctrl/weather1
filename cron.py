@@ -3389,6 +3389,44 @@ def _cmd_cron_body(
                     )
             elif _ersl_att:
                 _log.info("exit_rule_shadow_log: logged %d position(s)", _ersl_wrote)
+
+            # Operator-visible, not just a log line. This table is written
+            # every cycle and read by nobody for ~60 days, so silence is
+            # indistinguishable from a collector that quietly stopped -- the
+            # exact failure near_settlement_log had, where it reported
+            # success while writing zero rows for over a month. Printing the
+            # running total makes a stalled collector obvious on sight: the
+            # number stops moving.
+            try:
+                import sqlite3 as _ersl_sq2
+
+                _ersl_con2 = _ersl_sq2.connect(_ERSL_DB)
+                try:
+                    _ersl_total = _ersl_con2.execute(
+                        "SELECT COUNT(*) FROM exit_rule_shadow_log"
+                    ).fetchone()[0]
+                    _ersl_pos_n = _ersl_con2.execute(
+                        "SELECT COUNT(DISTINCT trade_id) FROM exit_rule_shadow_log"
+                    ).fetchone()[0]
+                finally:
+                    _ersl_con2.close()
+                print(
+                    dim(
+                        f"  [ShadowLog] logged {_ersl_wrote} of {_ersl_att} "
+                        f"open position(s) this cycle — {_ersl_total} row(s) "
+                        f"across {_ersl_pos_n} position(s) total"
+                    )
+                )
+            except Exception as _ersl_cnt:
+                # Own try: failing to COUNT must not be reported as failing
+                # to write, and must not suppress the line entirely.
+                print(
+                    dim(
+                        f"  [ShadowLog] logged {_ersl_wrote} of {_ersl_att} "
+                        f"open position(s) this cycle (total unavailable: "
+                        f"{_ersl_cnt})"
+                    )
+                )
     except Exception as _ersl_err:
         # Says "failed", not "write failed": this also catches a ledger-load
         # error (paper._load raises CorruptionError on a checksum mismatch),
