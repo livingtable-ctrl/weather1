@@ -4661,10 +4661,21 @@ def get_analysis_calibration_data() -> list[dict]:
     as a stringified dict and has no condition_type column. That exclusion
     keeps this population aligned with every sibling fit in the repo (all of
     which apply _ALWAYS_EXCLUDED_CONDITION_TYPES) and, in particular, keeps
-    'between' out -- it is a structurally different market whose probabilities
-    cluster near 0.75. Zero 'between' rows are present today (measured
-    2026-08-26: above 130, below 61), so this is a guard against drift, not a
-    change to the current fit.
+    'between' out -- it is a structurally different market. Zero 'between'
+    rows are present today (measured 2026-08-26: above 130, below 61), so
+    this is a guard against drift, not a change to the current fit.
+
+    CORRECTED 2026-08-27: this said between's probabilities "cluster near
+    0.75". They do not, and the direction was backwards -- a between bracket
+    is a +/-1F band, so its prior is LOW, not high. Measured on all 114
+    settled between predictions: p25 0.111, median 0.182, p75 0.225, p90
+    0.317; on the METAR-locked subset, median 0.148. The 0.75 figure was
+    most likely lock CONFIDENCE (a NO-lock at p(YES)=0.148 is ~85% confident
+    in NO) rather than p(YES), but this docstring describes a population of
+    p(YES) values, so as written it was wrong. The exclusion itself is
+    unaffected: it rests on between being a structurally different market and
+    on _ALWAYS_EXCLUDED_CONDITION_TYPES' shared-aggregate argument, neither
+    of which depended on where the probabilities sit.
 
     NOT filtered on was_traded: including the traded rows is what makes this
     the full analysed population rather than a second selected one. They are

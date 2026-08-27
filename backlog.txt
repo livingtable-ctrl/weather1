@@ -37280,11 +37280,33 @@ Open follow-up (not blocking):
   probabilities, which is out of a condition_type-filtering batch's scope]
   TRAIN_ALL_TEMPERATURE_SCALING NEVER FITS THE 'BETWEEN' T ITS OWN DOCSTRING
   PROMISES
-Priority: Medium -- affects the probability every 'between' bracket market
-  is priced with, and 'between' trades with real capital today (it is NOT
-  a shadow-only family). Not High only because the fallback is a real
-  fitted value (the global T), not a no-op, so the effect is
-  under-compression rather than an unbounded error.
+Priority: LOW as of 2026-08-27 -- downgraded from Medium, see the premise
+  correction below. It is a real code inconsistency (a docstring promising a
+  value the query can never produce) but it changes NO live probability.
+
+  PREMISE CORRECTED 2026-08-27, verified in source. This entry said the gap
+  "affects the probability every 'between' bracket market is priced with,
+  and 'between' trades with real capital today (it is NOT a shadow-only
+  family)". Both halves are now stale:
+    * A between market that is NOT METAR-locked never reaches pricing at
+      all -- weather_markets' `between_no_metar` gate ("Between bracket is
+      not METAR-locked") rejects it inside analyze_trade. That gate is
+      batch-40's design.
+    * A between market that IS locked never reaches temperature scaling.
+      Section 7b sits inside `if not metar_locked:` (weather_markets lines
+      16855-17745, with the locked branch in the `else:` at 17746 that
+      pre-assigns pipeline outputs directly). So the condition-specific T
+      is unreachable on the only path between markets still take.
+    * The lock path for between is shadow-only since 2026-08-09 and sits at
+      4 of a 20-sample gate, so "trades with real capital today" is also no
+      longer true for it.
+  It DID matter historically: the 40 ensemble-path between rows from
+  2026-05-17..06-08 predate the between_no_metar gate and did run through
+  7b. Since 2026-06-08 there have been 4 between predictions in total, all
+  METAR-locked and all shadow.
+  Fix accordingly: this is now a docstring-vs-query consistency fix (either
+  fit the between T or stop promising it), not a live-pricing correction.
+  Do not cite it as evidence that between pricing is currently wrong.
 
 Problem:
   ml_bias.train_all_temperature_scaling()'s docstring says, verbatim,
@@ -44609,3 +44631,140 @@ That is an argument for not changing it as a SIDE EFFECT, not an argument
 
 Do not change the basis without that measurement; the current choice is
   documented in exit_comparison_probs' docstring and is deliberate.
+
+
+[OPEN 2026-08-27 -- three operator decisions taken against measured evidence
+  during a live cron cycle. Recorded so they are not re-litigated from
+  intuition; each names the measurement that settled it.]
+  DECISION RECORD: ANOMALY HALT, METAR LOCK BANDS, AND THE STOP-LOSS
+  SETTLEMENT GATE
+Priority: MEDIUM. Two of the three imply follow-up work, named below.
+Files: cron.py (anomaly halt), ml_bias.py + tracker.py + weather_markets.py
+  (METAR lock calibration scoping), positions.py (check_stop_losses).
+
+CONTEXT: the 2026-08-27 03:25 UTC cycle fired the anomaly halt and the
+  operator overrode it. Five independent decay signals were live in that one
+  cycle: win rate 20% in the last 10 settled (threshold 30%); 5 consecutive
+  losses; condition-type weakness on ensemble/below at 35% directional
+  accuracy (n=20, floor 40%, Brier 0.2619); the ensemble pin refusing to
+  auto-renew at directional accuracy 0.30 < 0.70; and strategy_retirement
+  flagging lifetime Brier 0.2563 > 0.2500, spared only by a rolling last-20
+  of 0.2091. Realized P&L at that moment: -41.07 lifetime over 247 settled,
+  of which -17.06 came from the last 10 alone (8 losses).
+
+1. ANOMALY HALT -- DECIDED: HONOR IT, KEEP THE INTERACTIVE PROMPT.
+   The deciding fact is that the halt gates PLACEMENT ONLY. Scanning,
+   analysis, shadow logging and analysis_attempts writes all continue while
+   it is engaged, so honoring it does NOT cost the 60-day forward test that
+   the project-direction entry's option 5 depends on. The 2026-08-27
+   override placed zero trades ([Auto] No qualifying signals this scan; 3 MED
+   signals, 0 placed), so its realized value that cycle was nil.
+   No code change. If overrides recur without a stated reason, revisit
+   removing the prompt in favour of an explicit env var.
+
+2. METAR LOCK -- DECIDED: INVESTIGATE THE CALIBRATION BEFORE CHANGING
+   BEHAVIOUR. Investigation DONE. THE FIRST VERSION OF THIS SECTION WAS
+   WRONG AND IS RETRACTED IN FULL -- see the retraction below before reading
+   anything else here.
+
+   RETRACTED, 2026-08-27, same session: this entry originally reported that
+   the METAR lock's low-confidence band had "no measurable edge (+0.024 at
+   0.43sd, n=73)" and "over-claims 11.5x", and concluded that 'between'
+   locks had 73 settled rows and should therefore get their own calibration
+   ("clears the floor 2.8x"). EVERY ONE OF THOSE NUMBERS IS VOID. 69 of
+   those 73 rows were predicted before 2026-08-09 and measure a DELETED
+   implementation of between-bucket METAR lock-in -- the one disabled
+   2026-06-29 for comparing the INSTANTANEOUS METAR reading against the
+   bucket instead of the daily running extreme, and replaced 2026-08-09 by
+   bded3d6a. tracker._BETWEEN_METAR_REENABLED_AT exists precisely to filter
+   them, count_settled_between_predictions() already applies it, and
+   batch-40's handoff had ALREADY written "do NOT cite the n=70 between rows
+   with Brier 0.2825 -- 69/70 predate the implementation replacement and
+   measure deleted code". The measurement was taken anyway, without checking
+   for that warning. This is the failure mode
+   feedback_grep_for_a_prior_do_not_cite_warning describes, recurring.
+
+   WHAT IS ACTUALLY TRUE:
+   * 'between' via the METAR lock is SHADOW-ONLY since 2026-08-09 and has
+     exactly 4 settled rows, all is_shadow=1. weather_markets.
+     _between_metar_gates_active() requires BETWEEN_TRADING_ENABLED=1 AND
+     >= 20 settled, so it is at 4/20 and deliberately accumulating. No real
+     capital is at risk on this path.
+   * Excluding 'between' from get_metar_lockout_calibration_data() is
+     therefore CORRECT, not an oversight. You cannot fit a calibration on 4
+     shadow rows against a minority-class floor of 10, and the "until
+     validated separately" wording DOES have a mechanism after all -- the
+     20-sample gate above. The earlier claim that "nothing would ever mark
+     it validated" was a misreading: that sentence in the source is about
+     the gate-COUPLED exclusion list, not about between's own gate.
+   * The only valid evidence on the CURRENT implementation is those 4 rows:
+     0.753 (settled YES), then 0.742 / 0.740 / 0.729 on 2026-08-24, ALL
+     THREE settled NO. 1-for-4 at ~74% claimed confidence. That is the
+     operator's original observation, and it is the whole meaningful sample.
+     It is an early warning on a shadow family approaching its gate -- not
+     something to act on at n=4, and specifically not grounds to disable
+     anything.
+   * The high-confidence band (n=33, model 0.870 / market 0.538 / actual
+     0.667) is above/below rows only, and is NOT contaminated by the
+     between defect. But it carries its own caveat that the original section
+     omitted: all 33 rows are from 2026-06 and 2026-07, and the non-between
+     lock path has produced nothing since July (see the separate METAR-lock-
+     stopped-firing entry). So it describes a path that is currently
+     DORMANT, and data/metar_lockout_calibration.json (n=33, fitted
+     2026-08-24) is fitted on that dormant population.
+
+   NO ACTION on the METAR lock follows from this. The correct posture is the
+   one already in place: let the shadow gate accumulate to 20 and decide
+   then. Re-examine if the 4-row sample keeps going the same way.
+
+   STILL OPEN, and genuinely separate from everything above: 'between' via
+   the ENSEMBLE path has 40 non-shadow rows and IS real-capital eligible,
+   and it receives no condition-specific temperature-scaling T -- that is
+   the pre-existing TRAIN_ALL_TEMPERATURE_SCALING entry (2026-08-25), which
+   this session did not advance and which is unaffected by the retraction
+   above. Do not conflate the two paths again: the METAR-lock exclusion is
+   correct and shadow-gated; the ensemble-path T gap is a real open item.
+
+3. STOP-LOSS SETTLEMENT GATE -- DECIDED: LEAVE THE GATE. The operator asked
+   for stop-loss to fire regardless of how recently a position was entered.
+   Two corrections came out of checking it:
+   a) THERE IS ALREADY NO MINIMUM-HOLD GATE ON STOP-LOSS. check_stop_losses
+      passes only settlement_gate_hours to _passes_exit_gates, never
+      min_hold_hours. A position entered minutes ago can already be stopped
+      out. The constraint is at the OTHER end -- the 24h pre-settlement gate.
+   b) THAT GATE IS PROTECTIVE, NOT OBSTRUCTIVE, and the effect is large.
+      Counterfactual over 205 settled trades with a real two-sided book
+      (both quotes > 0, volume > 0; fills modelled at the touch with no exit
+      fee, which FLATTERS stopping out):
+        removing the gate entirely: 108 stops, helped 73 (+393.39),
+          hurt 35 (-824.42), NET -431.03
+        lowering it instead of removing: 18h -275.75, 12h -349.15,
+          8h -392.93, 6h/4h -356.28, 2h/0h -431.03  (monotone, no better
+          setting exists in that direction)
+        last 60 settled only (current position sizing): -20.82
+      The asymmetry is structural: stopping out is right MOST of the time
+      (73 of 108 lifetime; 26 of 37 recently) and still loses money, because
+      a binary at 0.10 that recovers goes to 1.00 -- frequent small saves,
+      rare large forfeits.
+   c) THE BIGGER FINDING, not asked about: the stop-loss that IS permitted to
+      fire is itself net-negative -- 35 stops outside the gate, helped 19,
+      hurt 16, NET -270.38 lifetime and -44.38 over the last 60. So the gate
+      is shielding the account from most of the damage a 50%-of-cost stop
+      does in this market structure.
+   FOLLOW-UP: whether a 50%-of-cost stop is the right rule for binaries at
+   all is now an open question with a real measurement behind it. It should
+   be answered before either end of the gate is touched again.
+   Coverage caveat: 205 of 247 settled trades had usable price_history; the
+   lifetime sums are dominated by the larger May-June positions, which is why
+   the last-60 slice is quoted alongside.
+
+MEASUREMENT NOTE, worth repeating because it nearly produced the opposite
+  conclusion: price_history.yes_bid_close/yes_ask_close are already in
+  DOLLARS (0-1), not cents, and a zero on either side means an EMPTY BOOK,
+  not a free price. A first pass that divided by 100 and did not require a
+  two-sided book reported that removing the gate would GAIN money, on rows
+  where a 0.003 "price" sat next to a +46.50 realized win.
+
+When to revisit: 2's between-calibration fit whenever there is appetite;
+  3's stop-loss-rule question before any further gate change; 1 if an
+  override is taken without a stated reason.
