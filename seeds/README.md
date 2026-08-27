@@ -1,9 +1,10 @@
 # seeds/
 
-The eight calibration files a fresh clone needs before it has learned
+The nine calibration files a fresh clone needs before it has learned
 anything of its own. Five are byte-for-byte copies of what `data/` held in
 git at untracking time; the three `_sameday` files were authored by batch-82
-and are deliberately inert (see below). `paths.materialize_missing_seeds()` copies a
+and `analysis_calibration.json` by batch-87, all four deliberately inert
+(see below). `paths.materialize_missing_seeds()` copies a
 file from here into `data/` at import **only if `data/` does not already have
 it**, so a running bot's learned calibration is never overwritten.
 
@@ -17,6 +18,7 @@ it**, so a running bot's learned calibration is never overwritten.
 | `city_weights_sameday.json` | `calibration.calibrate_city_weights(horizon="sameday")` | `weather_markets._blend_weights` |
 | `condition_weights_sameday.json` | `calibration.calibrate_condition_weights(horizon="sameday")` | `weather_markets._blend_weights` |
 | `seasonal_weights_sameday.json` | `calibration.calibrate_seasonal_weights(horizon="sameday")` | `weather_markets._blend_weights` |
+| `analysis_calibration.json` | `ml_bias.fit_and_save_analysis_calibration` | `ml_bias.apply_analysis_calibration` |
 
 ## Why this directory exists
 
@@ -80,6 +82,30 @@ with. Pinned by `tests/test_calibration.py::TestSamedaySeedFlag`.
 is: `calibrate_city_weights` omits a below-floor city key entirely rather
 than emitting a placeholder for it.
 
+## `analysis_calibration.json` (batch-87)
+
+Also authored, not a snapshot, and inert for the same reason: its single
+`multiday` entry carries `"_uncalibrated": true` at identity coefficients
+(`a` 1.0, `b` 0.0). A fresh clone has no settled `analysis_attempts` rows, so
+"declined" is the only correct starting state.
+
+The flag is load-bearing here in a way that will outlive the current
+coefficients. Identity coefficients mean a reader that ignored the flag would
+still behave correctly *today* — so nothing would fail, and the omission
+would go unnoticed until a future fit form made the declined placeholder
+non-identity, at which point the pipeline would start applying a transform
+nobody fitted. `ml_bias._usable_analysis_cal_entry` therefore checks the flag
+*before* it reads `a`/`b`, and `fit_and_save_analysis_calibration` writes the
+flag on every decline rather than leaving a stale fit in place. Pinned by
+`tests/test_ml_bias.py::TestAnalysisCalibrationUncalibratedFlag`.
+
+One consequence worth stating: `ml_bias.train_all_temperature_scaling` freezes
+the multi-day temperature-scale keys only while this file holds a *real* fit.
+So the `_uncalibrated` seed also means "the weekly T refit behaves exactly as
+it did before batch-87", which is the correct fresh-clone behaviour — the
+freeze exists to stop the base moving under a stacked correction, and on a
+fresh clone nothing is stacked.
+
 This directory is not maintained. Nothing writes back to it, and a running
 bot's calibration diverges from it immediately and correctly.
 
@@ -97,6 +123,6 @@ exactly the declared names, each must be valid JSON, the names must match the
 `main._PERMANENT_DATA_FILES` so `cleanup_data_dir` cannot delete it (which
 would now mean a silent rollback to the seed rather than a clean
 uncalibrated state). Confirm the new file's loader treats an absent file as
-"uncalibrated" rather than crashing; all eight current ones do (there are
-six blend-weight loaders now -- three per horizon -- plus the temperature
-and METAR ones).
+"uncalibrated" rather than crashing; all nine current ones do (there are
+six blend-weight loaders now -- three per horizon -- plus the temperature,
+METAR and analysis-calibration ones).

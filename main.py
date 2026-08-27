@@ -900,6 +900,13 @@ _PERMANENT_DATA_FILES = {
     "learned_weights.json",
     "learned_correlations.json",
     "temperature_scale.json",
+    # batch-87: the final-stage calibration fitted on analysis_attempts. Same
+    # reasoning as the entries above -- deleting it would silently roll the
+    # multi-day path back to the `_uncalibrated` seed, and (because the
+    # temperature-scale freeze is gated on this file being a real fit) would
+    # simultaneously un-freeze the weekly T refit. One deletion, two
+    # regressions, neither visible.
+    "analysis_calibration.json",
     "emos_params.json",
     "correlations.json",
     "metar_lockout_calibration.json",
@@ -7248,6 +7255,26 @@ def cmd_train_bias() -> None:
     else:
         print(f"Trained GBM models for: {', '.join(sorted(models.keys()))}")
 
+    # batch-87: before the T refit — see cron.py's D5 block for why the order
+    # is load-bearing (the freeze must be live before T is consulted).
+    print("Fitting final-stage calibration on the unbiased population...")
+    # Own try/except (opus review, batch-87): this adds a DB read and a disk
+    # write ahead of two previously in-memory steps, and an escape here would
+    # skip the temperature-scaling retrain below entirely.
+    try:
+        from ml_bias import (
+            analysis_calibration_status_message,
+            fit_and_save_analysis_calibration,
+        )
+
+        _acal = fit_and_save_analysis_calibration()
+        if _acal:
+            print(f"  a={_acal[0]:.4f} b={_acal[1]:.4f}")
+        else:
+            print(f"  Declined — {analysis_calibration_status_message()}")
+    except Exception as _acal_exc:
+        print(f"  Analysis calibration failed: {_acal_exc}")
+
     print("Training per-condition temperature scaling...")
     trained_ts = train_all_temperature_scaling()
     if not trained_ts:
@@ -8852,7 +8879,39 @@ def cmd_calibrate() -> None:
     # T < 1 pushes toward extremes.  Works reliably on 35+ settled trades.
     print()
     try:
+        from ml_bias import analysis_calibration_status_message
+        from ml_bias import (
+            fit_and_save_analysis_calibration as _fit_analysis_cal,
+        )
         from ml_bias import train_all_temperature_scaling as _train_all_ts
+
+        # batch-87: before the T refit — see cron.py's D5 block for why the
+        # order is load-bearing (the freeze must be live before T is consulted).
+        #
+        # Its OWN try/except, not the surrounding temperature-scaling one
+        # (opus review): this call was originally inserted inside that block,
+        # so an analysis-calibration failure printed "Temperature scaling
+        # skipped: <err>" — a different subsystem, with no mention of the
+        # thing that actually failed, while also silently skipping the T
+        # retrain as collateral.
+        try:
+            _acal = _fit_analysis_cal()
+            if _acal:
+                print(
+                    dim(
+                        f"Analysis calibration (unbiased population): "
+                        f"a={_acal[0]:.4f} b={_acal[1]:.4f}"
+                    )
+                )
+            else:
+                print(
+                    dim(
+                        "Analysis calibration: declined — "
+                        + analysis_calibration_status_message()
+                    )
+                )
+        except Exception as _acal_exc:
+            print(dim(f"Analysis calibration failed: {_acal_exc}"))
 
         trained = _train_all_ts()
         if not trained:

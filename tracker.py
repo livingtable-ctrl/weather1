@@ -111,7 +111,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 79  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 80  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -828,6 +828,35 @@ _MIGRATIONS = [
     # APPENDED, never inserted -- see the analysis_attempts block above and
     # _run_migrations' own comment for why _MIGRATIONS is append-only.
     "ALTER TABLE analysis_attempts ADD COLUMN signal_values TEXT",
+    # batch-87. The probability BEFORE analyze_trade's section 9c
+    # (apply_analysis_calibration) ran, i.e. the output of every other
+    # correction stage but not of 9c itself.
+    #
+    # This column exists for exactly one reason and it is not convenience:
+    # 9c's fit is trained on analysis_attempts.forecast_prob, and 9c also
+    # WRITES that column (its output becomes analyze_trade's forecast_prob,
+    # which cron logs straight back here). Without a pre-9c counterpart the
+    # fit trains on its own prior output -- measured on the real 191-row
+    # corpus, the fitted slope collapses from 2.51 to 1.23 within roughly
+    # two weeks of accrual, and because 1.23 still passes every validity
+    # check the fit keeps reading as "active" and keeps the multi-day
+    # temperature-scale freeze pinned on behalf of a correction that has
+    # decayed to nothing. Net worse than never landing it.
+    #
+    # This is the same defect, and the same fix, as predictions.raw_prob --
+    # see get_metar_lockout_calibration_data's docstring, which spells out
+    # the generation-1-corrects / generation-2-fits-identity / generation-3-
+    # reverts oscillation in full. That one was found in production; this
+    # one was found in review.
+    #
+    # NULL means "written before this column existed", and for those rows
+    # forecast_prob IS the pre-9c value because 9c did not exist yet -- which
+    # is why get_analysis_calibration_data can COALESCE the two rather than
+    # discarding the pre-migration corpus.
+    #
+    # APPENDED, never inserted -- see the analysis_attempts block above and
+    # _run_migrations' own comment for why _MIGRATIONS is append-only.
+    "ALTER TABLE analysis_attempts ADD COLUMN forecast_prob_precal REAL",
 ]
 
 
@@ -4533,6 +4562,151 @@ def get_metar_lockout_calibration_data() -> list[dict]:
             cond_params,
         ).fetchall()
     return [{"our_prob": float(r[0]), "settled_yes": int(r[1])} for r in rows]
+
+
+# batch-87. The daily-temperature series prefixes, and the whole reason this
+# is a ticker-prefix predicate rather than a condition_type one:
+# `analysis_attempts` has no condition_type column at all (its columns are
+# ticker, city, condition, target_date, analyzed_at, forecast_prob,
+# market_prob, days_out, was_traded, outcome, status, not_found_at,
+# last_checked_at, signal_values), and `condition` holds a stringified dict,
+# not a type.
+#
+# Derived from weather_markets.KNOWN_WEATHER_SERIES, not from whichever
+# tickers happened to be visible in the table when this was written: that
+# registry holds exactly 20 KXHIGH* and 20 KXLOWT* daily series, no bare
+# KXLOW* series, and the hourly family is KXTEMP*H, which shares no prefix
+# with either. So these two patterns are complete AND cannot silently absorb
+# the hourly, rain, snow, hurricane or tornado families, each of which is
+# analysed by different code and has its own calibration story.
+# tests/test_tracker.py::TestAnalysisCalibrationData re-derives the pair from
+# that registry so a new series prefix cannot drift past this list unnoticed.
+_DAILY_TEMP_TICKER_PREFIXES: tuple[str, ...] = ("KXHIGH", "KXLOWT")
+
+
+def _attempt_condition_type(condition: object) -> str | None:
+    """Best-effort condition_type out of analysis_attempts.condition.
+
+    That column stores `str(analysis["condition"])` -- a stringified Python
+    dict like "{'type': 'above', 'threshold': 70.0}" -- so there is no
+    condition_type column to filter on and the value is not JSON (single
+    quotes). ast.literal_eval parses it without executing anything.
+
+    Returns None when the value is absent, unparseable, or not a dict with a
+    string 'type'. Callers treat None as "not one of the excluded types",
+    which is the safe direction here: the ticker-prefix filter has already
+    restricted the population to daily-temperature markets, so an unparseable
+    condition is a daily-temp row of unknown type rather than a shadow
+    family. Dropping it would silently shrink the fit population; keeping it
+    at worst admits one row whose type could not be read.
+    """
+    if not condition:
+        return None
+    try:
+        import ast
+
+        parsed = ast.literal_eval(str(condition))
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    ctype = parsed.get("type")
+    return ctype if isinstance(ctype, str) else None
+
+
+def get_analysis_calibration_data() -> list[dict]:
+    """Return rows for ml_bias.fit_analysis_calibration(): {forecast_prob, outcome}
+    for settled MULTI-DAY daily-temperature markets from `analysis_attempts`.
+
+    This is the UNBIASED population, and that is the whole point of the
+    function (batch-87). Every other calibration fit in this repo reads
+    `predictions`, which only ever receives a row that already cleared the
+    edge gates -- its minimum |our_prob - market_prob| is 0.0984 and it holds
+    zero rows below the 0.08 floor, so the compression being calibrated away
+    is invisible in exactly that population. `analysis_attempts` holds every
+    market the scanner analysed (minimum separation 0.0011 as of 2026-08-26),
+    the large majority of which were never traded.
+
+    `days_out >= 1` is deliberate and was the user's decision, not an
+    oversight. Measured held-out on this same table, fitting and applying per
+    horizon: multi-day goes 0.1454 -> 0.0952 Brier against a market at 0.0911
+    (t = -4.42 against raw), while same-day goes only 0.1828 -> 0.1723
+    (t = -1.46, not significant) and the repo's own single-parameter T shape
+    makes same-day actively WORSE (t = +2.28). Same-day is also dominated by
+    METAR-locked rows whose recommended side is force-overridden by the lock
+    (weather_markets.analyze_trade section 10b), so a probability correction
+    there mostly cannot change the decision anyway -- measured 0 side flips
+    on the 112 held-out rows gated both ways.
+
+    `outcome` is written as int(settled_yes) -- see log_outcome. Rows with a
+    NULL outcome are unsettled, not zero.
+
+    COALESCE(forecast_prob_precal, forecast_prob), NOT a bare forecast_prob
+    (opus review, batch-87 -- found by all three reviewers independently):
+    section 9c both READS this fit and WRITES `forecast_prob`, so fitting on
+    the bare column trains the correction on its own prior output. Measured
+    on the real 191-row corpus, the slope collapses 2.51 -> 1.23 within about
+    two weeks of accrual, and since 1.23 still passes every validity check
+    the fit keeps reading as "active" and keeps the multi-day
+    temperature-scale freeze pinned on behalf of a correction that has
+    decayed to nothing -- strictly worse than never landing it.
+    `forecast_prob_precal` is the pre-9c value; the COALESCE arm covers rows
+    written before that column existed, for which `forecast_prob` IS the
+    pre-9c value because 9c did not exist yet. Exactly the mechanism, and
+    exactly the reasoning, of predictions.raw_prob -- see
+    get_metar_lockout_calibration_data.
+
+    Condition types: the shadow/always-excluded families are filtered out in
+    Python rather than in SQL, because `analysis_attempts` stores `condition`
+    as a stringified dict and has no condition_type column. That exclusion
+    keeps this population aligned with every sibling fit in the repo (all of
+    which apply _ALWAYS_EXCLUDED_CONDITION_TYPES) and, in particular, keeps
+    'between' out -- it is a structurally different market whose probabilities
+    cluster near 0.75. Zero 'between' rows are present today (measured
+    2026-08-26: above 130, below 61), so this is a guard against drift, not a
+    change to the current fit.
+
+    NOT filtered on was_traded: including the traded rows is what makes this
+    the full analysed population rather than a second selected one. They are
+    11 of the 191 rows this function returns (5.8%) as of 2026-08-26. (An
+    earlier version of this line cited "50 of 594", which is every scored row
+    in the table, not this function's population -- wrong denominator.)
+
+    KNOWN POPULATION CAVEAT, stated because it qualifies the numbers above
+    rather than because this function can fix it: `analysis_attempts` upserts
+    on (ticker, target_date) and overwrites `days_out` on every re-scan, so
+    "days_out >= 1" selects markets whose LAST scan was multi-day. Measured
+    2026-08-26 on the 191 core rows: 130 were last analysed a full day before
+    their target date, against 357 core rows that reached days_out=0. So this
+    slice is plausibly enriched for markets that dropped out of scanning
+    before event day. (The remaining 61 are a UTC-vs-city-local boundary
+    effect, not a scanning gap -- days_out is computed against city-local
+    today while analyzed_at is UTC.) Filed in backlog.txt.
+    """
+    init_db()
+    like_clause = " OR ".join(["a.ticker LIKE ?"] * len(_DAILY_TEMP_TICKER_PREFIXES))
+    like_params = tuple(f"{p}%" for p in _DAILY_TEMP_TICKER_PREFIXES)
+    with _conn() as con:
+        rows = con.execute(
+            f"""
+            SELECT COALESCE(a.forecast_prob_precal, a.forecast_prob),
+                   a.outcome, a.condition
+            FROM analysis_attempts a
+            WHERE a.outcome IS NOT NULL
+              AND a.forecast_prob IS NOT NULL
+              AND a.market_prob IS NOT NULL
+              AND a.days_out >= 1
+              AND ({like_clause})
+            ORDER BY a.analyzed_at
+            """,
+            like_params,
+        ).fetchall()
+    out = []
+    for prob, outcome, condition in rows:
+        if _attempt_condition_type(condition) in _ALWAYS_EXCLUDED_CONDITION_TYPES:
+            continue
+        out.append({"forecast_prob": float(prob), "outcome": int(outcome)})
+    return out
 
 
 def _get_recent_win_loss(window: int) -> tuple[int, int]:
@@ -13344,8 +13518,18 @@ def log_analysis_attempt(
     days_out: int,
     was_traded: bool = False,
     signals: dict | None = None,
+    forecast_prob_precal: float | None = None,
 ) -> None:
     """#55: Log every analyzed market (traded or not) for bias detection.
+
+    `forecast_prob_precal` (batch-87) is `forecast_prob` BEFORE
+    analyze_trade's section 9c ran. It is what
+    get_analysis_calibration_data() actually fits on, and it exists because
+    9c both reads and writes `forecast_prob` -- see the column's own
+    migration comment for the measured decay if it is omitted. Optional and
+    defaulted to None so every pre-batch-87 caller keeps working; None is
+    stored as SQL NULL and COALESCEd back to forecast_prob at read time,
+    which is correct for rows written before 9c existed.
 
     `signals` (batch-81 item 2) is the blob from
     weather_markets.signal_values_from_analysis — the log-only signal values
@@ -13374,15 +13558,18 @@ def log_analysis_attempt(
                 """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded,
-                    signal_values)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    signal_values, forecast_prob_precal)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(ticker, target_date) DO UPDATE SET
                        analyzed_at    = excluded.analyzed_at,
                        forecast_prob  = excluded.forecast_prob,
                        market_prob    = excluded.market_prob,
                        days_out       = excluded.days_out,
                        was_traded     = MAX(analysis_attempts.was_traded,
-                                            excluded.was_traded),"""
+                                            excluded.was_traded),
+                       forecast_prob_precal =
+                           COALESCE(excluded.forecast_prob_precal,
+                                    analysis_attempts.forecast_prob_precal),"""
                 + _ATTEMPT_SIGNAL_VALUES_MERGE,
                 (
                     ticker,
@@ -13395,6 +13582,7 @@ def log_analysis_attempt(
                     days_out,
                     1 if was_traded else 0,
                     _signal_values_json(signals),
+                    forecast_prob_precal,
                 ),
             )
     except Exception as exc:
@@ -13409,6 +13597,11 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
     weather_markets.signal_values_from_analysis' blob for that market; see
     log_analysis_attempt's docstring and _ATTEMPT_SIGNAL_VALUES_MERGE for
     the per-key merge semantics, which are identical here.
+
+    It may also carry "forecast_prob_precal" (batch-87) -- the probability
+    before analyze_trade's section 9c ran, which is what the analysis
+    calibration is actually fitted on. Absent/None is stored as SQL NULL and
+    COALESCEd back to forecast_prob at read time. See log_analysis_attempt.
     """
     if not attempts:
         return
@@ -13438,6 +13631,11 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
                 int(a.get("days_out", 0)),
                 1 if a.get("was_traded") else 0,
                 _signal_values_json(a.get("signals")),
+                (
+                    float(a["forecast_prob_precal"])
+                    if a.get("forecast_prob_precal") is not None
+                    else None
+                ),
             )
         )
     try:
@@ -13446,15 +13644,18 @@ def batch_log_analysis_attempts(attempts: list[dict]) -> None:
                 """INSERT INTO analysis_attempts
                    (ticker, city, condition, target_date, analyzed_at,
                     forecast_prob, market_prob, days_out, was_traded,
-                    signal_values)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    signal_values, forecast_prob_precal)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(ticker, target_date) DO UPDATE SET
                        analyzed_at    = excluded.analyzed_at,
                        forecast_prob  = excluded.forecast_prob,
                        market_prob    = excluded.market_prob,
                        days_out       = excluded.days_out,
                        was_traded     = MAX(analysis_attempts.was_traded,
-                                            excluded.was_traded),"""
+                                            excluded.was_traded),
+                       forecast_prob_precal =
+                           COALESCE(excluded.forecast_prob_precal,
+                                    analysis_attempts.forecast_prob_precal),"""
                 + _ATTEMPT_SIGNAL_VALUES_MERGE,
                 rows,
             )

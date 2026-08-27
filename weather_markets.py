@@ -18112,6 +18112,86 @@ def analyze_trade(
                 _platt_exc,
             )
 
+    # ── 9c. Final-stage calibration on the UNBIASED population ───────────────
+    # batch-87. Every other calibration stage above is fitted on
+    # `predictions`, which only ever receives rows that already cleared the
+    # edge gates -- its minimum |our_prob - market_prob| is 0.0984 and it
+    # holds zero rows below the 0.08 floor, so the compression being
+    # calibrated away is invisible in exactly that population. This stage is
+    # fitted on `analysis_attempts` (every market the scanner analysed,
+    # minimum separation 0.0011).
+    #
+    # LAST, and that placement is not arbitrary: `analysis_attempts` records
+    # only the finished `forecast_prob`, with no stored pre-correction
+    # counterpart the way `raw_prob` gives one on `predictions`. The output of
+    # the whole chain above is therefore the only thing this fit can honestly
+    # be a correction TO, so it is applied where it was measured.
+    #
+    # Multi-day only. Held out on that same table, fitted and applied per
+    # horizon: d>=1 goes 0.1454 -> 0.0952 Brier against a market at 0.0911
+    # (t=-4.42 vs raw), while d=0 goes only 0.1828 -> 0.1723 (t=-1.46, not
+    # significant). This does NOT create edge -- under the real net_edge>=0.15
+    # gate, expanding-window, it takes the multi-day mean return from -35.2%
+    # to +12.2% at the mid but only +1.3% at a 1c half-spread and -3.6% at 2c.
+    # It removes a measured loss; it does not produce a profit, and nothing
+    # downstream should be justified as if it does.
+    #
+    # GATE ORDERING, corrected after opus review found the original comment
+    # here was wrong on two of its three claims. What is actually true:
+    #   * 7d's model-market gap gate IS upstream of this block, and it gates
+    #     on _prob_before_anchor, so it is untouched.
+    #   * 9b's between floor (~line 18211) and the market divergence gate
+    #     (~line 18390) are DOWNSTREAM. Left to themselves they would have
+    #     evaluated the CALIBRATED probability.
+    # That second half is not cosmetic. analysis_attempts only ever receives
+    # rows that already passed those gates ON THE UNCALIBRATED value -- a
+    # gated row returns None and never reaches the table -- so the measured
+    # population contains no row that the gates would have rejected
+    # post-calibration, and the held-out numbers below cannot have modelled
+    # such rejections. Reviewer reproduced a market where the divergence gate
+    # fires only because of this stage, which also drops the position out of
+    # paper.check_model_exits (it does `if not analysis: continue`) so an open
+    # position would stop being monitored for exit entirely.
+    # Both downstream gates therefore read _prob_before_analysis_cal
+    # explicitly. That is the same pattern 7d already uses with
+    # _prob_before_anchor, and it keeps gating on what the RAW model claimed
+    # -- which recalibration genuinely does not change.
+    # NOT recorded in `bias_correction`, so tracker.log_prediction's
+    # `raw_prob = forecast_prob + bias_correction` reconstruction does not
+    # undo this stage. Deliberate, and safe: that reconstruction was ALREADY
+    # approximate (temperature scaling, the market anchor, GBM and Platt all
+    # shift blended_prob without being recorded in `bias` either), and its
+    # only consumer -- get_metar_lockout_calibration_data -- filters
+    # days_out=0 AND method='metar_lockout', which this multi-day-only stage
+    # cannot reach. The pre-9c value is preserved properly on the stream that
+    # actually needs it, as analysis_attempts.forecast_prob_precal.
+    _prob_before_analysis_cal = blended_prob
+    try:
+        from ml_bias import apply_analysis_calibration as _apply_analysis_cal
+
+        blended_prob = _apply_analysis_cal(
+            blended_prob,
+            days_out=days_out,
+            ticker=enriched.get("ticker"),
+            condition_type=condition.get("type"),
+        )
+    except Exception as _acal_exc:
+        _log.error(
+            "analyze_trade: analysis calibration failed for %s: %s",
+            enriched.get("ticker", "?"),
+            _acal_exc,
+        )
+        # blended_prob remains uncalibrated — degraded but tradeable, matching
+        # section 7b's own failure posture.
+    if abs(blended_prob - _prob_before_analysis_cal) > 1e-6:
+        _log.info(
+            "analyze_trade: analysis calibration %s %.3f → %.3f (Δ%.3f)",
+            enriched.get("ticker", "?"),
+            _prob_before_analysis_cal,
+            blended_prob,
+            abs(blended_prob - _prob_before_analysis_cal),
+        )
+
     # Realign CI to the bias/ML-corrected forecast.  The bootstrap CI is anchored
     # to the raw ensemble distribution; GBM/Platt/temperature-scaling corrections
     # may shift blended_prob well outside that range, leaving the entire CI below
@@ -18123,6 +18203,22 @@ def analyze_trade(
     # blended_prob=0.80) would convert a deliberate no-information signal into a
     # plausible-looking narrow interval that bayesian_kelly would then happily
     # integrate over, defeating the exact guard #114 was written to provide.
+    #
+    # batch-87 interaction, raised in opus review and RESOLVED AS SAFE rather
+    # than changed. Section 9c sharpens, so it pushes blended_prob toward the
+    # extremes and makes the max()/min() clamps below bite far more often
+    # than they used to -- at which point the interval is no longer centred
+    # on the point estimate. The reviewer could not determine which way that
+    # biases sizing; measured, it is symmetric and always DOWNWARD:
+    #   blended 0.059 -> ci [0.010, 0.209], NO side, p_win 0.941, kelly
+    #     integrates a midpoint of 0.891  (smaller stake)
+    #   blended 0.950 -> ci [0.800, 0.990], YES side, p_win 0.950, kelly
+    #     integrates a midpoint of 0.895  (smaller stake)
+    # Both tails lose interval on the side that would have INCREASED p_win,
+    # so the clamp can only ever under-size, never over-size. Left as is: a
+    # systematic conservatism on a stage that does not create edge is the
+    # right failure direction. Pinned by
+    # test_ci_realignment_clamp_can_only_under_size.
     if temps and (ci_high - ci_low) < 0.98:
         _ci_half = (ci_high - ci_low) / 2.0
         ci_low = max(0.01, blended_prob - _ci_half)
@@ -18165,8 +18261,8 @@ def analyze_trade(
     # NO trades while never catching the suspicious YES case it was meant for.
     if (
         condition.get("type") == "between"
-        and blended_prob < BETWEEN_FLOOR_MODEL_MAX
-        and blended_prob > _divergence_gate_market_prob
+        and _prob_before_analysis_cal < BETWEEN_FLOOR_MODEL_MAX
+        and _prob_before_analysis_cal > _divergence_gate_market_prob
     ):
         _log.warning(
             "analyze_trade: skipping %s — low-confidence YES bet on between market "
@@ -18339,7 +18435,11 @@ def analyze_trade(
     # Skip rather than bet against a confident, well-informed market.
     if not metar_locked:
         _mkt_conf = _divergence_gate_market_prob
-        _our_conf = blended_prob
+        # _prob_before_analysis_cal, NOT blended_prob (batch-87): this gate is
+        # about whether the RAW model contradicts a confident market, and
+        # every row in the population section 9c was fitted on had already
+        # passed it on that uncalibrated value. See 9c's own ordering note.
+        _our_conf = _prob_before_analysis_cal
         if (_mkt_conf > 0.70 and _our_conf < 0.25) or (
             _mkt_conf < 0.30 and _our_conf > 0.75
         ):
@@ -18449,6 +18549,15 @@ def analyze_trade(
     _result = {
         # Core
         "forecast_prob": blended_prob,
+        # batch-87. The probability BEFORE section 9c, carried so cron can
+        # log it onto analysis_attempts.forecast_prob_precal -- which is what
+        # the 9c fit actually trains on. Without it the fit trains on its own
+        # output: measured on the real 191-row corpus the slope collapses
+        # 2.51 -> 1.23 within about two weeks, while still passing every
+        # validity check and so keeping the multi-day temperature-scale
+        # freeze pinned on behalf of a correction that has decayed to
+        # nothing. Same defect, same fix, as predictions.raw_prob.
+        "forecast_prob_precal": _prob_before_analysis_cal,
         "market_prob": market_prob,
         "edge": edge,
         "signal": signal,

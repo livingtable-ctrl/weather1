@@ -2616,6 +2616,16 @@ def _cmd_cron_body(
                     "condition": str(_analysis.get("condition", "")),
                     "target_date": _td,
                     "forecast_prob": _analysis.get("forecast_prob", 0.0),
+                    # batch-87. The pre-section-9c value, which is what the
+                    # analysis calibration is fitted on. `forecast_prob`
+                    # above is 9c's OUTPUT, so fitting on it would train the
+                    # correction on itself -- see the column's migration
+                    # comment in tracker.py for the measured decay. None on
+                    # any analyser that never reached 9c (the precip/snow/
+                    # rain/hurricane/tornado/hourly fast paths return before
+                    # it), which stores SQL NULL and COALESCEs back to
+                    # forecast_prob at read time.
+                    "forecast_prob_precal": _analysis.get("forecast_prob_precal"),
                     "market_prob": _analysis.get("market_prob", 0.0),
                     "days_out": int(_analysis.get("days_out", 0)),
                     "was_traded": False,
@@ -3431,6 +3441,50 @@ def _cmd_cron_body(
                             f"  [MLBias] Retrained {len(_trained)} city model(s): {', '.join(_trained.keys())}"
                         )
                     )
+                # batch-87: BEFORE the T refit, not after. train_all_temperature_
+                # scaling freezes the multi-day T keys once a real analysis
+                # calibration exists, so fitting this first means the freeze is
+                # already live the first time T is consulted — otherwise the very
+                # first retrain after this landed would move T once more (on the
+                # selected population) and only then freeze.
+                from ml_bias import (
+                    fit_and_save_analysis_calibration as _fit_analysis_cal,
+                )
+
+                # Own try/except (opus review, batch-87). This call sits
+                # FIRST in the D5 block, upstream of the T refit, the blend
+                # calibration, the in-process weight push and the METAR fit
+                # -- and the block's `finally` touches its 6-day marker
+                # unconditionally, so letting an exception escape here would
+                # cost all four of them for another six days. The existing
+                # METAR fit is placed LAST in this block for exactly this
+                # reason; this one cannot be, because the T freeze depends on
+                # it having run.
+                try:
+                    _acal = _fit_analysis_cal()
+                    if _acal:
+                        print(
+                            dim(
+                                f"  [AnalysisCal] fitted — a={_acal[0]:.4f} b={_acal[1]:.4f}"
+                            )
+                        )
+                    else:
+                        # Report WHICH decline. Two of the five causes are
+                        # data-integrity alarms, and a decline also silently
+                        # un-freezes the weekly multi-day T refit -- reporting
+                        # all of them as "not enough data" hid both.
+                        from ml_bias import analysis_calibration_status_message
+
+                        print(
+                            dim(
+                                "  [AnalysisCal] declined — "
+                                + analysis_calibration_status_message()
+                            )
+                        )
+                except Exception as _acal_exc:
+                    _log.warning("cmd_cron: analysis calibration failed: %s", _acal_exc)
+                    print(dim(f"  [AnalysisCal] failed — {_acal_exc}"))
+
                 # Use train_all_temperature_scaling so per-condition T values (between,
                 # above, below) are preserved — the old single-T function overwrites the
                 # combined JSON format and loses the per-condition entries each cron run.

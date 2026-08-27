@@ -33873,6 +33873,22 @@ Why not now: Needs its own investigation session; the immediate live gap
   (zero calibration on "below") is already mitigated by the resolved entry
   above's global-T fallback.
 
+CROSS-REFERENCE 2026-08-26 (batch-87) -- THE POOL MAY BE THE PROBLEM, NOT THE
+  BELOW MODEL. The trace above was run entirely on `predictions`, which only
+  receives rows that already cleared the edge gates. Measured on
+  `analysis_attempts` instead (every analysed market; core temperature; the
+  unbiased population), the below-condition pool at n=200 has mean forecast
+  0.459 against a 0.220 outcome rate -- still directionally biased, so that
+  part of the diagnosis survives -- but its unbounded optimal T is 1.129,
+  i.e. essentially NO compression, nowhere near the 8.0 ceiling this entry
+  reports. 'above' at n=287 wants T=0.393 (a SHARPENING, below _fit_T's 0.5
+  floor) and 'between' at n=61 wants 0.829.
+  So "no amount of additional below data will make this refit succeed" is
+  only established for the selected population. Do not close or investigate
+  this entry on `predictions` alone. See the batch-87 entry
+  "train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT, AND _fit_T's
+  LOWER BOUND CANNOT EXPRESS THE CORRECTION THE UNBIASED DATA ASKS FOR".
+
 [RESOLVED 2026-08-24 -- batch-37 item 5 (M-13)] calibration.py trio: brier-gate rejection missing _uncalibrated flag, hand-tune preservation only covered condition weights, condition weights missing the shadow-type exclusion _load_rows already had; plus LOW nits
 Priority: Medium
 Files: calibration.py, tests/test_calibration.py, tests/test_phase2_batch_p.py, tests/test_phase2_batch_c.py
@@ -43486,6 +43502,342 @@ When to revisit:
   Re-derive before acting; these numbers were reported, not independently
   reproduced here.
 
+  RESOLVED 2026-08-26 (batch-87) -- LANDED, MULTI-DAY ONLY. The recalibration
+  above is now a real code object. Every number below was re-derived from the
+  DB in this session; the previous session's figures are marked where they
+  reproduced and where they did not.
+
+  MY OWN SNAPSHOT, and it rots the same way: 594 scored analysis_attempts rows
+  (outcome + both probs non-NULL), 548 of them core temperature
+  (KXHIGH*/KXLOWT*), newest analyzed_at 2026-08-26T01:10:41 UTC. Identical to
+  what the unlanded session found, so no rows accrued between the two.
+  Minimum |f - m| 0.0011 against `predictions`' 0.0984 at n=349 -- the
+  premise holds.
+
+  WHAT REPRODUCED
+    calibration regression y = a + b*p, n=548:
+      MODEL  slope 1.2459 (se 0.0777) int -0.2402   (entry above: 1.233 / -0.238)
+      MARKET slope 1.1133 (se 0.0431) int -0.0652   (entry above: 1.107 / -0.067)
+    pooled temporal split, Platt on the earlier 322 -> later 226:
+      a=-0.6834 b=1.4171   raw 0.1745  CAL 0.1493  market 0.1102  t=+3.87
+      (entry above: -0.6833 / 1.4168, 0.1756 / 0.1473 / 0.1106, t=+3.50)
+    The "61% side flip / 39 -> 20 gate rows" figure reproduced EXACTLY --
+    46/76 and 39 -> 20 -- but only under a PER-HORIZON fit, not the pooled one
+    the same paragraph quoted alongside it. Two different fits were being
+    reported as one measurement. Under the pooled fit the d>=1 flip rate is
+    36.1% (26/72). Both are real; they are not the same number.
+
+  WHAT THE PREVIOUS FRAMING MISSED, and it is the reason this landed
+  multi-day-only. Fitted and applied PER HORIZON, held out:
+
+    horizon   n     raw      calibrated   market    cal vs raw   cal vs market
+    d>=1      76   0.1454     0.0952      0.0911    t = -4.42     t = +0.28
+    d=0      143   0.1828     0.1723      0.1128    t = -1.46     t = +4.78
+
+  The entire benefit is on multi-day, where the calibrated model becomes
+  statistically indistinguishable from the market. On same-day the improvement
+  is not significant, and the repo's OWN single-parameter T shape makes
+  same-day actively worse (t = +2.28). Same-day is also dominated by
+  METAR-locked rows whose recommended side is force-overridden by the lock, so
+  a probability correction there mostly cannot change the decision anyway --
+  measured 0 side flips on the 112 held-out rows gated both ways.
+
+  THE SIGN OF THE CORRECTION REVERSES BETWEEN THE TWO POPULATIONS. This is the
+  sharpest available statement of the defect, and it is new:
+    repo _fit_T on `predictions` d>=1 (the population it uses TODAY), n=94
+        -> T = 3.03, i.e. COMPRESS toward 0.5
+    repo _fit_T on `analysis_attempts` d>=1 (unbiased),          n=191
+        -> T = 0.316, i.e. SHARPEN away from 0.5
+  Same transform stage, same already-corrected probabilities, opposite sign --
+  the only difference is which rows are in the sample. The stored global
+  T=4.601 compresses hard. Note also that 0.316 is OUTSIDE ml_bias._fit_T's own
+  bounds=(0.5, 8.0): the existing fitter cannot express the correction the
+  unbiased data asks for even if it were pointed at it. Filed separately.
+
+  THE REAL GATE IS NOT |f - m| >= 0.15. .env sets MIN_EDGE=0.15, but that
+  floor is on `net_edge` = (p_win - P)/P, which is PRICE-SCALED -- at a 20c
+  entry it needs 3 points of probability edge, at 80c it needs 12. Every
+  "rows clearing 0.15" count in this entry and its parents is a flat-threshold
+  PROXY, not the trade count. Measured through the real gate shape,
+  expanding-window (refit before every test row, zero look-ahead), d>=1:
+
+    half-spread   raw signals / mean return      calibrated signals / mean return
+      mid (0c)      111  -35.2%  t=-1.24           50  +12.2%  t=+0.27
+      1c            110  -42.6%  t=-1.76           47   +1.3%  t=+0.03
+      2c            104  -48.7%  t=-2.19           46   -3.6%  t=-0.11
+      3c            102  -54.1%  t=-2.70           40   -5.6%  t=-0.16
+
+  Read this the honest way: recalibration converts a LARGE, SIGNIFICANT LOSS
+  into a wash. It does not produce a profit. The +12.2% at the mid is not
+  achievable -- analysis_attempts carries no bid/ask, so that column prices
+  every fill at the mid, and the picks are barbelled (19 of 50 at an entry
+  price under 0.10, 19 at 0.50+), which is exactly where a 1-2c spread eats
+  the whole margin. Nothing downstream may be justified as if this created
+  edge. The single-split figure was +25.3%; the expanding window is the
+  honest one and it is lower.
+
+  CHECKED AND NOT A CONFOUND: ladder-rung clustering. The d>=1 rows cover 185
+  distinct (city, target_date, series) events for 191 rows -- 1.03 rungs per
+  event, max 2 -- so the effective sample is not meaningfully smaller than n.
+
+  WHAT SHIPPED
+    * data/analysis_calibration.json (new, seeded via seeds/, never git add -f
+      into data/). One `multiday` key: {a, b, n, n_pos, fitted_at, source,
+      days_out}. Platt in logit space, sigmoid(a*logit(p) + b), matching
+      _fit_platt's own (A, B) convention so the fitted numbers need no
+      re-derivation between fit and apply.
+    * tracker.get_analysis_calibration_data() -- the unbiased population.
+      Ticker-prefix predicate (KXHIGH*/KXLOWT*) because analysis_attempts has
+      no condition_type column; the prefixes are re-derived from
+      weather_markets.KNOWN_WEATHER_SERIES by a test, not hand-listed.
+    * ml_bias.fit_analysis_calibration / fit_and_save_analysis_calibration /
+      apply_analysis_calibration / _usable_analysis_cal_entry /
+      analysis_calibration_is_active.
+    * weather_markets.analyze_trade section 9c -- applied LAST, after the whole
+      existing chain. That placement is forced, not chosen:
+      analysis_attempts records only the finished forecast_prob and has no
+      stored pre-correction counterpart the way `raw_prob` gives one on
+      `predictions`, so the chain's OUTPUT is the only thing this fit can
+      honestly be a correction to.
+    * The multi-day temperature-scale keys are now FROZEN while a real
+      analysis calibration exists (same mechanism as the existing _emos_active
+      skip). data/.history shows global T moving 1.0 -> 6.414 -> 5.357 ->
+      4.601 -> 5.558 -> 5.2 -> 4.755 across 2026-08-01..08-20, with
+      above/below/between separately reconfigured on 08-16 -- a weekly-moving
+      base under a stacked fit invalidates that fit's own input distribution.
+      sameday/hourly keep refitting; nothing is stacked on them.
+
+  DECLINED-TO-FIT STATE. Minority-class floor of 20 (2 predictors x the
+  existing METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR = 10), expressed on the
+  MINORITY class deliberately: today's population is 191 rows but only 29
+  settled YES, and the row count alone would look like plenty. On a decline
+  the file is REWRITTEN with "_uncalibrated": true rather than left holding a
+  stale fit -- otherwise a correction the data no longer supports would keep
+  being applied AND would keep the temperature scale frozen on its behalf.
+  _usable_analysis_cal_entry checks that flag BEFORE it reads a/b, so a future
+  fit form whose declined placeholder is not an identity transform cannot
+  reintroduce the batch-79 bug.
+
+  HONEST LIMITS, all of which survive this change:
+    - 29 positive outcomes. The slope is estimated off those 29 -- and
+      effectively off 25, since the class split is above 130 rows / 25
+      positives against below 61 rows / 4 positives. `below` alone would fail
+      the minority floor by a factor of five. Pooling is defensible but the
+      slope is an `above` measurement wearing a pooled label.
+    - 191 rows, one month, summer only, scanner-visible markets only.
+    - The held-out window is 76 rows.
+    - It does not create edge. See the spread table above.
+    - It does not touch same-day, which is 357 of the 548 core rows and the
+      horizon where the model does worst.
+    - THE d>=1 SLICE MAY ITSELF BE SELECTED. analysis_attempts upserts on
+      (ticker, target_date) and overwrites days_out on every re-scan, so
+      "days_out >= 1" means "last scanned multi-day". Of the 191 core rows,
+      130 were last analysed a full day before their target date, against 357
+      core rows that reached days_out=0 -- so the slice is plausibly enriched
+      for markets that dropped out of scanning before event day. (The other
+      61 are a UTC-vs-city-local boundary effect, not a scanning gap: days_out
+      is computed against city-local today while analyzed_at is UTC. A
+      reviewer proposed the restamping story as a general explanation and it
+      does NOT hold -- those 61 rows were last analysed ON their target date
+      and would have been restamped to 0 if it did.) Not introduced by this
+      change; it is a property of the population all three entries here rest
+      on. Its own measurement, not a footnote.
+
+  OPUS REVIEW (three independent reviewers, one per subsystem). 40 findings.
+  Two were blocking and are the reason this entry's implementation looks
+  different from its plan:
+
+  BLOCKING 1 -- THE FIT WAS GOING TO TRAIN ON ITS OWN OUTPUT. Found
+  independently by all three. Section 9c writes `blended_prob`, which becomes
+  analyze_trade's forecast_prob, which cron logs straight into
+  analysis_attempts.forecast_prob -- the exact column the fit reads. Every row
+  logged after landing would have been already-calibrated, and the refit
+  REPLACES rather than composes. Simulated on the real 191-row corpus: the
+  fitted slope collapses 2.51 -> 1.23 within about two weeks of accrual. It
+  never settles, and because 1.23 still passes every validity check the entry
+  keeps reading as active and keeps the multi-day temperature-scale freeze
+  pinned on behalf of a correction that has decayed to nothing. Steady state
+  strictly worse than not landing it.
+  Fixed the way the repo already fixed this for METAR calibration: a new
+  `analysis_attempts.forecast_prob_precal` column carrying the pre-9c value,
+  with COALESCE(precal, forecast_prob) at read time so the pre-migration
+  corpus (for which forecast_prob IS pre-9c, because 9c did not exist) still
+  counts. Same shape as predictions.raw_prob, and get_metar_lockout_
+  calibration_data's docstring had already written up the exact oscillation.
+  Worth recording that this session FILED a backlog entry about
+  train_all_temperature_scaling fitting T on its own prior output, and then
+  built the same defect into the new object, where it was worse.
+
+  BLOCKING 2 -- TWO GATES WERE DOWNSTREAM OF 9c, NOT UPSTREAM. The section's
+  own comment claimed 7d's model-market gap gate, the divergence gate and 9b's
+  between floor were all upstream. Only the first is. 9b (~:18211) and the
+  divergence gate (~:18390) sit AFTER 9c and were evaluating the calibrated
+  probability. That is not cosmetic: analysis_attempts only ever receives rows
+  that passed those gates on the UNCALIBRATED value, so the measured
+  population contains no row they would have rejected post-calibration and the
+  held-out numbers cannot have modelled such rejections. A reviewer reproduced
+  a market where the divergence gate fires only because of this stage -- which
+  also drops the position out of paper.check_model_exits (`if not analysis:
+  continue`), so an open position would silently stop being monitored for exit.
+  Fixed by pointing both gates at _prob_before_analysis_cal, the same pattern
+  7d already uses with _prob_before_anchor.
+
+  ALSO FIXED, briefly: the apply site was scoped to the fit's population
+  (KXHOLIDAYTMAX/TMIN flow through this same code path but are not in it, and
+  that family is shadow-only precisely so it can accumulate clean calibration
+  data); the read path now enforces _fit_platt's own coefficient bounds (an
+  a = -2.5 from a hand-restore read as a live fit and INVERTED every multi-day
+  probability, which the [0.01,0.99] clamp does not catch); a magnitude
+  backstop was added (9c was the only correction stage in analyze_trade
+  without one); the decline path was split by cause (a DB failure and a
+  population shrink now write NOTHING, because writing the placeholder
+  simultaneously disables 9c and un-freezes the weekly T refit -- one decline
+  moved the base transform the freeze exists to hold still); a corrupt file
+  now FAILS CLOSED on the freeze while still no-opping the apply; the EMOS
+  combination was closed on both sides; and all three operator messages now
+  report which of the five declines happened instead of calling every one of
+  them "not enough data yet".
+
+  NOT CHANGED, with reasons: the freeze pins keys that have NO entry (so
+  `below` runs on its hardcoded _T_BELOW_PRIOR for as long as it holds) --
+  that is self-consistent with the measurement, which was taken with `below`
+  at exactly that prior, and backfilling it would move the base away from what
+  was measured; it now logs a WARNING naming the pinned keys instead. The CI
+  realignment's clamp does de-centre the Kelly interval far more often after
+  9c, but measured it is symmetric and always DOWNWARD -- it can only
+  under-size, never over-size -- so it is documented and pinned rather than
+  changed.
+
+  DEPLOYMENT NOTE, not yet actioned: on the first scan after this lands, every
+  open multi-day position is re-scored under a model that flips the favoured
+  side on ~60% of comparable rows, and paper.check_model_exits fires
+  `model_flipped` on a signed net_edge crossing +/-0.10. Measured against live
+  state at the time of writing: 7 open paper positions, 4 at d>=1. Small, but
+  it is a simultaneous exit of most of them at whatever the book offers.
+
+
+[OPEN 2026-08-26 -- surfaced by batch-87's opus review. Deliberately NOT
+  fixed there: the first is an operational sequencing decision the user has to
+  make, and the second needs its own measurement rather than a code change.]
+  TWO THINGS TO SETTLE BEFORE THE ANALYSIS CALIBRATION'S FIRST LIVE SCAN
+Priority: MEDIUM. Neither blocks the code, both bite on the day it runs.
+Files: paper.py (check_model_exits), tracker.py
+  (get_analysis_calibration_data's population).
+
+A. DEPLOYMENT-DAY MASS EXIT. paper.check_model_exits re-runs analyze_trade on
+   every open position each cycle and exits when the freshly computed signed
+   net_edge crosses +/-0.10 against the held side. Every open multi-day
+   position was entered under the PRE-9c model, and 9c flips the favoured side
+   on 46 of 76 held-out multi-day rows -- so on the first scan after it lands,
+   a large fraction of them are re-scored by a model that disagrees with the
+   entry thesis and `model_flipped` fires on all of them at once, liquidating
+   at whatever the book offers with no staging and no warning.
+   Measured against live state 2026-08-26: 7 open paper positions, 4 at d>=1.
+   Small today. It will not stay small if the bot runs unattended for a while
+   before anyone looks.
+   Options: drain open multi-day positions before enabling; or grace
+   `model_flipped` for one cycle on positions entered before the
+   calibration's `fitted_at`; or accept it explicitly and let it happen.
+   The third is defensible at n=4 and is NOT the same as ignoring it.
+
+B. IS THE d>=1 POPULATION ITSELF SELECTED? analysis_attempts upserts on
+   (ticker, target_date) and overwrites days_out on every re-scan, so
+   "days_out >= 1" selects markets whose LAST scan was multi-day. Measured on
+   the 191 core rows: 130 were last analysed a full day before their target
+   date, against 357 core rows that reached days_out=0. So the fit's
+   population is plausibly enriched for markets that dropped out of scanning
+   before event day -- and "unbiased" is the word this whole line of work
+   rests on.
+   A reviewer proposed restamping as the general explanation; it does not
+   hold on its own. The other 61 rows were last analysed ON their target date
+   and would have been restamped to days_out=0 if it did -- they are a
+   UTC-vs-city-local boundary effect (days_out is computed against city-local
+   today, analyzed_at is UTC). So the mechanism is real but partial, and the
+   size of the selection is unmeasured.
+   What it would look like: reconstruct per-market scan histories from
+   api_requests or cron.log rather than from the upserted row, and compare the
+   d>=1 fit's population against markets that WERE scanned at d=0 -- i.e. ask
+   whether "stopped being scanned" correlates with anything the calibration
+   cares about. If it does, the held-out numbers need re-deriving on a
+   population defined by first-scan horizon rather than last.
+
+When to revisit: A before the next live-ish scan; B at the 60-day mark
+  (~2026-10-25) alongside the seasonal re-measure, or sooner if anyone wants
+  to cite the calibration's numbers as evidence about the unbiased population
+  rather than about the fit.
+
+
+[OPEN 2026-08-26 -- found by batch-87 while landing the analysis_attempts
+  recalibration. Deliberately NOT fixed there: both halves move live multi-day
+  probabilities and need their own go/no-go, and batch-87's own measurement was
+  taken downstream of the current behaviour, so changing it would invalidate
+  the numbers that justified that change.]
+  train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT, AND _fit_T's
+  LOWER BOUND CANNOT EXPRESS THE CORRECTION THE UNBIASED DATA ASKS FOR
+Priority: MEDIUM. Currently INERT on the multi-day keys -- batch-87 froze
+  global/above/below/between while a real analysis calibration exists -- but
+  the freeze lifts the moment that fit declines, and sameday/hourly were never
+  frozen and are not covered by either half below.
+Files: ml_bias.py (_fit_T, train_all_temperature_scaling), tracker.py
+  (log_prediction's raw_prob reconstruction).
+
+(a) THE FIT IS SELF-FEEDING. train_all_temperature_scaling reads
+    `predictions.our_prob`, which is the value AFTER section 7b's temperature
+    scaling already ran -- so each retrain fits a correction on top of its own
+    previous output. This repo has already identified and solved exactly this
+    for METAR calibration: tracker.get_metar_lockout_calibration_data selects
+    COALESCE(p.raw_prob, p.our_prob) precisely so "each weekly retrain fits on
+    its own prior output ... generation 1 corrects, generation 2 fits an exact
+    identity transform on the now-already-corrected values, generation 3
+    reverts". The T fit has no such guard, and `raw_prob` does not help it:
+    raw_prob = forecast_prob + bias_correction undoes only the quintile-bias /
+    METAR step, never the temperature scaling itself.
+    Partially masked today by an ACCIDENT rather than a design: _fit_T returns
+    None when the fit is no better than T=1.0, and the caller then keeps the
+    existing T -- which happens to damp the oscillation. That is not a
+    guarantee and nothing tests it.
+
+(b) THE BOUNDS ARE ASYMMETRIC AGAINST THE REAL CORRECTION. _fit_T's
+    minimize_scalar uses bounds=(0.5, 8.0). Measured 2026-08-26 on the
+    unbiased population (analysis_attempts, core temperature, d>=1, n=191),
+    the optimum is T = 0.316 -- outside the lower bound, which clamps it to
+    0.50. The stored global T is 4.601, a COMPRESSION; the unbiased data asks
+    for a SHARPENING the fitter structurally cannot represent. On the selected
+    population (`predictions`, d>=1, n=94) the same fitter returns T = 3.03,
+    a compression. Same code, same transform stage, opposite sign -- the only
+    difference is which rows are in the sample.
+
+BEARS DIRECTLY ON the open entry above titled "'below' condition-type
+  predictions show directional bias strong enough to repeatedly hit
+  ml_bias._fit_T's T-upper-bound" (filed 2026-08-24). See the cross-reference
+  appended to that entry: on the unbiased population 'below' wants T = 1.129,
+  i.e. essentially no compression -- so the upper-bound pinning that entry
+  describes may be a property of the SELECTED population rather than of the
+  below-condition model. That entry should not be investigated on
+  `predictions` alone.
+
+What it would look like:
+  1. Decide whether the T fit should read a genuinely pre-temperature-scaling
+     probability. That column does not exist today; adding it is a
+     log_prediction change and needs its own entry if pursued.
+  2. Re-derive _fit_T's bounds from data rather than from the 2026-06 priors.
+     0.5 was never argued for; it is simply the other end of the interval.
+  3. Do BOTH on the unbiased population, or neither -- fixing the bounds while
+     keeping the selected population makes the wrong fit more expressive,
+     which is worse than leaving it clamped.
+
+Why not now: batch-87's entire held-out measurement (0.1454 -> 0.0952 on
+  multi-day) was taken on probabilities produced by the CURRENT temperature
+  scale. Changing that transform invalidates the measurement and would leave
+  the multi-day path uncalibrated for the ~60 days it takes to re-accrue. The
+  freeze batch-87 added is the deliberate interim: it stops the base moving,
+  without pretending to fix it.
+
+When to revisit: when the analysis calibration has a second, independent
+  window of data to be re-fit on (~2026-10-25, the same 60-day mark the
+  direction entry uses), or immediately if that fit ever declines and the
+  freeze lifts.
+
 
 [OPEN 2026-08-26 -- follow-up to the entry above ("THE MODEL'S 'EDGE' IS ITS OWN
   MISCALIBRATION"). That entry established the model loses to the market. This
@@ -43599,13 +43951,28 @@ THE OPTIONS THAT REMAIN
     Against: no revenue path; "measurement platform" can quietly become
       "abandoned".
 
- 2. RECALIBRATE, THEN RE-MEASURE IN ~60 DAYS.
+ 2. RECALIBRATE, THEN RE-MEASURE IN ~60 DAYS.   <-- DONE 2026-08-26 (batch-87)
+    Landed MULTI-DAY ONLY, after the user took it as an explicit go/no-go
+    rather than as hygiene. The framing in the line below was wrong in two
+    ways and is kept only for history.
     For: the one unambiguously-correct code change available. Held-out
       0.1756 -> 0.1473 against a market at 0.1106 -- removes ~44% of the excess
       Brier. Every current calibration fit is trained on `predictions`, the one
       population where the compression is invisible. Cheap, well-scoped.
     Against: does NOT create edge (t = +3.50 held-out). Real sunk-cost risk --
       only defensible if named as hygiene, not as an edge play.
+    WHAT ACTUALLY HAPPENED, and why "hygiene" undersold it: fitted and applied
+      PER HORIZON, the whole effect is on multi-day (0.1454 -> 0.0952 against
+      a market at 0.0911, t = -4.42 vs raw, t = +0.28 vs market -- i.e.
+      indistinguishable from the price), while same-day does not improve
+      significantly (t = -1.46) and the repo's own T shape makes same-day
+      WORSE. So same-day was left untouched. On the multi-day path it flips
+      the favoured side on 46 of 76 held-out rows and roughly halves the
+      signals clearing the real net_edge gate (111 -> 50 expanding-window),
+      taking the mean return from -35.2% to +12.2% at the mid -- but only
+      +1.3% at a 1c half-spread and -3.6% at 2c. It removes a measured loss;
+      it does not produce a profit. See the parent entry's RESOLVED block for
+      the full table, the population sign-reversal, and the caveats.
 
  3. STRUCTURAL EDGE -- MARKET-MAKING / SPREAD CAPTURE.
     For: a well-calibrated market is an asset here, not an obstacle; the WS

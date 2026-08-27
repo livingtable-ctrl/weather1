@@ -165,6 +165,16 @@ CITIES_JSON_PATH = _DATA / "cities.json"
 FEATURE_ACTIVATIONS_PATH = _DATA / "feature_activations.json"
 PLATT_MODELS_PATH = _DATA / "platt_models.json"
 METAR_CALIBRATION_PATH = _DATA / "metar_lockout_calibration.json"
+# batch-87. Final-stage probability calibration fitted on `analysis_attempts`
+# -- every market the scanner analysed -- rather than on `predictions`, which
+# only ever receives rows that already cleared the edge gates and therefore
+# holds no row below |forecast - market| = 0.0984. Deliberately a SEPARATE
+# object from TEMPERATURE_SCALE_PATH: that one is fitted on the selected
+# population and applied mid-chain (analyze_trade section 7b), this one is
+# fitted on the unbiased population and applied after the whole correction
+# chain, which is the only stage whose input `analysis_attempts.forecast_prob`
+# actually records.
+ANALYSIS_CALIBRATION_PATH = _DATA / "analysis_calibration.json"
 FORECAST_SNAPSHOTS_DIR = _DATA / "forecast_snapshots"
 ENSEMBLE_CACHE_DIR = _DATA / "ensemble_cache"
 ENSEMBLE_DISK_CACHE_PATH = _DATA / "ensemble_cache.json"
@@ -217,6 +227,7 @@ NWS_STATION_CACHE_PATH = _DATA / ".nws_station_cache.json"
 SEEDS_DIR = _ROOT / "seeds"
 
 _SEEDED_FILENAMES: tuple[str, ...] = (
+    "analysis_calibration.json",
     "city_weights.json",
     "city_weights_sameday.json",
     "condition_weights.json",
@@ -234,12 +245,12 @@ def materialize_missing_seeds(
     """Copy each seed whose data/ counterpart is absent. Returns names copied.
 
     Called once at import below, which is what gives this its coverage: every
-    module that READS one of these eight files reaches paths.py at module
+    module that READS one of these nine files reaches paths.py at module
     scope (calibration.py, ml_bias.py, weather_markets.py and web_app.py all
     do `from paths import ...`), so no reader can run without this having run
     first. That matters because the two loaders furthest from this file live
     in weather_markets.py and ml_bias.py; seeding centrally here means none
-    of the eight loaders needed changing, and none can be missed later.
+    of the nine loaders needed changing, and none can be missed later.
 
     Not every script in the repo imports paths -- backlog_index.py and
     migrate_backup.py do not (measured; the earlier claim here that "every
@@ -273,7 +284,7 @@ def materialize_missing_seeds(
     whole point of these files is to be optional. The catch is `Exception`,
     not `OSError`: tests/prod_data_guard.py raises ProdDataWriteError, which
     derives from RuntimeError, and letting that escape would fail the whole
-    suite at COLLECTION rather than reporting one violation. All eight
+    suite at COLLECTION rather than reporting one violation. All nine
     loaders already treat an absent file as "uncalibrated" and return {} or
     None, so the degraded outcome of this function doing nothing at all is a
     correct, already-supported state, and never a reason to fail an import.

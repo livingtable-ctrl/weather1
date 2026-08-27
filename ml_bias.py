@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
+from paths import ANALYSIS_CALIBRATION_PATH as _ANALYSIS_CAL_PATH
 from paths import EMOS_PARAMS_PATH as _EMOS_PARAMS_PATH
 from paths import METAR_CALIBRATION_PATH as _METAR_CALIBRATION_PATH
 from paths import ML_BIAS_HMAC_PATH as _HMAC_PATH
@@ -52,6 +53,29 @@ EMOS_COVERED_CONDITION_KEYS = ("global", "above", "below", "between")
 #   above optimal T ≈ 8.0  (hits upper bound — blend is overconfident; T=6 practical)
 _T_BELOW_PRIOR: float = 3.0
 _T_ABOVE_PRIOR: float = 6.0
+# batch-87. Cache for analysis_calibration.json, same mtime-invalidation
+# reasoning as _TEMP_CACHE_MTIME above.
+_ANALYSIS_CAL_CACHE: dict | None = None
+_ANALYSIS_CAL_MTIME: float | None = None
+# True when the file EXISTS but could not be parsed at _ANALYSIS_CAL_MTIME.
+# Distinct from "absent", and the distinction is load-bearing: absent means
+# no calibration was ever fitted, unreadable means one may well have been and
+# we simply cannot see it. analysis_calibration_is_active() treats the second
+# as "keep the temperature-scale freeze" so a corrupt file cannot silently
+# un-freeze the weekly T refit (opus review, batch-87).
+_ANALYSIS_CAL_UNREADABLE: bool = False
+# Reason code from the most recent fit_and_save_analysis_calibration(), read
+# back by last_analysis_calibration_status() for the operator-facing call
+# sites. Process-local and advisory only -- nothing in the pricing path reads
+# it, and it is deliberately NOT persisted: it describes the last fit ATTEMPT
+# in this process, whereas the file's own `decline_reason` key describes the
+# state on disk.
+_ANALYSIS_CAL_STATUS: str = "unknown"
+# The only horizon key this object carries. Same-day was measured and
+# deliberately excluded -- see tracker.get_analysis_calibration_data for the
+# numbers. A key rather than a bare top-level fit so adding same-day later is
+# an additive change, not a format migration.
+_ANALYSIS_CAL_MULTIDAY = "multiday"
 
 
 def _hmac_secret() -> bytes:
@@ -458,6 +482,45 @@ def apply_platt_per_city(
 # (settled_yes=0), so a flat n>=30 floor would pass data that's actually
 # thin by the standard it claims to cite.
 METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR = 10
+# batch-87. Minority-class floor for the analysis_attempts fit, reusing the
+# events-per-variable convention on the line above: Platt has two free
+# parameters, so 10 EPV each. Defined HERE rather than beside the other
+# _ANALYSIS_CAL_* constants at module head because it is derived from the
+# line above, which is itself defined this far down.
+#
+# On 2026-08-26 the population clears this but not comfortably -- 191 rows, of
+# which only 29 settled YES. The slope is estimated off those 29, which is the
+# single largest caveat on this fit and is exactly why the floor is expressed
+# on the MINORITY class rather than on the row count: 191 would look like
+# plenty and would not be.
+ANALYSIS_CALIBRATION_MIN_MINORITY = 2 * METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR
+# Coefficient bounds for the analysis calibration, enforced on BOTH sides.
+# _fit_platt already raises outside these on the write side; naming them here
+# lets the READ side enforce the same envelope without the two drifting.
+#
+# The read side needs it independently (opus review, batch-87): the loader
+# previously checked only type and finiteness, so a hand-restored or
+# partially-written file carrying a = -2.5 was accepted as a live fit and
+# INVERTED every multi-day probability -- 0.80 became 0.03 -- which flips
+# `rec_side` on every one of them. The [0.01, 0.99] clamp does not help; an
+# inverted value sits comfortably inside it.
+ANALYSIS_CALIBRATION_A_MAX = 5.0
+ANALYSIS_CALIBRATION_B_MAX = 5.0
+# Magnitude backstop on the applied correction, in the same shape as the
+# GBM/Platt (_ML_CORRECTION_LIMIT, 0.30) and METAR (0.60) guards -- section
+# 9c was the only correction stage in analyze_trade without one.
+#
+# Sized like METAR's rather than GBM's, and deliberately generous: this is a
+# PATHOLOGY backstop, not a magnitude policy. The measured 2026-08-26 fit
+# (a=2.8613, b=-0.3384) has a maximum |delta| of 0.244 over p in [0.01, 0.99],
+# so a limit near that would start silently skipping the correction on
+# exactly the confident markets it was fitted to move -- which is the failure
+# METAR's own 0.30 limit produced (it skipped every NO-lock correction while
+# applying every YES-lock one, leaving a new asymmetry). 0.60 leaves that
+# headroom while still catching a fit that would flip the market's likely
+# direction outright: a=1.0/b=-5.0 is legal under _fit_platt and reaches a
+# delta of 0.85.
+_ANALYSIS_CORRECTION_LIMIT = 0.60
 
 
 def fit_metar_calibration(rows: list[dict]) -> tuple[float, float, float] | None:
@@ -844,6 +907,615 @@ def apply_temperature_scaling(
     return _sigmoid(_logit(prob) / T)
 
 
+_ANALYSIS_CAL_WARNED: set[str] = set()
+
+
+def _warn_bad_analysis_cal_once(key: str, reason: str) -> None:
+    """WARN once per (key, reason) rather than once per market.
+
+    apply_analysis_calibration runs on every market of every scan (~300), so
+    an unconditional warning on a standing-invalid file produces ~300
+    identical lines per scan, indefinitely -- which is exactly the noise
+    weather_markets._load_metar_calibration's own docstring says it fixed for
+    the METAR file. Cleared whenever the file's mtime changes, so a repaired
+    file warns again if it is still wrong.
+    """
+    token = f"{key}:{reason}"
+    if token in _ANALYSIS_CAL_WARNED:
+        return
+    _ANALYSIS_CAL_WARNED.add(token)
+    _log.warning("ml_bias: analysis_calibration.json %s — %s", key, reason)
+
+
+def _load_analysis_calibration() -> dict | None:
+    """Load analysis_calibration.json. Returns the raw table, or None.
+
+    Deliberately returns the table verbatim rather than a cleaned
+    {key: (a, b)} mapping the way _load_temperature_scale does: the
+    `_uncalibrated` sentinel has to survive to the caller, and a loader that
+    strips it to a pair of floats would hand back (1.0, 0.0) -- an identity
+    transform that is indistinguishable from a real fit that happened to
+    converge there. That is precisely the batch-79 failure mode
+    (seeds/seasonal_weights.json's summer entry lost the flag and
+    _blend_weights read uniform weights as a real fit), so the flag is kept
+    at every layer and interpreted only by _usable_analysis_cal_entry below.
+
+    Returns None for BOTH "absent" and "present but unreadable", because
+    every consumer of the returned value should no-op either way. The two are
+    NOT the same state for the temperature-scale freeze, though, so the
+    unreadable case is recorded in _ANALYSIS_CAL_UNREADABLE for
+    analysis_calibration_is_active() to fail closed on -- see there.
+
+    On a parse failure the mtime IS recorded (with a None cache), so a
+    standing-invalid file is parsed and warned about once per rewrite rather
+    than once per market (opus review, batch-87).
+    """
+    global _ANALYSIS_CAL_CACHE, _ANALYSIS_CAL_MTIME, _ANALYSIS_CAL_UNREADABLE
+    if not _ANALYSIS_CAL_PATH.exists():
+        _ANALYSIS_CAL_CACHE = None
+        _ANALYSIS_CAL_MTIME = None
+        _ANALYSIS_CAL_UNREADABLE = False
+        return None
+    try:
+        mtime = _ANALYSIS_CAL_PATH.stat().st_mtime
+    except OSError:
+        # Transient stat failure: keep whatever was last read rather than
+        # inventing a state. Self-healing -- the next successful stat
+        # re-evaluates. Deliberately does NOT clear _ANALYSIS_CAL_UNREADABLE.
+        return _ANALYSIS_CAL_CACHE
+    if _ANALYSIS_CAL_MTIME == mtime:
+        # Covers both a warm cache and a remembered parse failure (cache
+        # None, unreadable True) -- the point of keying on mtime alone.
+        return _ANALYSIS_CAL_CACHE
+    _ANALYSIS_CAL_WARNED.clear()  # the file changed; let it warn again
+
+    def _fail(reason: str) -> None:
+        global _ANALYSIS_CAL_CACHE, _ANALYSIS_CAL_MTIME, _ANALYSIS_CAL_UNREADABLE
+        _ANALYSIS_CAL_CACHE = None
+        _ANALYSIS_CAL_MTIME = mtime
+        _ANALYSIS_CAL_UNREADABLE = True
+        _warn_bad_analysis_cal_once("<file>", reason)
+
+    try:
+        raw = json.loads(_ANALYSIS_CAL_PATH.read_text())
+    except Exception as exc:
+        _fail(f"failed to parse: {exc}")
+        return None
+    if not isinstance(raw, dict):
+        _fail(f"top level is {type(raw).__name__}, expected an object")
+        return None
+    _ANALYSIS_CAL_CACHE = raw
+    _ANALYSIS_CAL_MTIME = mtime
+    _ANALYSIS_CAL_UNREADABLE = False
+    return raw
+
+
+def _usable_analysis_cal_entry(
+    table: dict | None, key: str
+) -> tuple[float, float] | None:
+    """Return (a, b) for one horizon key, or None when there is no usable fit.
+
+    "No usable fit" covers four distinct states, all of which must behave
+    identically (as a no-op) and none of which may be confused with a real
+    fit at a=1/b=0:
+      * the table is absent or the key is missing
+      * the entry is not a dict (a corrupted or hand-edited file)
+      * the entry carries "_uncalibrated": true -- the declined-to-fit state
+      * the entry is missing 'a' or 'b', or either is non-finite
+
+    The `_uncalibrated` branch is the load-bearing one and is checked BEFORE
+    the a/b lookup on purpose: the declined state writes a=1.0/b=0.0 (a real
+    identity transform, so a reader that ignored the flag would still behave
+    correctly TODAY), and it is only when a future fit form makes the
+    declined placeholder non-identity that ignoring the flag starts silently
+    applying a transform nobody fitted. Checking the flag first means that
+    change can never introduce the bug.
+    """
+    if not isinstance(table, dict):
+        return None
+    entry = table.get(key)
+    if not isinstance(entry, dict):
+        return None
+    if entry.get("_uncalibrated"):
+        return None
+    a, b = entry.get("a"), entry.get("b")
+    if not isinstance(a, int | float) or not isinstance(b, int | float):
+        return None
+    if isinstance(a, bool) or isinstance(b, bool):
+        return None
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return None
+    # The SAME envelope _fit_platt enforces on the write side. Checked here
+    # too because the write side is not the only way this file gets content:
+    # a hand-restore from data/.history/, a partial write, or a future fitter
+    # that does not route through _fit_platt all reach this loader directly.
+    # Measured on the un-guarded version: a = -2.5 read as a live fit and
+    # mapped a model probability of 0.80 to 0.03 -- a direction inversion on
+    # every multi-day market, which flips rec_side on every one of them.
+    if (
+        a <= 0
+        or abs(a) > ANALYSIS_CALIBRATION_A_MAX
+        or abs(b) > ANALYSIS_CALIBRATION_B_MAX
+    ):
+        _warn_bad_analysis_cal_once(
+            key, f"coefficients out of bounds (a={a!r} b={b!r})"
+        )
+        return None
+    return float(a), float(b)
+
+
+def _analysis_cal_entry_raw(key: str) -> dict | None:
+    """The stored entry for one horizon key, VALIDITY UNCHECKED.
+
+    Distinct from _usable_analysis_cal_entry on purpose: the shrink guard in
+    fit_and_save needs the previous entry's recorded `n` and its
+    `_uncalibrated` flag even when the entry itself would not be usable as a
+    fit. Reading through the usable-entry path instead would return None for
+    exactly the states the guard most needs to see.
+    """
+    table = _load_analysis_calibration()
+    if not isinstance(table, dict):
+        return None
+    entry = table.get(key)
+    return entry if isinstance(entry, dict) else None
+
+
+def analysis_calibration_is_active() -> bool:
+    """True when a real (non-declined) multi-day analysis calibration exists.
+
+    train_all_temperature_scaling reads this to decide whether to freeze the
+    multi-day temperature-scale keys. When it is False -- no file, or a fit
+    that declined -- the weekly T refit resumes its pre-batch-87 behaviour,
+    which is the correct fallback: the freeze exists to stop the base moving
+    UNDER a stacked correction, so with no correction stacked there is
+    nothing to hold still.
+
+    FAILS CLOSED on an unreadable file (opus review, batch-87). A file that
+    exists but will not parse is NOT evidence that no calibration was fitted
+    -- it is evidence we cannot currently see the one that was. Treating it
+    as "inactive" would let a torn write or a bad hand-restore silently
+    un-freeze the weekly T refit, move the base transform, and leave whatever
+    fit is eventually recovered stale against it. Keeping the freeze in that
+    state costs only a delayed T refit, which is the strictly cheaper error.
+    Note this deliberately diverges from apply_analysis_calibration, which
+    DOES no-op on an unreadable file -- applying an unknown correction and
+    holding a known one still are different risks.
+    """
+    table = _load_analysis_calibration()
+    if _ANALYSIS_CAL_UNREADABLE:
+        return True
+    return _usable_analysis_cal_entry(table, _ANALYSIS_CAL_MULTIDAY) is not None
+
+
+def apply_analysis_calibration(
+    prob: float,
+    days_out: int | None = None,
+    ticker: str | None = None,
+    condition_type: str | None = None,
+) -> float:
+    """Final-stage probability calibration; returns prob unchanged when untrained.
+
+    Applied in weather_markets.analyze_trade after the existing correction
+    chain (quintile bias, temperature scaling, market anchor, GBM/Platt).
+    That placement is forced rather than chosen: `analysis_attempts` records
+    the finished probability, so the chain's OUTPUT is the only thing this
+    fit can honestly be a correction to.
+
+    EVERY no-op branch below exists because the fit's population is narrower
+    than analyze_trade's, and applying a correction to rows the fit never saw
+    is the same error this batch exists to fix -- just pointed the other way.
+    Each one mirrors a filter in tracker.get_analysis_calibration_data():
+
+    * days_out >= 1. Same-day was measured and deliberately excluded: held
+      out per horizon, multi-day goes 0.1454 -> 0.0952 Brier (t = -4.42 vs
+      raw) while same-day goes only 0.1828 -> 0.1723 (t = -1.46, not
+      significant). days_out=None also no-ops -- defensive only; analyze_trade
+      computes days_out as max(0, ...) and is the sole caller, so None is
+      not reachable from production today.
+
+    * Daily-temperature tickers only. KXHOLIDAYTMAX/KXHOLIDAYTMIN markets
+      flow through analyze_trade's ordinary daily-temperature path (see
+      _parse_market_condition's holiday branch, which says so explicitly) but
+      are NOT in the fit's KXHIGH*/KXLOWT* population. Without this check the
+      holiday family -- which is shadow-only precisely so it can accumulate
+      clean calibration data -- would have its record distorted by a
+      correction fitted on a different family, and its eventual graduation
+      decision made on those numbers. Found in opus review; the fit-side
+      prefix list had been derived from KNOWN_WEATHER_SERIES rather than from
+      "what actually reaches the apply site".
+
+    * Excluded condition types. Mirrors _ALWAYS_EXCLUDED_CONDITION_TYPES, and
+      keeps 'between' out in particular -- its probabilities cluster near
+      0.75 and it is structurally a different market. A missing/unknown
+      condition_type is treated as NOT excluded, matching the fit side.
+
+    * EMOS. While EMOS is active it replaces the ensemble probability with
+      its own fitted Gaussian and reset_temperature_scale_for_emos() pins the
+      multi-day T keys to 1.0 -- i.e. exactly the base transform this fit was
+      measured on top of is gone. Stacking a correction measured against a
+      T~4.6 chain onto an already-calibrated EMOS probability over-sharpens
+      hard (a model 0.30 would become 0.058). This mirrors the convention the
+      rest of the module already follows, where EMOS being active means the
+      other calibration stages stand down.
+
+    * Magnitude. See _ANALYSIS_CORRECTION_LIMIT.
+
+    Shape is Platt in logit space, sigmoid(a * logit(p) + b), matching
+    _fit_platt's own (A, B) return convention exactly so the fitted numbers
+    need no re-derivation between fit and apply. The result is clamped here
+    rather than only at the call site, so a second caller (a backtest, a
+    dashboard) cannot get an out-of-range probability.
+    """
+    if not math.isfinite(prob):
+        # _logit clips rather than raises, so a NaN would otherwise be mapped
+        # to ~0.999999 -- silently converting "unknown" into near-certainty
+        # on the pricing path.
+        _log.warning(
+            "apply_analysis_calibration: non-finite prob %r — returning unchanged",
+            prob,
+        )
+        return prob
+    if days_out is None or days_out < 1:
+        return prob
+    # Sourced from tracker, not restated here: these are the SAME two
+    # predicates get_analysis_calibration_data uses to build the fit's
+    # population, and a second copy is exactly how an apply-side scope drifts
+    # away from a fit-side one. Imported lazily to keep ml_bias's module-scope
+    # import graph unchanged (tracker is ~15k lines and never imports back).
+    try:
+        import tracker as _tracker
+
+        _prefixes = _tracker._DAILY_TEMP_TICKER_PREFIXES
+        _excluded = _tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+    except Exception as _exc:  # pragma: no cover - tracker import is a hard dep
+        _log.warning(
+            "apply_analysis_calibration: cannot reach tracker's population "
+            "predicates (%s) — returning unchanged",
+            _exc,
+        )
+        return prob
+    if not ticker or not str(ticker).upper().startswith(tuple(_prefixes)):
+        return prob
+    if condition_type is not None and condition_type in _excluded:
+        return prob
+    if _EMOS_PARAMS_PATH.exists():
+        return prob
+    fit = _usable_analysis_cal_entry(
+        _load_analysis_calibration(), _ANALYSIS_CAL_MULTIDAY
+    )
+    if fit is None:
+        return prob
+    a, b = fit
+    calibrated = max(0.01, min(0.99, _sigmoid(a * _logit(prob) + b)))
+    delta = abs(calibrated - prob)
+    if delta > _ANALYSIS_CORRECTION_LIMIT:
+        _log.warning(
+            "apply_analysis_calibration: correction %.3f -> %.3f (delta %.3f) "
+            "exceeds +/-%.2f — skipping (a=%.4f b=%.4f)",
+            prob,
+            calibrated,
+            delta,
+            _ANALYSIS_CORRECTION_LIMIT,
+            a,
+            b,
+        )
+        return prob
+    return calibrated
+
+
+def _analysis_pairs(rows: list[dict]) -> list[tuple[float, object]]:
+    """(forecast_prob, outcome) for rows carrying both. Shared so the
+    classifier and the fitter cannot disagree about which rows count."""
+    return [
+        (float(r["forecast_prob"]), r["outcome"])
+        for r in rows
+        if r.get("forecast_prob") is not None and r.get("outcome") is not None
+    ]
+
+
+def _classify_analysis_rows(rows: list[dict]) -> str | None:
+    """Row-level decline reason, or None when the rows are fittable.
+
+    Split out of fit_analysis_calibration so fit_and_save can report WHICH
+    decline happened without a second copy of these checks drifting from the
+    first (opus review, batch-87 -- all three operator messages previously
+    reported every decline as "not enough settled data", including the two
+    that are integrity alarms).
+
+    Covers only what can be decided from the rows. A rejection that only the
+    optimiser can discover is classified by the caller as "fit_rejected".
+    """
+    pairs = _analysis_pairs(rows)
+
+    invalid = [y for _, y in pairs if y not in (0, 1)]
+    if invalid:
+        _log.warning(
+            "fit_analysis_calibration: %d row(s) with outcome not in {0, 1} "
+            "(sample: %s) — refusing to fit on corrupted labels",
+            len(invalid),
+            invalid[:5],
+        )
+        return "corrupt_labels"
+
+    # The FEATURE gets the same scrutiny as the label (opus review). _logit
+    # clips rather than raises, so a NaN or an out-of-range probability would
+    # otherwise be silently absorbed as ~0.999999 -- a corrupted feature
+    # turning into near-certainty inside the fit, which is the same class of
+    # error the label check above exists to prevent.
+    bad_feature = [p for p, _ in pairs if not math.isfinite(p) or not 0.0 < p < 1.0]
+    if bad_feature:
+        _log.warning(
+            "fit_analysis_calibration: %d row(s) with forecast_prob outside "
+            "(0, 1) or non-finite (sample: %s) — refusing to fit",
+            len(bad_feature),
+            bad_feature[:5],
+        )
+        return "corrupt_labels"
+
+    n_pos = sum(1 for _, y in pairs if y == 1)
+    n_neg = len(pairs) - n_pos
+    min_class = min(n_pos, n_neg)
+    if min_class < ANALYSIS_CALIBRATION_MIN_MINORITY:
+        _log.info(
+            "fit_analysis_calibration: minority class has %d rows (n_pos=%d "
+            "n_neg=%d), need >= %d — declining",
+            min_class,
+            n_pos,
+            n_neg,
+            ANALYSIS_CALIBRATION_MIN_MINORITY,
+        )
+        return "insufficient_data"
+    return None
+
+
+def fit_analysis_calibration(rows: list[dict]) -> tuple[float, float] | None:
+    """Fit Platt scaling on unbiased-population rows; None when it must decline.
+
+    `rows` is [{"forecast_prob": float, "outcome": 0|1}, ...] as returned by
+    tracker.get_analysis_calibration_data().
+
+    Declines (returns None) for any reason _classify_analysis_rows names --
+    minority class below ANALYSIS_CALIBRATION_MIN_MINORITY, an outcome not
+    exactly 0 or 1, a forecast_prob outside (0, 1) -- and additionally when
+    the coefficients come back non-finite or _fit_platt itself rejects them
+    (it raises on a<=0, |a|>5 or |b|>5, which also closes the
+    perfect-separation blowup fit_metar_calibration's docstring describes).
+
+    What the CALLER does with a decline is not uniform -- see
+    fit_and_save_analysis_calibration, which writes the `_uncalibrated`
+    placeholder only for a genuine data shortfall and preserves the existing
+    fit otherwise.
+    """
+    if _classify_analysis_rows(rows) is not None:
+        return None
+    pairs = _analysis_pairs(rows)
+
+    try:
+        # `1 if y == 1 else 0` rather than int(y): _analysis_pairs types the
+        # label as `object` because it has not been validated at that point,
+        # and _classify_analysis_rows above has already guaranteed every y is
+        # exactly 0 or 1 -- so this narrows without an int() that mypy
+        # (correctly) refuses on an unvalidated value.
+        labels = [1 if y == 1 else 0 for _, y in pairs]
+        a, b = _fit_platt([_logit(p) for p, _ in pairs], labels)
+    except Exception as exc:
+        _log.warning("fit_analysis_calibration: Platt fit failed: %s", exc)
+        return None
+    if not (math.isfinite(a) and math.isfinite(b)):
+        _log.warning(
+            "fit_analysis_calibration: non-finite coefficients (a=%s b=%s) — "
+            "refusing to save",
+            a,
+            b,
+        )
+        return None
+    return a, b
+
+
+def fit_and_save_analysis_calibration() -> tuple[float, float] | None:
+    """Fetch the unbiased population, fit, and persist -- the single canonical
+    implementation shared by cron's weekly D5 block and `py main.py calibrate`,
+    same shared-callsite role as fit_and_save_metar_calibration().
+
+    Returns the fitted (a, b), or None on any decline. The DECLINE REASON is
+    recorded on the written entry as `decline_reason` and returned by
+    last_analysis_calibration_status() for the callers' operator messages --
+    the four decline causes are not equivalent and must not all be reported
+    as "not enough data yet" (opus review, batch-87): two of them (a label
+    outside {0,1}, a fit _fit_platt refuses) are data-integrity alarms.
+
+    Writes on a decline, but NOT unconditionally, and the difference matters
+    because a written `_uncalibrated` placeholder simultaneously (a) turns
+    section 9c into a no-op and (b) un-freezes the weekly multi-day T refit.
+    One decline therefore moves the base transform the freeze exists to hold
+    still. So:
+
+      * DB failure          -> return early, write NOTHING. The good fit and
+                               the freeze both survive the outage, and cron's
+                               remaining retrain steps still run.
+      * population shrank   -> refuse, write NOTHING, WARN. Scored rows are
+                               never pruned (prune_old_analysis_attempts has
+                               `AND outcome IS NULL`), so the population is
+                               monotone by construction -- an observed drop is
+                               evidence of a bug (a series rename, a schema
+                               drift), not of data, and must never be honoured
+                               by discarding a working calibration.
+      * genuinely too few   -> write the `_uncalibrated` placeholder. This is
+                               the one case where "the data no longer supports
+                               a fit" is actually true.
+      * fit rejected        -> write NOTHING, WARN. Mirrors _fit_T's own
+                               convention (return None, caller keeps the
+                               existing T): a transient non-convergence or a
+                               coefficient just outside the envelope is not a
+                               reason to throw away a working fit.
+
+    MUST be called before train_all_temperature_scaling() at every call site.
+    That ordering is what stops the very first retrain after this landed from
+    moving T once more (on the selected population) and only then freezing:
+    fitting this first means the freeze is live before T is ever consulted.
+    """
+    from datetime import UTC, datetime
+
+    from safe_io import atomic_write_json_with_history
+
+    global _ANALYSIS_CAL_CACHE, _ANALYSIS_CAL_MTIME, _ANALYSIS_CAL_STATUS
+
+    try:
+        import tracker
+
+        rows = tracker.get_analysis_calibration_data()
+    except Exception as exc:
+        # Deliberately no write. This call sits FIRST in cron's weekly D5
+        # block, upstream of the T refit, the blend-weight calibration, the
+        # in-process weight push and the METAR fit -- and that block's
+        # `finally` touches its 6-day marker unconditionally, so an escape
+        # here would cost all four of them for another six days.
+        _log.warning(
+            "fit_and_save_analysis_calibration: DB query failed: %s — "
+            "leaving the existing calibration and freeze untouched",
+            exc,
+        )
+        _ANALYSIS_CAL_STATUS = "db_error"
+        return None
+
+    existing_entry = _analysis_cal_entry_raw(_ANALYSIS_CAL_MULTIDAY)
+    reason = _classify_analysis_rows(rows)
+
+    # Shrink guard, before anything is written.
+    if reason is not None and isinstance(existing_entry, dict):
+        prev_n = existing_entry.get("n")
+        was_real = not existing_entry.get("_uncalibrated")
+        if was_real and isinstance(prev_n, int) and len(rows) < prev_n:
+            _log.warning(
+                "fit_and_save_analysis_calibration: population SHRANK %d -> %d "
+                "and the fit would decline (%s) — refusing to overwrite a "
+                "working calibration. Scored rows are never pruned, so this is "
+                "a bug (series rename? schema drift?), not data.",
+                prev_n,
+                len(rows),
+                reason,
+            )
+            _ANALYSIS_CAL_STATUS = "shrink_guard"
+            return None
+
+    fit = fit_analysis_calibration(rows) if reason is None else None
+    if fit is None and reason is None:
+        # Passed the row-level checks but _fit_platt refused the coefficients.
+        reason = "fit_rejected"
+    if fit is None and reason == "fit_rejected" and isinstance(existing_entry, dict):
+        _log.warning(
+            "fit_and_save_analysis_calibration: fit rejected on %d rows — "
+            "keeping the existing calibration rather than discarding it",
+            len(rows),
+        )
+        _ANALYSIS_CAL_STATUS = "fit_rejected"
+        return None
+
+    entry: dict = {
+        "n": len(rows),
+        "n_pos": sum(1 for r in rows if r.get("outcome") == 1),
+        "fitted_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "source": "analysis_attempts",
+        "days_out": ">=1",
+    }
+    if fit is None:
+        # Identity coefficients AND the flag. The flag is what callers
+        # actually key off (_usable_analysis_cal_entry checks it first); the
+        # identity values are belt-and-braces so even a reader that ignored
+        # the flag would be a no-op rather than applying garbage.
+        entry.update(
+            {"a": 1.0, "b": 0.0, "_uncalibrated": True, "decline_reason": reason}
+        )
+    else:
+        entry.update({"a": fit[0], "b": fit[1]})
+
+    table = _load_analysis_calibration() or {}
+    # Merge rather than replace so a future same-day key added alongside this
+    # one is not erased by a multi-day-only retrain.
+    table = {**table, _ANALYSIS_CAL_MULTIDAY: entry}
+    atomic_write_json_with_history(table, _ANALYSIS_CAL_PATH)
+    # Explicit, even though _load_analysis_calibration also compares mtime.
+    # The mtime check alone loses a same-tick write: a refit that lands
+    # within the filesystem's timestamp resolution of the read just above
+    # leaves _ANALYSIS_CAL_MTIME equal to the NEW file's mtime, so the
+    # loader short-circuits and serves the pre-write table indefinitely.
+    # That is not hypothetical here -- NTFS and several CI filesystems have
+    # coarse mtime resolution, and this write happens microseconds after
+    # that read. Pinned by
+    # TestFitAndSaveAnalysisCalibration::test_drops_the_cache_it_just_warmed.
+    _ANALYSIS_CAL_CACHE = None  # force a reload on the next read
+    _ANALYSIS_CAL_MTIME = None
+
+    if fit is None:
+        _ANALYSIS_CAL_STATUS = reason or "declined"
+        _log.warning(
+            "fit_and_save_analysis_calibration: declined (%s) on %d rows — "
+            "wrote _uncalibrated placeholder; section 9c is now a no-op AND "
+            "the multi-day temperature-scale freeze has lifted",
+            reason,
+            len(rows),
+        )
+    else:
+        _ANALYSIS_CAL_STATUS = "ok"
+        _log.info(
+            "fit_and_save_analysis_calibration: saved a=%.4f b=%.4f (n=%d, n_pos=%d)",
+            fit[0],
+            fit[1],
+            len(rows),
+            entry["n_pos"],
+        )
+    return fit
+
+
+_ANALYSIS_CAL_STATUS_MESSAGES: dict[str, str] = {
+    "ok": "fitted",
+    "unknown": "not attempted this process",
+    # The only decline that genuinely means "wait for more data".
+    "insufficient_data": "not enough settled multi-day data yet",
+    # The remaining four are NOT that, and reporting them as if they were is
+    # what this map exists to stop. Each also leaves the multi-day
+    # temperature-scale freeze lifted or the previous fit in place, so the
+    # operator-visible line has to say which.
+    "corrupt_labels": (
+        "REFUSED — corrupted rows in analysis_attempts (label outside {0,1} "
+        "or forecast_prob outside (0,1)); see log"
+    ),
+    "fit_rejected": (
+        "fit rejected by _fit_platt's bounds — existing calibration KEPT; see log"
+    ),
+    "db_error": "DB query failed — nothing written, calibration and freeze intact",
+    "shrink_guard": (
+        "population SHRANK against the recorded n — refused to overwrite a "
+        "working calibration; investigate, this is a bug not data"
+    ),
+}
+
+
+def analysis_calibration_status_message() -> str:
+    """Human-readable form of last_analysis_calibration_status().
+
+    Lives here rather than in each of the three operator-facing call sites so
+    the wording cannot drift between cron's D5 block, `cmd_train_bias` and
+    `cmd_calibrate` -- which is precisely how all three ended up claiming
+    "not enough settled data" for every decline cause.
+    """
+    status = last_analysis_calibration_status()
+    return _ANALYSIS_CAL_STATUS_MESSAGES.get(status, f"declined ({status}); see log")
+
+
+def last_analysis_calibration_status() -> str:
+    """Reason code from the most recent fit_and_save_analysis_calibration().
+
+    One of: "ok", "insufficient_data", "corrupt_labels", "fit_rejected",
+    "db_error", "shrink_guard", or "unknown" before the first call. Exists so
+    the three operator-facing call sites can say WHICH decline happened
+    instead of reporting all of them as "not enough data yet" -- half of them
+    are integrity alarms, and a decline also silently un-freezes the weekly
+    temperature-scale refit.
+    """
+    return _ANALYSIS_CAL_STATUS
+
+
 def train_all_temperature_scaling(
     min_samples_global: int = 20,
     min_samples_condition: int = 15,
@@ -1093,8 +1765,61 @@ def train_all_temperature_scaling(
     # sameday/hourly are unaffected -- EMOS never covers those pools.
     _emos_active = _EMOS_PARAMS_PATH.exists()
 
+    # batch-87. The same argument, for a different stacked correction. Once a
+    # real analysis_attempts calibration exists it is applied AFTER this
+    # transform, and it was fitted on probabilities this transform had already
+    # produced -- so every weekly refit that moves T silently invalidates the
+    # stacked fit's own input distribution. data/.history shows the multi-day
+    # T actually doing that: 1.0 -> 6.414 -> 5.357 -> 4.601 -> 5.558 -> 5.2 ->
+    # 4.755 between 2026-08-01 and 2026-08-20, with above/below/between
+    # separately reconfigured on 08-16. Freezing the multi-day keys makes the
+    # base stationary so the stacked fit is not chasing it.
+    #
+    # This freezes the keys at whatever they currently hold rather than
+    # neutralising them to 1.0 (which was the user's explicit choice among
+    # three): every number that justified the stacked fit was measured
+    # downstream of a non-1.0 T, so zeroing the base would invalidate the
+    # measurement and leave the multi-day path with no calibration at all for
+    # the ~60 days it would take to re-accrue.
+    #
+    # Same scope as _emos_active -- global + the per-condition keys. sameday
+    # and hourly keep refitting: the analysis calibration is multi-day only
+    # (see tracker.get_analysis_calibration_data for why), so nothing is
+    # stacked on those pools and there is nothing to hold still.
+    _analysis_cal_active = analysis_calibration_is_active()
+
+    # The freeze pins each key at WHATEVER IT CURRENTLY HOLDS, including
+    # "absent". That is deliberate and is the reason this warns rather than
+    # backfilling (opus review, batch-87): the stacked fit was measured
+    # against the table exactly as it stands, so a key with no entry was
+    # measured with apply_temperature_scaling falling through to its
+    # hardcoded prior, and fitting it for the first time now would move the
+    # base away from the arrangement the measurement was taken under. The
+    # cost is that a hardcoded prior becomes production calibration for as
+    # long as the freeze holds -- e.g. 'below' has no entry today, so it runs
+    # on _T_BELOW_PRIOR. Made visible rather than left emergent.
+    if _analysis_cal_active:
+        _absent = [
+            k
+            for k in ("global", "above", "below", "between")
+            if not isinstance(existing.get(k), dict)
+        ]
+        if _absent:
+            _log.warning(
+                "train_all_temperature_scaling: analysis calibration is active, "
+                "so multi-day T is frozen — these keys have NO entry and will "
+                "stay on their hardcoded priors until it declines: %s",
+                ", ".join(_absent),
+            )
+
     # Global fit
-    if _emos_active:
+    if _analysis_cal_active:
+        _log.info(
+            "train_all_temperature_scaling: analysis calibration is active — "
+            "freezing global T (a stacked fit is calibrating this transform's "
+            "own output; moving it would invalidate that fit's input)"
+        )
+    elif _emos_active:
         _log.info(
             "train_all_temperature_scaling: EMOS is active — skipping global T "
             "refit (would double-calibrate on top of EMOS's own fit)"
@@ -1127,6 +1852,33 @@ def train_all_temperature_scaling(
             by_type[ct][1].append(float(r["settled_yes"]))
 
     for ctype, (cprobs, clabels) in by_type.items():
+        # batch-87 freeze. Unscoped by condition key, unlike the EMOS branch
+        # below: EMOS only covers EMOS_COVERED_CONDITION_KEYS, but EVERY
+        # per-condition T in this table is applied on the multi-day path
+        # (apply_temperature_scaling's condition -> global lookup order), so
+        # every one of them feeds the stacked fit's input distribution and
+        # every one has to hold still. `rows` has already excluded the shadow
+        # families via _ALWAYS_EXCLUDED_CONDITION_TYPES, so in practice
+        # by_type holds above/below.
+        #
+        # `and not _emos_active` was REMOVED here and on the global branch
+        # (opus review, batch-87, found independently by two reviewers). With
+        # it, the combination (analysis cal active) x (EMOS active) x (ctype
+        # NOT in EMOS_COVERED_CONDITION_KEYS) fell through BOTH guards and
+        # refit -- directly contradicting this comment. Latent rather than
+        # live, because by_type currently holds only above/below and both are
+        # EMOS-covered, which is exactly the shape where a test passes under
+        # either predicate. Dropping the conjunct is strictly wider and both
+        # branches mean the same thing ("do not refit"), so no reachable
+        # combination changes behaviour.
+        if _analysis_cal_active:
+            _log.info(
+                "train_all_temperature_scaling: analysis calibration is active "
+                "— freezing %s T (a stacked fit is calibrating this "
+                "transform's own output)",
+                ctype,
+            )
+            continue
         if _emos_active and ctype in EMOS_COVERED_CONDITION_KEYS:
             _log.info(
                 "train_all_temperature_scaling: EMOS is active — skipping %s T "

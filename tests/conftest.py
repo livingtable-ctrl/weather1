@@ -923,6 +923,51 @@ def isolate_metar_calibration_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_analysis_calibration_path(tmp_path, monkeypatch):
+    """Redirect ml_bias._ANALYSIS_CAL_PATH and null its read cache (batch-87).
+
+    Structural for the same reason neutral_temperature_scaling above is, and
+    against the same measured incident: data/analysis_calibration.json is
+    rewritten by cron's weekly D5 retrain and is not git-tracked, so on an
+    operator's machine it holds a real fit while on CI (fresh clone) it holds
+    the seeds/ `_uncalibrated` placeholder. ml_bias.apply_analysis_calibration
+    is applied inside analyze_trade on every days_out>=1 market, so without
+    this redirect the same test would compress or sharpen its probability
+    differently depending on what cron last wrote -- which is precisely the
+    nondeterminism batch-83 measured for temperature_scale.json (exactly one
+    test per session reached the loader with a null cache and ran against the
+    operator's live coefficients while every later test got neutral ones).
+
+    Redirecting the PATH rather than only pre-filling the cache closes both
+    halves at once, and both halves are live here:
+      * READ -- ml_bias binds ANALYSIS_CALIBRATION_PATH from paths.py at
+        import time, so monkeypatching paths.ANALYSIS_CALIBRATION_PATH does
+        NOT reach it (same import-time-binding hazard AUD-0058 documents for
+        METAR_CALIBRATION_PATH just above).
+      * WRITE -- fit_and_save_analysis_calibration persists through this same
+        constant, and unlike its METAR sibling it writes on the DECLINE path
+        too, so even a fixture-shaped test with too little data would touch
+        the real file.
+
+    The temp file is left ABSENT rather than written with neutral
+    coefficients. Absent is the state _usable_analysis_cal_entry treats as
+    "no fit", it is what makes apply_analysis_calibration a strict no-op, and
+    it avoids the artefact collision the neutral_temperature_scaling
+    docstring describes -- test_ml_bias.py asserts on whether this exact
+    filename exists to prove a declined fit's write behaviour, so creating it
+    here would make those assertions pass or fail on the fixture rather than
+    on the code.
+    """
+    import ml_bias
+
+    monkeypatch.setattr(
+        ml_bias, "_ANALYSIS_CAL_PATH", tmp_path / "analysis_calibration.json"
+    )
+    monkeypatch.setattr(ml_bias, "_ANALYSIS_CAL_CACHE", None)
+    monkeypatch.setattr(ml_bias, "_ANALYSIS_CAL_MTIME", None)
+
+
+@pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets, acis_precip, acis_snow, climatology,
     kalshi_client, AND nws circuit breakers before every test.

@@ -150,7 +150,16 @@ class TestSeedsShippedInThisRepo:
                     if not k.startswith("_") and isinstance(v, int | float)
                 }
                 if len(weights) < 2:
-                    continue  # not a weight vector (e.g. metar's a/b/c/n fit)
+                    continue  # not a weight vector
+                # NOTE (batch-87): this guard does NOT exclude coefficient
+                # fits, despite what an earlier version of this comment said.
+                # metar's a/b/c/n is skipped for a different reason (it is
+                # flat, so `entry` is not a dict and the outer isinstance
+                # check drops it first), and analysis_calibration.json's
+                # nested {a, b, n} entry has three numeric keys and IS
+                # scanned here. Harmless -- a=1.0 is not 1/3, so the uniform
+                # assertion never fires on it -- but it is scanned, not
+                # excluded, and the count below includes it.
                 scanned += 1
                 if all(round(v, 10) == uniform for v in weights.values()):
                     assert entry.get("_uncalibrated") is True, (
@@ -201,10 +210,13 @@ class TestSeedsShippedInThisRepo:
         assert set(paths._SEEDED_FILENAMES) < set(main._PERMANENT_DATA_FILES)
 
     def test_declared_filenames_match_the_path_constants_loaders_use(self):
-        """Pins _SEEDED_FILENAMES against the constants the eight loaders
+        """Pins _SEEDED_FILENAMES against the constants the nine loaders
         actually open, so a rename in paths.py cannot leave seeds/ quietly
         seeding a filename nothing reads."""
         assert set(paths._SEEDED_FILENAMES) == {
+            # batch-87: the final-stage calibration fitted on
+            # analysis_attempts, read by ml_bias.apply_analysis_calibration.
+            paths.ANALYSIS_CALIBRATION_PATH.name,
             paths.CITY_WEIGHTS_PATH.name,
             paths.CONDITION_WEIGHTS_PATH.name,
             paths.SEASONAL_WEIGHTS_PATH.name,

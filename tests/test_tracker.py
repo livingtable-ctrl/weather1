@@ -12683,3 +12683,421 @@ class TestBatch78ReviewRound2(_IsolatedDbBase):
         # the day is a real scan day rather than a halt day.
         self.assertEqual(today["scans_reaching_scan"], 1)
         self.assertEqual(today["state"], "scanned, nothing survived")
+
+
+class TestAnalysisCalibrationData(_IsolatedDbBase):
+    """batch-87: get_analysis_calibration_data() -- the UNBIASED population.
+
+    Every other calibration fit in the repo reads `predictions`, which only
+    receives rows past the edge gates. This one reads `analysis_attempts`,
+    which receives every analysed market.
+    """
+
+    def _insert(
+        self,
+        ticker,
+        *,
+        forecast_prob=0.6,
+        market_prob=0.5,
+        days_out=1,
+        outcome=1,
+        target_date="2026-08-10",
+        analyzed_at="2026-08-10T00:00:00+00:00",
+    ):
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO analysis_attempts
+                   (ticker, city, condition, target_date, analyzed_at,
+                    forecast_prob, market_prob, days_out, was_traded, outcome)
+                   VALUES (?,?,?,?,?,?,?,?,0,?)""",
+                (
+                    ticker,
+                    "NYC",
+                    "{'type': 'above'}",
+                    target_date,
+                    analyzed_at,
+                    forecast_prob,
+                    market_prob,
+                    days_out,
+                    outcome,
+                ),
+            )
+
+    def test_ticker_prefixes_are_exactly_the_daily_temperature_registry(self):
+        """Re-derive the prefix pair from weather_markets.KNOWN_WEATHER_SERIES.
+
+        The predicate is a ticker prefix only because analysis_attempts has no
+        condition_type column. That makes it drift-prone in a way a
+        condition_type filter would not be, so this test rebuilds it from the
+        registry rather than restating the constant:
+
+          * every KXHIGH*/KXLOWT* series in the registry must be matched, and
+          * no series from any OTHER family may be matched -- hourly
+            (KXTEMP*H), rain, snow, hurricane and tornado are analysed by
+            different code and have their own calibration stories.
+        """
+        import weather_markets
+
+        registry = list(weather_markets.KNOWN_WEATHER_SERIES)
+        prefixes = tracker._DAILY_TEMP_TICKER_PREFIXES
+
+        def matched(name):
+            return any(name.startswith(p) for p in prefixes)
+
+        # `daily` is derived from the SERIES' OWN SEMANTICS -- a daily
+        # temperature series measures a day's high or low -- NOT by restating
+        # the constant under test. An earlier version split on
+        # startswith(("KXHIGH", "KXLOWT")), i.e. the exact pair the constant
+        # holds, which made the "every daily series is matched" half a
+        # tautology: shortening the constant to ("KXHIGH", "KXLOW") left it
+        # green (opus review). Hourly is KXTEMP*H and is deliberately NOT a
+        # daily series, so it belongs in `others`.
+        daily = [
+            s
+            for s in registry
+            if ("HIGH" in s or "LOW" in s) and not s.startswith("KXTEMP")
+        ]
+        others = [s for s in registry if s not in daily]
+
+        # Positive control: the registry really does contain both groups, so
+        # the two assertions below are not quantifying over empty sets.
+        assert len(daily) >= 40, f"only {len(daily)} daily series found"
+        assert len(others) >= 20, f"only {len(others)} non-daily series found"
+
+        assert all(matched(s) for s in daily), [s for s in daily if not matched(s)]
+        assert not any(matched(s) for s in others), [s for s in others if matched(s)]
+
+    def test_selects_settled_multiday_daily_temperature_rows(self):
+        self._insert("KXHIGHNY-26AUG10-T80", forecast_prob=0.61, outcome=1)
+        self._insert("KXLOWTCHI-26AUG10-B50", forecast_prob=0.22, outcome=0)
+        rows = tracker.get_analysis_calibration_data()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(sorted(r["forecast_prob"] for r in rows), [0.22, 0.61])
+        self.assertEqual(sorted(r["outcome"] for r in rows), [0, 1])
+        # Coerced to the declared types, not left as whatever SQLite returned.
+        self.assertTrue(all(isinstance(r["outcome"], int) for r in rows))
+        self.assertTrue(all(isinstance(r["forecast_prob"], float) for r in rows))
+
+    def test_excludes_same_day_rows(self):
+        self._insert("KXHIGHNY-26AUG10-T80", days_out=0)
+        self.assertEqual(tracker.get_analysis_calibration_data(), [])
+        # Positive control: the identical row at days_out=1 IS selected, so
+        # the exclusion is the horizon and not the insert failing.
+        self._insert("KXHIGHNY-26AUG11-T80", days_out=1, target_date="2026-08-11")
+        self.assertEqual(len(tracker.get_analysis_calibration_data()), 1)
+
+    def test_excludes_unsettled_and_incomplete_rows(self):
+        self._insert("KXHIGHNY-26AUG10-T80", outcome=None)
+        self._insert(
+            "KXHIGHNY-26AUG11-T80", forecast_prob=None, target_date="2026-08-11"
+        )
+        self._insert("KXHIGHNY-26AUG12-T80", market_prob=None, target_date="2026-08-12")
+        self.assertEqual(tracker.get_analysis_calibration_data(), [])
+        # Positive control: a complete row on the same table is selected.
+        self._insert("KXHIGHNY-26AUG13-T80", target_date="2026-08-13")
+        self.assertEqual(len(tracker.get_analysis_calibration_data()), 1)
+
+    def test_excludes_other_families(self):
+        """Hourly, rain and hurricane rows all live in this table too."""
+        for tkr in (
+            "KXTEMPNYCH-26AUG10T14-T80",
+            "KXRAINNYCM-26AUG-B2",
+            "KXNEXTHURDATE-26AUG10",
+        ):
+            self._insert(tkr, target_date="2026-08-10")
+        self.assertEqual(tracker.get_analysis_calibration_data(), [])
+        # Positive control: the daily series is selected from the same table
+        # under the same conditions.
+        self._insert("KXHIGHNY-26AUG10-T80")
+        self.assertEqual(len(tracker.get_analysis_calibration_data()), 1)
+
+    def test_includes_traded_rows(self):
+        """NOT filtered on was_traded -- including them is what makes this the
+        full analysed population rather than a second selected one."""
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO analysis_attempts
+                   (ticker, city, condition, target_date, analyzed_at,
+                    forecast_prob, market_prob, days_out, was_traded, outcome)
+                   VALUES ('KXHIGHNY-26AUG10-T80','NYC','{}','2026-08-10',
+                           '2026-08-10T00:00:00+00:00',0.7,0.5,1,1,1)"""
+            )
+        rows = tracker.get_analysis_calibration_data()
+        self.assertEqual(len(rows), 1)
+
+    def test_ordered_by_analyzed_at(self):
+        """Chronological order is what makes a temporal split possible for
+        anyone re-measuring this population."""
+        self._insert(
+            "KXHIGHNY-26AUG12-T80",
+            forecast_prob=0.3,
+            target_date="2026-08-12",
+            analyzed_at="2026-08-12T00:00:00+00:00",
+        )
+        self._insert(
+            "KXHIGHNY-26AUG10-T80",
+            forecast_prob=0.1,
+            target_date="2026-08-10",
+            analyzed_at="2026-08-10T00:00:00+00:00",
+        )
+        self._insert(
+            "KXHIGHNY-26AUG11-T80",
+            forecast_prob=0.2,
+            target_date="2026-08-11",
+            analyzed_at="2026-08-11T00:00:00+00:00",
+        )
+        got = [r["forecast_prob"] for r in tracker.get_analysis_calibration_data()]
+        self.assertEqual(got, [0.1, 0.2, 0.3])
+
+
+class TestAnalysisCalibrationPrecalColumn(_IsolatedDbBase):
+    """batch-87 opus review, HIGH. The fit must not train on its own output.
+
+    Section 9c writes analysis_attempts.forecast_prob (its output becomes
+    analyze_trade's forecast_prob, which cron logs back here) and the fit
+    reads it. Measured on the real 191-row corpus, fitting on the bare column
+    collapses the slope 2.51 -> 1.23 within about two weeks -- while still
+    passing every validity check, so the fit keeps reading as "active" and
+    keeps the multi-day temperature-scale freeze pinned on behalf of a
+    correction that has decayed to nothing.
+    """
+
+    def test_fit_reads_precal_not_the_post_calibration_column(self):
+        from datetime import date
+
+        tracker.batch_log_analysis_attempts(
+            [
+                {
+                    "ticker": "KXHIGHNY-26AUG20-T80",
+                    "city": "NYC",
+                    "condition": "{'type': 'above'}",
+                    "target_date": date(2026, 8, 20),
+                    # What 9c produced (sharpened)...
+                    "forecast_prob": 0.05,
+                    # ...and what it was handed.
+                    "forecast_prob_precal": 0.42,
+                    "market_prob": 0.5,
+                    "days_out": 1,
+                }
+            ]
+        )
+        tracker.settle_analysis_attempt("KXHIGHNY-26AUG20-T80", date(2026, 8, 20), 1)
+        rows = tracker.get_analysis_calibration_data()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["forecast_prob"], 0.42)
+
+    def test_pre_migration_rows_fall_back_to_forecast_prob(self):
+        """A NULL precal means the row predates the column -- and for those
+        rows forecast_prob IS the pre-9c value, because 9c did not exist yet.
+        Discarding them would throw away the entire corpus the fit was
+        measured on."""
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO analysis_attempts
+                   (ticker, city, condition, target_date, analyzed_at,
+                    forecast_prob, market_prob, days_out, was_traded, outcome)
+                   VALUES ('KXHIGHNY-26AUG21-T80','NYC','{}','2026-08-21',
+                           '2026-08-21T00:00:00+00:00',0.37,0.5,1,0,1)"""
+            )
+        rows = tracker.get_analysis_calibration_data()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["forecast_prob"], 0.37)
+
+    def test_rescan_updates_precal_alongside_forecast_prob(self):
+        """The two must move together, or the fit sees a precal from one scan
+        paired with an outcome shaped by another."""
+        from datetime import date
+
+        def _log(fp, precal):
+            tracker.batch_log_analysis_attempts(
+                [
+                    {
+                        "ticker": "KXHIGHNY-26AUG22-T80",
+                        "city": "NYC",
+                        "condition": "{'type': 'above'}",
+                        "target_date": date(2026, 8, 22),
+                        "forecast_prob": fp,
+                        "forecast_prob_precal": precal,
+                        "market_prob": 0.5,
+                        "days_out": 1,
+                    }
+                ]
+            )
+
+        _log(0.10, 0.40)
+        _log(0.20, 0.55)
+        tracker.settle_analysis_attempt("KXHIGHNY-26AUG22-T80", date(2026, 8, 22), 0)
+        rows = tracker.get_analysis_calibration_data()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["forecast_prob"], 0.55)
+
+    def test_a_rescan_without_precal_does_not_erase_an_existing_one(self):
+        """An old-style writer (no precal) must not blank a good value and
+        silently drop the row back onto the post-calibration column. The
+        upsert COALESCEs for exactly this."""
+        from datetime import date
+
+        tracker.batch_log_analysis_attempts(
+            [
+                {
+                    "ticker": "KXHIGHNY-26AUG23-T80",
+                    "city": "NYC",
+                    "condition": "{'type': 'above'}",
+                    "target_date": date(2026, 8, 23),
+                    "forecast_prob": 0.10,
+                    "forecast_prob_precal": 0.44,
+                    "market_prob": 0.5,
+                    "days_out": 1,
+                }
+            ]
+        )
+        tracker.batch_log_analysis_attempts(
+            [
+                {
+                    "ticker": "KXHIGHNY-26AUG23-T80",
+                    "city": "NYC",
+                    "condition": "{'type': 'above'}",
+                    "target_date": date(2026, 8, 23),
+                    "forecast_prob": 0.12,
+                    "market_prob": 0.5,
+                    "days_out": 1,
+                }
+            ]
+        )
+        tracker.settle_analysis_attempt("KXHIGHNY-26AUG23-T80", date(2026, 8, 23), 1)
+        rows = tracker.get_analysis_calibration_data()
+        self.assertAlmostEqual(rows[0]["forecast_prob"], 0.44)
+
+    def test_log_analysis_attempt_carries_precal_too(self):
+        """The single-row writer, not just the batch one -- order_executor and
+        main.py both use it."""
+        from datetime import date
+
+        tracker.log_analysis_attempt(
+            "KXHIGHNY-26AUG24-T80",
+            "NYC",
+            "{'type': 'above'}",
+            date(2026, 8, 24),
+            0.08,
+            0.5,
+            1,
+            forecast_prob_precal=0.39,
+        )
+        tracker.settle_analysis_attempt("KXHIGHNY-26AUG24-T80", date(2026, 8, 24), 1)
+        rows = tracker.get_analysis_calibration_data()
+        self.assertAlmostEqual(rows[0]["forecast_prob"], 0.39)
+
+    def test_excluded_condition_types_are_dropped(self):
+        """'between' is excluded from every sibling fit in the repo. Zero such
+        rows exist today, so this guards drift rather than changing the fit."""
+        from datetime import date
+
+        for i, ctype in enumerate(("between", "above")):
+            tkr = f"KXHIGHNY-26AUG2{i}-CT"
+            td = date(2026, 8, 10 + i)
+            tracker.batch_log_analysis_attempts(
+                [
+                    {
+                        "ticker": tkr,
+                        "city": "NYC",
+                        "condition": f"{{'type': '{ctype}'}}",
+                        "target_date": td,
+                        "forecast_prob": 0.7,
+                        "forecast_prob_precal": 0.7,
+                        "market_prob": 0.5,
+                        "days_out": 1,
+                    }
+                ]
+            )
+            tracker.settle_analysis_attempt(tkr, td, 1)
+        rows = tracker.get_analysis_calibration_data()
+        # Positive control in the same assertion: 'above' survived, so the
+        # drop is the type filter and not both rows being rejected.
+        self.assertEqual(len(rows), 1)
+
+    def test_unparseable_condition_is_kept_not_dropped(self):
+        """The ticker prefix has already restricted this to daily-temperature
+        markets, so an unreadable condition is a daily-temp row of unknown
+        type -- dropping it would silently shrink the fit population."""
+        from datetime import date
+
+        tracker.batch_log_analysis_attempts(
+            [
+                {
+                    "ticker": "KXHIGHNY-26AUG28-T80",
+                    "city": "NYC",
+                    "condition": "<not a dict>",
+                    "target_date": date(2026, 8, 28),
+                    "forecast_prob": 0.3,
+                    "forecast_prob_precal": 0.3,
+                    "market_prob": 0.5,
+                    "days_out": 1,
+                }
+            ]
+        )
+        tracker.settle_analysis_attempt("KXHIGHNY-26AUG28-T80", date(2026, 8, 28), 0)
+        self.assertEqual(len(tracker.get_analysis_calibration_data()), 1)
+
+    def test_condition_type_parser_handles_the_real_stored_shape(self):
+        """analysis_attempts.condition holds str(dict) -- single quotes, not
+        JSON -- so json.loads would reject every real row."""
+        self.assertEqual(
+            tracker._attempt_condition_type(
+                "{'type': 'above', 'threshold': 70.0, 'var': 'max'}"
+            ),
+            "above",
+        )
+        self.assertEqual(
+            tracker._attempt_condition_type("{'type': 'between', 'lower': 70.5}"),
+            "between",
+        )
+        for junk in (None, "", "not a dict", "{unclosed", "[1,2,3]", "{'no': 'type'}"):
+            self.assertIsNone(tracker._attempt_condition_type(junk), junk)
+
+
+class TestForecastProbPrecalMigration(unittest.TestCase):
+    """batch-87's migration must reach a DB that already exists, not only a
+    fresh one. _MIGRATIONS is applied by PRAGMA user_version cursor, so a
+    column APPENDED to the list is skipped forever by any DB whose version
+    already exceeds its index -- which is why the list is append-only and why
+    this checks an upgrade path rather than a fresh build."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "upgrade.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _columns(self):
+        with tracker._conn() as con:
+            return {r[1] for r in con.execute("PRAGMA table_info(analysis_attempts)")}
+
+    def test_column_arrives_when_upgrading_from_the_previous_version(self):
+        # Build the schema as it stood BEFORE this batch: every migration
+        # except the last, with the cursor parked accordingly.
+        tracker.init_db()
+        with tracker._conn() as con:
+            con.execute(
+                "ALTER TABLE analysis_attempts DROP COLUMN forecast_prob_precal"
+            )
+            con.execute(f"PRAGMA user_version={len(tracker._MIGRATIONS) - 1}")
+        tracker._db_initialized = False
+        self.assertNotIn("forecast_prob_precal", self._columns())
+
+        tracker.init_db()  # the upgrade under test
+        self.assertIn("forecast_prob_precal", self._columns())
+
+    def test_column_exists_on_a_fresh_database(self):
+        tracker.init_db()
+        self.assertIn("forecast_prob_precal", self._columns())
+
+    def test_schema_version_tracks_the_migration_list(self):
+        """Pinned here as well as in test_batch64_forward_writers because a
+        migration added without the bump leaves every EXISTING db one version
+        short -- it re-runs the last migration and skips the new one."""
+        self.assertEqual(tracker._SCHEMA_VERSION, len(tracker._MIGRATIONS))

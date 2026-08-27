@@ -11144,3 +11144,284 @@ class TestSamedayTablesAreRefreshedFromDisk:
         assert wm._blend_weights(1, True, True, condition_type="above")[
             "ensemble"
         ] == pytest.approx(0.90)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# batch-87: the final-stage calibration fitted on analysis_attempts, as
+# actually reached from analyze_trade.
+#
+# ml_bias's own tests cover the transform; these cover the WIRING, which is
+# the half that can silently no-op: a correction that is correct in isolation
+# but never called, or called on the wrong horizon, or called before the
+# chain it is meant to correct.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _write_batch87_cal(ml_bias, entry):
+    """Write to conftest's already-isolated _ANALYSIS_CAL_PATH."""
+    import json
+
+    ml_bias._ANALYSIS_CAL_PATH.write_text(json.dumps({"multiday": entry}))
+    ml_bias._ANALYSIS_CAL_CACHE = None
+    ml_bias._ANALYSIS_CAL_MTIME = None
+
+
+def test_analysis_calibration_is_reached_from_analyze_trade(monkeypatch):
+    """The stage runs, and it runs on the fully-corrected probability.
+
+    Records what apply_analysis_calibration was handed and asserts the
+    recorded input equals the probability the rest of the chain produced --
+    i.e. this really is the LAST stage, which is the arrangement the fit was
+    measured under (analysis_attempts records only the finished
+    forecast_prob; there is no stored pre-correction counterpart the way
+    raw_prob gives one on predictions).
+    """
+    import ml_bias
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    seen = []
+    real = ml_bias.apply_analysis_calibration
+
+    def _spy(prob, days_out=None, **kw):
+        seen.append((prob, days_out, kw))
+        return real(prob, days_out=days_out, **kw)
+
+    monkeypatch.setattr(ml_bias, "apply_analysis_calibration", _spy)
+
+    # Identity fit: reached, but provably does not move the number, so the
+    # baseline below is the uncalibrated pipeline output.
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": 0.0})
+    baseline = wm.analyze_trade(_analyze_trade_enriched_fixture())
+
+    assert baseline is not None, "analyze_trade returned None — fix the fixture"
+    assert len(seen) == 1, f"stage ran {len(seen)} times, expected exactly 1"
+    prob_in, days_out, kw = seen[0]
+    # >= 1, not == 1: analyze_trade computes days_out against CITY-LOCAL
+    # today while the fixture builds its date from UTC, so a US city in the
+    # UTC evening legitimately sees 2 for a "tomorrow" market. The claim here
+    # is only that a multi-day fixture reaches the stage on a multi-day
+    # horizon; that days_out is the REAL horizon rather than a constant is
+    # pinned separately by
+    # test_analysis_calibration_receives_the_real_horizon_not_a_constant.
+    assert days_out >= 1, f"multi-day fixture reached the stage as days_out={days_out}"
+    assert kw.get("ticker") == "KXHIGHNY-26APR09-T72"
+    assert kw.get("condition_type") == "above"
+    # The stage is last: what it was handed is what the result reports.
+    assert baseline["forecast_prob"] == pytest.approx(prob_in, abs=1e-9)
+
+
+def test_analysis_calibration_moves_the_traded_probability(monkeypatch):
+    """A real fit must change forecast_prob, and the recommended side must be
+    computed from the CALIBRATED value.
+
+    This is the behavioural claim the batch rests on: held out, the fit flips
+    the favoured side on 46 of 76 multi-day rows. If the stage ran but
+    rec_side were computed upstream of it, that effect would be invisible and
+    every measured number would be describing something the bot never does.
+    """
+    import ml_bias
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": 0.0})
+    baseline = wm.analyze_trade(_analyze_trade_enriched_fixture())
+    assert baseline is not None
+
+    # PRECONDITION, asserted rather than assumed. An earlier version of this
+    # test used b=-4.0 and asserted the calibrated side was "no" -- but the
+    # fixture's uncalibrated probability (0.5289) is ALREADY below its market
+    # price (0.6700), so the side was "no" either way and the assertion
+    # proved nothing. Mutating rec_side to read the pre-calibration value
+    # left the test green. The fit below must therefore cross the price, and
+    # this assert is what stops the test silently going vacuous again if the
+    # fixture's numbers drift.
+    assert baseline["recommended_side"] == "no", baseline["forecast_prob"]
+    assert baseline["forecast_prob"] < baseline["market_prob"]
+
+    # b=+1.5 in logit space: logit(0.5289)=0.116 -> 1.616 -> 0.834, which is
+    # above the fixture's 0.6700 price, so a side computed from the
+    # calibrated value MUST be "yes" and one computed upstream MUST be "no".
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": 1.5})
+    calibrated = wm.analyze_trade(_analyze_trade_enriched_fixture())
+    assert calibrated is not None
+
+    assert calibrated["forecast_prob"] > baseline["forecast_prob"], (
+        "the calibration ran but did not move forecast_prob"
+    )
+    assert calibrated["forecast_prob"] > calibrated["market_prob"]
+    assert calibrated["recommended_side"] == "yes", (
+        "recommended_side was not computed from the calibrated probability"
+    )
+
+
+def test_analysis_calibration_is_a_no_op_when_declined(monkeypatch):
+    """The `_uncalibrated` placeholder must leave analyze_trade's output
+    byte-identical to the no-file case -- this is the state a fresh clone
+    ships in (seeds/analysis_calibration.json) and the state a decline
+    rewrites the file to."""
+    import ml_bias
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    assert not ml_bias._ANALYSIS_CAL_PATH.exists()  # conftest's baseline
+    no_file = wm.analyze_trade(_analyze_trade_enriched_fixture())
+
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": -4.0, "_uncalibrated": True})
+    declined = wm.analyze_trade(_analyze_trade_enriched_fixture())
+
+    assert no_file is not None and declined is not None
+    assert declined["forecast_prob"] == pytest.approx(
+        no_file["forecast_prob"], abs=1e-12
+    )
+    # Positive control: those exact coefficients WITHOUT the flag do move the
+    # output, so the equality above is the flag's doing and not a fit that
+    # happens to be an identity.
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": -4.0})
+    applied = wm.analyze_trade(_analyze_trade_enriched_fixture())
+    assert applied is not None
+    assert applied["forecast_prob"] < no_file["forecast_prob"] - 0.01
+
+
+def test_analysis_calibration_failure_leaves_the_trade_analysable(monkeypatch):
+    """Matches section 7b's failure posture: degraded but tradeable.
+
+    A raising calibration must not take out the whole analysis -- the market
+    is still priced, just uncalibrated.
+    """
+    import ml_bias
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+    baseline = wm.analyze_trade(_analyze_trade_enriched_fixture())
+    assert baseline is not None
+
+    calls = []
+
+    def _boom(prob, days_out=None, **kw):
+        calls.append(prob)
+        raise RuntimeError("calibration exploded")
+
+    monkeypatch.setattr(ml_bias, "apply_analysis_calibration", _boom)
+    result = wm.analyze_trade(_analyze_trade_enriched_fixture())
+
+    assert result is not None, "a failed calibration must not kill the analysis"
+    # Positive control: the raising function was actually reached, so the
+    # survival above is the except handler and not the stage being skipped.
+    assert len(calls) == 1
+    assert result["forecast_prob"] == pytest.approx(baseline["forecast_prob"], abs=1e-9)
+
+
+def _fixture_at(days_ahead):
+    """The shared analyze_trade fixture, retargeted N days out."""
+    from datetime import datetime, timedelta
+
+    f = _analyze_trade_enriched_fixture()
+    f["_date"] = datetime.now(UTC).date() + timedelta(days=days_ahead)
+    return f
+
+
+def test_analysis_calibration_receives_the_real_horizon_not_a_constant(monkeypatch):
+    """days_out must be the market's ACTUAL horizon, not a literal.
+
+    Kills a mutation an opus reviewer found surviving the original suite:
+    hardcoding `days_out=1` at the call site passed every test, because the
+    only assertion on the value was `== 1` against a fixture that happened to
+    be one day out. Under that mutation every same-day market would silently
+    receive the multi-day correction -- the single largest scoping decision
+    in this batch, and it was unpinned.
+
+    Asserting two DIFFERENT horizons produce two DIFFERENT values needs no
+    replication of analyze_trade's own UTC-vs-city-local date arithmetic,
+    which is what made the original assertion brittle enough to be written as
+    a constant in the first place.
+    """
+    import ml_bias
+    import weather_markets as wm
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+    _write_batch87_cal(ml_bias, {"a": 1.0, "b": 0.0})
+
+    seen = []
+    real = ml_bias.apply_analysis_calibration
+
+    def _spy(prob, days_out=None, **kw):
+        seen.append(days_out)
+        return real(prob, days_out=days_out, **kw)
+
+    monkeypatch.setattr(ml_bias, "apply_analysis_calibration", _spy)
+
+    # 0 and 2 days ahead, not 1 and 5: markets 3+ days out are gated before
+    # section 9c by this fixture's time-risk path (measured), and the
+    # UTC-vs-city-local offset means "0 days ahead" already reaches the stage
+    # at days_out=1. Only the GAP is asserted, so the exact values may shift
+    # with the hour this runs at without making the test flaky.
+    assert wm.analyze_trade(_fixture_at(0)) is not None
+    assert wm.analyze_trade(_fixture_at(2)) is not None
+
+    assert len(seen) == 2, seen
+    near, far = seen
+    assert far - near == 2, (
+        f"the stage saw {near} then {far}; a 2-day gap in the market's date "
+        f"must produce a 2-day gap in days_out — a constant would give 0"
+    )
+
+
+# The same-day and off-family scopes are NOT tested end-to-end here, and that
+# is a deliberate coverage decision rather than an omission:
+#
+#   * Same-day. This fixture cannot produce days_out=0 at all -- analyze_trade
+#     resolves the horizon against CITY-LOCAL today, so "0 days ahead" already
+#     arrives as days_out=1 (measured), and the value moves with the hour the
+#     suite runs at. The scope is instead pinned by the mutation-proof PAIR of
+#     TestApplyAnalysisCalibration::test_no_op_off_the_multiday_horizon[0]
+#     (d=0 no-ops) and test_analysis_calibration_receives_the_real_horizon_
+#     not_a_constant above (the real horizon reaches the function). Together
+#     those cover what one end-to-end test would, without a fixture that lies
+#     about what horizon it represents.
+#
+#   * Off-family tickers. A KXHOLIDAY* ticker does not survive
+#     _parse_market_condition against this fixture's title/series, so
+#     analyze_trade returns None long before section 9c and an end-to-end test
+#     would assert on a market that never reached the stage -- passing
+#     vacuously. Pinned at the unit boundary instead by
+#     TestApplyAnalysisCalibrationScope::test_no_op_off_the_daily_temperature_
+#     families, which is where the guard actually lives.
+
+
+def test_ci_realignment_clamp_can_only_under_size():
+    """batch-87 / opus review M6, resolved as safe.
+
+    Section 9c sharpens probabilities toward the extremes, so the CI
+    realignment's max(0.01, ...) / min(0.99, ...) clamps bite far more often
+    than before and the interval stops being centred on the point estimate.
+    The question that mattered is which way that biases Kelly. It is
+    symmetric and always DOWNWARD -- the clamp always eats the side of the
+    interval that would have raised p_win -- so the stage can only under-size.
+
+    Pinned because the safety argument depends on the DIRECTION: a future
+    change that made this over-size would be a real risk on a stage that does
+    not create edge, and would otherwise be invisible.
+    """
+
+    def realign(bp, half):
+        return max(0.01, bp - half), min(0.99, bp + half)
+
+    saw_clamped = 0
+    for bp in (0.02, 0.059, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95, 0.98):
+        lo, hi = realign(bp, 0.15)
+        side = "yes" if bp > 0.5 else "no"
+        p_win = bp if side == "yes" else 1 - bp
+        k_lo, k_hi = (lo, hi) if side == "yes" else (1 - hi, 1 - lo)
+        k_mid = (k_lo + k_hi) / 2
+        assert k_mid <= p_win + 1e-9, (
+            f"blended={bp} would SIZE UP: kelly midpoint {k_mid} > p_win {p_win}"
+        )
+        if k_mid < p_win - 1e-9:
+            saw_clamped += 1
+    # Positive control: the clamp actually fired for several of these, so the
+    # assertion above is not vacuously true on an interval that never clamps.
+    assert saw_clamped >= 5, f"clamp only bit {saw_clamped} times"

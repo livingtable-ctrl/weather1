@@ -2804,3 +2804,1269 @@ class TestModelWriteRoutesThroughAtomicWriteBytes:
         # with no matching .hmac, and restoring it silently disables bias
         # correction. See the call site's comment.
         assert calls[0]["kwargs"].get("emergency_copy") is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# batch-87: final-stage calibration fitted on the UNBIASED population
+# (analysis_attempts), and the temperature-scale freeze it gates.
+#
+# Every test here relies on conftest's autouse isolate_analysis_calibration_path
+# fixture having already redirected ml_bias._ANALYSIS_CAL_PATH at a per-test
+# tmp file that does NOT exist -- that absent state is the "no fit" baseline
+# several of these assert against.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# batch-87: apply_analysis_calibration is scoped to the fit's own population
+# (daily-temperature tickers, non-excluded condition types), so a test that
+# wants to exercise the TRANSFORM has to pass a ticker inside that population
+# -- otherwise it silently measures a scope guard instead. Named rather than
+# inlined so the scope tests below can point at the same value and be
+# obviously testing the guard, not a typo.
+_IN_SCOPE_TICKER = "KXHIGHNY-26AUG26-T80"
+
+
+def _apply(ml_bias, prob, days_out=1, ticker=_IN_SCOPE_TICKER, condition_type="above"):
+    """apply_analysis_calibration with in-population defaults."""
+    return ml_bias.apply_analysis_calibration(
+        prob, days_out=days_out, ticker=ticker, condition_type=condition_type
+    )
+
+
+def _write_analysis_cal(ml_bias, entry: dict) -> None:
+    """Write a multiday entry to the (already isolated) path and drop the cache."""
+    import json
+
+    ml_bias._ANALYSIS_CAL_PATH.write_text(json.dumps({"multiday": entry}))
+    ml_bias._ANALYSIS_CAL_CACHE = None
+    ml_bias._ANALYSIS_CAL_MTIME = None
+
+
+class TestAnalysisCalibrationUncalibratedFlag:
+    """The `_uncalibrated` sentinel must defeat an otherwise-valid entry.
+
+    Referenced by seeds/README.md. This is the batch-79 failure mode
+    (seeds/seasonal_weights.json's summer entry lost the flag and
+    _blend_weights read uniform weights as a real fit) transplanted onto the
+    new object.
+    """
+
+    def test_flagged_identity_entry_is_not_a_usable_fit(self):
+        import ml_bias
+
+        _write_analysis_cal(
+            ml_bias, {"a": 1.0, "b": 0.0, "n": 0, "_uncalibrated": True}
+        )
+        assert (
+            ml_bias._usable_analysis_cal_entry(
+                ml_bias._load_analysis_calibration(), "multiday"
+            )
+            is None
+        )
+        assert ml_bias.analysis_calibration_is_active() is False
+
+    def test_unflagged_identity_entry_is_a_usable_fit(self):
+        """Positive control for the test above.
+
+        Without this, that test would still pass if _usable_analysis_cal_entry
+        rejected EVERY entry -- e.g. because the file never loaded at all, or
+        because a later refactor broke the a/b lookup. The two entries differ
+        by exactly one key, so the flag is provably the discriminator.
+        """
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 1.0, "b": 0.0, "n": 0})
+        assert ml_bias._usable_analysis_cal_entry(
+            ml_bias._load_analysis_calibration(), "multiday"
+        ) == (1.0, 0.0)
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_flagged_entry_declines_even_with_non_identity_coefficients(self):
+        """A flagged entry declines regardless of what its coefficients say.
+
+        Originally named for, and documented as, an ORDERING claim (that the
+        flag is read before a/b). An opus reviewer showed that claim is
+        semantically inert -- both orders return None for every possible
+        input, so moving the check past the a/b validation left every test
+        green. The real, testable property is the one now in the name: the
+        flag alone is sufficient to decline, independent of the coefficients
+        beside it.
+        """
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 3.0, "b": -1.5, "_uncalibrated": True})
+        assert (
+            ml_bias._usable_analysis_cal_entry(
+                ml_bias._load_analysis_calibration(), "multiday"
+            )
+            is None
+        )
+        # Positive control: the SAME coefficients unflagged are accepted, so
+        # the rejection above is the flag's doing and not a bounds check on
+        # a=3.0 / b=-1.5.
+        _write_analysis_cal(ml_bias, {"a": 3.0, "b": -1.5})
+        assert ml_bias._usable_analysis_cal_entry(
+            ml_bias._load_analysis_calibration(), "multiday"
+        ) == (3.0, -1.5)
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"b": 0.0},
+            {"a": 1.0},
+            {"a": "1.0", "b": 0.0},
+            {"a": True, "b": 0.0},
+            {"a": float("nan"), "b": 0.0},
+            {"a": float("inf"), "b": 0.0},
+        ],
+        ids=["no-a", "no-b", "a-is-str", "a-is-bool", "a-is-nan", "a-is-inf"],
+    )
+    def test_malformed_entries_decline(self, entry):
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, entry)
+        assert (
+            ml_bias._usable_analysis_cal_entry(
+                ml_bias._load_analysis_calibration(), "multiday"
+            )
+            is None
+        )
+
+    def test_non_dict_entry_and_non_dict_table_decline(self):
+        import json
+
+        import ml_bias
+
+        ml_bias._ANALYSIS_CAL_PATH.write_text(json.dumps({"multiday": [1, 2]}))
+        ml_bias._ANALYSIS_CAL_CACHE = None
+        ml_bias._ANALYSIS_CAL_MTIME = None
+        assert ml_bias.analysis_calibration_is_active() is False
+
+        ml_bias._ANALYSIS_CAL_PATH.write_text(json.dumps([1, 2, 3]))
+        ml_bias._ANALYSIS_CAL_CACHE = None
+        ml_bias._ANALYSIS_CAL_MTIME = None
+        assert ml_bias._load_analysis_calibration() is None
+
+    def test_shipped_seed_carries_the_flag(self):
+        """The seed itself, not a fixture -- seeds/README.md promises this."""
+        import json
+
+        seed = Path(__file__).parent.parent / "seeds" / "analysis_calibration.json"
+        data = json.loads(seed.read_text())
+        assert data["multiday"]["_uncalibrated"] is True
+        # Positive control: the entry is otherwise complete, so the flag is
+        # doing the work rather than the entry being empty or malformed.
+        assert data["multiday"]["a"] == 1.0
+        assert data["multiday"]["b"] == 0.0
+
+
+class TestApplyAnalysisCalibration:
+    def test_no_op_when_no_file_exists(self):
+        import ml_bias
+
+        assert not ml_bias._ANALYSIS_CAL_PATH.exists()  # the fixture's baseline
+        assert _apply(ml_bias, 0.7, days_out=1) == 0.7
+
+    def test_no_op_when_declined(self):
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0, "_uncalibrated": True})
+        assert _apply(ml_bias, 0.7, days_out=1) == 0.7
+        # Positive control: the identical fit WITHOUT the flag does move it,
+        # so the no-op above is the decline and not the horizon or the value.
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert _apply(ml_bias, 0.7, days_out=1) != 0.7
+
+    @pytest.mark.parametrize("days_out", [0, None])
+    def test_no_op_off_the_multiday_horizon(self, days_out):
+        """days_out=0 and days_out=None must both no-op.
+
+        Same-day was measured and deliberately excluded (t=-1.46 held-out, not
+        significant); None reaches this from call paths that never resolved a
+        horizon, and defaulting those to the multi-day fit would apply a
+        correction measured on a population they are not in.
+        """
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert _apply(ml_bias, 0.7, days_out=days_out) == 0.7
+        # Positive control: the same fit and the same probability at d=1 DO
+        # move, so the no-ops above are the horizon gate and not a dead fit.
+        assert _apply(ml_bias, 0.7, days_out=1) != 0.7
+
+    def test_matches_the_closed_form_at_a_equals_2(self):
+        """sigmoid(2*logit(p)) == p^2 / (p^2 + (1-p)^2), derived independently
+        of the implementation. p=0.7 -> 0.49 / (0.49 + 0.09) = 0.8448275862."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        got = _apply(ml_bias, 0.7, days_out=1)
+        assert got == pytest.approx(0.49 / (0.49 + 0.09), abs=1e-9)
+        assert got == pytest.approx(0.8448275862, abs=1e-9)
+
+    def test_identity_fit_leaves_the_probability_alone(self):
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 1.0, "b": 0.0})
+        for p in (0.05, 0.25, 0.5, 0.75, 0.95):
+            assert _apply(ml_bias, p, days_out=1) == pytest.approx(p, abs=1e-9)
+
+    def test_real_fit_sharpens_rather_than_compresses(self):
+        """The measured 2026-08-26 fit (a=2.8613, b=-0.3384) must push AWAY
+        from 0.5, which is the opposite of what the existing temperature scale
+        (global T=4.601, a compression) does. If this ever reverses, the two
+        stages are fighting rather than composing."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384})
+        assert _apply(ml_bias, 0.80, days_out=1) > 0.80
+        assert _apply(ml_bias, 0.20, days_out=1) < 0.20
+
+    def test_extreme_inputs_do_not_raise(self):
+        """_logit self-clips to [1e-6, 1-1e-6] and _sigmoid is the stable
+        branch-on-sign form, so 0.0/1.0 must return a finite probability
+        rather than raising or producing inf."""
+        import math
+
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 5.0, "b": 5.0})
+        for p in (0.0, 1.0, 1e-12, 1 - 1e-12):
+            got = _apply(ml_bias, p, days_out=1)
+            assert math.isfinite(got)
+            assert 0.0 <= got <= 1.0
+
+
+class TestFitAnalysisCalibration:
+    @staticmethod
+    def _rows(n_pos, n_neg, seed=11):
+        """Rows whose forecast_prob is informative but OVERLAPPING.
+
+        The two ranges deliberately overlap on [0.30, 0.70]. An earlier
+        version drew positives from [0.50, 0.80] and negatives from
+        [0.20, 0.50], which is perfectly separable -- the Platt MLE then
+        diverges (measured: A=414.4) and _fit_platt's own |A|<=5 guard
+        rejects it, so every "this should fit" assertion failed for a reason
+        that had nothing to do with what it was testing. Real settled data is
+        never separable; a fixture that is will silently exercise only the
+        blowup guard.
+        """
+        import random
+
+        rng = random.Random(seed)
+        rows = []
+        for _ in range(n_pos):
+            rows.append({"forecast_prob": rng.uniform(0.30, 0.95), "outcome": 1})
+        for _ in range(n_neg):
+            rows.append({"forecast_prob": rng.uniform(0.05, 0.70), "outcome": 0})
+        return rows
+
+    def test_declines_below_the_minority_floor(self):
+        import ml_bias
+
+        floor = ml_bias.ANALYSIS_CALIBRATION_MIN_MINORITY
+        assert ml_bias.fit_analysis_calibration(self._rows(floor - 1, 200)) is None
+        # Positive control: one more minority row and the SAME shape fits, so
+        # the decline is the floor and not the data being unfittable.
+        assert ml_bias.fit_analysis_calibration(self._rows(floor, 200)) is not None
+
+    def test_floor_is_on_the_minority_class_not_the_row_count(self):
+        """191 rows with only 19 positives must decline. This is the actual
+        2026-08-26 shape (191 rows, 29 positives) minus ten positives -- the
+        row count alone would look like plenty and would not be."""
+        import ml_bias
+
+        rows = self._rows(19, 172)
+        assert len(rows) == 191
+        assert ml_bias.fit_analysis_calibration(rows) is None
+
+    def test_refuses_corrupted_labels(self):
+        import ml_bias
+
+        rows = self._rows(40, 200)
+        rows[0]["outcome"] = 2
+        assert ml_bias.fit_analysis_calibration(rows) is None
+        # Positive control: the same rows with the label repaired do fit.
+        rows[0]["outcome"] = 1
+        assert ml_bias.fit_analysis_calibration(rows) is not None
+
+    def test_skips_rows_with_missing_fields(self):
+        import ml_bias
+
+        rows = self._rows(40, 200)
+        rows.append({"forecast_prob": None, "outcome": 1})
+        rows.append({"forecast_prob": 0.6, "outcome": None})
+        assert ml_bias.fit_analysis_calibration(rows) is not None
+
+    def test_declines_when_fit_platt_rejects_the_coefficients(self, monkeypatch):
+        """_fit_platt raises on a<=0 / |a|>5 / |b|>5; that must surface as a
+        decline, not an exception escaping to the caller."""
+        import ml_bias
+
+        def _boom(xs, ys):
+            raise ValueError("Platt fit produced invalid coefficients A=-1.0")
+
+        monkeypatch.setattr(ml_bias, "_fit_platt", _boom)
+        assert ml_bias.fit_analysis_calibration(self._rows(40, 200)) is None
+
+    def test_recovers_a_known_platt_transform(self):
+        """Generate labels from a KNOWN miscalibration and check the fit finds
+        it. Outcomes are drawn at sigmoid(2*logit(p)) while the stored
+        forecast_prob stays p, so a correct fitter recovers a ~= 2, b ~= 0."""
+        import random
+
+        import ml_bias
+
+        rng = random.Random(5)
+        rows = []
+        for _ in range(4000):
+            p = rng.uniform(0.05, 0.95)
+            true_p = p**2 / (p**2 + (1 - p) ** 2)  # == sigmoid(2*logit(p))
+            rows.append(
+                {"forecast_prob": p, "outcome": 1 if rng.random() < true_p else 0}
+            )
+        fit = ml_bias.fit_analysis_calibration(rows)
+        assert fit is not None
+        a, b = fit
+        assert a == pytest.approx(2.0, abs=0.25)
+        assert b == pytest.approx(0.0, abs=0.25)
+
+
+class TestFitAndSaveAnalysisCalibration:
+    def _seed_attempts(self, tracker, n_pos=40, n_neg=200, days_out=1, seed=3):
+        import random
+        from datetime import date, timedelta
+
+        rng = random.Random(seed)
+        batch, outcomes = [], []
+        for i in range(n_pos + n_neg):
+            pos = i < n_pos
+            # Overlapping ranges — see TestFitAnalysisCalibration._rows for
+            # why a separable fixture only ever exercises the blowup guard.
+            p = rng.uniform(0.30, 0.95) if pos else rng.uniform(0.05, 0.70)
+            td = date(2026, 8, 1) + timedelta(days=i % 20)
+            ticker = f"KXHIGHNY-26AUG{i:04d}-T70"
+            batch.append(
+                {
+                    "ticker": ticker,
+                    "city": "NYC",
+                    "condition": "{'type': 'above'}",
+                    "target_date": td,
+                    "forecast_prob": p,
+                    "market_prob": 0.5,
+                    "days_out": days_out,
+                    "was_traded": False,
+                }
+            )
+            outcomes.append((ticker, td, 1 if pos else 0))
+        tracker.batch_log_analysis_attempts(batch)
+        for ticker, td, outcome in outcomes:
+            tracker.settle_analysis_attempt(ticker, td, outcome)
+
+    def test_writes_a_real_fit_and_invalidates_the_cache(self, tmp_path, monkeypatch):
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        self._seed_attempts(tracker)
+
+        # Prime the cache with a stale value so the invalidation is observable.
+        ml_bias._ANALYSIS_CAL_CACHE = {"multiday": {"a": 99.0, "b": 99.0}}
+        ml_bias._ANALYSIS_CAL_MTIME = 12345.0
+
+        fit = ml_bias.fit_and_save_analysis_calibration()
+
+        assert fit is not None
+        a, b = fit
+        assert ml_bias._ANALYSIS_CAL_PATH.exists()
+        entry = json.loads(ml_bias._ANALYSIS_CAL_PATH.read_text())["multiday"]
+        assert entry["a"] == a
+        assert entry["b"] == b
+        assert entry["n"] == 240
+        assert entry["n_pos"] == 40
+        assert entry["source"] == "analysis_attempts"
+        assert entry["days_out"] == ">=1"
+        assert "_uncalibrated" not in entry
+        assert "fitted_at" in entry
+        # The stale cache must be gone, not returned.
+        assert ml_bias._usable_analysis_cal_entry(
+            ml_bias._load_analysis_calibration(), "multiday"
+        ) == (a, b)
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_genuine_shortfall_writes_the_uncalibrated_placeholder(
+        self, tmp_path, monkeypatch
+    ):
+        """A real data shortfall -- and no working fit being discarded -- does
+        write the placeholder, which turns 9c into a no-op and lifts the
+        temperature-scale freeze together.
+
+        The prior entry here records n=53, NOT a larger n: with a larger one
+        the shrink guard fires first and refuses to write at all, which is a
+        different (and separately tested) behaviour. An earlier version of
+        this test seeded n=191 against 53 rows and so was silently exercising
+        the shrink guard instead of the decline path it names.
+        """
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 53})
+        assert ml_bias.analysis_calibration_is_active() is True
+
+        self._seed_attempts(tracker, n_pos=3, n_neg=50)  # below the floor
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+
+        entry = json.loads(ml_bias._ANALYSIS_CAL_PATH.read_text())["multiday"]
+        assert entry["_uncalibrated"] is True
+        assert entry["a"] == 1.0
+        assert entry["b"] == 0.0
+        assert entry["n"] == 53
+        assert entry["decline_reason"] == "insufficient_data"
+        assert ml_bias.analysis_calibration_is_active() is False
+
+    def test_drops_the_cache_it_just_warmed(self, tmp_path, monkeypatch):
+        """The explicit cache-null is NOT redundant with the mtime check.
+
+        fit_and_save reads the existing table (warming the cache with the
+        PRE-write contents) and then writes microseconds later. On a
+        filesystem with coarse mtime resolution both land in the same tick,
+        _ANALYSIS_CAL_MTIME already equals the new file's mtime, and the
+        loader short-circuits onto the stale table forever. Asserting the
+        cache is None straight after the call pins the mechanism without
+        needing to induce the race -- removing the two null assignments
+        leaves the stale table sitting in _ANALYSIS_CAL_CACHE, which this
+        catches and a mtime-dependent test does not (measured: it did not).
+        """
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        # A real prior fit on disk, then warm the cache from it.
+        _write_analysis_cal(ml_bias, {"a": 9.9, "b": 9.9, "n": 1})
+        assert ml_bias._load_analysis_calibration() is not None
+        assert ml_bias._ANALYSIS_CAL_CACHE is not None  # positive control
+        stale = ml_bias._ANALYSIS_CAL_CACHE
+
+        self._seed_attempts(tracker)
+        assert ml_bias.fit_and_save_analysis_calibration() is not None
+
+        assert ml_bias._ANALYSIS_CAL_CACHE is None, (
+            f"stale table survived the write: {ml_bias._ANALYSIS_CAL_CACHE}"
+        )
+        assert ml_bias._ANALYSIS_CAL_MTIME is None
+        # And the next read genuinely returns the new coefficients, not the
+        # ones the cache was warmed with.
+        assert (
+            ml_bias._load_analysis_calibration()["multiday"]["a"]
+            != (stale["multiday"]["a"])
+        )
+
+    def test_preserves_other_horizon_keys(self, tmp_path, monkeypatch):
+        """A multi-day-only retrain must not erase a key added later."""
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        ml_bias._ANALYSIS_CAL_PATH.write_text(
+            json.dumps(
+                {
+                    "multiday": {"a": 1.0, "b": 0.0, "_uncalibrated": True},
+                    "sameday": {"a": 1.2, "b": 0.3, "n": 77},
+                }
+            )
+        )
+        ml_bias._ANALYSIS_CAL_CACHE = None
+        ml_bias._ANALYSIS_CAL_MTIME = None
+        self._seed_attempts(tracker)
+
+        assert ml_bias.fit_and_save_analysis_calibration() is not None
+        data = json.loads(ml_bias._ANALYSIS_CAL_PATH.read_text())
+        assert data["sameday"] == {"a": 1.2, "b": 0.3, "n": 77}
+
+    def test_same_day_rows_are_not_in_the_population(self, tmp_path, monkeypatch):
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        self._seed_attempts(tracker, days_out=0)
+        assert tracker.get_analysis_calibration_data() == []
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        # Positive control: the SAME rows at days_out=1 do reach the fit, so
+        # the emptiness above is the horizon filter and not the seeding
+        # helper silently writing nothing.
+        self._seed_attempts(tracker, days_out=1, seed=4)
+        assert len(tracker.get_analysis_calibration_data()) == 240
+
+
+class TestTemperatureScaleFreeze:
+    """batch-87. train_all_temperature_scaling must stop moving the multi-day
+    T keys once a real analysis calibration is stacked on top of them."""
+
+    def _seed_multiday_predictions(self, tracker, n=60, seed=9):
+        import random
+        from datetime import date, timedelta
+
+        rng = random.Random(seed)
+        for i in range(n):
+            ticker = f"KXHIGHNY-26JUL{i:04d}-TFRZ"
+            analysis = {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": rng.uniform(0.15, 0.85),
+                "market_prob": 0.5,
+                "edge": 0.2,
+                "method": "ensemble",
+            }
+            tracker.log_prediction(
+                ticker, "NYC", date(2026, 7, 1) + timedelta(days=i % 15), analysis
+            )
+            tracker.log_outcome(ticker, 1 if rng.random() < 0.35 else 0)
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 3 WHERE ticker = ?", (ticker,)
+                )
+
+    def _run(self, tmp_path, monkeypatch, cal_entry):
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        scale_path = tmp_path / "freeze_temperature_scale.json"
+        scale_path.write_text(json.dumps({"global": {"T": 4.601, "n": 68}}))
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", scale_path)
+        ml_bias._TEMP_CACHE = None
+        ml_bias._TEMP_CACHE_MTIME = None
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "no_emos.json")
+        tracker.init_db()
+        self._seed_multiday_predictions(tracker)
+        if cal_entry is not None:
+            _write_analysis_cal(ml_bias, cal_entry)
+        return ml_bias.train_all_temperature_scaling(), json.loads(
+            scale_path.read_text()
+        )
+
+    def test_refits_when_no_analysis_calibration_exists(self, tmp_path, monkeypatch):
+        """Positive control for the freeze tests below: with no stacked fit,
+        the same data DOES produce a global/per-condition refit. Without this,
+        a freeze test would pass just as happily if the seeded population were
+        too small to fit at all."""
+        trained, _ = self._run(tmp_path, monkeypatch, None)
+        assert "global" in trained, trained
+
+    def test_freezes_when_a_real_analysis_calibration_exists(
+        self, tmp_path, monkeypatch
+    ):
+        trained, on_disk = self._run(
+            tmp_path, monkeypatch, {"a": 2.8613, "b": -0.3384, "n": 191}
+        )
+        assert trained == {}
+        # And the pre-existing T is left exactly as it was, not rewritten.
+        assert on_disk["global"]["T"] == 4.601
+        assert on_disk["global"]["n"] == 68
+
+    def test_does_not_freeze_on_a_declined_analysis_calibration(
+        self, tmp_path, monkeypatch
+    ):
+        """A declined fit means nothing is stacked, so the pre-batch-87
+        behaviour is the correct fallback -- there is nothing to hold still."""
+        trained, _ = self._run(
+            tmp_path, monkeypatch, {"a": 1.0, "b": 0.0, "_uncalibrated": True}
+        )
+        assert "global" in trained, trained
+
+    def _seed_sameday_predictions(self, tracker, n=60, seed=21):
+        """Same-day rows the T fit will actually select AND be able to fit.
+
+        Two traps, both hit while writing this:
+          * days_out=0 with method='ensemble' and a KXHIGHNY-* ticker is
+            required -- the sameday query excludes metar_lockout rows and the
+            hourly KXTEMP*H prefixes.
+          * labels must be drawn Bernoulli(forecast_prob), NOT at a flat base
+            rate. With a flat rate the pool is directionally biased, _fit_T
+            hits its 8.0 upper bound, returns None, and `trained` comes back
+            empty -- so the test would pass while proving nothing.
+        """
+        import random
+        from datetime import date, timedelta
+
+        rng = random.Random(seed)
+        for i in range(n):
+            ticker = f"KXHIGHNY-26JUL{i:04d}-TSD"
+            p = rng.uniform(0.15, 0.85)
+            analysis = {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": p,
+                "market_prob": 0.5,
+                "edge": 0.2,
+                "method": "ensemble",
+            }
+            tracker.log_prediction(
+                ticker, "NYC", date(2026, 7, 1) + timedelta(days=i % 15), analysis
+            )
+            tracker.log_outcome(ticker, 1 if rng.random() < p else 0)
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0 WHERE ticker = ?", (ticker,)
+                )
+
+    def test_sameday_still_refits_while_multiday_is_frozen(self, tmp_path, monkeypatch):
+        """The freeze is multi-day only -- BEHAVIOURALLY, not by name.
+
+        Replaces a source-scanning assertion an opus reviewer showed was
+        mutation-survivable: it asserted only that the identifier
+        "_analysis_cal_active" did not appear in the same-day half of the
+        function, so an implementation that froze same-day WITHOUT using that
+        variable name passed. This asserts the two halves' actual outcomes in
+        one run: multi-day held at its stored value, same-day refitted.
+        """
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        scale_path = tmp_path / "freeze_temperature_scale.json"
+        scale_path.write_text(json.dumps({"global": {"T": 4.601, "n": 68}}))
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", scale_path)
+        ml_bias._TEMP_CACHE = None
+        ml_bias._TEMP_CACHE_MTIME = None
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "no_emos.json")
+        tracker.init_db()
+        self._seed_multiday_predictions(tracker)
+        self._seed_sameday_predictions(tracker)
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 191})
+
+        trained = ml_bias.train_all_temperature_scaling()
+        on_disk = json.loads(scale_path.read_text())
+
+        # Same-day refit -- the positive control, and the half that would go
+        # silently missing under the mutation this replaces.
+        assert "sameday" in trained, trained
+        assert on_disk["sameday"]["n"] == 60
+        # Multi-day frozen at exactly what it held.
+        assert "global" not in trained
+        assert "above" not in trained
+        assert on_disk["global"] == {"T": 4.601, "n": 68}
+
+    def test_emos_and_analysis_cal_together_still_freeze_every_condition_key(
+        self, tmp_path, monkeypatch
+    ):
+        """The combination that fell through BOTH guards.
+
+        `if _analysis_cal_active and not _emos_active` meant that with EMOS
+        active, a condition type outside EMOS_COVERED_CONDITION_KEYS matched
+        neither branch and refit. Latent rather than live -- by_type holds
+        only above/below today and both are EMOS-covered, which is exactly the
+        shape where a test passes under either predicate -- so this seeds a
+        condition type that is NOT covered.
+        """
+        import json
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        scale_path = tmp_path / "emos_combo_scale.json"
+        scale_path.write_text(json.dumps({"global": {"T": 4.601, "n": 68}}))
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", scale_path)
+        ml_bias._TEMP_CACHE = None
+        ml_bias._TEMP_CACHE_MTIME = None
+        emos = tmp_path / "emos_params.json"
+        emos.write_text("{}")
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", emos)
+        tracker.init_db()
+
+        uncovered = "sunny_streak"
+        assert uncovered not in ml_bias.EMOS_COVERED_CONDITION_KEYS
+        assert uncovered not in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        self._seed_multiday_predictions(tracker, n=60, seed=31)
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET condition_type = ? WHERE ticker LIKE ?",
+                (uncovered, "KXHIGHNY-26JUL%-TFRZ"),
+            )
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 191})
+
+        trained = ml_bias.train_all_temperature_scaling()
+        assert uncovered not in trained, (
+            f"{uncovered} refit despite the analysis calibration being active "
+            f"— it matched neither freeze branch"
+        )
+        assert json.loads(scale_path.read_text())["global"] == {"T": 4.601, "n": 68}
+
+
+class TestApplyAnalysisCalibrationScope:
+    """batch-87 opus review. The apply site's population must match the fit's.
+
+    Every guard here mirrors a filter in
+    tracker.get_analysis_calibration_data(); applying a correction to rows
+    the fit never saw is the same error this batch exists to fix, pointed the
+    other way.
+    """
+
+    def test_no_op_off_the_daily_temperature_families(self):
+        """KXHOLIDAYTMAX/TMIN reach this function through analyze_trade's
+        ordinary daily-temperature path but are NOT in the fit's
+        KXHIGH*/KXLOWT* population. That family is shadow-only precisely so
+        it can accumulate clean calibration data, so correcting it with a fit
+        from a different family would land in the numbers its graduation
+        decision gets made on."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        for tkr in (
+            "KXHOLIDAYTMAX-260704100-NYC",
+            "KXHOLIDAYTMIN-260704100-NYC",
+            "KXRAINNYCM-26AUG-B2",
+            "KXTEMPNYCH-26AUG26T14-T80",
+        ):
+            assert _apply(ml_bias, 0.7, ticker=tkr) == 0.7, tkr
+        # Positive control: the same fit and probability on an in-population
+        # ticker DOES move, so the no-ops above are the family guard.
+        assert _apply(ml_bias, 0.7) != 0.7
+
+    def test_no_op_when_the_ticker_is_missing(self):
+        """Fail closed: without a ticker the family cannot be checked."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert _apply(ml_bias, 0.7, ticker=None) == 0.7
+        assert _apply(ml_bias, 0.7, ticker="") == 0.7
+        assert _apply(ml_bias, 0.7) != 0.7  # positive control
+
+    def test_no_op_on_excluded_condition_types(self):
+        """Mirrors _ALWAYS_EXCLUDED_CONDITION_TYPES, 'between' in particular
+        -- structurally a different market whose probabilities cluster near
+        0.75, and excluded from every sibling fit in the repo."""
+        import ml_bias
+        import tracker
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        # Derived from the registry, not hand-listed, so a type added there
+        # is covered here automatically.
+        assert "between" in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+        for ctype in tracker._ALWAYS_EXCLUDED_CONDITION_TYPES:
+            assert _apply(ml_bias, 0.7, condition_type=ctype) == 0.7, ctype
+        # Positive controls: an included type moves, and so does an unknown
+        # one (unknown is deliberately NOT treated as excluded, matching the
+        # fit side's own handling of an unparseable condition).
+        assert _apply(ml_bias, 0.7, condition_type="above") != 0.7
+        assert _apply(ml_bias, 0.7, condition_type=None) != 0.7
+
+    def test_no_op_while_emos_is_active(self, tmp_path, monkeypatch):
+        """EMOS replaces the ensemble probability with its own fitted Gaussian
+        AND pins the multi-day T keys to 1.0 -- i.e. the base transform this
+        fit was measured on top of is gone. Stacking on it over-sharpens an
+        already-calibrated probability."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert _apply(ml_bias, 0.7) != 0.7  # positive control, EMOS absent
+
+        emos = tmp_path / "emos_params.json"
+        emos.write_text("{}")
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", emos)
+        assert _apply(ml_bias, 0.7) == 0.7
+
+    def test_magnitude_guard_skips_a_pathological_correction(self):
+        """Section 9c was the only correction stage in analyze_trade with no
+        magnitude cap; GBM/Platt use 0.30 and METAR 0.60. a=1.0/b=-5.0 is
+        fully legal under _fit_platt and moves a probability by ~0.85."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 1.0, "b": -5.0})
+        assert _apply(ml_bias, 0.9) == 0.9
+        # Positive control: a fit inside the limit on the same probability is
+        # applied, so the skip above is the magnitude guard and not the fit
+        # being unusable or out of bounds.
+        _write_analysis_cal(ml_bias, {"a": 1.0, "b": -0.5})
+        assert _apply(ml_bias, 0.9) != 0.9
+
+    def test_the_measured_production_fit_is_inside_the_limit(self):
+        """The guard must not be silently skipping the real fit -- that is the
+        failure METAR's own 0.30 limit produced (it skipped every NO-lock
+        correction while applying every YES-lock one)."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384})
+        moved = 0
+        for p in (0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95):
+            out = _apply(ml_bias, p)
+            assert abs(out - p) <= ml_bias._ANALYSIS_CORRECTION_LIMIT
+            if abs(out - p) > 1e-9:
+                moved += 1
+        assert moved == 7, "the real fit should move every one of these"
+
+    def test_non_finite_probability_is_returned_unchanged(self):
+        """_logit clips rather than raises, so a NaN would otherwise become
+        ~0.999999 -- silently converting 'unknown' into near-certainty on the
+        pricing path."""
+        import math
+
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert math.isnan(_apply(ml_bias, float("nan")))
+        assert _apply(ml_bias, float("inf")) == float("inf")
+        assert _apply(ml_bias, 0.7) != 0.7  # positive control
+
+    def test_output_is_clamped_inside_the_function(self):
+        """Clamped here, not only at the analyze_trade call site, so a second
+        caller (backtest, dashboard) cannot receive an out-of-range value."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 4.0, "b": 0.0})
+        assert _apply(ml_bias, 0.99) == pytest.approx(0.99, abs=1e-9)
+        _write_analysis_cal(ml_bias, {"a": 4.0, "b": 0.0})
+        assert _apply(ml_bias, 0.01) == pytest.approx(0.01, abs=1e-9)
+        for p in (0.02, 0.5, 0.98):
+            assert 0.01 <= _apply(ml_bias, p) <= 0.99
+
+
+class TestAnalysisCalCoefficientBounds:
+    """The READ path must enforce the same envelope _fit_platt does."""
+
+    @pytest.mark.parametrize(
+        "a,b",
+        [(-2.5, 0.0), (0.0, 0.0), (5.5, 0.0), (2.0, 5.5), (2.0, -5.5)],
+        ids=["a-negative", "a-zero", "a-too-big", "b-too-big", "b-too-negative"],
+    )
+    def test_out_of_bounds_coefficients_are_rejected(self, a, b):
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": a, "b": b})
+        assert ml_bias.analysis_calibration_is_active() is False
+        assert _apply(ml_bias, 0.8) == 0.8
+
+    def test_a_negative_would_have_inverted_every_multi_day_probability(self):
+        """The concrete reason this guard exists. a=-2.5 maps a model
+        probability of 0.80 to ~0.03 -- a direction inversion on every
+        multi-day market, which flips rec_side on every one of them. The
+        [0.01, 0.99] clamp does not help; an inverted value sits inside it."""
+        import ml_bias
+
+        # What the transform WOULD do if the bounds check were absent.
+        raw = ml_bias._sigmoid(-2.5 * ml_bias._logit(0.80) + 0.0)
+        assert raw < 0.05, raw
+        assert 0.01 <= raw <= 0.99, "the clamp alone would not have caught it"
+        # And what it actually does.
+        _write_analysis_cal(ml_bias, {"a": -2.5, "b": 0.0})
+        assert _apply(ml_bias, 0.80) == 0.80
+
+    def test_in_bounds_coefficients_are_accepted(self):
+        """Positive control for the parametrised rejections above."""
+        import ml_bias
+
+        for a, b in ((0.01, 0.0), (5.0, 5.0), (5.0, -5.0), (2.8613, -0.3384)):
+            _write_analysis_cal(ml_bias, {"a": a, "b": b})
+            assert ml_bias.analysis_calibration_is_active() is True, (a, b)
+
+
+class TestAnalysisCalLoaderStates:
+    """The loader's error branches, and the freeze's fail-closed policy."""
+
+    def test_corrupt_file_is_a_no_op_for_apply_but_KEEPS_the_freeze(self):
+        """A file that will not parse is not evidence that no calibration was
+        fitted -- it is evidence we cannot see the one that was. Applying an
+        unknown correction and holding a known base still are different
+        risks, so these two deliberately diverge."""
+        import ml_bias
+
+        ml_bias._ANALYSIS_CAL_PATH.write_text("{not json")
+        ml_bias._ANALYSIS_CAL_CACHE = None
+        ml_bias._ANALYSIS_CAL_MTIME = None
+        assert ml_bias._load_analysis_calibration() is None
+        assert _apply(ml_bias, 0.7) == 0.7
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_absent_file_does_NOT_keep_the_freeze(self):
+        """Positive control for the test above: absent and unreadable must not
+        behave the same, or the fail-closed branch proves nothing."""
+        import ml_bias
+
+        assert not ml_bias._ANALYSIS_CAL_PATH.exists()
+        assert ml_bias.analysis_calibration_is_active() is False
+
+    def test_standing_bad_entry_warns_once_not_once_per_market(self, caplog):
+        """apply_analysis_calibration runs on every market of every scan
+        (~300), so an unconditional warning is ~300 identical lines per scan,
+        indefinitely.
+
+        Exercised through the COEFFICIENT-BOUNDS path, not the parse path.
+        An earlier version of this test called _load_analysis_calibration in
+        a loop -- but after the first call the mtime memo short-circuits
+        before the warning is ever reached, so the dedup set was never
+        touched and removing it left the test green (found by re-running the
+        mutation). The bounds check has no such short-circuit: it runs on the
+        CACHED table, once per market, which is exactly where the dedup earns
+        its place.
+        """
+        import logging
+
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": -2.5, "b": 0.0})
+        ml_bias._ANALYSIS_CAL_WARNED.clear()
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            for _ in range(25):
+                assert _apply(ml_bias, 0.7) == 0.7
+        hits = [r for r in caplog.records if "out of bounds" in r.getMessage()]
+        assert len(hits) == 1, f"warned {len(hits)} times across 25 markets"
+
+    def test_a_rewritten_file_warns_again(self, caplog):
+        """Positive control for the dedup: it must not silence a NEW problem.
+        Without this, 'warns once' would be satisfied by 'never warns again'."""
+        import logging
+        import os
+
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": -2.5, "b": 0.0})
+        ml_bias._ANALYSIS_CAL_WARNED.clear()
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            _apply(ml_bias, 0.7)
+            _apply(ml_bias, 0.7)
+            # Rewrite with a DIFFERENT bad value and advance mtime, as a
+            # separate process's retrain would.
+            ml_bias._ANALYSIS_CAL_PATH.write_text('{"multiday": {"a": 9.9, "b": 0.0}}')
+            st = ml_bias._ANALYSIS_CAL_PATH.stat()
+            os.utime(ml_bias._ANALYSIS_CAL_PATH, (st.st_atime + 5, st.st_mtime + 5))
+            _apply(ml_bias, 0.7)
+        hits = [r for r in caplog.records if "out of bounds" in r.getMessage()]
+        assert len(hits) == 2, (
+            f"expected one warning per distinct bad file, got {len(hits)}"
+        )
+
+    def test_a_rewritten_file_is_re_read_via_mtime_alone(self, tmp_path):
+        """The mtime path is the ONLY mechanism by which a long-running
+        scanner picks up a file that `main.py calibrate` or cron rewrote in a
+        different process. Every other test in this file drops the cache by
+        hand, so without this the mtime compare is never exercised at all
+        (opus review found the whole branch mutation-survivable)."""
+        import json
+        import os
+
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        assert ml_bias._load_analysis_calibration()["multiday"]["a"] == 2.0
+
+        # Rewrite WITHOUT touching the cache, exactly as another process would.
+        ml_bias._ANALYSIS_CAL_PATH.write_text(
+            json.dumps({"multiday": {"a": 3.5, "b": 0.25}})
+        )
+        st = ml_bias._ANALYSIS_CAL_PATH.stat()
+        os.utime(ml_bias._ANALYSIS_CAL_PATH, (st.st_atime + 5, st.st_mtime + 5))
+        assert ml_bias._ANALYSIS_CAL_CACHE is not None  # still warm, on purpose
+
+        assert ml_bias._load_analysis_calibration()["multiday"]["a"] == 3.5
+
+    def test_stat_failure_returns_the_last_good_table(self, monkeypatch):
+        """Transient stat failure keeps whatever was last read rather than
+        inventing a state; self-healing on the next successful stat."""
+        import ml_bias
+
+        _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
+        warm = ml_bias._load_analysis_calibration()
+        assert warm is not None
+
+        real_stat = ml_bias._ANALYSIS_CAL_PATH.__class__.stat
+
+        def _boom(self, *a, **kw):
+            raise OSError("transient")
+
+        monkeypatch.setattr(ml_bias._ANALYSIS_CAL_PATH.__class__, "stat", _boom)
+        assert ml_bias._load_analysis_calibration() is warm
+
+        monkeypatch.setattr(ml_bias._ANALYSIS_CAL_PATH.__class__, "stat", real_stat)
+        assert ml_bias._load_analysis_calibration() is not None
+
+
+class TestAnalysisCalDeclinePolicy:
+    """batch-87 opus review. A decline is not one thing.
+
+    Writing the `_uncalibrated` placeholder simultaneously turns section 9c
+    into a no-op AND un-freezes the weekly multi-day T refit -- so which
+    declines are allowed to write is a safety decision, not bookkeeping.
+    """
+
+    def _db(self, tmp_path, monkeypatch):
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        tracker.init_db()
+        return tracker
+
+    def test_db_failure_writes_nothing_and_keeps_the_freeze(
+        self, tmp_path, monkeypatch
+    ):
+        """This call is FIRST in cron's weekly D5 block, upstream of the T
+        refit, the blend calibration, the weight push and the METAR fit -- and
+        that block's `finally` touches its 6-day marker unconditionally. An
+        escape here costs all four for another six days."""
+        import ml_bias
+        import tracker
+
+        self._db(tmp_path, monkeypatch)
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 191})
+        before = ml_bias._ANALYSIS_CAL_PATH.read_text()
+
+        def _boom():
+            raise RuntimeError("database is locked")
+
+        monkeypatch.setattr(tracker, "get_analysis_calibration_data", _boom)
+
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "db_error"
+        assert ml_bias._ANALYSIS_CAL_PATH.read_text() == before
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_shrink_guard_refuses_to_overwrite_a_working_fit(
+        self, tmp_path, monkeypatch
+    ):
+        """Scored rows are never pruned (prune_old_analysis_attempts has
+        `AND outcome IS NULL`), so the population is monotone by
+        construction. An observed drop is a bug -- a series rename, a schema
+        drift -- and must never be honoured by discarding a calibration."""
+        import ml_bias
+
+        self._db(tmp_path, monkeypatch)
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 191})
+        before = ml_bias._ANALYSIS_CAL_PATH.read_text()
+
+        # 0 rows in the DB, against a recorded n of 191.
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "shrink_guard"
+        assert ml_bias._ANALYSIS_CAL_PATH.read_text() == before
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_shrink_guard_does_not_block_a_genuine_first_decline(
+        self, tmp_path, monkeypatch
+    ):
+        """Positive control: with no prior REAL fit recorded, a genuine
+        shortfall still writes the placeholder. Otherwise the guard above
+        would be indistinguishable from 'never writes a decline'."""
+        import json
+
+        import ml_bias
+
+        self._db(tmp_path, monkeypatch)
+        _write_analysis_cal(ml_bias, {"a": 1.0, "b": 0.0, "_uncalibrated": True})
+
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "insufficient_data"
+        entry = json.loads(ml_bias._ANALYSIS_CAL_PATH.read_text())["multiday"]
+        assert entry["_uncalibrated"] is True
+        assert entry["decline_reason"] == "insufficient_data"
+
+    def test_corrupt_labels_are_reported_as_such_not_as_insufficient_data(
+        self, tmp_path, monkeypatch
+    ):
+        """Two of the decline causes are integrity alarms. All three operator
+        messages used to report every one of them as 'not enough data'."""
+        import ml_bias
+        import tracker
+
+        self._db(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            tracker,
+            "get_analysis_calibration_data",
+            lambda: [{"forecast_prob": 0.5, "outcome": 7}] * 60,
+        )
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "corrupt_labels"
+        assert "REFUSED" in ml_bias.analysis_calibration_status_message()
+        assert "not enough" not in ml_bias.analysis_calibration_status_message()
+
+    def test_corrupt_FEATURE_is_caught_like_a_corrupt_label(
+        self, tmp_path, monkeypatch
+    ):
+        """The label was validated and the feature was not. _logit clips, so a
+        NaN forecast_prob would have been absorbed into the fit as ~0.999999."""
+        import ml_bias
+        import tracker
+
+        self._db(tmp_path, monkeypatch)
+        rows = [{"forecast_prob": 0.4, "outcome": i % 2} for i in range(120)]
+        rows[0]["forecast_prob"] = float("nan")
+        monkeypatch.setattr(tracker, "get_analysis_calibration_data", lambda: rows)
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "corrupt_labels"
+        # Positive control: repair the one bad feature and it fits.
+        rows[0]["forecast_prob"] = 0.4
+        assert ml_bias.fit_and_save_analysis_calibration() is not None
+
+    def test_fit_rejection_keeps_the_existing_calibration(self, tmp_path, monkeypatch):
+        """Mirrors _fit_T's own convention -- return None, caller keeps the
+        existing value. A coefficient just outside the envelope is not a
+        reason to throw away a working fit AND un-freeze T."""
+        import ml_bias
+        import tracker
+
+        self._db(tmp_path, monkeypatch)
+        _write_analysis_cal(ml_bias, {"a": 2.8613, "b": -0.3384, "n": 60})
+        before = ml_bias._ANALYSIS_CAL_PATH.read_text()
+        monkeypatch.setattr(
+            tracker,
+            "get_analysis_calibration_data",
+            lambda: [{"forecast_prob": 0.4, "outcome": i % 2} for i in range(120)],
+        )
+
+        def _reject(xs, ys):
+            raise ValueError("Platt fit produced invalid coefficients A=5.3")
+
+        monkeypatch.setattr(ml_bias, "_fit_platt", _reject)
+
+        assert ml_bias.fit_and_save_analysis_calibration() is None
+        assert ml_bias.last_analysis_calibration_status() == "fit_rejected"
+        assert ml_bias._ANALYSIS_CAL_PATH.read_text() == before
+        assert ml_bias.analysis_calibration_is_active() is True
+
+    def test_every_status_has_a_distinct_operator_message(self):
+        """The whole point of the map: no two causes may read the same."""
+        import ml_bias
+
+        msgs = ml_bias._ANALYSIS_CAL_STATUS_MESSAGES
+        assert len(set(msgs.values())) == len(msgs)
+        for status in (
+            "ok",
+            "unknown",
+            "insufficient_data",
+            "corrupt_labels",
+            "fit_rejected",
+            "db_error",
+            "shrink_guard",
+        ):
+            assert status in msgs, status
+
+
+class TestAnalysisCalMinorityFloor:
+    def test_floor_is_pinned_from_both_sides(self):
+        """The floor was only pinned from BELOW: raising it silently makes the
+        fit decline, which disables the calibration AND un-freezes T -- one
+        change, two regressions, neither visible."""
+        import ml_bias
+
+        assert ml_bias.ANALYSIS_CALIBRATION_MIN_MINORITY == 20
+        assert (
+            ml_bias.ANALYSIS_CALIBRATION_MIN_MINORITY
+            == 2 * ml_bias.METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR
+        )
+
+    def test_a_population_comfortably_above_the_floor_still_fits(self):
+        """Kills the upward mutation: with the floor at 20, 25 minority rows
+        must fit. At a mutated floor of 30 they would not."""
+        import ml_bias
+
+        rows = TestFitAnalysisCalibration._rows(25, 200)
+        assert ml_bias.fit_analysis_calibration(rows) is not None
+
+
+class TestAnalysisCalRetrainOrdering:
+    """fit_and_save_analysis_calibration MUST run before
+    train_all_temperature_scaling at every call site.
+
+    The freeze is gated on the analysis fit's output, so if T is refit first
+    the very first retrain after this landed moves T once more -- on the
+    SELECTED population -- and only then freezes. Silent, and only visible in
+    data/.history weeks later. There was no coverage of this at all.
+
+    Asserted on the AST, bound to each enclosing function node rather than by
+    a file-wide text scan, so an occurrence elsewhere in the module cannot
+    satisfy it.
+    """
+
+    # cron's D5 block lives in _cmd_cron_body, not cmd_cron -- resolved by
+    # walking the AST for the function that actually encloses the call, not
+    # by guessing from the command name.
+    CALL_SITES = [
+        ("cron.py", "_cmd_cron_body"),
+        ("main.py", "cmd_train_bias"),
+        ("main.py", "cmd_calibrate"),
+    ]
+
+    @staticmethod
+    def _called_names(node):
+        """Every callable name invoked under `node`, in source order."""
+        import ast
+
+        out = []
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call):
+                continue
+            f = sub.func
+            name = getattr(f, "id", None) or getattr(f, "attr", None)
+            if name:
+                out.append((sub.lineno, name))
+        return [n for _, n in sorted(out)]
+
+    @staticmethod
+    def _aliases(node, target):
+        """Local aliases an `from ml_bias import X as Y` gave `target`."""
+        import ast
+
+        names = {target}
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.ImportFrom) and sub.module == "ml_bias":
+                for alias in sub.names:
+                    if alias.name == target:
+                        names.add(alias.asname or alias.name)
+        return names
+
+    @pytest.mark.parametrize(
+        "filename,funcname",
+        CALL_SITES,
+        ids=[f"{f}:{n}" for f, n in CALL_SITES],
+    )
+    def test_analysis_fit_precedes_the_temperature_refit(self, filename, funcname):
+        import ast
+
+        src = (Path(__file__).parent.parent / filename).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        fn = next(
+            (
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name == funcname
+            ),
+            None,
+        )
+        assert fn is not None, f"{filename} has no {funcname}"
+
+        fit_names = self._aliases(fn, "fit_and_save_analysis_calibration")
+        ts_names = self._aliases(fn, "train_all_temperature_scaling")
+        called = self._called_names(fn)
+
+        fit_at = next((i for i, n in enumerate(called) if n in fit_names), None)
+        ts_at = next((i for i, n in enumerate(called) if n in ts_names), None)
+        # Positive control: BOTH are genuinely called here, so the ordering
+        # assertion below is not comparing against a missing call.
+        assert fit_at is not None, f"{filename}:{funcname} never fits the calibration"
+        assert ts_at is not None, f"{filename}:{funcname} never refits T"
+        assert fit_at < ts_at, (
+            f"{filename}:{funcname} refits the temperature scale BEFORE fitting "
+            f"the analysis calibration — the freeze would not yet be live, so "
+            f"T moves once on the selected population first"
+        )
