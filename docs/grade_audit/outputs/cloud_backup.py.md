@@ -68,7 +68,7 @@ VERDICT: fix before live — RF1 must be resolved; change is low-risk (add loggi
 ```
 
 ```
-[cloud_backup.py] backup_data() L:126–173  7/10 — Copies .json/.db files to a date-stamped subdirectory and prunes backups older than 30 days; top-level exception caught and logged at WARNING; one gap: returns None (not False) when no sync folder is configured, contradicting the docstring claim of "False on failure", and the silent `pass` at L:168–169 for non-date directory names is benign but undocumented.  [Confidence: Confirmed]
+[cloud_backup.py] backup_data() L:126–173  7/10 — Copies .json/.db files to a date-stamped subdirectory and prunes old snapshots on a tiered schedule (every day for 7 days, then one Sunday per week out to 90 days — batch-86 retiered this from the flat 30-day window described in the original audit); top-level exception caught and logged at WARNING; one gap: returns None (not False) when no sync folder is configured, contradicting the docstring claim of "False on failure", and the silent `pass` at L:168–169 for non-date directory names is benign but undocumented.  [Confidence: Confirmed]
 ```
 
 Note on `backup_data()`: `shutil.copy2` on a live `.db` SQLite file during active writes

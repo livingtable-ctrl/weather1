@@ -1,6 +1,7 @@
 import json
 import sys
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 
 def test_cloud_backup_skipped_without_env(tmp_path, monkeypatch):
@@ -295,16 +296,34 @@ def test_backup_data_skips_zero_table_db_without_warning_or_failure(
     Mutation check: reverting the `_sqlite_source_is_empty` skip (routing
     a 0-byte file straight into backup_sqlite_db like any other .db) makes
     this test fail -- result flips to False and a WARNING is logged.
+
+    batch-86: the fixture now also carries a real, populated predictions.db
+    alongside the vestigial file, mirroring the real data/ (4 zero-table
+    files next to 2 live ones). Without it this test's data_dir had no
+    backable database at all, which is the shape batch-86's snapshot check
+    now reports as a failed backup -- so the added DB keeps this test
+    pinned on its own claim (a vestigial source is skipped quietly and
+    does not drag the run's result down) rather than on the unrelated
+    empty-snapshot alarm, which has its own tests below.
     """
     import logging
+    import sqlite3
 
     monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
     (tmp_path / "sync").mkdir()
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    (data_dir / "kalshi.db").write_bytes(b"")  # 0 bytes, matches real file
+    # Zero bytes: SQLite treats it as a valid zero-table database, the
+    # same property the real vestigial files have (they are 4096-byte
+    # header-only files, also with zero tables).
+    (data_dir / "kalshi.db").write_bytes(b"")
     (data_dir / "paper_trades.json").write_text('{"balance": 1000.0}')
+    real_db = data_dir / "predictions.db"
+    con = sqlite3.connect(str(real_db))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY)")
+    con.commit()
+    con.close()
 
     import cloud_backup
 
@@ -318,6 +337,10 @@ def test_backup_data_skips_zero_table_db_without_warning_or_failure(
     subdirs = list(backup_root.iterdir())
     assert not (subdirs[0] / "kalshi.db").exists()
     assert (subdirs[0] / "paper_trades.json").exists()
+    # Positive control for the absence-assertion above: the vestigial skip
+    # must not have taken the live database with it, or "no kalshi.db
+    # warning" would pass on a run that backed up no database at all.
+    assert (subdirs[0] / "predictions.db").exists()
 
 
 def test_backup_data_still_fails_on_genuinely_corrupt_db(tmp_path, monkeypatch):
@@ -339,6 +362,510 @@ def test_backup_data_still_fails_on_genuinely_corrupt_db(tmp_path, monkeypatch):
     backup_root = tmp_path / "sync" / "KalshiBot" / "data"
     subdirs = list(backup_root.iterdir())
     assert not (subdirs[0] / "corrupt.db").exists()
+
+
+# ── batch-86 item 1: a snapshot with no database is not a restore point ────
+
+
+def _zero_table_db(path):
+    """A vestigial .db behaviourally identical to the 4 real ones in data/
+    -- a valid, openable SQLite file with ZERO TABLES, which
+    _sqlite_source_is_empty() skips at DEBUG.
+
+    Zero bytes here; the real files are 4096 bytes (header-only), because
+    _sqlite_source_is_empty opens sources read-write and SQLite grew them
+    a page on first contact. Byte count is not the property under test --
+    table count is, and it is 0 for both.
+    """
+    path.write_bytes(b"")
+
+
+def _populated_db(path, table="predictions"):
+    import sqlite3
+
+    con = sqlite3.connect(str(path))
+    con.execute(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY)")  # noqa: S608
+    con.execute(f"INSERT INTO {table} DEFAULT VALUES")  # noqa: S608
+    con.commit()
+    con.close()
+
+
+def test_backup_data_reports_failure_when_snapshot_has_no_database(
+    tmp_path, monkeypatch, caplog
+):
+    """The 2026-08-25 hole, reproduced.
+
+    Measured live: <sync>/KalshiBot/data/2026-08-25 holds 100 .json files
+    and zero .db, so a restore to that day is impossible -- and every run
+    that produced it logged `synced 99 file(s)` at INFO and returned True.
+    Of backup_data's three copy-loop paths that produce this shape, the two
+    loud ones both log WARNING and neither appears anywhere in bot.log for
+    that date; the third logs at DEBUG, which main.py's
+    `root.setLevel(logging.INFO)` discards before any handler sees it. So
+    the omission has to be reported from the OUTCOME, not from the branch.
+
+    Mutation check: deleting the `if db_sources and not snapshot_dbs`
+    block makes this test fail on both counts -- the result goes back to
+    True and no WARNING is logged.
+    """
+    import logging
+
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    # The real data/ shape minus its two live databases.
+    for name in ("kalshi.db", "paper_trades.db", "tracker.db", "trades.db"):
+        _zero_table_db(data_dir / name)
+    (data_dir / "paper_trades.json").write_text('{"balance": 1000.0}')
+
+    import cloud_backup
+
+    with caplog.at_level(logging.WARNING):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    assert result is False
+    assert any("contains NO database" in r.message for r in caplog.records), [
+        r.message for r in caplog.records
+    ]
+
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    dest = next(iter(backup_root.iterdir()))
+    assert list(dest.glob("*.db")) == []
+    # Positive control: the run did NOT abort early -- the non-database
+    # files were copied normally. Without this, the assertions above would
+    # also pass on a run that raised out of the loop on its first file,
+    # which is a different failure with a different fix.
+    assert (dest / "paper_trades.json").exists()
+
+
+def test_backup_data_is_quiet_when_an_earlier_cycle_already_copied_the_database(
+    tmp_path, monkeypatch, caplog
+):
+    """Snapshot dirs are date-named, so every cron cycle in a day writes
+    into the SAME directory. A cycle that copies no database into a
+    snapshot which already has one from an earlier cycle has not broken
+    that snapshot, and must not raise the alarm.
+
+    Mutation check: narrowing `snapshot_dbs` from what `dest` holds to
+    what this run alone copied (verified by forcing it empty) makes this
+    test fail -- every zero-table-only cycle after the first would report
+    a failed backup and fire cron's operator alert, which is the batch-25
+    noise regression in new clothes.
+    """
+    import logging
+    from datetime import UTC, datetime
+
+    # Frozen rather than read from the real clock: this test has to
+    # pre-create the dated dir that backup_data will then write into, and
+    # computing that name twice from datetime.now() is a real (if rare)
+    # flake across UTC midnight (opus-review L6).
+    frozen = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
+    _freeze_cloud_backup_clock(monkeypatch, frozen)
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _zero_table_db(data_dir / "kalshi.db")
+    (data_dir / "paper_trades.json").write_text('{"balance": 1000.0}')
+
+    # An earlier cycle today already put a database in the snapshot.
+    dest = tmp_path / "sync" / "KalshiBot" / "data" / frozen.strftime("%Y-%m-%d")
+    dest.mkdir(parents=True)
+    _populated_db(dest / "predictions.db")
+
+    import cloud_backup
+
+    with caplog.at_level(logging.WARNING):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    assert result is True
+    assert not any("contains NO database" in r.message for r in caplog.records)
+    # Positive controls: this cycle really did run into that same snapshot
+    # dir (so the absence-assertion is not passing on a run that wrote
+    # somewhere else), and the earlier cycle's database is still there.
+    assert (dest / "paper_trades.json").exists()
+    assert (dest / "predictions.db").exists()
+
+
+def test_backup_data_does_not_alarm_when_the_source_has_no_database_at_all(
+    tmp_path, monkeypatch, caplog
+):
+    """The gate is `db_sources and not snapshot_dbs`. A data_dir with no
+    .db files anywhere is not a broken backup -- there was never anything
+    to omit -- and several existing tests use exactly that fixture.
+
+    Mutation check: dropping the `db_sources and` half makes this test
+    fail (result flips to False, alarm fires) while every other test in
+    this section still passes.
+    """
+    import logging
+
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "paper_trades.json").write_text('{"balance": 1000.0}')
+
+    import cloud_backup
+
+    with caplog.at_level(logging.WARNING):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    assert result is True
+    assert not any("contains NO database" in r.message for r in caplog.records)
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    dest = next(iter(backup_root.iterdir()))
+    # Positive control: the run happened at all.
+    assert (dest / "paper_trades.json").exists()
+
+
+def test_backup_data_info_line_names_the_databases_that_landed(
+    tmp_path, monkeypatch, caplog
+):
+    """`synced N file(s)` on its own is what let the 2026-08-25 hole read
+    as a success in the log for a full day. The INFO line names the
+    databases the snapshot ends up holding so the omission is legible
+    without reproducing it.
+
+    Mutation check: reverting the INFO line to the bare
+    `synced %d file(s) to %s` makes this test fail.
+    """
+    import logging
+
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _populated_db(data_dir / "predictions.db")
+    _populated_db(data_dir / "execution_log.db", table="orders")
+    _zero_table_db(data_dir / "kalshi.db")
+
+    import cloud_backup
+
+    with caplog.at_level(logging.INFO):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    assert result is True
+    synced = [r.getMessage() for r in caplog.records if "synced" in r.getMessage()]
+    assert len(synced) == 1, synced
+    assert "2 database(s): execution_log.db, predictions.db" in synced[0]
+    # The zero-table sources are named too, in their own clause. Without
+    # this a primary database that had quietly become zero-table -- a
+    # truncated execution_log.db, say -- would leave no trace anywhere,
+    # since the per-file skip logs at DEBUG and DEBUG is discarded in
+    # production (opus-review L1).
+    assert "1 source(s) skipped as empty: kalshi.db" in synced[0]
+    # ...but it is NOT counted among the databases the snapshot holds.
+    assert "2 database(s): execution_log.db, predictions.db;" in synced[0]
+
+
+def test_backup_data_reports_a_single_non_empty_database_that_did_not_land(
+    tmp_path, monkeypatch, caplog
+):
+    """opus-review L1: "the snapshot has at least one .db" is weaker than
+    "every database that should have landed did".
+
+    The total-absence check alone stays quiet when predictions.db copies
+    fine and execution_log.db -- the live-order ledger -- does not. Both
+    loud copy-failure paths do warn per file, so this catches the
+    remainder: a copy that reported success and left nothing behind, or a
+    destination file removed underneath the run.
+
+    Mutation check: deleting the `if snapshot_known and missing:` block
+    makes this test fail while every other test in this section stays
+    green (the total-absence check cannot see this case -- the snapshot
+    does hold a database).
+    """
+    import logging
+
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _populated_db(data_dir / "predictions.db")
+    _populated_db(data_dir / "execution_log.db", table="orders")
+
+    import cloud_backup
+    import safe_io
+
+    real_backup = safe_io.backup_sqlite_db
+
+    def _lose_the_ledger(src, dst):
+        """Copies, then loses the file -- a success report with nothing
+        behind it, which is precisely the shape neither WARNING path
+        covers."""
+        ok = real_backup(src, dst)
+        if src.name == "execution_log.db":
+            dst.unlink(missing_ok=True)
+        return ok
+
+    with (
+        patch.object(safe_io, "backup_sqlite_db", _lose_the_ledger),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    assert result is False
+    assert any(
+        "missing database(s)" in r.message and "execution_log.db" in r.message
+        for r in caplog.records
+    ), [r.message for r in caplog.records]
+    # Positive control: the OTHER database did land, so this is a
+    # per-database complaint and not the total-absence alarm firing.
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    dest = next(iter(backup_root.iterdir()))
+    assert (dest / "predictions.db").exists()
+    assert not any("contains NO database" in r.message for r in caplog.records)
+
+
+def test_backup_data_does_not_alarm_when_the_destination_cannot_be_enumerated(
+    tmp_path, monkeypatch, caplog
+):
+    """opus-review L7: `dest.glob` can raise OSError on a cloud-sync
+    folder that is offline or locked. Unguarded, that escaped to the
+    function-level handler -- returning False for a run whose copies all
+    succeeded AND skipping the prune loop entirely, the same shape
+    batch-33 M-21 LOW(a) fixed for rmtree.
+
+    An unreadable destination is "unknown", not "empty".
+
+    Mutation check: removing the try/except around the glob makes this
+    test fail on both the return value and the surviving old directory.
+    """
+    import logging
+    from datetime import UTC, datetime
+
+    _freeze_cloud_backup_clock(monkeypatch, datetime(2026, 8, 26, 12, 0, tzinfo=UTC))
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    _populated_db(data_dir / "predictions.db")
+
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    backup_root.mkdir(parents=True)
+    doomed = backup_root / "2026-08-05"  # 21 days old, a Wednesday
+    doomed.mkdir()
+
+    import cloud_backup
+
+    real_glob = Path.glob
+
+    def _glob(self, pattern, *a, **kw):
+        if pattern == "*.db":
+            raise OSError("the cloud file provider is not running")
+        return real_glob(self, pattern, *a, **kw)
+
+    with patch.object(Path, "glob", _glob), caplog.at_level(logging.WARNING):
+        result = cloud_backup.backup_data(data_dir=data_dir)
+
+    # No missing-database claim either way, and the copies succeeded.
+    assert result is True
+    assert not any("contains NO database" in r.message for r in caplog.records)
+    assert not any("missing database(s)" in r.message for r in caplog.records)
+    assert any("could not enumerate" in r.message for r in caplog.records), [
+        r.message for r in caplog.records
+    ]
+    # Positive control, and the point of the guard: retention still ran.
+    assert not doomed.exists(), "an unreadable destination must not stop pruning"
+
+
+# ── batch-86 item 1: tiered snapshot retention ─────────────────────────────
+
+
+def _freeze_cloud_backup_clock(monkeypatch, when):
+    """Pin cloud_backup's `datetime` to `when` (an aware UTC datetime).
+
+    A real datetime subclass rather than a Mock because the code calls
+    `.astimezone()`, `.date()` and `.strftime()` on the result and a Mock
+    would both break those and silently ignore the tz argument. It does
+    NOT pin the UTC-vs-local property of the prune comparison (batch-33
+    M-21 LOW(a)): the pruner's `date` comes from a function-local
+    `from datetime import date`, which resolves through sys.modules and is
+    untouched by patching this module attribute. That property is pinned
+    instead by tests/test_date_today_guard.py, whose allowlist is empty
+    and which fails on any date.today() in production code.
+    """
+    from datetime import datetime as _real_datetime
+
+    import cloud_backup
+
+    class _Frozen(_real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return when.astimezone(tz) if tz is not None else when.replace(tzinfo=None)
+
+    monkeypatch.setattr(cloud_backup, "datetime", _Frozen)
+
+
+def test_snapshot_retention_is_tiered_daily_then_weekly(tmp_path, monkeypatch):
+    """batch-86 item 1: the retention SHAPE is the decision this item made.
+
+    Previously a flat 30 days of daily full uncompressed copies -- 31
+    snapshots, ~2.0 GB at the measured 65.3 MB/day. Now every day for a
+    week, then one per week (SUNDAY -- the last snapshot before cron's
+    Monday sweep deletes rows) out to 90 days: 19-20 snapshots, and a 3x
+    longer horizon.
+
+    Every boundary is pinned in one place because they are only
+    meaningfully testable against each other -- a policy that keeps the
+    Sunday at day 10 but also keeps its Monday neighbour is not a weekly
+    tier at all. The 90-day horizon boundary itself needs a different
+    "today" to land a keeper on exactly 90/91 and has its own test below.
+
+    Mutation checks, each individually verified:
+      - `_KEEP_DAILY_DAYS = 7` -> `< 7` (or `= 6`/`= 8`): the day-7
+        boundary dir flips.
+      - dropping the weekly-tier `continue`: 2026-08-16 and 2026-05-31 are
+        pruned (i.e. it degrades to a flat 7-day window).
+      - dropping `dir_date.weekday() == _WEEKLY_KEEP_WEEKDAY`: the Monday
+        and Tuesday neighbours survive, so the weekly tier is really a
+        flat 90 days.
+      - `_WEEKLY_KEEP_WEEKDAY = 6` -> any other weekday: two failures.
+      - `_KEEP_WEEKLY_DAYS = 90` -> `= 85`: the day-87 Sunday is pruned.
+        (`= 365` is NOT a sufficient mutation here -- see the horizon test
+        below for why, and for the 87..92 band this table cannot see.)
+    """
+    from datetime import UTC, datetime
+
+    import cloud_backup
+
+    # A Wednesday, so "today" is itself outside the weekly-keeper weekday.
+    _freeze_cloud_backup_clock(monkeypatch, datetime(2026, 8, 26, 12, 0, tzinfo=UTC))
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "x.json").write_text("{}")
+
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    backup_root.mkdir(parents=True)
+
+    # name -> (age in days, weekday, expected to survive)
+    cases = {
+        "2026-08-19": (7, "Wed", True),  # daily-tier boundary
+        "2026-08-18": (8, "Tue", False),  # first day past it, not a Sunday
+        "2026-08-17": (9, "Mon", False),  # post-sweep day is NOT the keeper
+        "2026-08-16": (10, "Sun", True),  # weekly tier
+        "2026-06-02": (85, "Tue", False),  # inside 90d but not a Sunday
+        "2026-06-01": (86, "Mon", False),  # ditto, and the sweep day
+        "2026-05-31": (87, "Sun", True),  # weekly tier, near the horizon
+        "2026-05-24": (94, "Sun", False),  # past the horizon
+        "not-a-date": (0, "n/a", True),  # unparseable -> never touched
+    }
+    for name in cases:
+        (backup_root / name).mkdir()
+        (backup_root / name / "marker.json").write_text("{}")
+
+    cloud_backup.backup_data(data_dir=data_dir)
+
+    survived = {d.name for d in backup_root.iterdir() if d.is_dir()}
+    expected = {name for name, (_a, _w, keep) in cases.items() if keep}
+    # Today's own snapshot is created by the run itself.
+    expected.add("2026-08-26")
+    assert survived == expected, (
+        f"unexpectedly pruned: {sorted(expected - survived)}; "
+        f"unexpectedly kept: {sorted(survived - expected)}"
+    )
+
+
+def test_snapshot_retention_horizon_boundary_is_exactly_90_days(tmp_path, monkeypatch):
+    """The `<= _KEEP_WEEKLY_DAYS` comparison itself.
+
+    opus-review M1: weekly keepers are 7 days apart, so the table above --
+    frozen on a Wednesday -- has its oldest survivor at age 87 and its
+    oldest casualty at 94, leaving the whole 88..93 band untested.
+    Empirically demonstrated in review: with that table as the only
+    coverage, _KEEP_WEEKLY_DAYS could be retyped as anything from 87 to 93
+    (including `<=` mutated to `<`) and the suite stayed green.
+
+    Landing a keeper on exactly 90 needs a different "today": a Sunday
+    is 90 days before a Saturday and 91 days before the next Sunday, so
+    freezing on each in turn pins both sides of the boundary.
+
+    Mutation checks: `<= _KEEP_WEEKLY_DAYS` -> `<` fails the first case;
+    `_KEEP_WEEKLY_DAYS = 91` fails the second. Both verified.
+    """
+    from datetime import UTC, datetime
+
+    import cloud_backup
+
+    # (frozen today, weekday of it, age of 2026-05-31, must survive)
+    for today, _weekday, _age, must_survive in (
+        (datetime(2026, 8, 29, 12, 0, tzinfo=UTC), "Sat", 90, True),
+        (datetime(2026, 8, 30, 12, 0, tzinfo=UTC), "Sun", 91, False),
+    ):
+        _freeze_cloud_backup_clock(monkeypatch, today)
+        sync = tmp_path / f"sync{_age}"
+        sync.mkdir()
+        monkeypatch.setenv("CLOUD_BACKUP_PATH", str(sync))
+
+        data_dir = tmp_path / f"data{_age}"
+        data_dir.mkdir()
+        (data_dir / "x.json").write_text("{}")
+
+        backup_root = sync / "KalshiBot" / "data"
+        backup_root.mkdir(parents=True)
+        keeper = backup_root / "2026-05-31"  # a Sunday
+        keeper.mkdir()
+
+        cloud_backup.backup_data(data_dir=data_dir)
+
+        assert keeper.exists() is must_survive, (
+            f"a Sunday snapshot {_age} days old on a {_weekday}: "
+            f"expected survive={must_survive}"
+        )
+        # Positive control: the run reached snapshot creation, so the
+        # assertion above is about the prune decision and not about
+        # backup_data having quietly done nothing.
+        assert (backup_root / today.strftime("%Y-%m-%d")).exists()
+
+
+def test_snapshot_retention_horizon_is_longer_than_the_flat_window_it_replaced(
+    tmp_path, monkeypatch
+):
+    """The tier trades density for reach: a snapshot 59 days old survives
+    now and did not under the flat 30-day window. Pinned separately so a
+    future "simplify" back to a single cutoff cannot pass by satisfying
+    only the pruning half of the table above.
+    """
+    from datetime import UTC, datetime
+
+    import cloud_backup
+
+    _freeze_cloud_backup_clock(monkeypatch, datetime(2026, 8, 26, 12, 0, tzinfo=UTC))
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(tmp_path / "sync"))
+    (tmp_path / "sync").mkdir()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "x.json").write_text("{}")
+
+    backup_root = tmp_path / "sync" / "KalshiBot" / "data"
+    backup_root.mkdir(parents=True)
+    old_sunday = backup_root / "2026-06-28"  # 59 days old, a Sunday
+    old_sunday.mkdir()
+    # opus-review M2: without these two controls this test passed even
+    # when backup_data was forced into a total no-op (_find_sync_folder
+    # returning None) -- it was the ONLY new test that did. An
+    # "it still exists" assertion proves nothing unless the pruner
+    # demonstrably ran and demonstrably still prunes something.
+    doomed = backup_root / "2026-08-05"  # 21 days old, a Wednesday
+    doomed.mkdir()
+
+    cloud_backup.backup_data(data_dir=data_dir)
+
+    assert old_sunday.exists(), "a 59-day-old Sunday must outlive the old 30d window"
+    assert (backup_root / "2026-08-26").exists(), "the run never created a snapshot"
+    assert not doomed.exists(), "the prune loop never ran"
 
 
 # ── restore_data() WAL-safety (AUD batch-25 opus-review M6) ────────────────

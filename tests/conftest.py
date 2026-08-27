@@ -1928,7 +1928,7 @@ def isolate_cron_web_log(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolate_cloud_backup_source(tmp_path, monkeypatch):
-    """Point cloud_backup's default sync source at an empty temp dir.
+    """Point cloud_backup's default sync SOURCE and DESTINATION at temp dirs.
 
     backup_data() with no explicit data_dir iterates the WHOLE real data
     directory and, for each *.db, opens it through
@@ -1941,12 +1941,33 @@ def isolate_cloud_backup_source(tmp_path, monkeypatch):
 
     Every test in tests/test_cloud_backup.py passes data_dir= explicitly,
     so redirecting the module-level default changes nothing they assert.
+
+    batch-86, opus-review M3: redirecting the source alone left the
+    DESTINATION real. _find_sync_folder() falls through to %ONEDRIVE%,
+    which is set on the operator's machine, so every test reaching
+    backup_data() without patching _find_sync_folder ran backup_data's
+    PRUNE loop over the real C:/Users/thesa/OneDrive/KalshiBot/data --
+    measured at 30 such tests in tests/test_cron_integration.py alone.
+    Nothing was deleted only because both real snapshots are newer than
+    the old flat 30-day cutoff. batch-86 retiered that pruner, dropping
+    the cutoff for a non-keeper directory from 31 days to 8, so from
+    roughly 2026-09-03 a plain test run would have started deleting the
+    operator's real backups. Setting CLOUD_BACKUP_PATH takes priority over
+    the OneDrive fallback in _find_sync_folder, closing both ends.
+
+    Tests that assert on the destination set CLOUD_BACKUP_PATH themselves
+    (monkeypatch.setenv wins over this fixture's earlier setenv) or patch
+    _find_sync_folder directly, so this changes nothing they assert.
     """
     import cloud_backup
 
     source = tmp_path / "cloud_backup_source"
     source.mkdir()
     monkeypatch.setattr(cloud_backup, "DATA_DIR", source)
+
+    dest = tmp_path / "cloud_backup_dest"
+    dest.mkdir()
+    monkeypatch.setenv("CLOUD_BACKUP_PATH", str(dest))
 
 
 @pytest.fixture(autouse=True)

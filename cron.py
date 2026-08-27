@@ -166,6 +166,38 @@ def _clear_cron_running_flag() -> None:
         _log.warning("cmd_cron: could not clear running flag: %s", _e)
 
 
+def _is_monday_utc() -> bool:
+    """True when it is Monday in UTC — the gate on the weekly DB sweep.
+
+    Was `_date.today().weekday() == 0` (0ad8685c) until 96273434
+    ("P2-18/P2-25 -- replace date.today() with utc_today() across hot
+    path") moved it onto the one canonical clock the rest of that hot path
+    uses. The reason is determinism, not any downstream comparison: which
+    weekday a host thinks it is decides whether a week's retention sweep
+    happens at all, and a local-clock answer makes that depend on where the
+    machine is and on DST. (The 7-day marker-file check just below is NOT
+    part of that reason -- it compares epoch seconds on both sides and is
+    timezone-independent by construction.)
+
+    Extracted from _cmd_cron_body by batch-86 so the claim is testable at
+    all. The test named for it
+    (tests/test_phase2_batch_h.py::test_monday_check_uses_utc_weekday) had
+    been asserting only `date(2026, 6, 1).weekday() == 0` -- a fact about
+    the standard library -- followed by `pass`, so nothing would have
+    noticed the gate reverting to local time.
+
+    Note for anyone tempted to re-inline this: nothing would notice. This
+    module is NOT in tests/test_dead_code_scan.py's `_TARGET_FILES`
+    (paper.py, tracker.py, weather_markets.py -- cron.py is only ever read
+    there as a *caller* corpus), so an orphaned function here is invisible
+    to it. That is why the unit test asserts the call site's own source
+    contains `_is_monday_utc()` rather than relying on the scan.
+    """
+    from utils import utc_today as _utc_today
+
+    return _utc_today().weekday() == 0
+
+
 def _check_startup_orders() -> None:
     """Warn if any orders were placed in the last 5 minutes (double-execution guard)."""
     import time as _time
@@ -1615,10 +1647,8 @@ def _cmd_cron_body(
     # Uses a marker file so back-to-back cron runs on the same Monday don't
     # re-run the sweep.  A skipped Monday is handled automatically: next Monday
     # the marker will be ≥14 days old and the sweep fires normally.
-    from utils import utc_today as _utc_today
-
     _MONDAY_SWEEP_PATH = LAST_MONDAY_SWEEP_PATH
-    if _utc_today().weekday() == 0:  # Monday UTC
+    if _is_monday_utc():
         _sweep_age = (
             (datetime.now(UTC).timestamp() - _MONDAY_SWEEP_PATH.stat().st_mtime) / 86400
             if _MONDAY_SWEEP_PATH.exists()
@@ -3701,15 +3731,19 @@ def _cmd_cron_body(
         if _backup_ok is False:
             _log.error(
                 "cmd_cron: cloud backup completed with failures this "
-                "cycle (see prior WARNING line(s) for which file)"
+                "cycle (see prior WARNING line(s) for which file, or for "
+                "a snapshot that came out with no database in it)"
             )
             from notify import send_system_alert as _backup_alert
 
             _backup_alert(
                 "Kalshi cloud backup failing",
                 "cloud_backup.backup_data() returned False this cycle -- "
-                "at least one file failed its post-copy readability check "
-                "and was not retained. Check bot.log for which file.",
+                "either a file failed its post-copy readability check and "
+                "was not retained, or (batch-86) today's snapshot directory "
+                "contains NO database at all despite .db files being present "
+                "in data/, which makes it useless as a restore point. Check "
+                "bot.log for the WARNING naming which.",
                 cooldown_key="cloud_backup_failed",
             )
     except Exception as _backup_exc:

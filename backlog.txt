@@ -619,11 +619,172 @@ What it would look like:
   the writer without making that call -- adding rows under a new mode
   silently changes what every existing `no_scan_days` number means.
 
-[OPEN 2026-08-26 -- found by batch-78 item 2 while sizing a retention
-  window; the window decision could not be made honestly without it, but
-  cloud_backup.py was outside that batch's file scope] EVERY BYTE KEPT IN
-  predictions.db IS PAID 31 TIMES OVER IN THE BACKUP FOLDER
-Priority: Medium -- nothing is broken, and local disk is cheap (155 GB free
+[RESOLVED 2026-08-26 -- batch-86 item 1. Retention retiered AND a much
+  worse defect found underneath it: the backup was reporting success while
+  omitting the database entirely. Originally found by batch-78 item 2 while
+  sizing a retention window; the window decision could not be made honestly
+  without it, but cloud_backup.py was outside that batch's file scope]
+  EVERY BYTE KEPT IN predictions.db IS PAID 31 TIMES OVER IN THE BACKUP
+  FOLDER
+
+Resolution (batch-86, 2026-08-26) -- files: cloud_backup.py, cron.py,
+  tests/test_cloud_backup.py:
+
+  The premise was re-measured first and two of its three claims moved.
+  (a) A retention policy already existed -- the "31" IS the 30-day prune at
+  cloud_backup.py:262, expressed as a count, not an oversight. (b) "The
+  sync folder holds 31 copies" was a projection: measured 2026-08-26 the
+  folder held 2 dated dirs / 75 MB apparent, because only two days of
+  backups have ever run. (c) The finding that actually mattered was not
+  storage at all.
+
+  THE DB-LESS SNAPSHOT. C:/Users/thesa/OneDrive/KalshiBot/data/2026-08-25
+  holds 100 .json files and ZERO .db. Snapshot dirs are date-named and only
+  written within their own day, so 2026-08-25 has no database backup and
+  never will -- a restore to that day is impossible. Not a transient race;
+  a permanent hole. 2026-08-26 by contrast holds 111 files including
+  execution_log.db and predictions.db.
+
+  Which of backup_data's three copy-loop paths produced it, established by
+  elimination rather than guessed: the two loud paths (backup_sqlite_db's
+  post-copy readability check -> WARNING; the per-file `except` -> WARNING)
+  emit a WARNING, and grepping bot.log / data/cron.log / data/crash.log
+  found NO cloud_backup WARNING of either kind on that date or any other.
+  The third path -- `_sqlite_source_is_empty(src)` -> `continue` -- logs at
+  DEBUG, and main.py:13019 sets the ROOT logger to INFO, so that record is
+  discarded before any handler sees it. The skip is invisible in production
+  by construction. Reproduced the healthy path live for contrast (real
+  data/ -> a scratch destination, DEBUG enabled): 4 vestigial zero-table
+  DBs skipped at DEBUG, predictions.db + execution_log.db copied, "synced
+  111 file(s)", returned True -- byte-for-byte the 2026-08-26 log line.
+
+  So the fix does not chase the branch, it reports the OUTCOME. After the
+  copy loop backup_data now globs `dest` for *.db and (i) names the
+  databases the snapshot holds in the INFO line -- `synced N file(s) to
+  <dest> -- snapshot holds M database(s): a, b` instead of the bare `synced
+  N file(s)` that let this read as success for a full day -- and (ii) when
+  the SOURCE had .db files but the SNAPSHOT holds none, logs a WARNING
+  naming the day and returns False. `dest` is checked rather than this
+  run's own copies because the snapshot dir accumulates across a day's cron
+  cycles: a database copied by an earlier cycle still makes the snapshot
+  restorable and must not raise a false alarm. The alarm is gated on the
+  source having had .db files at all, so a JSON-only data dir is not
+  reported as a failed backup; it is deliberately NOT gated on the source
+  having a NON-EMPTY .db, because that is exactly the state the 2026-08-25
+  run was in and would have stayed silent for it. The 4 vestigial
+  zero-table files stay quiet individually -- batch-25's noise regression
+  is not reintroduced -- but they can no longer add up to a silent success.
+  cron.py's operator alert text (the only consumer of the bool) was updated
+  to name the new meaning of False.
+
+  RETENTION, re-decided with the user via AskUserQuestion now that the
+  integrity question was answered: a flat 30 days of daily full
+  uncompressed copies (31 snapshots at the measured 65.3 MB/day = ~2.0 GB
+  into a OneDrive of unknown quota) replaced by a tiered policy -- every
+  day for 7 days, then one snapshot per week out to 90 days. Steady state
+  19-20 snapshots / ~1.3 GB, and the horizon triples. Cheaper and
+  longer-reaching, though not free: between 8 and 30 days old there are now
+  ~3 restore points where the flat window kept 23, and that lost daily
+  granularity is the trade. Preferred over compression (which changes the
+  snapshot format and drags restore_data's WAL-safety tests with it) and
+  over simply shortening to 7 days. Constants _KEEP_DAILY_DAYS /
+  _KEEP_WEEKLY_DAYS / _WEEKLY_KEEP_WEEKDAY. Nothing in the real backup
+  folder was deleted or modified -- it was read only, and the pruning logic
+  was exercised against fixture directories under tmp_path.
+
+  The weekly keeper is SUNDAY, not Monday. The first pass chose Monday "to
+  align with cron's Monday sweep", which the opus review showed is exactly
+  backwards: that sweep DELETES rows (purge_old_predictions,
+  prune_api_requests, prune_old_analysis_attempts, ...) and snapshot dirs
+  accumulate across a day, so a Monday snapshot is the post-sweep state --
+  the one snapshot of the week that has already lost them. Sunday's is the
+  last one before each sweep. Identical cost, strictly more recoverable.
+
+  OPUS REVIEW (two independent reviewers at effort:high, one per subsystem;
+  21 findings, all addressed):
+  - M1 the 90-day horizon boundary was untested -- weekly keepers are 7
+    days apart, so the tier table's oldest survivor (87) and oldest
+    casualty (94) left the whole 88..93 band unpinned; the reviewer
+    demonstrated the constant could be retyped as anything in that range
+    with the suite green. Landing a keeper on exactly 90 needs a different
+    "today", so a second test freezes on a Saturday (keeper at 90, must
+    survive) and the next Sunday (91, must not).
+  - M2 the horizon test had no positive control and was the ONLY new test
+    that still passed when backup_data was forced into a total no-op. Now
+    asserts the run created today's snapshot AND that a 21-day-old
+    non-keeper was actually pruned. Re-verified: with the no-op mutation
+    applied, all 15 backup_data tests now fail.
+  - M3 tests/conftest.py's isolate_cloud_backup_source redirected the
+    backup SOURCE but not the DESTINATION, so ~30 tests in
+    test_cron_integration.py alone ran backup_data's prune loop against the
+    operator's REAL OneDrive. Nothing had been deleted only because both
+    real snapshots are newer than the old 30-day cutoff -- and this batch
+    drops the cutoff for a non-keeper to 8 days, so from ~2026-09-03 a
+    plain test run would have started deleting real backups. The fixture
+    now sets CLOUD_BACKUP_PATH to a tmp dir too. (Out of this batch's
+    nominal file scope, fixed inline because this change is what made it
+    dangerous.)
+  - M4 the Monday-vs-Sunday inversion above.
+  - L1 "the snapshot has at least one .db" is weaker than "every database
+    that should have landed did" -- a lost execution_log.db alongside a
+    healthy predictions.db stayed quiet. Added a per-database missing check
+    (zero-table sources excluded by construction, so the 4 vestigial files
+    stay silent), and the INFO line now also names sources skipped as
+    empty, so a primary database quietly becoming zero-table is legible.
+  - L7 dest.glob can raise OSError on an offline cloud folder; unguarded
+    that returned False for a run whose copies all succeeded AND skipped
+    the prune loop -- the shape batch-33 M-21 LOW(a) fixed for rmtree.
+    Guarded: an unreadable destination is "unknown", not "empty".
+  - L2/L3/L4/L5/L10 comment and docstring corrections, each a claim that
+    was wrong or overstated: the frozen-clock helper does not pin the
+    UTC-vs-UTC prune comparison (a function-local `from datetime import
+    date` is out of its reach; test_date_today_guard.py pins that instead);
+    "strictly better on both axes" erased the granularity trade; the size
+    figures were the best case; the real vestigial .db files are 4096-byte
+    header-only, not 0-byte; plus iterating the prune target via list(),
+    and a note that fromisoformat also accepts basic ISO.
+  - L8/L9 assessed and deliberately left alone, reasoning recorded in the
+    code: the operator alert cannot spam (6-hour disk-persisted cooldown,
+    and no .db is tracked in git so a fresh clone stays quiet), and
+    checking `dest` rather than this run's copies is correct against every
+    stale-copy and temp-file interaction the reviewer traced
+    (backup_sqlite_db's temp files do not match *.db, nor do -wal/-shm).
+  - The cron-side reviewer found the dead-code-scan protection claimed for
+    _is_monday_utc does not exist -- see item 2's resolution.
+
+  Tests: 9 new in tests/test_cloud_backup.py (25 collected, was 16). The
+  DB-less snapshot reproduced end to end; the accumulate-across-cycles case
+  that must NOT alarm; the JSON-only source that must NOT alarm; a single
+  non-empty database going missing beside a healthy one; an unreadable
+  destination staying quiet while retention still runs; the INFO line
+  naming both the databases held and the sources skipped as empty; the full
+  retention tier table (age 7 kept, age 8 Tue pruned, age 9 Mon pruned, age
+  10 Sun kept, age 85 Tue pruned, age 86 Mon pruned, age 87 Sun kept, age
+  94 Sun pruned, unparseable name untouched); the 90/91 horizon boundary on
+  its own frozen days; and the longer horizon pinned separately with
+  controls. All against a frozen datetime SUBCLASS rather than a Mock,
+  since a Mock's now(tz) ignores its tz argument and breaks the
+  .astimezone()/.strftime() the code performs on the result. The
+  pre-existing vestigial-skip test gained a populated predictions.db in its
+  fixture, so it stays pinned on its own claim rather than on the new
+  alarm, plus a positive control that the skip did not take the live
+  database with it.
+
+  Sixteen mutations applied via the Edit tool (never a string-replace
+  script) and individually confirmed to kill the named test: disable the
+  empty-snapshot gate; drop the db_sources half; narrow the snapshot view
+  to this run only; revert the INFO line; daily boundary <= -> <; remove
+  the weekly tier; drop the weekday condition; widen the horizon to 365;
+  horizon 90 -> 89 and 90 -> 91; weekday Sunday -> Monday; remove the
+  per-database missing check; remove the glob OSError guard; backup_data
+  reduced to a total no-op; plus the vestigial-skip removal re-confirmed
+  against the amended fixture. cron-side: the gate re-inlined, the weekday
+  constant flipped, the gate switched to a local clock, the naive-timestamp
+  tzinfo coercion dropped, and both mos branches plus one mos call site
+  switched to date.today(). Every production file confirmed byte-identical
+  afterwards with git diff --exit-code.
+
+Priority (as originally filed): Medium -- nothing is broken, and local disk is cheap (155 GB free
   on C: as of 2026-08-26). It matters because it silently multiplies the
   cost of every future retention decision by 31, and because the destination
   is a syncing OneDrive folder rather than plain local disk, so the multiple
@@ -670,10 +831,107 @@ What it would look like (pick one, with the user):
   Whichever is chosen, re-derive the x31 figure first: the prune window is a
   literal 30 in backup_data and may have moved.
 
-[OPEN 2026-08-26 -- found by batch-78 item 1 while looking for existing
-  coverage of cron's Monday sweep] A TEST NAMED FOR THE UTC-MONDAY FIX
-  ASSERTS NOTHING AT ALL
-Priority: Low -- the behaviour it is named for is believed correct; the
+[RESOLVED 2026-08-26 -- batch-86 item 2. Originally found by batch-78 item
+  1 while looking for existing coverage of cron's Monday sweep] A TEST
+  NAMED FOR THE UTC-MONDAY FIX ASSERTS NOTHING AT ALL
+
+Resolution (batch-86, 2026-08-26) -- files: cron.py,
+  tests/test_phase2_batch_h.py:
+
+  The gate could not be tested where it stood: it was an inline
+  `_utc_today().weekday() == 0` a thousand lines into _cmd_cron_body, so
+  the only way to reach it was to drive the whole cron body, which is why
+  the original test settled for `pass`. Extracted to a module-level
+  `cron._is_monday_utc()` -- a pure two-line helper, behaviour identical --
+  and the call site now reads `if _is_monday_utc():`.
+
+  The first pass justified that extraction partly by "the dead-code scan
+  can see the call (0c332140's lesson)". The opus review showed that is
+  FALSE: tests/test_dead_code_scan.py's _TARGET_FILES is paper.py,
+  tracker.py and weather_markets.py, and cron.py appears there only as a
+  CALLER corpus, so a function defined in cron.py is never a candidate.
+  0c332140's lesson genuinely applied only because those were tracker.py
+  pruners. Nothing would have noticed this helper being orphaned: the new
+  unit test calls it directly, and the integration tests patch
+  utils.utc_today, which a re-inlined `utc_today().weekday() == 0` would
+  satisfy just as well. The claim is deleted from both docstrings and
+  replaced with the real mechanism -- the test asserts
+  `"_is_monday_utc()" in inspect.getsource(cron._cmd_cron_body)`, scoped to
+  the function rather than the file so an unrelated occurrence elsewhere in
+  cron.py cannot satisfy it, paired with a positive control that the
+  pre-extraction form is gone. Mutation-tested by actually re-inlining the
+  gate: the containment assertion goes red while all 5 Monday-sweep
+  integration tests stay green -- precisely the reviewer's point.
+
+  Also corrected from the same review: the helper's docstring justified the
+  UTC choice by claiming a local weekday "would disagree with" the sweep's
+  marker file. It would not -- that marker is compared as epoch seconds on
+  both sides and is timezone-independent by construction. The real reason
+  (determinism: which weekday a host thinks it is decides whether a week's
+  retention sweep happens at all) is stated instead, with the actual
+  provenance traced: 0ad8685c introduced `_date.today().weekday() == 0`,
+  96273434 converted it under P2-18/P2-25.
+
+  The repaired test asserts against a clock whose UTC weekday and LOCAL
+  weekday genuinely differ, which is the distinction the test's name is
+  about and which patching utils.utc_today alone cannot show: 02:00 UTC
+  Monday is 22:00 Sunday for a host at UTC-4 (gate must fire), and 02:00
+  UTC Tuesday is 22:00 Monday for the same host (gate must not). A real
+  datetime subclass, not a Mock -- Mock.now(tz) ignores its tz argument and
+  cannot demonstrate which zone resolved. Each half carries a fixture
+  self-check asserting the two clocks really do disagree, so neither can
+  pass by accident on a host where local == UTC.
+
+  Requiring both True AND False from the same helper is what makes the
+  strongest mutation die deterministically: a gate that stopped consulting
+  the UTC clock at all returns the SAME answer in both halves, so one of
+  them goes red whatever the real weekday happens to be when the suite
+  runs. Verified by applying exactly that mutation (`date.today().weekday()
+  == 0`) via Edit -- red -- and separately `== 1` -- red.
+
+  Two more tests in the same file had the same defect and were repaired in
+  the same change rather than left as coverage theatre:
+  - test_naive_timestamp_treated_as_utc was `try: ... except Exception:
+    pass` inside `patch("logging.Logger.warning")`, asserting nothing at
+    all. Now captures cron._log's records through a real handler and pins
+    the boundary: a naive timestamp 200s old trips the double-execution
+    guard (positive control), one 2 hours old does not, and the equivalent
+    AWARE timestamp is the control arm. Mutation (drop
+    `placed_dt.replace(tzinfo=UTC)`) confirmed red on this host. The
+    review worked the arithmetic out properly and the first pass's claim
+    ("kills it on any host behind UTC") was wrong in both directions: the
+    mutated guard fires iff `delta + offset <= 300`, so the original
+    2-hour arm only bit past UTC-1:55 (leaving real zones like UTC-1
+    blind), while the 200-second positive control kills it on every host
+    AHEAD of UTC, which the docstring never mentioned. The old arm was
+    retuned from 7200 s to 600 s, shrinking the blind band from "everything
+    between UTC-1:55 and UTC" to about (UTC-5min, UTC+100s] -- essentially
+    UTC itself, which is what both CI runners give. Stated exactly in the
+    docstring rather than hidden in a skip.
+  - Two more findings on the same test: the capture handler was attached to
+    the process-global "main" logger without pinning its LEVEL, so an
+    earlier test leaving that logger above WARNING would have made the
+    positive control fail for an unrelated reason -- now
+    caplog.at_level(..., logger="main") plus an explicit isEnabledFor
+    precondition. And the mos test's hard-coded `date(2026, 6, 1)` fixture
+    was self-invalidating on that one calendar day; it is derived from the
+    clock now.
+  - TestMosUtcDate::test_days_out_frozen ended in a literal `assert True`
+    labelled "structure test". Now asserts mos._local_or_utc_today() lands
+    on the patched UTC date through BOTH its branches (tz=None, and the
+    ZoneInfo-unavailable fallback); mutating either branch to date.today()
+    was confirmed red. The review pointed out the repaired test still did
+    not test what its NAME says -- it never touched days_out, so swapping
+    either producer's call site for a direct clock read survived it -- and
+    that the neighbouring test_mos_imports_utc_today is only a `hasattr`
+    check, which passes even if the alias were rebound. Both closed:
+    `mos._utc_today is utils.utc_today` is asserted directly, and both
+    days_out producers (fetch_mos, fetch_mos_best) are pinned by source
+    containment. Mutating fetch_mos's call site to date.today() confirmed
+    red. mos.py itself is unchanged (verified with git diff --exit-code
+    after every mutation).
+
+Priority (as originally filed): Low -- the behaviour it is named for is believed correct; the
   problem is that nothing would notice if it stopped being. A test that
   cannot fail is worse than a missing one, because the suite reports it as
   coverage.
@@ -702,6 +960,101 @@ What it would look like:
   batch-78) already does exactly this shape for the two new pruners and can
   be copied; the gap is that it pins the WINDOWS, not the UTC-vs-local
   question this entry is about, so it is not a substitute.
+
+[OPEN 2026-08-26 -- found by batch-86 item 1 while fixing the backup side
+  of the same hole; the user's AskUserQuestion answer scoped this batch to
+  the backup half, so the restore half is filed rather than bundled]
+  restore_data WILL HAPPILY RESTORE FROM A SNAPSHOT THAT HAS NO DATABASE IN
+  IT
+Priority: Medium -- latent today, and it is the other half of a hole whose
+  backup side is now closed. It only bites when the NEWEST date-named
+  snapshot is a defective one, which is precisely the situation someone
+  reaching for a restore is already in a bad way in.
+Files: cloud_backup.py (restore_data, the date_dirs/src selection ~:314)
+
+Problem:
+  restore_data sorts the date-named directories descending and takes the
+  first one whose name starts with 4 digits. It does not look inside. A
+  snapshot containing only .json files -- which batch-86 proved is a state
+  that really occurs, see the resolved entry above for the live 2026-08-25
+  example -- is selected exactly like a complete one, restores its JSON,
+  prints "N file(s) restored from <src>", and returns True. Nothing tells
+  the operator that predictions.db and execution_log.db were not among
+  them, and by then the pre-restore snapshot of the live data/ has already
+  been taken, so the good local databases are still there but the operator
+  has been told the restore succeeded.
+
+  Note the failure needs the DEFECTIVE snapshot to be the newest one. On
+  2026-08-26 the newest (2026-08-26) is complete, so this is latent.
+
+What it would look like:
+  Either skip a date dir with no .db when a complete older one exists (and
+  say loudly which day was skipped and why), or keep selecting the newest
+  but refuse to proceed without confirmation when it holds no database.
+  Prefer the second: silently reaching further back is its own surprise.
+  Whichever, the choice belongs to the user -- it trades "restore something
+  now" against "do not silently restore a data-less snapshot".
+
+[OPEN 2026-08-26 -- found by batch-86 item 1 while measuring the real
+  backup folder] THE BACKUP ROOT'S PRE-ROTATION FLAT COPIES ARE NEVER
+  PRUNED, BECAUSE THE PRUNER ONLY LOOKS AT DIRECTORIES
+Priority: Low -- ~16 MB of dead weight, no correctness impact. Filed
+  because it is invisible: every retention number the repo reasons about
+  is a count of dated DIRECTORIES, and these are not in that count.
+Files: cloud_backup.py (the prune loop's `if not old_dir.is_dir(): continue`)
+
+Problem:
+  Before the dated-folder scheme, backup_data wrote files directly into
+  <sync>/KalshiBot/data/. Those files are still there. Measured 2026-08-26:
+  archive.db (0 B), execution_log.db (53 KB, 2026-05-01), paper.db (0 B),
+  paper_trades.db (0 B), predictions.db (16.2 MB, 2026-05-01), tracker.db
+  (0 B) -- ~16 MB, four months stale. The prune loop skips every
+  non-directory, so nothing has ever aged them out and nothing ever will.
+
+  restore_data does reference them: `src = backup_root` is its fallback
+  "for pre-rotation backups" when no date-named dir exists. So they are not
+  purely dead -- deleting them removes a (very stale) last-resort restore
+  path. That is the decision to make, not a cleanup to do reflexively.
+
+Not done in batch-86 on purpose:
+  The user's explicit instruction for that batch was to leave the real
+  backup folder alone -- read it, do not prune it -- and their
+  AskUserQuestion answer chose "leave everything" over extending the pruner
+  in code. Recorded here so the next reader knows the files are known
+  about, not overlooked.
+
+[OPEN 2026-08-26 -- found by batch-86 item 1 while establishing which code
+  path lost the database] EVERY _log.debug IN THIS CODEBASE IS DISCARDED IN
+  PRODUCTION, SO "LOGGED AT DEBUG" IS NOT LOGGED AT ALL
+Priority: Medium -- it is the reason batch-86's defect went unnoticed for a
+  day, and the same reasoning error ("it is logged, so it is observable")
+  is available to every future change.
+Files: main.py:13019 (`root.setLevel(logging.INFO)`), and every
+  `_log.debug` call site in the repo
+
+Problem:
+  main.py's logging setup sets the ROOT logger to INFO and then sets the
+  file handler to DEBUG. The handler level is moot: a record rejected by
+  the logger's own level never reaches any handler. So every _log.debug in
+  the codebase is dropped in production, including
+  cloud_backup.backup_data's "skipping %s -- no tables (nothing to back
+  up)" line, which is exactly the line that would have named the databases
+  missing from the 2026-08-25 snapshot.
+
+  There is a `--debug`-style toggle at main.py:13210 that raises the root
+  to DEBUG, so this is by design for normal operation. The problem is not
+  the default; it is that code and comments elsewhere treat "logged at
+  DEBUG" as if it left a trace, and it does not.
+
+What it would look like:
+  Two separable pieces. (1) Decide whether the file handler should get its
+  own DEBUG stream (a second handler on a logger whose level is DEBUG, with
+  the console staying at INFO) -- that is a real volume/retention decision,
+  not an obvious yes. (2) Independently of (1), audit the _log.debug call
+  sites that are the ONLY record of a silent skip or fallback and promote
+  those specific ones; a skip that changes what a run produced is not a
+  debug detail. Do NOT promote them all -- batch-25 already showed what 4
+  spurious WARNINGs per cron cycle does to signal.
 
 [RESOLVED 2026-08-25 -- fix applied and the 30 contaminated rows removed;
   found by the independent opus review of the prod-data-guard entry below]

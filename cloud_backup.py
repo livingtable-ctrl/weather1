@@ -18,6 +18,37 @@ _log = logging.getLogger(__name__)
 _BACKUP_EXTENSIONS = {".json", ".db"}
 _SKIP_NAMES = {"signals_cache.json", "analyze_log.txt"}
 
+# Retention for the date-named snapshot directories under
+# <sync_folder>/KalshiBot/data/. batch-86 item 1: the previous policy was a
+# flat 30 days of daily FULL, uncompressed copies. Measured 2026-08-26, a
+# snapshot is 65.3 MB (predictions.db alone is 50.6 MB and is re-copied
+# whole every cron cycle), so that policy projects to 31 copies / ~2.0 GB
+# in the operator's OneDrive -- and it silently multiplies the cost of
+# every per-table retention decision made elsewhere (batch-78 set 730 days
+# for ensemble_member_values and 30 for orderbook_depth_snapshots without
+# that multiplier in view) by the number of snapshots retained.
+#
+# Tiered instead: every day for the last week, then one snapshot per week
+# out to 90 days. Steady state is 19-20 snapshots (8 in the daily tier,
+# ages 0-7, plus 11 or 12 weekly keepers across the 83-day span) -- about
+# 1.3 GB, and the horizon triples. Cheaper and longer-reaching, but not
+# free: between 8 and 30 days old there are now ~3 restore points where the
+# flat window kept 23. Daily granularity past one week is what was traded
+# away.
+#
+# SUNDAY is the weekly keeper, not Monday. cron's weekly DB retention sweep
+# fires on UTC Monday and DELETES rows (purge_old_predictions,
+# prune_api_requests, prune_old_analysis_attempts, ...). Snapshot dirs
+# accumulate across a day, so a Monday snapshot is the post-sweep state --
+# the one snapshot of the week that has already lost those rows. Sunday's
+# is the last one before each sweep, so it still holds them. Identical
+# cost, strictly more recoverable. (An earlier revision of this change kept
+# Monday "to align with the sweep", which is exactly backwards; caught in
+# review.)
+_KEEP_DAILY_DAYS = 7
+_KEEP_WEEKLY_DAYS = 90
+_WEEKLY_KEEP_WEEKDAY = 6  # Sunday -- the last snapshot BEFORE Monday's sweep
+
 
 def _sqlite_source_is_empty(path: Path) -> bool:
     """True only if `path` is a VALID, openable SQLite DB with zero
@@ -186,6 +217,9 @@ def backup_data(data_dir: Path | None = None) -> bool:
 
     copied = 0
     all_readable = True
+    db_sources = 0
+    db_expected: list[str] = []  # non-empty .db sources that SHOULD land
+    db_skipped_empty: list[str] = []  # zero-table sources, skipped
     try:
         for src_file in data_dir.iterdir():
             if src_file.is_file() and src_file.suffix in _BACKUP_EXTENSIONS:
@@ -194,13 +228,26 @@ def backup_data(data_dir: Path | None = None) -> bool:
                 dest_file = dest / src_file.name
                 try:
                     if src_file.suffix == ".db":
+                        db_sources += 1
                         if _sqlite_source_is_empty(src_file):
+                            # Recorded as well as logged: this DEBUG line
+                            # is discarded in production (main.py sets the
+                            # root logger to INFO), which is how the
+                            # 2026-08-25 snapshot lost both databases with
+                            # no trace. The names go into the INFO summary
+                            # below instead, where a primary database
+                            # having quietly become zero-table -- e.g. a
+                            # truncated execution_log.db -- is legible
+                            # without reintroducing batch-25's four
+                            # WARNINGs per cycle.
+                            db_skipped_empty.append(src_file.name)
                             _log.debug(
                                 "cloud_backup: skipping %s -- no tables "
                                 "(nothing to back up)",
                                 src_file.name,
                             )
                             continue
+                        db_expected.append(src_file.name)
                         # WAL-safe: shutil.copy2 on the raw .db file
                         # silently omits anything committed but not yet
                         # checkpointed out of the .db-wal sidecar (AUD
@@ -238,9 +285,128 @@ def backup_data(data_dir: Path | None = None) -> bool:
                     all_readable = False
                     continue
                 copied += 1
-        _log.info("cloud_backup: synced %d file(s) to %s", copied, dest)
 
-        # Prune backup directories older than 30 days.
+        # batch-86 item 1: a snapshot with no database in it is not a
+        # restore point, and until now nothing said so. Measured live on
+        # 2026-08-26: <sync>/KalshiBot/data/2026-08-25 holds 100 .json
+        # files and ZERO .db, so a restore to that day is impossible --
+        # snapshot dirs are date-named and only ever rewritten within
+        # their own day, so it is a permanent hole, not a transient race.
+        # Every run that produced it logged `synced 99 file(s)` at INFO
+        # and returned True.
+        #
+        # Of the three copy-loop paths that produce this shape, the two
+        # loud ones (backup_sqlite_db's post-copy readability check, and
+        # the per-file `except`) both log WARNING and neither appears
+        # anywhere in bot.log for that date -- so it was the third, the
+        # `_sqlite_source_is_empty` skip, which logs at DEBUG. main.py
+        # sets the ROOT logger to INFO, so that record is discarded before
+        # it reaches any handler: the skip is invisible in production by
+        # construction, and no combination of per-file logging fixes that
+        # on its own.
+        #
+        # So report the OUTCOME rather than trusting any single branch to
+        # announce itself. `dest` is checked (not just this run's copies)
+        # because the snapshot dir accumulates across the day's cron
+        # cycles -- a database copied by an earlier cycle still makes the
+        # snapshot restorable, and must not raise a false alarm.
+        #
+        # The enumeration itself is guarded: `dest` is a cloud-sync folder
+        # and glob can raise OSError when OneDrive is offline or holding a
+        # lock. Unguarded that would escape to the function-level handler,
+        # returning False for a run whose copies all succeeded AND skipping
+        # the prune loop entirely -- the same shape batch-33 M-21 LOW(a)
+        # fixed for rmtree. An unreadable destination is "unknown", not
+        # "empty": log it and make no claim either way.
+        #
+        # The `p.is_file()` filter carries one unverified assumption: a
+        # OneDrive Files-On-Demand placeholder (a dehydrated 50 MB
+        # predictions.db) is expected to stat normally without triggering
+        # a recall, so is_file() should stay True. That was NOT confirmed
+        # live. If it ever returned False for a dehydrated file, this
+        # would false-alarm on a perfectly good snapshot -- one WARNING
+        # and a False return per cycle, throttled by cron's 6-hour alert
+        # cooldown, not data loss. Worth checking if that alert ever fires
+        # against a snapshot that visibly does contain databases.
+        try:
+            snapshot_dbs = sorted(p.name for p in dest.glob("*.db") if p.is_file())
+            snapshot_known = True
+        except OSError as _glob_exc:
+            snapshot_dbs = []
+            snapshot_known = False
+            _log.warning(
+                "cloud_backup: could not enumerate %s to confirm the "
+                "snapshot's databases (%s) -- not treating that as a "
+                "missing-database failure",
+                dest,
+                _glob_exc,
+            )
+        _log.info(
+            "cloud_backup: synced %d file(s) to %s -- snapshot holds %d "
+            "database(s): %s%s",
+            copied,
+            dest,
+            len(snapshot_dbs),
+            ", ".join(snapshot_dbs) or ("UNKNOWN" if not snapshot_known else "NONE"),
+            (
+                f"; {len(db_skipped_empty)} source(s) skipped as empty: "
+                + ", ".join(sorted(db_skipped_empty))
+                if db_skipped_empty
+                else ""
+            ),
+        )
+        # A non-empty source that did not reach the snapshot. The two loud
+        # copy-failure paths already warn per file, so in practice this
+        # catches the shapes they do not: a copy that reported success but
+        # left nothing behind, or a destination file removed under us.
+        # Zero-table sources are excluded by construction (they never enter
+        # db_expected), so the 4 vestigial files stay silent.
+        missing = sorted(set(db_expected) - set(snapshot_dbs))
+        if snapshot_known and missing:
+            _log.warning(
+                "cloud_backup: snapshot %s is missing database(s) that were "
+                "present and non-empty in %s: %s",
+                today_str,
+                data_dir,
+                ", ".join(missing),
+            )
+            all_readable = False
+        # Total absence is kept as its own check rather than folded into
+        # `missing`, because it is the one the 2026-08-25 snapshot would
+        # have tripped: every .db source was zero-table, so db_expected was
+        # EMPTY and nothing was "missing" -- yet the snapshot had no
+        # database in it and was not a restore point.
+        #
+        # Alert-spam check (this bool is the only input to cron.py's
+        # send_system_alert, cooldown_key="cloud_backup_failed"): that
+        # cooldown is disk-persisted at 6 hours, so the worst case is 4
+        # alerts/day rather than one per cycle. The only configuration that
+        # sustains it is a data_dir whose .db files are ALL zero-table --
+        # no .db is tracked in git, so a fresh clone has db_sources == 0
+        # and stays quiet until a real database appears. Accepted.
+        if db_sources and snapshot_known and not snapshot_dbs:
+            # Gated on db_sources so a data_dir that legitimately has no
+            # .db at all (several tests, and any JSON-only deployment) is
+            # not reported as a failed backup. Any .db source counts,
+            # including the 4 vestigial zero-table files -- gating on
+            # "the source had a NON-EMPTY .db" instead would have stayed
+            # silent for the exact 2026-08-25 shape, since the whole point
+            # is that backup_data saw nothing worth copying.
+            _log.warning(
+                "cloud_backup: snapshot %s contains NO database -- %d .db "
+                "source file(s) were present in %s but none was backed up "
+                "(zero-table sources are skipped at DEBUG). This snapshot "
+                "is not a usable restore point",
+                today_str,
+                db_sources,
+                data_dir,
+            )
+            all_readable = False
+
+        # Prune backup directories: keep every day for the last
+        # _KEEP_DAILY_DAYS, then one per week out to _KEEP_WEEKLY_DAYS.
+        # See those constants for the measurement behind the shape.
+        #
         # batch-33 M-21 LOW(a): directory names are stamped with
         # datetime.now(UTC) (`today_str` above) but this compared them
         # against date.today() -- LOCAL system time. Near local midnight
@@ -250,7 +416,11 @@ def backup_data(data_dir: Path | None = None) -> bool:
         # day, purely from the local/UTC gap. Compare UTC-to-UTC instead.
         backup_root = sync_root / "KalshiBot" / "data"
         _today_utc = datetime.now(UTC).date()
-        for old_dir in backup_root.iterdir():
+        # Materialised with list() before deleting: the loop rmtree's
+        # entries out of the very directory it is scanning, and the tiered
+        # policy removes several times more per pass than the flat window
+        # did. Free insurance against a mid-iteration os.scandir surprise.
+        for old_dir in list(backup_root.iterdir()):
             if not old_dir.is_dir():
                 continue
             try:
@@ -258,8 +428,22 @@ def backup_data(data_dir: Path | None = None) -> bool:
 
                 dir_date = date.fromisoformat(old_dir.name)
             except ValueError:
-                continue  # not a date-named directory
-            if (_today_utc - dir_date).days <= 30:
+                # Not parseable as a date -- left alone. Note 3.11+
+                # fromisoformat also accepts basic ISO ("20260817"), so a
+                # directory named that way is treated as dated; nothing
+                # here creates such names, and keeping one is harmless.
+                continue
+            _age_days = (_today_utc - dir_date).days
+            # Daily tier. A future-dated directory (clock skew) has a
+            # negative age and lands here too, exactly as it did under the
+            # old flat window.
+            if _age_days <= _KEEP_DAILY_DAYS:
+                continue
+            # Weekly tier: one keeper per week out to the horizon.
+            if (
+                _age_days <= _KEEP_WEEKLY_DAYS
+                and dir_date.weekday() == _WEEKLY_KEEP_WEEKDAY
+            ):
                 continue
             try:
                 shutil.rmtree(old_dir)
