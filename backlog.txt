@@ -44768,3 +44768,158 @@ MEASUREMENT NOTE, worth repeating because it nearly produced the opposite
 When to revisit: 2's between-calibration fit whenever there is appetite;
   3's stop-loss-rule question before any further gate change; 1 if an
   override is taken without a stated reason.
+
+
+[OPEN 2026-08-27 -- batch-89. The stop-loss was DISABLED in .env as a result
+  of this (STOP_LOSS_MULT=0), and an observational log was added to answer
+  what should replace it. Every number below is on 195 settled paper trades
+  with a real two-sided book, fees charged, early-exit trades excluded.]
+  THE 50%-OF-COST STOP-LOSS COSTS MONEY AT EVERY THRESHOLD TESTED, AND NO
+  REPLACEMENT RULE SURVIVES ITS OWN NULL TEST
+Priority: MEDIUM. The bleed is stopped; what remains is deciding what, if
+  anything, replaces it -- and that needs the 60-day shadow log, not more
+  re-analysis of this data.
+Files: positions.py (check_stop_losses, check_breakeven_stops), utils.py
+  (STOP_LOSS_MULT, BREAKEVEN_TRIGGER_PCT), .env, cron.py
+  (_log_exit_rule_shadow), tracker.py (exit_rule_shadow_log, v81/v82).
+
+HOW THIS STARTED, and the first correction. The operator asked for stop-loss
+  to fire regardless of how recently a position was entered. There is no
+  minimum-hold gate on stop-loss -- check_stop_losses passes only
+  settlement_gate_hours to _passes_exit_gates, never min_hold_hours. A
+  position entered minutes ago can already be stopped out. The real
+  constraint is at the other end: the 24h pre-settlement gate, which blocks
+  stop-loss for ~84% of a position's life and blocked all 7 positions open
+  on the day.
+
+THE GATE IS NOT THE PROBLEM. Removing it measured -349.60 with fees, and
+  every intermediate threshold is worse than 24h, monotonically (18h
+  -224.21, 12h -254.23, 8h -282.90, 0h -349.60 -- all fee-inclusive and all
+  INCREMENTAL to the gate already in force). BUT this is regime-
+  dependent and the first version of this finding overstated it: on the last
+  60 settled the same change is +18.50 with a 95% CI of [-56, +85] and
+  P(net>0)=0.71 -- a wash. The lifetime figure is carried by the larger
+  May-June positions.
+
+THE RULE IS THE PROBLEM, and that IS robust across regimes:
+    stop at loss >   all: net    P(>0)   last-60: net   P(>0)
+    25% of cost         -838.46  0.000      -177.29    0.002
+    40%                 -516.40  0.000      -105.88    0.020
+    50% (was live)      -275.19  0.001      -101.44    0.019
+    60%                 -202.97  0.004       -60.30    0.004
+    75%                 -153.81  0.012       -38.58    0.010
+    90%                 -128.92  0.003       -15.56    0.000
+  Monotone: TIGHTER IS WORSE, which is the opposite of the operator's
+  starting intuition, and the limit of the trend is no stop at all. Mean cost
+  per firing is roughly constant across 25-75% of cost (-9 to -12; the 90%
+  row is -32.23 on n=4), so within that range the threshold mostly controls
+  how often the cost is paid rather than how large it is.
+  Confirmed on the complementary population too: the 40 exits that ACTUALLY
+  fired (all exit rules, not just stop-loss) cost -175.72 versus holding --
+  18 beat holding, 15 lost to it, but the forfeits are far larger.
+  MECHANISM, not just correlation: a binary near settlement resolves to 0 or
+  1. A position down 50% either recovers to full payout or goes to zero
+  anyway, so a stop pays spread + fee to realize a loss it would mostly take
+  regardless, while forfeiting the entire recovery when it comes. Frequent
+  small saves, rare large forfeits -- which is why stopping out "feels right"
+  70% of the time (73 of 108 lifetime, 26 of 37 recently) and still loses.
+
+REPLACEMENTS TESTED -- NONE DEPLOYABLE.
+  * Breakeven-only (the operator's proposal): all +9.74 (P=0.536), last-60
+    +12.78 (P=0.659). Indistinguishable from zero. It is an improvement over
+    the status quo ENTIRELY because of what it subtracts, not what it keeps.
+    And it cannot do what it was proposed to do: at the live
+    BREAKEVEN_TRIGGER_PCT=0.75 it has fired 4 times in 195 trades, and 61%
+    of loss DOLLARS sit on trades that never peaked 30% up, which breakeven
+    can never arm on. Its +9.74 is +172.61 against -162.87; one trade in
+    either direction flips the sign.
+  * Ratcheting trailing stop (keep 70% of peak): looked strongest
+    in-sample and FAILED verification. Shuffle which trade gets which price
+    path and the median null is +97.82 against a real +259.96 -- empirical
+    p=0.090. Out of sample, removing the best 3 of 28 firings turns +101.37
+    into -34.06. And a trivial "exit the first moment you are up at all"
+    returns +335.73 on the same half.
+  * Time-tightening (floor rises near close) -- the only rule that PASSES
+    its null: null median -14.62, empirical p=0.000, real +286.15. Still not
+    deployable: out of sample, removing the best 3 of 29 firings takes
+    +135.50 down to +2.98, and ~20 variants were tried, so a Bonferroni
+    correction over that many looks needs p<0.0025 and 0/200 only
+    establishes p<0.005.
+
+WHAT IS PROBABLY REALLY GOING ON, and it is not an exit-rule question:
+  both surviving rules are detectors for the same fact -- positions that get
+  above water in the 24-48h window tend to FADE from their peak by
+  settlement. "Take any profit" beat holding by +335.73. That is a statement
+  about model calibration (this model's winners do not hold), and chasing it
+  through exit rules treats a symptom. It also has a high structural null
+  (+214.22) so most of its raw return is not signal either.
+
+WHAT SHIPPED
+  * .env: STOP_LOSS_MULT=0. check_stop_losses returns [] when this is <=0
+    (positions.py), the only functional consumer -- utils.py's settings dump
+    is display-only. Backup at .env.bak-20260827; deleting the line restores
+    the 2.0 default. Breakeven, model-flip and expiry are unaffected.
+  * cron._log_exit_rule_shadow + tracker's exit_rule_shadow_log (v81/v82):
+    NOTE, because the first version of this got it wrong: the writer performs
+    NO network I/O. It reads quotes out of the caller's already-fetched
+    result.markets. The first version fetched its own with
+    client.get_market() per position and was described -- in this entry and
+    to the operator -- as "pure observation". It was not. Every Kalshi read
+    goes through the shared, disk-persisted _kalshi_cb_read circuit breaker,
+    and CircuitBreaker.is_open() is a MUTATOR: it flips HALF-OPEN, zeroes the
+    failure count, designates its caller as the single probe, and
+    _save_state()s. order_executor._check_early_exits -- which CLOSES paper
+    positions -- runs on that same breaker 62 lines later in the same cycle,
+    so a shadow fetch could consume the probe slot and, on failure, reopen
+    with a doubled backoff that outlives the process. Caught by opus review.
+    Do not reintroduce a client parameter here. CAVEAT, found in round-2
+    review: the first version of the guard test was VACUOUS -- it patched
+    CircuitBreaker.is_open with side_effect=AssertionError and expected the
+    raise to surface, but the writer's quote loop is wrapped in `except
+    Exception` (exactly where the round-1 defect lived), so the tripwire was
+    swallowed, the row still wrote, and the expected tuple still held. It now
+    asserts call_count == 0 on is_open/record_failure/record_success instead,
+    and that version is mutation-confirmed against a reintroduced breaker
+    call. A tripwire that raises from inside code you also wrap in `except
+    Exception` proves nothing.
+    one row per open position per cycle recording peak_profit_pct, current
+    unrealized P&L, realizable price and hours-to-close. RAW STATE, not any
+    rule's verdict, precisely because the parameters are what is unproven --
+    any variant can be scored later on rows it was not chosen from. Logged
+    regardless of the 24h gate so the gate stays answerable too. Pure
+    observation: nothing reads it on a decision path.
+
+MEASUREMENT NOTES worth keeping, both of which nearly produced the opposite
+  conclusion:
+  * price_history.yes_bid_close/yes_ask_close are in DOLLARS (0-1), not
+    cents, and a zero on either side is an EMPTY BOOK, not a free price. A
+    first pass that divided by 100 and did not require a two-sided book
+    reported that removing the gate would GAIN money, on rows where a 0.003
+    "price" sat beside a +46.50 realized win.
+  * price_history only reaches ~48h before close, so a position entered
+    earlier has unobserved early life. Sampling within that window is
+    balanced (55% inside the 24h gate, 45% outside, median 31 rows/ticker).
+  * BREAKEVEN_TRIGGER_PCT is 0.75 in the live .env, NOT the code default of
+    0.30. An analysis run against the code default overstates how often
+    breakeven fires by ~5x.
+
+REPRODUCTION: audit/reproductions/batch89_exit_rule_measurements.py
+  re-derives the fixed-stop threshold sweep, the incremental gate sweep, the
+  out-of-sample split and both shuffled-path null tests. NOT covered by it,
+  and therefore unverified by anything but this prose: the breakeven-only
+  figures (+9.74 / +12.78, the 4-firings-in-195 count, the 61%-of-loss-
+  dollars split), the -175.72 for exits that actually fired, the
+  drop-the-best-3 fragility numbers (+101.37 -> -34.06, +135.50 -> +2.98),
+  "take any profit" (+335.73) and its +214.22 structural null, and the
+  price_history sampling breakdown. Treat those as claims, not results. Population is PINNED to
+  settled_at < 2026-08-27 (n=195) -- without that it would silently measure
+  a moving target as settlements accrue, and disagree with this entry for
+  reasons unrelated to whether the finding held. `--live` scores the current
+  population instead. Read-only (mode=ro URI on both DBs); does not import
+  tracker/ml_bias, since importing them runs init_db() and writes.
+
+WHEN TO REVISIT: at ~60 days of exit_rule_shadow_log rows (from 2026-08-27),
+  score every variant on data none of them were selected from. Do not
+  re-analyse the 195-trade set again -- ~20 variants have already been tried
+  on it and anything further found there is forking paths. Re-enable
+  stop-loss only if that forward test contradicts the table above.

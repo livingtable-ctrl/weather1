@@ -923,6 +923,65 @@ def isolate_metar_calibration_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def neutral_exit_rule_thresholds(monkeypatch):
+    """Pin the exit-rule thresholds to their CODE defaults, not the operator's
+    .env (batch-89).
+
+    conftest imports `main` at collection time (see the top of this file), and
+    main's module-level load_dotenv() puts the real .env into os.environ for
+    the whole session. utils reads these two at import, so whatever the
+    operator has configured silently becomes the value every test sees --
+    exactly the CI-vs-operator-machine nondeterminism
+    isolate_analysis_calibration_path and neutral_temperature_scaling already
+    exist to close, just for a different constant.
+
+    Measured, not hypothetical: setting STOP_LOSS_MULT=0 in .env on
+    2026-08-27 (disabling the stop-loss, which measured -275.19 lifetime)
+    immediately broke 10 tests in test_paper.py that assert stop-loss
+    behaviour without pinning the constant they depend on. BREAKEVEN_TRIGGER_
+    PCT carries the same hazard today -- .env has 0.75 against a code default
+    of 0.30 -- and is pinned here for the same reason before a test starts
+    depending on it.
+
+    Patches the module ATTRIBUTE, not the env var: both are read once at
+    utils import time into module constants, so monkeypatch.setenv would be
+    too late. check_stop_losses/check_breakeven_stops re-import them from
+    utils inside the function body on every call, so the attribute patch is
+    what actually reaches them.
+
+    A test that wants a different threshold overrides it explicitly, which is
+    the point -- the dependency becomes visible instead of ambient.
+
+    SCOPE, stated honestly: this closes TWO of at least NINE keys that
+    currently diverge between the operator's .env and the code defaults. It
+    is not a fix for the mechanism, only for the two constants that were
+    measurably breaking. Round-2 review enumerated the rest, all read at
+    import and all currently divergent:
+        utils.MIN_EDGE                  0.15 vs 0.07
+        utils.MAX_DAYS_OUT              3    vs 5
+        utils.MAX_DAILY_SPEND           200  vs 500
+        utils.MAX_SAME_DAY_SPEND        400  vs 500
+        weather_markets.MAX_MODEL_SPREAD_F  5.5 vs 8.0
+        alerts.BLACK_SWAN_BRIER_THRESHOLD   0.35 vs 0.30
+        alerts.BLACK_SWAN_MIN_SAMPLES       30 vs 10
+    plus two read at CALL time, which an attribute pin cannot reach at all:
+        KALSHI_ENV               'prod' vs 'demo'  <- every test touching
+                                 those branches takes the prod path locally
+                                 and the demo path on CI
+        HOURLY_TRADING_ENABLED   '1' vs unset
+    Closing the class properly means scrubbing os.environ of every key in
+    .env before conftest imports main, so the constants build from code
+    defaults and the call-time reads agree too. Filed rather than done here
+    because it would change what a large number of existing tests exercise,
+    which is its own change with its own review.
+    """
+    import utils
+
+    monkeypatch.setattr(utils, "STOP_LOSS_MULT", 2.0)
+    monkeypatch.setattr(utils, "BREAKEVEN_TRIGGER_PCT", 0.30)
+
+
+@pytest.fixture(autouse=True)
 def reset_missing_entry_precal_warnings():
     """Clear positions._WARNED_MISSING_ENTRY_PRECAL between tests (batch-89).
 

@@ -2249,8 +2249,9 @@ class TestCheckPaperPositionExits:
             "BE-TICKER", "yes", 10, 0.60, close_time="2099-01-01T00:00:00Z"
         )
         # Seed peak_profit_pct as if an earlier cycle already recorded a
-        # peak past BREAKEVEN_TRIGGER_PCT (read live, not hardcoded — .env
-        # overrides the 0.30 code default to 0.75) -- update_peak_profits
+        # peak past BREAKEVEN_TRIGGER_PCT (read live, not hardcoded; batch-89:
+        # conftest's neutral_exit_rule_thresholds now pins this to the 0.30
+        # code default, so .env no longer overrides it here) -- update_peak_profits
         # only ever raises the stored peak, never lowers it, so seeding it
         # directly is equivalent to a real prior high-water cycle.
         data = paper._load()

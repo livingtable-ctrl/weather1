@@ -13078,14 +13078,26 @@ class TestForecastProbPrecalMigration(unittest.TestCase):
             return {r[1] for r in con.execute("PRAGMA table_info(analysis_attempts)")}
 
     def test_column_arrives_when_upgrading_from_the_previous_version(self):
-        # Build the schema as it stood BEFORE this batch: every migration
-        # except the last, with the cursor parked accordingly.
+        # Park the cursor just BEFORE this column's own migration, found by
+        # searching the list rather than assuming it is last.
+        #
+        # batch-89: this used `len(_MIGRATIONS) - 1`, which stopped testing
+        # the upgrade path the moment two migrations were appended after it --
+        # the cursor then parked PAST this column's index, so init_db() skipped
+        # it. That failed loudly here, but only because this test happens to
+        # assert the column's presence; a position-coupled test that asserted
+        # something weaker would have gone quiet instead. Ironic for a test whose own docstring is
+        # about append-only ordering: it was itself position-coupled. Deriving
+        # the index keeps it correct for every future append.
+        idx = next(
+            i for i, m in enumerate(tracker._MIGRATIONS) if "forecast_prob_precal" in m
+        )
         tracker.init_db()
         with tracker._conn() as con:
             con.execute(
                 "ALTER TABLE analysis_attempts DROP COLUMN forecast_prob_precal"
             )
-            con.execute(f"PRAGMA user_version={len(tracker._MIGRATIONS) - 1}")
+            con.execute(f"PRAGMA user_version={idx}")
         tracker._db_initialized = False
         self.assertNotIn("forecast_prob_precal", self._columns())
 

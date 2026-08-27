@@ -111,7 +111,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 80  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 82  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -857,6 +857,58 @@ _MIGRATIONS = [
     # APPENDED, never inserted -- see the analysis_attempts block above and
     # _run_migrations' own comment for why _MIGRATIONS is append-only.
     "ALTER TABLE analysis_attempts ADD COLUMN forecast_prob_precal REAL",
+    # v80 -> v81: exit-rule shadow log. Records, once per open position per
+    # cron cycle, the state every candidate exit rule needs -- peak profit so
+    # far, current unrealized P&L, the realizable price, and hours to close.
+    #
+    # RAW STATE, not a rule's verdict, and that is the point: batch-89's
+    # measurement found no exit rule worth deploying (the 50%-of-cost stop
+    # measured -275.19 lifetime and was disabled; every replacement either
+    # failed a shuffled-path null test or rested on 3 trades). What is
+    # unproven is the PARAMETERS, so logging state lets any variant --
+    # different giveback, different trigger, different settlement gate -- be
+    # scored later on data it was not chosen from, without redeploying
+    # anything. A would-exit boolean would freeze in exactly the settings
+    # there is least reason to trust.
+    #
+    # Deliberately logged REGARDLESS of the 24h settlement gate, with
+    # hours_to_close recorded, so the gate's own value stays answerable from
+    # the same rows.
+    #
+    # TWO PROFIT COLUMNS, on purpose. `observed_profit_pct` is this row's own
+    # unrealized_pnl/cost, derived from the SAME quote as realizable_price, so
+    # the two are internally consistent and a running peak can be rebuilt by
+    # taking a cumulative max over a position's rows. `peak_profit_pct` is
+    # production's running peak copied VERBATIM -- it comes from a different
+    # quote set (check_paper_position_exits fetches its own, minutes after the
+    # scan this row's price came from), and it is what the live breakeven stop
+    # actually fires on. Storing both keeps the irreplaceable value (what
+    # production knew) alongside the consistent one; blending them with a
+    # max() would destroy the former to preserve the latter, which is
+    # recoverable from pnl/cost anyway.
+    #
+    # Cannot be back-filled: price_history only reaches ~48h before close and
+    # peak_profit_pct is a running maximum that exists only while a position
+    # is open. Every cycle adds rows; the unique index below dedupes repeats
+    # within the same UTC hour, matching near_settlement_log.
+    """CREATE TABLE IF NOT EXISTS exit_rule_shadow_log (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker            TEXT    NOT NULL,
+        trade_id          INTEGER,
+        side              TEXT,
+        entry_price       REAL,
+        cost              REAL,
+        quantity          INTEGER,
+        realizable_price  REAL,
+        unrealized_pnl    REAL,
+        observed_profit_pct REAL,
+        peak_profit_pct   REAL,
+        hours_to_close    REAL,
+        recorded_at       TEXT    NOT NULL
+    )""",
+    # v81 -> v82: the dedup index for the table above.
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_ersl_ticker_hour
+        ON exit_rule_shadow_log(ticker, trade_id, strftime('%Y-%m-%dT%H', recorded_at))""",
 ]
 
 

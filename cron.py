@@ -1117,6 +1117,159 @@ def _log_near_settlement_trades(near: list[dict], db_path: Path) -> tuple[int, i
     return len(near), written
 
 
+def _log_exit_rule_shadow(
+    positions: list,
+    markets_by_ticker: dict[str, dict],
+    db_path,
+) -> tuple[int, int, int, str]:
+    """Record one row per open position per cycle for exit-rule research.
+
+    Batch-89. OBSERVATION ONLY, and that claim is now structural rather than
+    aspirational: this function performs NO network I/O. It reads quotes out
+    of the caller's already-fetched scan (`result.markets`).
+
+    The first version fetched its own quotes with client.get_market() per
+    position, and an opus review found that is not observation at all --
+    every Kalshi read goes through the SHARED, disk-persisted
+    _kalshi_cb_read circuit breaker, and CircuitBreaker.is_open() is a
+    MUTATOR: it flips HALF-OPEN, zeroes the failure count, designates its
+    caller as the single probe, and _save_state()s. order_executor.
+    _check_early_exits -- which CLOSES paper positions -- runs later in the
+    same cycle on the same breaker, reached via ctx.check_early_exits in
+    cmd_cron. A shadow fetch could therefore
+    consume the probe slot and, on failure, reopen with a doubled backoff
+    that outlives the process, blocking a real exit check. Taking the quotes
+    from the scan removes the mechanism rather than guarding it.
+
+    Writes RAW STATE (peak, current unrealized P&L, realizable price, hours
+    to close) rather than any rule's verdict, so a different giveback,
+    trigger or settlement gate can be scored later on rows it was not chosen
+    from. A would-exit boolean would freeze in exactly the parameters there is
+    least reason to trust. Logged regardless of the 24h settlement gate, with
+    hours_to_close stored, so the gate's own value stays answerable too.
+
+    unrealized_pnl is GROSS -- (price - entry_price) * quantity, with no exit
+    fee, and note entry_price * quantity != cost (cost carries the entry
+    fee). Everything needed to net it down is stored on the row.
+
+    observed_profit_pct and peak_profit_pct are stored SEPARATELY and never
+    blended. observed is this row's unrealized_pnl/cost, from the same quote
+    as realizable_price. peak is production's running peak verbatim, computed
+    by update_peak_profits from a different (later) fetch -- it is what the
+    live breakeven stop fires on, and it is the value that cannot be
+    recomputed later. An analysis wanting a self-consistent giveback takes a
+    cumulative max of observed over a position's rows; one asking what
+    production would have done reads peak.
+
+    Returns (attempted, written, skipped, recorded_at). The stamp is returned
+    so the caller can bind a shortfall diagnostic to THIS cycle's rows rather
+    than to a wall-clock 'now' that may have crossed an hour boundary since.
+    skipped counts positions dropped
+    for having no ticker, which would otherwise be invisible in both the data
+    and the reporting. written < attempted means rows were dropped by the
+    unique index or by a constraint; the caller distinguishes which rather
+    than assuming, because asserting a cause it never checked is how
+    _log_near_settlement_trades above reported success while writing zero
+    rows for over a month.
+    """
+    import sqlite3
+    from datetime import UTC, datetime
+
+    from positions import liquidation_price
+    from weather_markets import parse_market_price
+
+    now = datetime.now(UTC)
+    now_iso = now.isoformat()
+    current_prices: dict[str, dict[str, float]] = {}
+    for pos in positions:
+        market = markets_by_ticker.get(pos.ticker or "")
+        if not market:
+            continue
+        try:
+            quote = parse_market_price(market)
+            if quote.get("has_quote"):
+                current_prices[pos.ticker] = {
+                    "bid": quote.get("yes_bid", 0.0),
+                    "ask": quote.get("yes_ask", 0.0),
+                }
+        except Exception as _q_err:
+            _log.debug(
+                "exit_rule_shadow_log: unusable quote for %s: %s", pos.ticker, _q_err
+            )
+
+    rows = []
+    skipped = 0
+    for pos in positions:
+        if not pos.ticker:
+            skipped += 1
+            continue
+        px = liquidation_price(current_prices, pos.ticker, pos.side)
+        pnl = None
+        if px is not None and pos.quantity:
+            pnl = (px - pos.entry_price) * pos.quantity
+        # Stored SEPARATELY, never blended. observed is consistent with this
+        # row's own price; peak is production's, from a different fetch. A
+        # max() would overwrite the one value that cannot be recomputed with
+        # one that can (pnl/cost is right there in the row).
+        observed = (pnl / pos.cost) if (pnl is not None and pos.cost) else None
+        peak = pos.peak_profit_pct
+        hours_to_close = None
+        if pos.close_time:
+            close_dt = None
+            try:
+                close_dt = datetime.fromisoformat(pos.close_time.replace("Z", "+00:00"))
+            except (ValueError, TypeError, AttributeError):
+                close_dt = None
+            if close_dt is not None:
+                # Normalised OUTSIDE the except above on purpose: an aware
+                # minus naive subtraction raises TypeError, and catching it
+                # here would silently record NULL for every naive close_time
+                # instead of surfacing that the normalisation had stopped
+                # working.
+                if close_dt.tzinfo is None:
+                    close_dt = close_dt.replace(tzinfo=UTC)
+                hours_to_close = (close_dt - now).total_seconds() / 3600
+        rows.append(
+            (
+                pos.ticker,
+                pos.id,
+                pos.side,
+                pos.entry_price,
+                pos.cost,
+                pos.quantity,
+                px,
+                pnl,
+                observed,
+                peak,
+                hours_to_close,
+                now_iso,
+            )
+        )
+    if not rows:
+        return 0, 0, skipped, now_iso
+    written = 0
+    con = sqlite3.connect(db_path)
+    try:
+        with con:
+            for r in rows:
+                cur = con.execute(
+                    "INSERT OR IGNORE INTO exit_rule_shadow_log "
+                    "(ticker, trade_id, side, entry_price, cost, quantity, "
+                    " realizable_price, unrealized_pnl, observed_profit_pct, "
+                    " peak_profit_pct, hours_to_close, recorded_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    r,
+                )
+                written += cur.rowcount
+    finally:
+        # sqlite3.Connection.__exit__ commits/rolls back but does NOT close --
+        # see tracker._conn's AUD-0048 docstring. cmd_cron runs inside
+        # main.cmd_loop's `while True`, so without this every cycle leaks a
+        # handle.
+        con.close()
+    return len(rows), written, skipped, now_iso
+
+
 def check_market_anomalies(signals: list[dict]) -> list[dict]:
     """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
     return [
@@ -3152,6 +3305,97 @@ def _cmd_cron_body(
             "[StopLoss] check_stop_losses failed — stop-loss protection inactive this cycle: %s",
             _e,
         )
+
+    # Batch-89: exit-rule shadow log. Observation only -- no decision reads
+    # this, and it runs AFTER check_paper_position_exits above so
+    # peak_profit_pct has already been refreshed and persisted this cycle.
+    # Own try/except so a logging failure can never interrupt the cycle,
+    # matching the near-settlement block earlier.
+    try:
+        import paper as _ersl_paper
+        from tracker import DB_PATH as _ERSL_DB
+
+        _ersl_positions = _ersl_paper.PaperPositionStore().get_open()
+        if _ersl_positions:
+            # Quotes come from the scan already in hand -- see the writer's
+            # docstring for why it must not fetch its own.
+            _ersl_markets = {
+                m["ticker"]: m
+                for m in (result.markets if result else [])
+                if m.get("ticker")
+            }
+            (
+                _ersl_att,
+                _ersl_wrote,
+                _ersl_skipped,
+                _ersl_stamp,
+            ) = _log_exit_rule_shadow(_ersl_positions, _ersl_markets, _ERSL_DB)
+            if _ersl_skipped:
+                _log.warning(
+                    "exit_rule_shadow_log: %d position(s) had no ticker and were "
+                    "not recorded",
+                    _ersl_skipped,
+                )
+            if _ersl_att and _ersl_wrote < _ersl_att:
+                # Distinguish dedup from a silent constraint drop rather than
+                # asserting a cause. INSERT OR IGNORE swallows both, which is
+                # how near_settlement_log reported success on zero rows.
+                import sqlite3 as _ersl_sq
+
+                # Bound to THIS cycle's own (ticker, trade_id) pairs and its
+                # own stamp -- an hour-wide COUNT(*) compares against rows
+                # from other cycles, so a shrinking position count makes
+                # "prior >= attempted" true unconditionally and reports a
+                # genuine constraint drop as routine dedup. Own try/except:
+                # a failure to DIAGNOSE must not be reported as a failure to
+                # WRITE, since the write already succeeded.
+                _ersl_prior = -1
+                try:
+                    _ersl_con = _ersl_sq.connect(_ERSL_DB)
+                    try:
+                        _ersl_prior = _ersl_con.execute(
+                            "SELECT COUNT(*) FROM exit_rule_shadow_log WHERE "
+                            "strftime('%Y-%m-%dT%H', recorded_at) = "
+                            "strftime('%Y-%m-%dT%H', ?) AND ticker IN "
+                            "(" + ",".join("?" * len(_ersl_positions)) + ")",
+                            [_ersl_stamp] + [p.ticker for p in _ersl_positions],
+                        ).fetchone()[0]
+                    finally:
+                        _ersl_con.close()
+                except Exception as _ersl_diag:
+                    _log.warning(
+                        "exit_rule_shadow_log: wrote %d/%d row(s); could not "
+                        "diagnose the shortfall: %s",
+                        _ersl_wrote,
+                        _ersl_att,
+                        _ersl_diag,
+                    )
+                if _ersl_prior < 0:
+                    pass
+                elif _ersl_prior >= _ersl_att:
+                    _log.info(
+                        "exit_rule_shadow_log: %d/%d row(s) written; the rest "
+                        "already had a row this UTC hour",
+                        _ersl_wrote,
+                        _ersl_att,
+                    )
+                else:
+                    _log.warning(
+                        "exit_rule_shadow_log: %d/%d row(s) written and dedup "
+                        "does NOT account for the difference -- rows were "
+                        "silently dropped by a constraint",
+                        _ersl_wrote,
+                        _ersl_att,
+                    )
+            elif _ersl_att:
+                _log.info("exit_rule_shadow_log: logged %d position(s)", _ersl_wrote)
+    except Exception as _ersl_err:
+        # Says "failed", not "write failed": this also catches a ledger-load
+        # error (paper._load raises CorruptionError on a checksum mismatch),
+        # where nothing was even attempted. Asserting a cause the handler
+        # never checked is the defect the shortfall branch above exists to
+        # avoid; the same discipline applies here.
+        _log.warning("exit_rule_shadow_log: skipped this cycle: %s", _ersl_err)
 
     # Weekly Brier alert: notify if score > threshold two weeks running
     try:
