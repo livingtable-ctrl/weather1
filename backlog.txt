@@ -44196,17 +44196,56 @@ THE OPTIONS THAT REMAIN
       one live call discriminates the two hypotheses. Do not reweight before
       that. See its own entry.
 
-RECOMMENDATION AS OF 2026-08-26 (revised)
-  Do 2 and 7, then 1, with 5 running in shadow alongside. The earlier version
-  of this line said to avoid "improve the forecast" work wholesale; that was
-  too broad and the user was right to push back. The distinction that matters
-  is between BUILDING a better model -- which the evidence argues against --
-  and FIXING a data source that is measurably misbehaving, which is cheap,
-  concrete, and probably a bug. What still should not be started is the
-  former:
-  0 of 18 cities, both horizons, all three methods and both families lose, and
-  recalibration (the single largest available improvement) closes less than
-  half the gap.
+RECOMMENDATION AS OF 2026-08-26 (third revision -- 2 has LANDED and its
+scope is narrower than this entry originally implied)
+
+  STATUS
+    2  DONE, batch-87, cc5a2d05 -- but MULTI-DAY ONLY, and see the caveat
+       below before treating its numbers as general.
+    7  not started. Now reduced to a quantisation fix plus a false docstring;
+       both are filed as their own entries, so option 7 no longer needs a
+       batch of its own and can ride along with whatever next touches
+       weather_markets.py.
+    1  in effect by default -- cron runs unattended and data accrues.
+    5  not started. Still the only positive result and still unvalidated
+       forward.
+    3, 6  unstarted, both blocked on orderbook depth capture that has never run.
+
+  WHAT 2 ACTUALLY BOUGHT, and it is less than "recalibrated":
+    d>=1  n=76   raw 0.1454 -> 0.0952  vs market 0.0911   t=-4.42 raw, +0.28 mkt
+    d=0   n=143  raw 0.1828 -> 0.1723  vs market 0.1128   t=-1.46 (n.s.)
+  Same-day was deliberately left alone -- the repo's single-parameter T shape
+  makes it actively worse there (t=+2.28). And through the real net_edge>=0.15
+  gate, multi-day mean return goes -35.2% -> +12.2% at the MID but only +1.3%
+  at a 1c half-spread and -3.6% at 2c. It converts a significant loss into a
+  wash. Nothing downstream may be justified as if it did more.
+
+  THE CAVEAT THAT NARROWS IT FURTHER (measured 2026-08-26, see the entry
+  "TWO THINGS TO SETTLE BEFORE THE ANALYSIS CALIBRATION'S FIRST LIVE SCAN"):
+  the d>=1 fit population is itself selected ~3x on base rate, because
+  analysis_attempts upserts days_out so a row only stays at d>=1 if the market
+  stopped being scanned -- and extreme-priced markets get gated out of
+  analysis. 40.3% of the fit rows are priced <0.10 or >0.90. So 2's held-out
+  numbers are a claim about EXTREME-PRICED multi-day markets, not multi-day
+  markets in general. That does not undo the change; it bounds what it proved.
+
+  WHAT TO DO NEXT, in order:
+   a. Settle the deployment-day mass exit before the next live-ish scan.
+      7 open positions, 4 at d>=1, and 9c flips the favoured side on 46 of 76
+      multi-day rows, so model_flipped can fire on several at once. At n=4
+      "accept it explicitly" is defensible; letting it happen unnoticed is not.
+   b. Decide whether 'between' should be placing at all, and whether the
+      anomaly halt stays overridable. Both are one-line policy calls with the
+      evidence already in hand, and they are the cheapest real risk reduction
+      available.
+   c. The observability/durability batch: _log.debug discarded repo-wide,
+      restore_data accepting a database-less snapshot, unpruned flat copies.
+      One coherent group, and the first item is WHY the backup defect hid.
+   d. Re-derive 2's population by FIRST-scan horizon before anyone treats its
+      numbers as general.
+   e. Only then 7's quantisation fix, measured separately from 2 so each is
+      attributable.
+
   If the goal is a trading system rather than a research platform, argue it
   from 5 or 6 -- they are the only paths that do not require beating a price
   that is already better than the model. 3 is viable but is a new project.
