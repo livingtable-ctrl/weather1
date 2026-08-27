@@ -43761,6 +43761,50 @@ B. IS THE d>=1 POPULATION ITSELF SELECTED? analysis_attempts upserts on
    cares about. If it does, the held-out numbers need re-deriving on a
    population defined by first-scan horizon rather than last.
 
+  MEASURED 2026-08-26 -- item B above is no longer unmeasured, and the
+  selection is large. The entry asked whether "days_out >= 1" selects markets
+  whose LAST scan was multi-day, and how big that selection is.
+
+    population                        n     mean_mkt   yes_rate
+    analysis_attempts  d>=1         191      0.2245     0.1518   <- the fit set
+    analysis_attempts  d=0          357      0.4428     0.4454
+    predictions        d>=1         135      0.4572     0.4815
+    predictions        d=0          193      0.4538     0.5026
+
+  Core temperature families, scored rows only.
+
+  MULTI-DAY MARKETS ARE NOT INHERENTLY LONG-SHOT, which was the alternative
+  explanation this entry left open. `predictions` records days_out at
+  PREDICTION time rather than upserting it to the last scan, and there d>=1
+  and d=0 are nearly identical -- 0.457 vs 0.454 market prob, 48% vs 50% YES.
+  In analysis_attempts the d>=1 rows sit at market 0.22 with a 15% YES rate:
+  half the price and a third the base rate.
+
+  MECHANISM, and it is visible in the cron log. A row only STAYS at d>=1 if
+  the market stopped being scanned before event day, and analyze_trade's own
+  gate breakdown shows why that happens -- `extreme_price:139` on the
+  2026-08-26 08:46 UTC run. Markets that drift to an extreme are gated out of
+  analysis, freezing their last analysis_attempts row at d>=1. Consistent with
+  the distribution: 40.3% of the d>=1 rows are priced <0.10 or >0.90, and 74
+  of those 77 are <0.10.
+
+  WHY IT MATTERS: the fit population is a biased subsample of its own
+  APPLICATION domain. At application time nothing knows whether a d>=1 market
+  will later be gated out, so the calibration is applied to all multi-day
+  markets while having been trained only on the subset that later stopped
+  being scanned. That does not make batch-87's change wrong and its held-out
+  discipline was sound -- but its numbers (d>=1 raw 0.1454 -> 0.0952 against a
+  market at 0.0911) are a claim about EXTREME-PRICED multi-day markets, not
+  about multi-day markets generally.
+
+  Caveat on this measurement: `predictions` is itself gated -- it holds only
+  rows that cleared the edge floor -- so it is not a clean control either.
+  What it establishes is only that the long-shot character of the
+  attempts-d>=1 set is NOT a property of the multi-day horizon. This entry's
+  own proposed fix stands unchanged: reconstruct per-market scan histories
+  from api_requests or cron.log and define the population by FIRST-scan
+  horizon rather than last.
+
 When to revisit: A before the next live-ish scan; B at the 60-day mark
   (~2026-10-25) alongside the seasonal re-measure, or sooner if anyone wants
   to cite the calibration's numbers as evidence about the unbiased population
