@@ -1405,17 +1405,40 @@ def _placement_outcome_phrase(placed: int, found: int) -> str:
     banners. `found` (len(strong_opps)/len(med_opps)) is the candidate count
     from analysis; `placed` (result.placed_strong/placed_med) is what
     ctx.auto_place_trades() actually placed. The two can diverge for many
-    reasons -- a whole-batch skip (drawdown pause, daily-loss halt, position
-    cap, spend cap) that never even reaches a per-candidate check, or a
-    per-candidate rejection (already-open, stale price, a strategy
-    retirement mid-cycle, Kelly too small, ...) -- so this deliberately does
-    NOT name a specific cause (an earlier draft claimed "pre-placement
-    re-check failed" for every shortfall, which is wrong for most of the
-    whole-batch-skip reasons above and would send an operator chasing the
-    wrong subsystem). The real reason is already printed nearby by
+    reasons -- a whole-batch skip (drawdown pause, daily-loss halt) that
+    never even reaches a per-candidate check, or a per-candidate rejection
+    (already-open, stale price, a strategy retirement mid-cycle, Kelly too
+    small, ...) -- so this deliberately does NOT name a specific cause (an
+    earlier draft claimed "pre-placement re-check failed" for every
+    shortfall, which is wrong for most of the whole-batch-skip reasons above
+    and would send an operator chasing the wrong subsystem). The real reason
+    is already printed nearby by
     order_executor's own "[Auto] Position cap reached" / "[Auto] Skipped
     N signal(s): <ticker>: <reason>" lines -- point there instead of
     guessing (backlog.txt "STRONG/MED SIGNAL BANNER OVERCLAIMS...").
+
+    THE TWO CAPS are deliberately absent from both lists above, because each
+    is BOTH and naming either one in a single half is wrong. order_executor
+    checks each twice, and the two checks print different things (grep the
+    strings rather than trusting a line number, which is what went stale
+    here in the first place):
+
+      position cap  pre-loop  "[Auto] Position cap reached (n/n open)"
+                    in-loop   per-signal "position_cap(n/cap)"
+      spend cap     pre-loop  "[Auto] All spend caps reached (...)"
+                    in-loop   per-signal "daily_cap($n/$m)"
+
+    The pre-loop paths return without reaching any candidate; the in-loop
+    ones skip individual signals and never print the cycle-entry message.
+    Which fired is visible in the output and not derivable here, and the
+    difference is worth reading: a "position_cap(n/cap)" line with NO
+    "Position cap reached" above it means the pre-loop gate did not fire --
+    order_executor's own comment there explains that resting or unresolved
+    live rows can occupy slots and push a cycle to the cap.
+
+    Note the taxonomy above went stale while the "point, do not guess"
+    advice it introduces stayed correct -- which is roughly the argument for
+    the advice.
     """
     if placed >= found:
         return "placing paper trades"

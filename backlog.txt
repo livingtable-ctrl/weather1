@@ -361,9 +361,11 @@ RESOLVED 2026-08-27 (batch-90). Formatting extracted from cmd_cron into
   every future scan report SHORT BY <that bucket's count>.
 
 
-[OPEN 2026-08-26 -- opus review of batch-85, LOW-5. Filed rather than fixed
-  ONLY because batch-85 did not own cron.py (batch-86 held it in parallel);
-  it is a one-sentence docstring edit, not a design question.]
+[RESOLVED 2026-08-27 by batch-95 -- resolution block at the end of this
+  entry. Originally filed 2026-08-26 by the opus review of batch-85 (LOW-5),
+  rather than fixed there ONLY because batch-85 did not own cron.py
+  (batch-86 held it in parallel); a one-sentence docstring edit, not a
+  design question.]
   cron._placement_outcome_phrase's DOCSTRING STILL CALLS THE POSITION CAP A
   WHOLE-BATCH-ONLY SKIP
 Priority: Low -- docstring accuracy only. No behaviour, no output, no
@@ -390,6 +392,47 @@ Problem:
 What it would look like:
   Move "position cap"/"spend cap" out of the whole-batch parenthetical, or
   add a clause noting those two appear in both categories. One sentence.
+
+RESOLVED 2026-08-27 (batch-95). Both caps, not just the one in the title --
+  this entry's Problem section flagged "spend cap" as having been dual for
+  longer, and a first pass here fixed only the position cap before rereading
+  it.
+
+  Re-verified against order_executor rather than trusting the entry. Each
+  cap really is checked twice:
+    position cap  pre-loop  "[Auto] Position cap reached (n/n open)", returns
+                            0 without reaching any candidate
+                  in-loop   per-signal "position_cap(n/cap)" skip label
+    spend cap     pre-loop  "[Auto] All spend caps reached (...)", gated on
+                            BOTH the daily and same-day caps being hit
+                  in-loop   per-signal "daily_cap($n/$m)" plus an
+                            "[Auto] Skipping <ticker>: would exceed daily
+                            cap" line
+
+  Fixed by REMOVING both from the whole-batch parenthetical rather than
+  moving them to the per-candidate one -- either placement is equally wrong
+  -- and adding a short table of which check prints what. That distinction
+  is operator-visible: a "position_cap(n/cap)" line with NO "Position cap
+  reached" above it means the pre-loop gate did not fire, which
+  order_executor's own comment explains can happen when resting or
+  unresolved live rows occupy slots.
+
+  The table cites the PRINTED STRINGS, not line numbers. An earlier draft
+  used line numbers and they are exactly the thing that rots -- this entry's
+  own Files: line still says cron.py:1121-1122 while the function now lives
+  at ~1403. See [[feedback_batch_handoff_backlog_citations_go_stale]].
+
+  No behaviour change and no new test: docstring accuracy only, the
+  function's four return values are already unit-tested
+  (test_trade_cycle_engine.py TestPlacementOutcomePhrase), and a test
+  pinning prose is the brittle kind that an unrelated occurrence satisfies.
+  tests/test_trade_cycle_engine.py 93 passed; ruff/ruff-format/mypy clean.
+
+  What stayed correct is worth recording: the function's advice ("do NOT
+  name a specific cause, point at order_executor's own printed lines")
+  survived the reclassification that invalidated the taxonomy introducing
+  it, and got MORE right, since both caps now emit per-signal lines to point
+  at.
 
 
 [OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS
