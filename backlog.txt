@@ -45175,7 +45175,9 @@ Sources for the published-ranking claim:
   https://open-meteo.com/en/docs/ensemble-api
 
 
-[OPEN 2026-08-26 -- found by the batch-88 session while diagnosing an apparent
+[RESOLVED 2026-08-28 by batch-96 -- mechanism fixed, weight VALUES
+  deliberately untouched; resolution at the end of this entry. Originally
+  OPEN 2026-08-26 -- found by the batch-88 session while diagnosing an apparent
   gfs_seamless underperformance. Filed here rather than left in
   audit/handoff_prompts/batches/batch-88.md, because that batch is unlikely to
   run as written and these two findings should not die with it.]
@@ -45242,8 +45244,73 @@ Sequencing:
   flips the model's favoured side on ~61% of rows. Landing both together
   leaves neither attributable. Measure between them.
 
+RESOLVED 2026-08-28 (batch-96). Sequencing satisfied: option 2 landed
+  2026-08-26 as cc5a2d05, so this is attributable separately.
 
-[OPEN 2026-08-26 -- found by the batch-88 session, verified live against
+  `repeats = max(1, round(w * 2))` -> `round(w * _WEIGHT_REPLICATION_FACTOR)`
+  with the factor at 20, applied at BOTH replication sites through one shared
+  module constant (they must agree -- a warm cache built by one is read by
+  the other). Plan item 1 only: weight VALUES are untouched, and item 2
+  (per-model vs per-member semantics) is still open and still meaningless to
+  ask until this had landed.
+
+  WHY 20 rather than a cheaper factor. Measured against the intended
+  weight x member_count share, on the production weights:
+     scheme            icon    gfs   aifs  samples  max err  zero-wt floor
+     round(w*2)       32.8%  25.2%  42.0%     238    4.72%   50%
+     round(w*20)      35.5%  21.1%  43.4%    2418    0.60%    5%
+     TARGET           35.9%  20.5%  43.6%
+  The concrete harm being removed: gfs_seamless, the WORST-measuring member
+  on max, was taking 25.2% of the blend where its own weight asks for 20.5%.
+
+  The FLOOR is the second reason and was not in this entry. max(1, ...) means
+  a weight driven to 0 still contributes one copy -- worth 50% of a
+  full-weight model at factor 2, and ~5% at 20. weather_markets.py's
+  per-member quarantine module exists specifically because soft weighting
+  "can never fully exclude a member"; that gap is now an order of magnitude
+  narrower. The module is still required (5% is not 0%) and its comment now
+  says so accurately.
+
+  COSTS, accepted: the blended sample grows ~10x (238 -> ~2,400 floats per
+  city/date/var) and ensemble_cache.json with it (~865 KB -> ~9 MB), which
+  cloud_backup copies into each dated snapshot (~65 MB each today).
+
+  WHY REPLICATION IS A LEGITIMATE WEIGHTING MECHANISM HERE, checked before
+  choosing it rather than assumed: nothing downstream derives a count or a
+  confidence interval from the sample list. Every "n_members" this module
+  reports comes from a precip/hurricane path, not the temperature blend, and
+  no consumer divides by sqrt(n) -- only the distribution's shape is read.
+  Had that not held, inflating the sample would have silently tightened every
+  CI and therefore every Kelly stake.
+
+  MEASURED EFFECT ON LIVE PRICING, over the 200 cells in
+  ensemble_member_values holding all three blend models, 7 strikes each:
+     |prob change|  mean 0.0082  median 0.0020  p95 0.0342  max 0.0412
+     |mean shift|   0.11 F mean, 0.41 F max
+     29.6% of strikes move >= 1c; NONE move >= 5c
+  Against MIN_EDGE=0.15 this can only flip a placement where a signal already
+  sits within ~4pp of the gate. A real change, bounded and small.
+
+  WHAT COULD NOT BE MEASURED, and this entry asked for it: a held-out
+  before/after BRIER. ensemble_member_values is forward-only and recent --
+  exactly 1 of its 200 complete cells has a settled actual_temp, so a Brier
+  comparison would be n=5 (cell, strike) pairs and worth nothing.
+  ensemble_member_scores stores only per-model MEANS, which cannot
+  reconstruct a distribution. The measurement becomes possible as those cells
+  settle; re-run it then before treating the change as an improvement rather
+  than a correctness fix. It is justified as the latter.
+
+  Tests: tests/test_batch96_blend_weighting.py -- the ratio property (bound to
+  the RATIO, not to the factor's value, so it survives retuning), a guard that
+  the observed weight band cannot collapse again, and an AST check that both
+  sites use the shared constant. There was NO test of this mechanism before,
+  which is why a whole subsystem's output could be discarded while the code
+  around it was actively maintained.
+
+
+[RESOLVED 2026-08-28 by batch-96 -- the docstring is corrected and the
+  membership is deliberately UNCHANGED; resolution at the end of this entry.
+  Originally filed 2026-08-26 by the batch-88 session, verified live against
   ensemble-api.open-meteo.com.]
   _model_weights' DOCSTRING EXCLUDES THE BEST-MEASURING ENSEMBLE MEMBER ON A
   FACTUALLY FALSE GROUND
@@ -45294,6 +45361,44 @@ Plan:
 When to revisit:
   Before any blend-membership or weight change, and alongside the quantisation
   entry above -- they are the same area and a session in one should read both.
+
+RESOLVED 2026-08-28 (batch-96), following this entry's own three-step plan.
+
+  STEP 1 -- git archaeology says DRIFT, not a recorded decision. The blend
+  used to contain ecmwf_ifs04, which genuinely returns 0 daily members;
+  commit 005881fa (2026-06-20, "complete AIFS migration") moved that slot to
+  ecmwf_aifs025_ensemble precisely BECAUSE ifs04 had none. The "no ensemble
+  members" rationale was true of ifs04 and was never re-checked against
+  ecmwf_ifs025, a different model id. Nobody compared them; that is the real
+  reason, and it is now what the docstring says.
+
+  I DOUBTED THIS ENTRY AND WAS WRONG. The repo only ever requests
+  ecmwf_ifs025 from FORECAST_BASE, and the string "ecmwf_ifs025_ensemble"
+  appears nowhere in it, so the obvious hypothesis was that this entry had
+  conflated a deterministic id with an ensemble one. Tested rather than
+  assumed, live against ENSEMBLE_BASE on 2026-08-28:
+     ecmwf_ifs025            -> 50 numbered members
+     ecmwf_ifs025_ensemble   -> 50
+     ecmwf_aifs025_ensemble  -> 50
+     icon_seamless 39, gfs_seamless 30  (both match this entry exactly)
+  Both aliases resolve to the same product. The entry was right; the
+  docstring claim is false.
+
+  STEP 2 -- docstring and the duplicate inline comment corrected to state the
+  real reason (drift), with the live verification and the ifs04 history, so
+  the next reader does not have to re-run it.
+
+  STEP 3 -- NOT TAKEN, deliberately. Membership is unchanged. The case for
+  adding ifs025 rests on n=21 paired cells of MAE, one month, summer, where
+  MAE and Brier DISAGREE (min-Brier puts gfs best and ifs025 worst) -- far
+  under batch-81's 112-row floor for a single signal, on a change that moves
+  live pricing. The exclusion may well be wrong; it is now honestly labelled
+  rather than falsely justified, which is what this entry asked for.
+
+  Test: tests/test_batch96_blend_weighting.py::TestExclusionRationaleIsNotFalse
+  pins the correction AND, as a positive control, that the exclusion itself
+  still holds -- so this cannot be "fixed" later by quietly adding ifs025 and
+  calling the docstring accurate again.
 
 
 [OPEN 2026-08-26 -- prompted by another session reporting "same-day losses are

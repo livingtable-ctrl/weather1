@@ -881,6 +881,33 @@ def _dew_point_temp_correction(
 
 FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
 ENSEMBLE_BASE = "https://ensemble-api.open-meteo.com/v1/ensemble"
+
+# How finely a model weight is expressed when its members are replicated into
+# the blended sample (`repeats = max(1, round(w * FACTOR))`). Shared by the two
+# replication sites -- get_ensemble_temps and batch_prewarm_ensemble -- because
+# they must agree: a warm cache built by one is read by the other.
+#
+# WAS 2, which made the blend effectively UNWEIGHTED. Every weight the learning
+# system produces landed in [0.83, 1.22] and round(w*2) collapsed all of them to
+# the same integer 2, in both seasons -- so a whole subsystem computed weights,
+# persisted them, and had them discarded. The effective split was nothing but
+# each vendor's member count (icon 39 / gfs 30 / aifs 50). Concretely that gave
+# gfs_seamless 25.2% of the blend when its own measured weight asks for 20.5% --
+# over-weighting the WORST-measuring member on max by ~5pp.
+#
+# 20 tracks the intended weight x member_count share to within 0.6%. Two costs,
+# both deliberate: the blended sample grows ~10x (238 -> ~2,400 floats per
+# city/date/var) and ensemble_cache.json with it (~865 KB -> ~9 MB), which
+# cloud_backup then copies into each dated snapshot.
+#
+# Replication is a legitimate way to express a weight HERE specifically because
+# nothing downstream derives a count or a confidence interval from the sample
+# list -- every "n_members" this module reports comes from a precip/hurricane
+# path, not from the temperature blend, and no consumer divides by sqrt(n).
+# Only the distribution's shape is read (mean, stdev, percentiles, CDF), which
+# is exactly what re-weighting is meant to move. Verify that still holds before
+# raising this further or reusing the trick elsewhere.
+_WEIGHT_REPLICATION_FACTOR = 20
 ENSEMBLE_MODELS = [
     "icon_seamless",
     "gfs_seamless",
@@ -2982,7 +3009,7 @@ def batch_prewarm_ensemble(
                     )
                     base_w = weights.get(model, 1.0)
                     w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
-                    repeats = max(1, round(w * 2))
+                    repeats = max(1, round(w * _WEIGHT_REPLICATION_FACTOR))
                     all_temps.extend(blend_temps * repeats)
                 # Only overwrite when every blend model contributed to THIS
                 # key this run — mirrors the precip guard above (a
@@ -4628,9 +4655,17 @@ def _weights_from_mae(
 # _weights_from_mae()'s continuous inverse-MAE down-weighting. That soft
 # weighting alone can never fully exclude a member from the ENSEMBLE BLEND
 # specifically: get_ensemble_temps()'s and batch_prewarm_ensemble()'s
-# replication scheme both compute `repeats = max(1, round(w * 2))` -- the
-# max(1, ...) floor means even a weight driven to 0 still contributes at
-# least one copy of that model's members to the blend. When a member goes
+# replication scheme both compute
+# `repeats = max(1, round(w * _WEIGHT_REPLICATION_FACTOR))` -- the max(1, ...)
+# floor means even a weight driven to 0 still contributes at least one copy of
+# that model's members to the blend.
+#
+# That floor USED to be worth 50% of a full-weight model, because the factor
+# was 2 and one copy out of two is half. Raising it to 20 makes the same floor
+# worth ~5%, so soft down-weighting can now come close to excluding a member on
+# its own. This module is still required -- ~5% is not 0%, and a hard exclusion
+# is a different guarantee from a small weight -- but the gap it is covering is
+# an order of magnitude narrower than when it was written. When a member goes
 # acutely bad (see backlog: 2026-08 gfs_seamless MAE regression), the only
 # way to actually stop the ensemble blend from trading on it is to remove it
 # from the candidate list feeding the blend loop entirely -- that is what
@@ -5349,9 +5384,9 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
 
     Deliberately NOT "any model with tracked accuracy data" — ecmwf_ifs025 is
     tracked (model_forecast_means, ensemble_member_scores) for a DIFFERENT
-    blend entirely (_forecast_model_weights()'s daily deterministic blend;
-    ecmwf_ifs025 has no ensemble members and was never a candidate for this
-    one). It isn't in TRACKING_ONLY_MODEL_NAMES either, since that constant
+    blend entirely (_forecast_model_weights()'s daily deterministic blend, and
+    this repo only ever requests it from FORECAST_BASE). It isn't in
+    TRACKING_ONLY_MODEL_NAMES either, since that constant
     means "excluded from every live blend" and ecmwf_ifs025 genuinely has
     real live weight elsewhere — so restricting admission to
     baseline | TRACKING_ONLY_MODEL_NAMES (this blend's only two ways to be a
@@ -5382,9 +5417,26 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     # it's in TRACKING_ONLY_MODEL_NAMES (tracked-for-accuracy, awaiting
     # graduation into this exact blend) — NOT any tracked model whatsoever.
     # ecmwf_ifs025 is tracked (for _forecast_model_weights()'s separate daily
-    # blend) but has no ensemble members and was never a candidate here; it
-    # must not ride in just because it happens to have MAE data. See the
-    # docstring above for the full reasoning.
+    # blend) and must not ride in just because it happens to have MAE data.
+    #
+    # WHY IT IS EXCLUDED IS NOT SETTLED, and the reason previously given here
+    # -- "has no ensemble members" -- IS FALSE. Verified live 2026-08-27
+    # against ENSEMBLE_BASE: models=ecmwf_ifs025 returns 50 numbered members,
+    # the same count as ecmwf_aifs025_ensemble. The false claim is a
+    # carry-over: the blend used to contain ecmwf_ifs04, which genuinely
+    # returns 0 daily members, and commit 005881fa (2026-06-20) migrated that
+    # slot to AIFS precisely because of it. The rationale was correct about
+    # ifs04 and was never re-checked against the different model id.
+    #
+    # So this is DRIFT, not a recorded skill decision -- but do not "fix" it by
+    # adding ifs025. On paired per-member MAE (n=21, one month, summer)
+    # ecmwf_ifs025 measures BEST on both vars while the blended
+    # ecmwf_aifs025_ensemble measures WORST on max; on per-member Brier the
+    # ordering partly INVERTS. MAE is not probability skill, the sample is far
+    # under batch-81's 112-row floor for a single signal, and membership
+    # changes live pricing. See backlog.txt "_model_weights' DOCSTRING
+    # EXCLUDES THE BEST-MEASURING ENSEMBLE MEMBER ON A FACTUALLY FALSE
+    # GROUND".
     ensemble_candidate_models = set(baseline) | TRACKING_ONLY_MODEL_NAMES
 
     # 1. Dynamic: derive from recent tracker MAE data. Blends against the
@@ -5570,7 +5622,7 @@ def get_ensemble_temps(
             # Decay towards equal weighting (1.0) as cache ages
             w = 1.0 + (base_w - 1.0) * decay
             # Replicate members proportionally to apply weight.
-            repeats = max(1, round(w * 2))
+            repeats = max(1, round(w * _WEIGHT_REPLICATION_FACTOR))
             all_temps.extend(temps * repeats)
             # batch-64 item 2: raw members, pre-bias and pre-replication.
             # Placed AFTER this model's contribution has already been added
