@@ -14,6 +14,7 @@ no-opping (see the dedup and positive-control tests below).
 """
 
 import json
+import logging
 import queue
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -668,7 +669,18 @@ def ws(tmp_path, monkeypatch):
     # what was ENQUEUED, which is deterministic, rather than racing a
     # background drain. test_the_writer_thread_actually_drains_to_the_db
     # below covers the thread itself.
-    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=512))
+    # Sized from the production constant, not a literal: a fixture queue that
+    # silently diverges from _DEPTH_QUEUE_MAX makes every depth test run
+    # against a capacity production does not have.
+    monkeypatch.setattr(
+        kalshi_ws,
+        "_depth_write_queue",
+        queue.Queue(maxsize=kalshi_ws._DEPTH_QUEUE_MAX),
+    )
+    monkeypatch.setattr(kalshi_ws, "_depth_reservation", {})
+    monkeypatch.setattr(kalshi_ws, "_depth_dropped_tickers", set())
+    monkeypatch.setattr(kalshi_ws, "_depth_last_drop_warn", 0.0)
+    monkeypatch.setattr(kalshi_ws, "_depth_dropped_writes", 0)
     monkeypatch.setattr(kalshi_ws, "_ensure_depth_writer", lambda: None)
     # Persistence off by default; the tests that want it re-enable it.
     monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "0")
@@ -1039,10 +1051,326 @@ def test_a_full_queue_drops_the_snapshot_instead_of_blocking_the_feed(ws, monkey
     assert ws._depth_write_queue.qsize() == 1, "the new snapshot was dropped"
 
     # Positive control: with room in the queue the identical message lands.
+    # Deliberately does NOT reset _depth_last_persist -- an earlier version of
+    # this test did, and that reset was quietly compensating for the drop
+    # having burned the ticker's throttle slot. Leaving it out is what makes
+    # this control prove the message lands rather than prove the reset works.
     monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=4))
-    monkeypatch.setattr(kalshi_ws, "_depth_last_persist", {})
     ws.update_orderbook_cache("KXT-A", _snapshot(seq=2))
     assert ws._depth_write_queue.qsize() == 1
+
+
+def test_a_dropped_snapshot_releases_its_throttle_slot(ws, monkeypatch):
+    """A drop must not also cost the ticker its next interval.
+
+    _maybe_persist_depth reserves the throttle slot BEFORE handing the
+    snapshot to the queue, so an overflow used to leave the slot held for a
+    write that never happened -- silencing that ticker for a full interval
+    (60s in production) on account of a dropped row. The empty-book branch
+    twelve lines above already refuses to burn the slot for exactly this
+    reason; the drop path now agrees with it.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=1))
+    ws._depth_write_queue.put_nowait({"filler": True})
+
+    ws.update_orderbook_cache("KXT-A", _snapshot(seq=1))  # dropped
+    # Positive control that the except queue.Full arm is what ran: the filler
+    # is still there and nothing joined it. Without this the slot assertion
+    # below would also pass if the snapshot had never reached the persist path.
+    assert ws._depth_write_queue.qsize() == 1, "the snapshot was not dropped"
+    assert "KXT-A" not in ws._depth_last_persist, "the drop kept the slot"
+    assert "KXT-A" not in ws._depth_reservation, "the drop kept its token"
+
+    # Make room and retry, WITHOUT resetting _depth_last_persist -- that reset
+    # is the thing being proved unnecessary.
+    ws._depth_write_queue.get_nowait()
+    ws.update_orderbook_cache("KXT-A", _delta(0.55, 1, seq=2))
+
+    queued = _queued(ws)
+    assert len(queued) == 1, f"retry after a drop did not enqueue: {queued}"
+    assert queued[0]["ticker"] == "KXT-A"
+    # Positive control: a SUCCESSFUL enqueue does reserve the slot, so the
+    # absence asserted above is the release and not a persist path that never
+    # ran at all.
+    assert "KXT-A" in ws._depth_last_persist
+
+
+def test_the_release_does_not_clobber_a_newer_reservation(ws, monkeypatch):
+    """The release is a compare-and-swap, not a bare clear.
+
+    put_nowait runs outside _depth_lock, so between our reservation and our
+    release another caller can legitimately reserve the same ticker. Handing
+    the slot back unconditionally would wipe that newer reservation and let a
+    third caller straight through -- reopening the double-write the throttle
+    exists to prevent.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+    newer = 999_999.0
+    newer_token = 10_000_000
+
+    class _RacingQueue:
+        """Reserves the slot for a 'concurrent' caller, then overflows."""
+
+        def __init__(self):
+            self.calls = 0
+
+        def put_nowait(self, item):
+            self.calls += 1
+            # A genuine reservation moves BOTH the timestamp and the token --
+            # that is what reserving is. Moving only one would not be a race,
+            # it would be corruption.
+            kalshi_ws._depth_last_persist["KXT-A"] = newer
+            kalshi_ws._depth_reservation["KXT-A"] = newer_token
+            raise queue.Full
+
+    racing = _RacingQueue()
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", racing)
+    ws.update_orderbook_cache("KXT-A", _snapshot(seq=1))
+
+    # Positive control FIRST: without it this test passes just as happily when
+    # the release code is deleted outright, because then nothing overwrites
+    # the stub's value either. It has to prove the handler actually ran.
+    assert racing.calls == 1, "the enqueue path never ran"
+    assert ws._depth_last_persist["KXT-A"] == newer, (
+        "the release cleared a reservation that was not its own"
+    )
+
+    # And the other half, in the same test on purpose: an absence assertion
+    # about over-release passes just as happily when the release code does not
+    # exist at all. This phase proves it does, so the two together pin
+    # "releases its own, leaves others alone" rather than only the second
+    # clause. Fresh ticker, real queue, no racing writer.
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=1))
+    kalshi_ws._depth_write_queue.put_nowait({"filler": True})
+    ws.update_orderbook_cache("KXT-B", _snapshot(ticker="KXT-B", seq=1))
+    assert "KXT-B" not in ws._depth_last_persist, (
+        "the release did not fire on a slot that WAS its own"
+    )
+
+
+def test_the_release_is_keyed_on_the_token_not_the_timestamp(ws, monkeypatch):
+    """Identity by construction, not by clock resolution.
+
+    The stored monotonic timestamp is not a usable identity token. Before
+    Python 3.13 the Windows monotonic clock was GetTickCount64 at 15.6 ms
+    granularity, where two successive calls returning the SAME float is
+    ordinary; nothing in this repo pins a Python floor. This reproduces that
+    case directly -- a newer reservation lands carrying our exact timestamp --
+    and a timestamp-keyed comparison cannot tell it apart from our own.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+
+    class _CoarseClockQueue:
+        def __init__(self):
+            self.calls = 0
+
+        def put_nowait(self, item):
+            self.calls += 1
+            # Leaves _depth_last_persist holding OUR timestamp, and only the
+            # token distinguishes the two reservations.
+            kalshi_ws._depth_reservation["KXT-A"] = 10_000_000
+            raise queue.Full
+
+    coarse = _CoarseClockQueue()
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", coarse)
+    ws.update_orderbook_cache("KXT-A", _snapshot(seq=1))
+
+    assert coarse.calls == 1, "the enqueue path never ran"
+    # A timestamp-keyed CAS matches here and pops the slot (our `last` was
+    # None). A token-keyed one declines, leaving the newer reservation intact.
+    assert "KXT-A" in ws._depth_last_persist, (
+        "a timestamp-keyed release freed a slot a newer reservation owned"
+    )
+
+    # Same reasoning as the clobber test: without this phase, deleting the
+    # release entirely would also satisfy the assertion above.
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=1))
+    kalshi_ws._depth_write_queue.put_nowait({"filler": True})
+    ws.update_orderbook_cache("KXT-B", _snapshot(ticker="KXT-B", seq=1))
+    assert "KXT-B" not in ws._depth_last_persist, (
+        "the release did not fire on a slot that WAS its own"
+    )
+
+
+def test_the_release_restores_the_previous_timestamp_rather_than_deleting(
+    ws, monkeypatch
+):
+    """Releasing means undoing OUR write, not forgetting the ticker.
+
+    A ticker that has persisted before carries a real last-write time. Popping
+    the key on a drop would discard it, so a message arriving one second later
+    would persist again -- turning a dropped row into an unthrottled one.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+    ws.update_orderbook_cache("KXT-A", _snapshot(seq=1))
+    assert len(_queued(ws)) == 1, "setup: the first snapshot must persist"
+
+    # Age the slot past the interval so the next message is eligible again.
+    aged = ws._depth_last_persist["KXT-A"] - 7200
+    ws._depth_last_persist["KXT-A"] = aged
+
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=1))
+    ws._depth_write_queue.put_nowait({"filler": True})
+    ws.update_orderbook_cache("KXT-A", _delta(0.55, 1, seq=2))  # dropped
+
+    assert ws._depth_last_persist["KXT-A"] == aged, (
+        "the drop did not restore the prior timestamp"
+    )
+
+
+def test_a_full_subscribe_burst_does_not_overflow_the_queue(ws, monkeypatch):
+    """The cap has to clear one snapshot per subscribed ticker.
+
+    cron subscribes every scanned ticker at once -- 548 on the 2026-08-28
+    08:57 UTC run -- and _depth_last_persist starts empty, so the first
+    snapshot for each enqueues back to back with nothing draining yet. A cap
+    below that count overflows on every single run, which turns "the DB writer
+    is not keeping up" into a message that fires when it is keeping up fine.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+    monkeypatch.setattr(
+        kalshi_ws,
+        "_depth_write_queue",
+        queue.Queue(maxsize=kalshi_ws._DEPTH_QUEUE_MAX),
+    )
+    monkeypatch.setattr(kalshi_ws, "_depth_dropped_writes", 0)
+
+    burst = 600  # headroom over the observed 548
+    for i in range(burst):
+        t = f"KXT-{i}"
+        ws.update_orderbook_cache(t, _snapshot(ticker=t, seq=1))
+
+    # NOTE on why 600 is not the real invariant: a cap of 601 would satisfy
+    # this test while still being one growth spurt from the standing alarm.
+    # The literal pins the reported incident (548 tickers); the invariant --
+    # cap must exceed the actual subscribe list -- is enforced at runtime by
+    # start(), covered by the test below, because only start() knows the real
+    # ticker count.
+
+    # qsize is the positive control for the zero-drops assertion: it proves
+    # every message reached the persist path rather than being filtered out
+    # earlier, which would make "no drops" true and meaningless.
+    assert ws._depth_write_queue.qsize() == burst, "not every snapshot enqueued"
+    assert kalshi_ws._depth_dropped_writes == 0
+
+
+def test_start_warns_when_the_ticker_set_approaches_the_queue_cap(
+    ws, monkeypatch, caplog
+):
+    """The cap has to announce itself before it starts dropping again.
+
+    A literal in a test cannot pin "the cap exceeds the subscribe list" --
+    only start() knows the real ticker count. Two things reach this: the
+    traded universe grows, or stop() times out and listeners stack, each
+    adding a full burst to the one shared queue.
+    """
+    obj = kalshi_ws.KalshiWebSocket("key-id", b"pem")
+    monkeypatch.setattr(obj, "_run", lambda: None)  # no socket, no thread work
+    obj.subscribe([f"KXT-{i}" for i in range(kalshi_ws._DEPTH_QUEUE_MAX // 2 + 1)])
+
+    with caplog.at_level(logging.WARNING, logger="kalshi_ws"):
+        obj.start()
+        obj.stop(timeout=1.0)
+
+    warned = [r for r in caplog.records if "depth queue" in r.getMessage()]
+    assert len(warned) == 1, f"no cap warning at half the cap: {warned}"
+
+    # Positive control: a normal-sized subscription is silent, so the warning
+    # above is the threshold and not something start() always says.
+    caplog.clear()
+    quiet = kalshi_ws.KalshiWebSocket("key-id", b"pem")
+    monkeypatch.setattr(quiet, "_run", lambda: None)
+    quiet.subscribe([f"KXT-{i}" for i in range(10)])
+    with caplog.at_level(logging.WARNING, logger="kalshi_ws"):
+        quiet.start()
+        quiet.stop(timeout=1.0)
+    assert not [r for r in caplog.records if "depth queue" in r.getMessage()]
+
+
+def test_the_drop_warning_is_throttled_by_time_not_by_attempt_count(
+    ws, monkeypatch, caplog
+):
+    """The alarm's rate must not track the retry rate.
+
+    Releasing the slot means a starved ticker retries on every message rather
+    than once per interval, so a fixed "every 100th drop" gate would multiply
+    the warning rate by the message-per-ticker ratio -- into several per
+    second during exactly the sustained stall the warning exists to report,
+    each quoting an attempt count far larger than the rows actually lost.
+    """
+    # Effectively no throttle, so every one of the 400 messages reaches the
+    # enqueue and fails there -- which is the retry behaviour under test.
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "0.000000001")
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=1))
+    kalshi_ws._depth_write_queue.put_nowait({"filler": True})
+
+    with caplog.at_level(logging.WARNING, logger="kalshi_ws"):
+        for seq in range(2, 402):  # 400 dropped attempts on one ticker
+            ws.update_orderbook_cache("KXT-A", _snapshot(seq=seq))
+
+    drops = [r for r in caplog.records if "queue full" in r.getMessage()]
+    assert len(drops) == 1, (
+        f"400 attempts produced {len(drops)} warnings; a %100 gate would give 4"
+    )
+    # The number an operator acts on is starved TICKERS, not attempts.
+    assert "1 ticker(s) starved" in drops[0].getMessage()
+    # Positive control: the attempts really did happen and really were dropped.
+    assert kalshi_ws._depth_dropped_writes == 400
+    assert ws._depth_write_queue.qsize() == 1
+
+
+def test_a_writer_thread_that_cannot_start_also_releases_the_slot(ws, monkeypatch):
+    """Every post-reservation failure releases, not just a full queue.
+
+    _ensure_depth_writer runs after the slot is reserved and can raise --
+    Thread.start() raises RuntimeError under thread exhaustion. If only
+    queue.Full released, the identical bug would survive one line higher up,
+    on a path the fixture's own stub hides.
+    """
+    monkeypatch.setenv("DEPTH_SNAPSHOT_INTERVAL_SECS", "3600")
+
+    def _boom():
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(kalshi_ws, "_ensure_depth_writer", _boom)
+
+    # update_orderbook_cache swallows it; the feed must not break either way.
+    ws.update_orderbook_cache("KXT-A", _snapshot(seq=1))
+    assert "KXT-A" not in ws._depth_last_persist, "a failed start kept the slot"
+    assert "KXT-A" not in ws._depth_reservation
+
+    # Positive control: once the writer can start, the identical message
+    # persists -- so the absences above are the release, not a book that never
+    # became valid.
+    monkeypatch.setattr(kalshi_ws, "_ensure_depth_writer", lambda: None)
+    ws.update_orderbook_cache("KXT-A", _delta(0.55, 1, seq=2))
+    assert len(_queued(ws)) == 1
+    assert "KXT-A" in ws._depth_last_persist
+
+
+def test_drain_depth_queue_reports_what_it_could_not_save(ws, monkeypatch):
+    """Shutdown loss has to be counted, not silent.
+
+    The writer is a daemon nothing joins, so whatever is queued when the
+    process or cycle ends is discarded -- and raising the cap to 2048 raised
+    that ceiling with it. stop() already force-flushes the JSON cache for the
+    same reason; this is the depth queue's equivalent.
+    """
+    monkeypatch.setattr(kalshi_ws, "_depth_writer_thread", None)
+    monkeypatch.setattr(kalshi_ws, "_depth_write_queue", queue.Queue(maxsize=8))
+    for i in range(3):
+        kalshi_ws._depth_write_queue.put_nowait({"n": i})
+
+    # No live writer: everything queued is already lost, and it says so
+    # without burning the timeout budget waiting for a thread that is gone.
+    assert kalshi_ws.drain_depth_queue(timeout=0.2) == 3
+
+    # Positive control: an empty queue reports nothing stranded, so the 3
+    # above is a real count and not a constant.
+    while not kalshi_ws._depth_write_queue.empty():
+        kalshi_ws._depth_write_queue.get_nowait()
+    assert kalshi_ws.drain_depth_queue(timeout=0.2) == 0
 
 
 def test_prune_depth_books_drops_only_unlisted_tickers(ws):

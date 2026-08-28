@@ -1089,6 +1089,114 @@ TESTS (counts re-derived by collection at the moment of writing): 12 tests
   prod-data guard would have caught it, but it is a pytest plugin and does not
   exist outside pytest.
 
+FIRST REAL CRON RUN, 2026-08-28 08:57 UTC — CONFIRMED, AND IT FOUND ONE MORE
+BUG. All three predictions held: `kalshi_ws: connected` appeared for the first
+  time, there was no keepalive ping timeout and no reconnect, and the
+  flash-crash breaker fired 11 times exactly as warned above. 548 tickers over
+  126 seconds wrote 726 rows across 526 distinct tickers, all env=prod --
+  the first rows orderbook_depth_snapshots has ever held. Four stale
+  "0 rows / never written" citations elsewhere in this file, plus one in
+  audit/DATA_ACCRUAL_PLAN.md, are corrected; options 3 and 6 (market-making,
+  ladder-coherence arbitrage) are no longer blocked on data.
+
+  ONE NEW WARNING, ONE SECOND AFTER CONNECT:
+      depth snapshot queue full — dropped 1 snapshot(s) so far;
+      the DB writer is not keeping up
+  Two defects behind it, both fixed here.
+
+  1. A DROPPED SNAPSHOT ALSO COST THE TICKER ITS INTERVAL. _maybe_persist_
+     depth reserves the throttle slot BEFORE handing the row to the queue,
+     and did not give it back when put_nowait raised queue.Full. So a dropped
+     row silenced that ticker for a full 60s over a write that never
+     happened. The empty-book branch twelve lines above already refuses to
+     burn the slot for exactly this reason; the drop path now agrees with it.
+     Released, the next delta retries within seconds.
+       The release is a compare-and-swap against a reservation TOKEN, not the
+     stored timestamp. Matching on the timestamp is identity-by-clock-
+     resolution: fine under Python 3.13+ on Windows (QueryPerformanceCounter,
+     100 ns) and unsound under the GetTickCount64 clock earlier versions
+     used, whose 15.6 ms granularity makes two successive monotonic() calls
+     returning the same float ordinary. Nothing here pins a Python floor.
+     This is the repo's own recorded lesson about claim/release pairs needing
+     the token the claim returned, applied before it bit rather than after.
+
+  2. THE CAP SAT BELOW THE BURST, SO THE ALARM WAS GUARANTEED. The subscribe
+     burst is one snapshot per ticker with _depth_last_persist empty and
+     nothing drained yet -- 548 against a 512-slot queue. That warning could
+     not NOT fire, which makes it a standing false alarm rather than a
+     backpressure signal, and this session had already been bitten once by
+     exactly that failure mode (see the 96-markets/scan no_forecast
+     regression). Raised to 2048; ~10 MB typical, ~21 MB worst case, measured
+     against the real rows rather than assumed.
+
+  INDEPENDENT REVIEW FOUND EIGHT MORE THINGS. It found no HIGH and said so
+  explicitly rather than padding, and it disproved three concerns it was
+  asked to test (the CAS is sound, lock discipline is clean, `last` is always
+  bound) with the traced interleavings. All eight are fixed:
+
+  M1  THE FIX MADE ITS OWN ALARM WORSE. Releasing the slot converts the drop
+      counter from per-ticker-per-interval into per-MESSAGE, but the log gate
+      was a fixed `% 100`. Measured against this module's own documented
+      ~300 msg/s, that turns one warning per ~11s into ~3 per second during
+      the sustained stall the warning exists for -- each quoting a number
+      ~33x larger than the rows actually lost. Now throttled on wall-clock
+      (once per 60s) and reports STARVED TICKERS, which maps to absent rows,
+      with the attempt count named as the rate-inflated number it is.
+  M2  THE CAP RAISE QUADRUPLED A SILENT LOSS. The writer is a daemon nothing
+      joins; stop() force-flushes the JSON cache and did nothing for the
+      depth queue, so anything still queued at cycle end was discarded with
+      no log line -- ceiling raised 512 -> 2048 by this very change. Added
+      drain_depth_queue(), called from stop(), which waits up to 5s and WARNs
+      with the count it could not save. Polls rather than join()ing: blocking
+      shutdown on a wedged SQLite write is worse than losing the rows.
+  L1  THE RETRY IS MESSAGE-RATE-WEIGHTED. A liquid ticker wins freed slots
+      over a quiet one by roughly its message-rate ratio, so rows surviving
+      an overload window over-represent liquid tickers and nothing in the
+      table marks it. Documented at the release, addressed to whoever runs
+      the A4/A17 analysis; the uniform alternative loses more rows overall.
+  L2  A TEST OF MINE PROVED HALF OF WHAT IT CLAIMED. The clobber test passed
+      unchanged when the entire release was deleted -- an absence assertion
+      about over-release is vacuous when there is no release. NOTE: the
+      reviewer's suggested fix (assert the stub's put_nowait ran) does NOT
+      close it, because that call happens BEFORE the release; verified by
+      mutation. Fixed instead by giving both CAS tests a second phase that
+      asserts the release DOES fire on a slot that is its own.
+  L3  THE BURST TEST PINNED A MAGIC 600. A cap of 601 passed it. The real
+      invariant -- cap exceeds the actual subscribe list -- is only knowable
+      at start(), so start() now WARNs at half the cap, with its own test.
+      That also covers the stacked-listener path the reviewer raised (I6):
+      four listeners at 548 tickers each exceed 2048 on the shared queue.
+  L4  THE TEST FIXTURE HARDCODED maxsize=512, so after the raise every depth
+      test ran against a queue a quarter of production's. Now derived from
+      _DEPTH_QUEUE_MAX.
+  L5  THE COUNTER INCREMENT WAS UNSYNCHRONIZED. `x += 1` on a module global
+      is load/add/store, and stop() itself documents that a listener can
+      outlive its join while the next cycle starts another -- two threads in
+      that function is an expected state. A lost update could also skip an
+      exact-value gate entirely. Moved inside the lock already held.
+  L6  THE SAME BUG SURVIVED ONE LINE UP. _ensure_depth_writer() sat outside
+      the try, after the reservation, and Thread.start() can raise under
+      thread exhaustion -- burning the slot exactly as the fixed path used
+      to, on a branch no test could reach because the fixture stubs it out.
+      Moved inside; every post-reservation failure now releases.
+  I1/I5 informational and adopted: the clock-resolution coupling (see the
+      token above) and the memory cost of the cap, both now stated in code.
+  I11 the last surviving "0 rows" citation, in audit/DATA_ACCRUAL_PLAN.md,
+      which the backlog sweep had missed.
+
+TESTS (counts re-derived by collection at the moment of writing): 131 passed
+  across tests/test_batch64_forward_writers.py, tests/test_kalshi_ws.py and
+  tests/test_isoformat_cutoff_guard.py, up from 126; the depth file goes 61
+  -> 70 tests. Widened to tests/test_cron_integration.py and
+  tests/test_flash_crash_cb.py because stop() changed on a live path: 95
+  passed. Six mutations applied individually via the Edit tool and reverted:
+  deleting the release (kills 6), degrading the CAS to always-true (kills
+  both CAS tests), keying the CAS on the timestamp instead of the token
+  (kills exactly the token test and nothing else), restoring the `% 100` log
+  gate (4 warnings where the fix gives 1), making drain report nothing
+  stranded, and disabling the start() cap warning. The cap-back-to-512
+  mutation reproduces the production warning string verbatim.
+
 
 [OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS
   SKIPPED ENTIRELY AT days_out=0
@@ -42099,6 +42207,13 @@ RESOLUTION 2026-08-26:
      -- W1 only records when a fetch was observed, so an all-cache-hit scan
      legitimately records nothing). W4 orderbook_depth_snapshots stays 0: it
      is written from the WS listener thread, which needs live trading.
+     THAT EXPLANATION WAS WRONG, corrected 2026-08-28. The table was empty
+     because the WS listener had never started at all in production -- cron
+     read two env var names that exist nowhere else in the repo, so the
+     construction gate was always False and the start path returned with no
+     log at any level. Nothing about live trading was the constraint. Fixed;
+     the next cron run wrote 726 rows. A "needs X" explanation that was never
+     tested against X being present is a guess, and this one stood for months.
   3. THE INDEX FILES were corrected in the same pass.
   NOT closed by this, filed separately: the out-of-pytest write vector that
   produced the rows (see the audit/reproductions/ entry). pytest itself is
@@ -45518,9 +45633,11 @@ OPEN -- I. The market itself is compressed. Model-free.
 OPEN -- J. Ladder-internal coherence arbitrage. Untested, model-free.
   Strikes on one underlying must form a monotone CDF; mutually inconsistent
   rungs are arbitrage requiring no forecast at all. `compute_market_implied_
-  distributions()` already exists. Blocked on data: orderbook_depth_snapshots
-  holds 0 rows because the WS depth path has never run. Turning that on is the
-  prerequisite, and it is cheap.
+  distributions()` already exists. WAS blocked on data: orderbook_depth_
+  snapshots held 0 rows because the WS depth path had never run. UNBLOCKED
+  2026-08-28 -- the feed now connects and the table took its first 726 rows
+  (526 distinct tickers) on the 08:57 UTC cron run. The prerequisite is done;
+  what is left is the analysis itself.
 
 When to revisit:
   I and J together are the only paths here that do not require beating a price
@@ -45585,9 +45702,12 @@ THE OPTIONS THAT REMAIN
     For: a well-calibrated market is an asset here, not an obstacle; the WS
       feed, execution log and risk gates already exist.
     Against: a different discipline (inventory, adverse selection, latency);
-      the forecasting code becomes irrelevant; orderbook_depth_snapshots holds
-      0 rows, so there is ZERO measurement on the thing it depends on; needs
-      real capital to test.
+      the forecasting code becomes irrelevant; needs real capital to test.
+      The "orderbook_depth_snapshots holds 0 rows, so there is ZERO
+      measurement on the thing it depends on" objection is RETIRED as of
+      2026-08-28: the WS depth path was fixed and the table now accrues real
+      prod rows every cron run. The measurement is possible; it has not been
+      done. Do not quote the 0-row figure again.
 
  [4. THIN / LESS-EFFICIENT MARKETS -- REMOVED by the user 2026-08-26, and the
      data is more damning than the original "against" said. Measured on
@@ -45621,8 +45741,10 @@ THE OPTIONS THAT REMAIN
     For: model-free; strikes on one underlying must form a monotone CDF, so
       inconsistent rungs are arbitrage. compute_market_implied_distributions()
       already exists.
-    Against: unmeasured, because orderbook_depth_snapshots has never been
-      written. Turning the WS depth path on is the cheap prerequisite.
+    Against: still unmeasured -- but the reason has changed. The WS depth
+      path now runs (fixed 2026-08-28) and orderbook_depth_snapshots is
+      accruing real prod rows, so this is no longer blocked on a prerequisite,
+      only on someone doing the measurement.
 
  7. FIX THE BLEND'S DATA SOURCES, MEMBERSHIP AND WEIGHTS.  (added 2026-08-26
     after the user challenged the blanket "do not improve the forecast")
@@ -45661,12 +45783,14 @@ list below have all LANDED, and d's answer narrows this entry's own caveat)
        applied to 5's picks is the whole ask -- no new infrastructure.
   
   ROOT CAUSE FOUND 2026-08-28, and it was not what this entry says: the WebSocket had NEVER started in production -- cron.py read two env vars that exist nowhere else in the repo, so `_ws` was always None and the start path returned unlogged. Fixed; see "THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION". Re-read this entry's own gating claim against that before treating it as still blocked.
-  3, 6  unstarted, both STILL blocked on the same cheap prerequisite:
-       orderbook_depth_snapshots has never been written (0 rows as of
-       2026-08-27). Turning on WS depth capture unblocks BOTH at once, and
-       is the single highest-leverage unstarted item in this entry -- these
-       are the only two options that do not require beating a price already
-       better than the model.
+  3, 6  unstarted. NO LONGER BLOCKED as of 2026-08-28: the prerequisite was
+       shipped and is producing data. The first real cron run after the fix
+       (2026-08-28 08:57 UTC, 548 subscribed tickers, 126 seconds) wrote 726
+       rows across 526 distinct tickers, all env=prod -- the first rows this
+       table has ever held. The "0 rows as of 2026-08-27" reading below is
+       superseded; re-derive against the live table rather than quoting it.
+       These remain the only two options that do not require beating a price
+       already better than the model, and they now have an input.
 
   WHAT THE 2026-08-27 WORK DID NOT CHANGE: none of it created edge, and none
   of it was meant to. Items a-d were risk reduction, observability and one

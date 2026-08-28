@@ -16,6 +16,7 @@ Auth: RSA-PSS signed (same key as REST API)
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import os
@@ -119,6 +120,20 @@ _depth_lock = threading.Lock()
 # writing from this background thread is safe once throttled.
 _depth_last_persist: dict[str, float] = {}
 
+# Which reservation currently owns each ticker's throttle slot. The release
+# path needs to undo ITS OWN reservation and nothing else, so it needs an
+# identity token, not a value that merely looks unique.
+#
+# The timestamp above is NOT that token. Comparing the stored float against
+# the one we wrote is identity-by-clock-resolution: sound under Python 3.13+
+# on Windows (QueryPerformanceCounter, 100 ns) and unsound under the
+# GetTickCount64 clock earlier versions used, whose 15.6 ms granularity makes
+# two successive monotonic() calls returning the SAME float ordinary rather
+# than exotic. Nothing in this repo pins a Python floor, so a counter makes
+# the guarantee structural instead of environmental.
+_depth_reservation: dict[str, int] = {}
+_depth_reservation_seq = itertools.count()
+
 # Expected next sequence number per SUBSCRIPTION id, and which tickers belong
 # to each sid. Kalshi's seq counts per subscription, not per market, so a
 # per-ticker contiguity check is wrong: with N tickers on one sid, each
@@ -152,11 +167,41 @@ _DEPTH_PRICE_MAX = 1.0
 #
 # Bounded queue, drop-newest on overflow: losing a depth snapshot is a
 # tolerable cost, blocking the feed is not.
-_DEPTH_QUEUE_MAX = 512
+#
+# Sized to clear the subscribe burst, not the steady state. The burst is one
+# snapshot per subscribed ticker, so a cap below the ticker count guarantees
+# an overflow on every single run -- 512 against cron's 548 tickers fired
+# "the DB writer is not keeping up" on the 2026-08-28 08:57 UTC run, which
+# was a transient by construction and not the sustained stall that message
+# describes. A warning that cries wolf every run is worse than no warning:
+# it has to stay rare enough to still mean something when the writer really
+# does fall behind.
+#
+# Memory is the other axis, and the one that bounds any future raise: measured
+# against the first real production rows (726 rows, 2026-08-28), a queued item
+# is ~5 KB at the average 35 book levels and ~10 KB at the observed maximum of
+# 81, so 2048 slots reserve roughly 10 MB typical and 21 MB worst case. Fine
+# here; not free, and not something to quadruple again without re-measuring.
+_DEPTH_QUEUE_MAX = 2048
 _depth_write_queue: queue.Queue = queue.Queue(maxsize=_DEPTH_QUEUE_MAX)
 _depth_writer_thread: threading.Thread | None = None
 _depth_writer_lock = threading.Lock()
+
+# Lifetime count of failed ENQUEUE ATTEMPTS. Not the number of rows lost: a
+# starved ticker retries on every message (see the release in
+# _maybe_persist_depth), so this climbs with message rate, not with distinct
+# missing snapshots. The operator-facing number is the starved-TICKER count
+# below, which is what actually maps to absent rows.
 _depth_dropped_writes = 0
+_depth_dropped_tickers: set[str] = set()
+_depth_last_drop_warn: float = 0.0
+# Warn on a wall-clock schedule, never per N attempts. A fixed "every 100th
+# drop" gate is stable only while the drop RATE is stable, and releasing the
+# throttle slot raised that rate by roughly the message-per-ticker ratio --
+# about 33x at the ~300 msg/s this module has measured. The same gate would
+# have turned one warning per ~11s into three per second, each quoting a
+# number 33x larger than the rows actually lost.
+_DEPTH_DROP_WARN_INTERVAL = 60.0
 
 
 def _depth_writer_loop() -> None:
@@ -192,6 +237,32 @@ def _ensure_depth_writer() -> None:
         _depth_writer_thread.start()
 
 
+def drain_depth_queue(timeout: float = 5.0) -> int:
+    """Wait up to `timeout` for queued depth snapshots to reach the DB.
+
+    Returns how many were still queued when the budget ran out; 0 means the
+    queue emptied. The writer is a daemon thread that nothing joins, so at
+    process or cycle end whatever is still queued is discarded -- silently,
+    and now with a 2048-slot ceiling rather than 512. stop() already does a
+    final flush of the JSON cache for exactly this reason and did not do the
+    equivalent here.
+
+    Polls `empty()` rather than `join()`: join() has no timeout, and blocking
+    the shutdown path on a wedged SQLite write is the one outcome worse than
+    losing the rows. That makes the return value a lower bound on what was
+    saved -- the final item can still be mid-write when this returns 0.
+    """
+    if _depth_writer_thread is None or not _depth_writer_thread.is_alive():
+        # Nothing is draining, so nothing queued will ever land.
+        return _depth_write_queue.qsize()
+    deadline = time.monotonic() + max(0.0, timeout)
+    while time.monotonic() < deadline:
+        if _depth_write_queue.empty():
+            return 0
+        time.sleep(0.05)
+    return _depth_write_queue.qsize()
+
+
 def prune_depth_books(keep: set[str] | None = None) -> int:
     """Drop depth state for tickers outside `keep` (None = drop everything).
 
@@ -206,6 +277,10 @@ def prune_depth_books(keep: set[str] | None = None) -> int:
         for t in drop:
             _depth_books.pop(t, None)
             _depth_last_persist.pop(t, None)
+            # Same lifetime as the slot it identifies -- a token left behind
+            # for a pruned ticker would grow without bound and could still
+            # match an in-flight release.
+            _depth_reservation.pop(t, None)
         for sid, tickers in list(_depth_sid_tickers.items()):
             tickers -= drop
             if not tickers:
@@ -492,11 +567,18 @@ def _maybe_persist_depth(ticker: str) -> bool:
         snapshot_at = book.get("ts")
         # Reserve the slot before writing, still inside the lock, so a slow
         # or failing write can't let a second caller straight through.
+        token = next(_depth_reservation_seq)
         _depth_last_persist[ticker] = now
+        _depth_reservation[ticker] = token
 
-    global _depth_dropped_writes
-    _ensure_depth_writer()
+    # Inside the try, not before it: Thread.start() can raise (RuntimeError
+    # under thread exhaustion), and the slot is already reserved by this
+    # point. If releasing is right for a full queue it is right for every
+    # post-reservation failure -- otherwise the exact bug this function was
+    # fixed for reappears one line up, on a path no test can reach because
+    # the fixture stubs _ensure_depth_writer out.
     try:
+        _ensure_depth_writer()
         _depth_write_queue.put_nowait(
             {
                 "ticker": ticker,
@@ -511,14 +593,90 @@ def _maybe_persist_depth(ticker: str) -> bool:
         )
         return True
     except queue.Full:
-        _depth_dropped_writes += 1
-        if _depth_dropped_writes % 100 == 1:
-            _log.warning(
-                "depth snapshot queue full — dropped %d snapshot(s) so far; "
-                "the DB writer is not keeping up",
-                _depth_dropped_writes,
-            )
+        _release_depth_slot(ticker, token, last)
+        _record_depth_drop(ticker, now)
         return False
+    except Exception:
+        _release_depth_slot(ticker, token, last)
+        raise
+
+
+def _release_depth_slot(ticker: str, token: int, last: float | None) -> None:
+    """Undo a throttle reservation whose write never happened.
+
+    Reserving the slot and then failing to enqueue would silence this ticker
+    for a whole interval on account of a write that never happened -- exactly
+    what the empty-book branch in _maybe_persist_depth refuses to do, for the
+    same reason. Released, the next delta retries within seconds instead of
+    at the next interval boundary.
+
+    Conditional on the slot still holding OUR reservation, never a bare
+    clear: a concurrent caller may have re-reserved it, or prune_depth_books
+    may have dropped the ticker entirely, and in either case the slot is no
+    longer ours to hand back. Matching on the reservation token rather than
+    the timestamp is what makes that check independent of clock resolution --
+    see _depth_reservation.
+
+    KNOWN CONSEQUENCE, for whoever analyses the resulting table. Retrying on
+    the next message makes retries message-rate-weighted, so during a
+    sustained-overload window the ticker that wins each freed slot is the one
+    that trades most. The surviving rows therefore OVER-REPRESENT liquid
+    tickers, and nothing in orderbook_depth_snapshots marks which rows came
+    from such a window. Before any cross-ticker comparison (A4's ladder walk,
+    A17's replay), check for a drop window in the logs -- the alternative,
+    uniform per-interval retry, loses more rows overall and was what burned
+    the slot in the first place.
+    """
+    with _depth_lock:
+        if _depth_reservation.get(ticker) != token:
+            return
+        _depth_reservation.pop(ticker, None)
+        if last is None:
+            _depth_last_persist.pop(ticker, None)
+        else:
+            _depth_last_persist[ticker] = last
+
+
+def _record_depth_drop(ticker: str, now: float) -> None:
+    """Count a failed enqueue and warn on a wall-clock schedule.
+
+    Deliberately NOT "every Nth drop". Releasing the throttle slot means a
+    starved ticker retries on every message instead of once per interval, so
+    the drop RATE now tracks message rate -- roughly 33x higher at the
+    ~300 msg/s this module has measured. A fixed modulo gate would scale that
+    flood by the same constant it always did, turning one warning per ~11s
+    into three per second during the sustained stall this warning exists for.
+
+    The count an operator can act on is distinct STARVED TICKERS, not
+    attempts: attempts inflate with liquidity, while each starved ticker maps
+    to roughly one absent row per interval.
+    """
+    global _depth_dropped_writes, _depth_last_drop_warn
+    starved = 0
+    attempts = 0
+    # Under _depth_lock because `x += 1` on a module global is a non-atomic
+    # load/add/store, and stop() documents that a listener thread can outlive
+    # its join while the next cycle starts another -- two threads in here at
+    # once is an expected state, not a hypothetical. A lost update would also
+    # let a genuine stall skip an exact-value gate entirely.
+    with _depth_lock:
+        _depth_dropped_writes += 1
+        _depth_dropped_tickers.add(ticker)
+        if (now - _depth_last_drop_warn) >= _DEPTH_DROP_WARN_INTERVAL:
+            starved = len(_depth_dropped_tickers)
+            attempts = _depth_dropped_writes
+            _depth_dropped_tickers.clear()
+            _depth_last_drop_warn = now
+    if starved:
+        _log.warning(
+            "depth snapshot queue full — %d ticker(s) starved in the last "
+            "%.0fs; %d enqueue attempt(s) have failed since start (attempts "
+            "climb with message rate, not with rows lost). The DB writer is "
+            "not keeping up.",
+            starved,
+            _DEPTH_DROP_WARN_INTERVAL,
+            attempts,
+        )
 
 
 _ws_alive: bool = False
@@ -1170,6 +1328,22 @@ class KalshiWebSocket:
             prune_orderbook_cache(keep=set(self._tickers))
         except Exception as exc:  # never block the listener starting
             _log.debug("prune on start skipped: %s", exc)
+        # Name the cap before it bites. The subscribe burst is one snapshot
+        # per ticker with nothing drained yet, so a ticker set approaching
+        # _DEPTH_QUEUE_MAX brings back the standing "writer is not keeping
+        # up" alarm that raising the cap just removed -- and it would again
+        # be firing for a structural reason rather than a real stall. Two
+        # ways to get here: the traded universe grows, or stop() times out
+        # and listeners stack, each adding its own full burst to this one
+        # shared queue (4 stacked listeners at 548 tickers exceeds 2048).
+        if len(self._tickers) * 2 > _DEPTH_QUEUE_MAX:
+            _log.warning(
+                "kalshi_ws: %d ticker(s) subscribed against a %d-slot depth "
+                "queue — the subscribe burst is one snapshot per ticker, so "
+                "raise _DEPTH_QUEUE_MAX before it starts dropping",
+                len(self._tickers),
+                _DEPTH_QUEUE_MAX,
+            )
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True, name="KalshiWS")
         self._thread.start()
@@ -1210,6 +1384,17 @@ class KalshiWebSocket:
         # Final flush: the throttled writer may hold state that never reached
         # disk, and this is the last chance before the process or cycle ends.
         _maybe_write_cache_to_disk(force=True)
+        # The depth queue needs the same last chance. Its writer is a daemon
+        # nothing joins, so anything still queued here is discarded when the
+        # process or cycle ends -- and unlike a dropped enqueue, that loss had
+        # no log line at all.
+        stranded = drain_depth_queue()
+        if stranded:
+            _log.warning(
+                "kalshi_ws: %d depth snapshot(s) discarded at shutdown — the "
+                "writer did not drain within the budget; those rows are lost",
+                stranded,
+            )
         _log.info("kalshi_ws: stopped")
 
     def _run(self) -> None:

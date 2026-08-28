@@ -169,3 +169,10 @@ above accrue while the scanner is idle, and batches 70/71 are blocked on
 exactly this data.
 
 Start the scanner before doing anything else on this list.
+
+> **Superseded for `orderbook_depth_snapshots`, 2026-08-28.** That table was
+> not waiting on the scanner. The WebSocket had never started in production —
+> `cron.py` read two env var names that exist nowhere else in the repo, so the
+> listener was never constructed and the start path returned with no log at
+> any level. Fixed; the first cron run after the fix wrote 726 rows across 526
+> distinct tickers. Do not quote the zero above as current state.
