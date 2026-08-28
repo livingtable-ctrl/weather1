@@ -1211,6 +1211,25 @@ def _run_batch_prewarm_for_pairs(
         flush_ensemble_disk_cache,
     )
 
+    # NOTE what "gfs_seamless" actually delivers on FORECAST_BASE, because the
+    # name does not say it: measured live 2026-08-28 across all 21 CITY_COORDS
+    # cities, it returns ncep_hrrr_conus for hours 0-47 (913/955 hours
+    # identical, 95.6%) and gfs013 from hour 48 on (1404/1512, 92.9%). So the
+    # deterministic daily blend -- which is what analyze_trade uses as
+    # forecast_temp for non-hourly, non-METAR-locked markets -- prices on HRRR
+    # at exactly the horizon these markets settle at.
+    #
+    # That matters twice over. ncep_hrrr_conus is in TRACKING_ONLY_MODEL_NAMES,
+    # which this repo defines as "excluded from every live blend", and
+    # ensemble_member_scores holds ZERO rows for it -- so the model is neither
+    # supposed to be here nor actually being tracked. And the choice is not
+    # cosmetic: day-1 daily max differs from gfs013 by a mean of 3.87 F
+    # (median 3.06, max 12.42 in San Francisco) against ~1 F strike spacing.
+    #
+    # Deliberately NOT changed here. Which product is better is unmeasured,
+    # and switching would swap one unmeasured input for another while moving
+    # live pricing by several strikes. See backlog.txt "THE DETERMINISTIC
+    # BLEND TRADES ON HRRR UNDER A GFS LABEL".
     om_models = ["gfs_seamless", "ecmwf_ifs025", "icon_seamless"]
     n_models = len(om_models)
 

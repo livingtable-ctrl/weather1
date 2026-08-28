@@ -1,6 +1,124 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-28 -- found by batch-97 while running the gfs_seamless entry's
+  "one live call" diagnostic. Not a fix: changing the model id moves live
+  pricing on the deterministic path and needs the same held-out discipline
+  every other pricing change here has had.]
+  THE DETERMINISTIC BLEND TRADES ON HRRR UNDER A GFS LABEL, AND HRRR IS THE
+  ONE MODEL THIS REPO DECLARES EXCLUDED FROM EVERY LIVE BLEND
+Priority: MEDIUM -- it is a policy-conformance defect, not a skill question,
+  so it does NOT need the sample floors that block the weighting entries. The
+  repo states a rule about HRRR and then breaks it via an alias.
+Files: trade_cycle.py:1214 (om_models), weather_markets.py:2461
+  (batch_models), :2175 (_forecast_model_weights' baseline), :967
+  (TRACKING_ONLY_MODEL_NAMES).
+
+Measured live 2026-08-28 across ALL 21 CITY_COORDS cities (not one point --
+the single-city version of this finding was checked against every city before
+being written down), api.open-meteo.com/v1/forecast, hourly temperature_2m
+and daily temperature_2m_max, 5 forecast days each:
+
+    hours 0-47   gfs_seamless == ncep_hrrr_conus   913/955   95.6%
+    hours 48+    gfs_seamless == gfs013           1404/1512  92.9%
+
+  Uniform across the map. Six western cities (Denver, LA, LasVegas, Phoenix,
+  SanFrancisco, Seattle) match HRRR on 48/48 hours and correspondingly less
+  well against gfs013 later (53-55/72 vs a clean 72/72 everywhere else) --
+  consistent with the local-timezone window shifting where the HRRR horizon
+  falls, not with a different composition.
+
+  HOW MUCH IT MOVES THE FORECAST, day-1 daily max, converted to the units
+  these markets actually settle in:
+
+    |gfs_seamless - gfs013|   mean 3.87 F   median 3.06 F   max 12.42 F
+    cities differing >= 2 F: 15/21        >= 4 F: 10/21
+    worst: SanFrancisco 21.1 C vs 28.0 C
+
+  Kalshi temperature strikes sit ~1 F apart, so this is not a rounding-level
+  configuration detail -- the product choice moves the day-1 forecast by
+  several strikes in most cities. It does NOT say which product is better;
+  only that the choice is consequential and is currently being made by an
+  alias nobody chose deliberately.
+
+  So on FORECAST_BASE, "gfs_seamless" delivers HRRR for the first two days and
+  GFS013 after. The deterministic daily blend
+  (_forecast_model_weights: gfs_seamless / ecmwf_ifs025 / icon_seamless)
+  therefore prices on HRRR at 0-48h -- which is exactly the horizon these
+  markets settle at.
+
+  WHY THAT IS A POLICY DEFECT, not a preference. ncep_hrrr_conus is in
+  TRACKING_ONLY_MODEL_NAMES, which this repo's own docstring defines as
+  "excluded from every live blend", and batch-50 admitted it as "same-day
+  only, track-only" after a go/no-go. _fetch_hrrr_temp exists as the separate,
+  deliberately-gated way to consume it. The seamless alias routes around all
+  of that.
+
+  AND IT HAS NEVER BEEN TRACKED. model_forecast_means has an
+  "ncep_hrrr_conus" key wired in, but ensemble_member_scores holds ZERO rows
+  for it -- hrrr_forecast_mean is only set at days_out == 0 and
+  _score_ensemble_members skips None. So the model the repo believes it is
+  carefully tracking-before-trusting has no observations at all, while
+  trading live under another name.
+
+  NOT THE EXPLANATION for the gfs_seamless 2x-MAE entry. That measurement
+  comes from ENSEMBLE_BASE, where gfs_seamless resolves to ncep_gefs025 --
+  a different product on a different endpoint. The two must not be merged.
+
+MEASURED 2026-08-28, AND IT SAYS DO NOT SWITCH. The obvious reading of this
+entry -- "the label says GFS, so use GFS" -- is wrong on the data.
+
+  Open-Meteo's previous-runs API serves per-model forecasts from earlier runs
+  (hourly `temperature_2m_previous_day1`; the daily `_previous_dayN` spelling
+  is rejected, and history reaches back to at least 2026-05-01). Verified it
+  is a genuinely earlier run, not the analysis: current vs previous_day1 agree
+  on only 1 of 48 hours.
+
+  Scored both products at DAY-1 LEAD -- the horizon these markets settle at --
+  against the settled actual daily max already stored in
+  ensemble_member_scores. 107 city-days, 18 cities, 2026-05-14 .. 2026-08-25:
+
+      gfs_seamless (= HRRR at 0-48h)   MAE 2.50 F   median 2.20
+      gfs013       (= pure GFS)        MAE 3.16 F   median 2.30
+
+      paired diff (seamless - gfs013)  -0.656 F
+      95% CI [-1.233, -0.108]          P(seamless worse) = 0.009
+
+  The CI excludes zero. The HRRR-blended product is significantly BETTER at
+  the traded horizon, by about two thirds of a degree F. Switching to gfs013
+  would have made the deterministic forecast worse, on every city-day
+  available.
+
+  Caveats, and they matter: n=107 is just under batch-81's own 112-row floor
+  (derived for a signal-graduation decision, not a model swap, but the gap is
+  worth naming rather than hiding). One season, May-Aug. MAE, not Brier --
+  the same "MAE is not probability skill" caveat this repo applies everywhere
+  else applies here too, though for a point forecast feeding a Gaussian it is
+  a reasonable proxy. And this compares two GFS-family PRODUCTS; it says
+  nothing about whether the blend's membership or weights are right.
+
+What it would look like:
+  1. DO NOT switch to gfs013. Measured, significant, and in the wrong
+     direction. DONE 2026-08-28: both call sites now carry a comment naming
+     what gfs_seamless actually delivers and why it is deliberately kept.
+  2. FIX THE POLICY, because it is the thing that is wrong. HRRR is
+     materially helping at the horizon that trades, so
+     TRACKING_ONLY_MODEL_NAMES asserting it is "excluded from every live
+     blend" is a false statement about the system, not a rule the code is
+     violating. Either document the seamless exception explicitly or
+     reconsider what that constant is for. Note the irony: batch-50 admitted
+     HRRR as track-only after a go/no-go, and it has been quietly earning its
+     place ever since.
+  3. START RECORDING HRRR. ensemble_member_scores still holds ZERO rows for
+     ncep_hrrr_conus -- hrrr_forecast_mean is only set at days_out == 0 and
+     _score_ensemble_members skips None. A model contributing to live pricing
+     with no accuracy record is the remaining defect here, and it is now the
+     ONLY one: the pricing question is answered.
+
+When to revisit: before any change to the deterministic blend's membership or
+  weights, and alongside the gfs_seamless 2x entry -- same area, different
+  endpoint, and conflating them is the trap.
+
 [RESOLVED 2026-08-27 by batch-92 -- never filed as OPEN; the user pasted a
   red CI run and these four were one coherent cause]
   FOUR TESTS WROTE INTO THE REAL data/ ON CI AND ONLY ON CI, BECAUSE A
@@ -14988,8 +15106,11 @@ RESOLVED 2026-07-23 (item #1 only -- _model_weights() generalized, zero live
   as originally scoped: a naive "admit any model with tracked data" version
   (the first attempt) would have let `ecmwf_ifs025` leak into this function's
   output -- it's real, currently-tracked data (feeds
-  _forecast_model_weights()'s SEPARATE daily deterministic blend, has no
-  ensemble members, was never a candidate for THIS blend) that, unlike
+  _forecast_model_weights()'s SEPARATE daily deterministic blend, and never a
+  candidate for THIS blend -- note the "has no ensemble members" reason given
+  here at the time is FALSE and was disproven 2026-08-28 live against
+  ENSEMBLE_BASE, which returns 50 for ecmwf_ifs025; the exclusion is right,
+  the stated reason was not, see the _model_weights docstring entry) that, unlike
   gem_global/ukmo_global_ensemble_20km, is NOT blocked by
   TRACKING_ONLY_MODEL_NAMES from reaching mae_weights/learned_weights.json.
   The reviewer's own suggested fix (add ecmwf_ifs025 to
@@ -45173,6 +45294,59 @@ When to revisit:
 Sources for the published-ranking claim:
   https://www.getambee.com/blogs/best-weather-forecast-models
   https://open-meteo.com/en/docs/ensemble-api
+
+STEP 1 DONE 2026-08-28 (batch-97). Neither hypothesis survives as the
+  explanation for the path this entry actually measured -- one refuted
+  outright, one merely unsupported. Do not reweight; not for the reason the
+  entry expected.
+
+  WHICH PATH THE 2x NUMBER COMES FROM, established first because the entry's
+  Files: line points at the wrong blend. It cites _model_weights' baseline at
+  ~:2148 listing gfs/ecmwf_ifs025/icon -- that is _forecast_model_weights'
+  DETERMINISTIC daily blend. The 2x MAE table is built from
+  ensemble_member_scores, fed by model_forecast_means <- _get_consensus_probs
+  <- _model_prob_and_mean, whose docstring says "via ENSEMBLE_BASE". So the
+  measurement is of the ENSEMBLE path, and the two blends are different sets.
+
+  HYPOTHESIS 2 (member-count asymmetry) -- REFUTED. Live counts, 2026-08-28,
+  at 3/10/16 forecast days: icon 39, gfs 30, aifs 50, ifs025 50, unchanged at
+  every horizon. Nothing drops to zero members the way the far-tail rain case
+  did. What does vary is how far members EXTEND: icon stops at ~177h (~7.4d)
+  while gfs reaches 384h and ecmwf ~350h -- a real asymmetry, but beyond day 7
+  and therefore not at the horizons these markets trade.
+
+  HYPOTHESIS 1 (product/resolution mismatch) -- NOT SUPPORTED, stated more
+  weakly than "refuted" on purpose. On ENSEMBLE_BASE the repo's alias map
+  (_MODEL_RUN_META_NAMES) resolves gfs_seamless -> ncep_gefs025 and
+  ecmwf_aifs025_ensemble -> ecmwf_aifs025_ensemble, i.e. both LABELLED
+  0.25 deg. A filename is not a measurement, so it was checked empirically:
+  sampling hour-12 member means at five points 0.125 deg apart, all three
+  models return 4 distinct values of 5 AND repeat at the SAME position --
+  which is what one shared served-grid geometry looks like, not what two
+  different native grids would produce.
+
+  WHAT THAT STILL DOES NOT RULE OUT: the served grid is not the native one. A
+  product upsampled from 0.5 deg onto a 0.25 deg grid would also vary
+  smoothly across these offsets. So this is evidence against a GROSS
+  resolution mismatch, not proof of parity. Settling it properly needs
+  Open-Meteo's per-dataset grid metadata, not inference from returned values.
+
+  It does not change the action either way: step 2 (Brier at a defensible n)
+  gates any reweighting regardless of which hypothesis survives.
+
+  WHAT THAT LEAVES. The 2x figure is not explained by configuration, so it is
+  either a real GEFS deficit on this task or noise -- and this entry's own
+  caveats now carry the entire weight: n=21 paired cells, one month, summer,
+  MAE not Brier, and on Brier the ordering PARTLY INVERTS (min-Brier puts gfs
+  BEST at 0.3613). A negative result, and the right one to have: the entry
+  said not to reweight before establishing which hypothesis held. Neither
+  holds. Steps 2 and 3 stand unchanged and still need Brier at a defensible n.
+
+  A SEPARATE, REAL DEFECT FOUND WHILE CHECKING -- on the OTHER blend, filed
+  as its own entry: on FORECAST_BASE, gfs_seamless is ncep_hrrr_conus for the
+  first 48 hours. See "THE DETERMINISTIC BLEND TRADES ON HRRR UNDER A GFS
+  LABEL". It does not explain the number above -- different endpoint -- but it
+  is why this entry's instinct to suspect the product was sound.
 
 
 [RESOLVED 2026-08-28 by batch-96 -- mechanism fixed, weight VALUES
