@@ -44980,20 +44980,33 @@ THE OPTIONS THAT REMAIN
       one live call discriminates the two hypotheses. Do not reweight before
       that. See its own entry.
 
-RECOMMENDATION AS OF 2026-08-26 (third revision -- 2 has LANDED and its
-scope is narrower than this entry originally implied)
+RECOMMENDATION AS OF 2026-08-27 (fourth revision -- items a-d of the action
+list below have all LANDED, and d's answer narrows this entry's own caveat)
 
   STATUS
-    2  DONE, batch-87, cc5a2d05 -- but MULTI-DAY ONLY, and see the caveat
-       below before treating its numbers as general.
+    2  DONE, batch-87, cc5a2d05 -- but MULTI-DAY ONLY. See the caveat below,
+       which batch-93 has since NARROWED: the population is selected, but
+       out-of-sample that selection costs nothing where the fit is applied.
     7  not started. Now reduced to a quantisation fix plus a false docstring;
        both are filed as their own entries, so option 7 no longer needs a
        batch of its own and can ride along with whatever next touches
        weather_markets.py.
     1  in effect by default -- cron runs unattended and data accrues.
     5  not started. Still the only positive result and still unvalidated
-       forward.
-    3, 6  unstarted, both blocked on orderbook depth capture that has never run.
+       forward. The forward-validation MECHANISM now exists and is proven:
+       batch-89/90 built exit_rule_shadow_log, whose first cycles confirmed
+       it prices every position in the tradeable window. The same pattern
+       applied to 5's picks is the whole ask -- no new infrastructure.
+    3, 6  unstarted, both STILL blocked on the same cheap prerequisite:
+       orderbook_depth_snapshots has never been written (0 rows as of
+       2026-08-27). Turning on WS depth capture unblocks BOTH at once, and
+       is the single highest-leverage unstarted item in this entry -- these
+       are the only two options that do not require beating a price already
+       better than the model.
+
+  WHAT THE 2026-08-27 WORK DID NOT CHANGE: none of it created edge, and none
+  of it was meant to. Items a-d were risk reduction, observability and one
+  measurement. The direction question below is exactly where it was.
 
   WHAT 2 ACTUALLY BOUGHT, and it is less than "recalibrated":
     d>=1  n=76   raw 0.1454 -> 0.0952  vs market 0.0911   t=-4.42 raw, +0.28 mkt
@@ -45013,22 +45026,57 @@ scope is narrower than this entry originally implied)
   numbers are a claim about EXTREME-PRICED multi-day markets, not multi-day
   markets in general. That does not undo the change; it bounds what it proved.
 
-  WHAT TO DO NEXT, in order:
-   a. Settle the deployment-day mass exit before the next live-ish scan.
-      7 open positions, 4 at d>=1, and 9c flips the favoured side on 46 of 76
-      multi-day rows, so model_flipped can fire on several at once. At n=4
-      "accept it explicitly" is defensible; letting it happen unnoticed is not.
-   b. Decide whether 'between' should be placing at all, and whether the
-      anomaly halt stays overridable. Both are one-line policy calls with the
-      evidence already in hand, and they are the cheapest real risk reduction
-      available.
-   c. The observability/durability batch: _log.debug discarded repo-wide,
-      restore_data accepting a database-less snapshot, unpruned flat copies.
-      One coherent group, and the first item is WHY the backup defect hid.
-   d. Re-derive 2's population by FIRST-scan horizon before anyone treats its
-      numbers as general.
-   e. Only then 7's quantisation fix, measured separately from 2 so each is
-      attributable.
+  THE CAVEAT IS NARROWER THAN THAT, measured 2026-08-27 (batch-93, commit
+  d0f32644; repro audit/reproductions/batch93_dgte1_population_selection.py).
+  The DESCRIPTIVE half above stands and reproduces: 40.0% of the fit rows are
+  extreme-priced, 75 of 78 of those below 0.10. The OPERATIONAL half does not.
+  Refitting on the 117 mid-priced rows alone and scoring OUT-OF-SAMPLE on
+  held-out mid-priced rows -- the tradeable domain the calibration is actually
+  applied to -- including the selected extremes is if anything slightly
+  BETTER, in 3 of 4 chronological splits (paired mean -0.00100, 95% CI
+  [-0.02333, +0.02127], P(including them hurts) = 0.468).
+
+  In-sample the two fits look wildly different (a=3.5068 vs 2.4989, diverging
+  +15.7pp at p=0.65). That number is a trap -- fitted and scored on the same
+  rows -- and quoting it would overstate the problem as badly as ignoring the
+  selection understates it.
+
+  So: do not treat 2's numbers as a general claim about multi-day markets
+  (the population really is selected), but equally do not discount them as an
+  artefact of extreme-priced rows (that selection has no measurable cost where
+  the fit is used). Underpowered -- 47 held-out rows, CI +/-0.02 on a Brier of
+  ~0.09 -- so this is "no detectable harm", not "proven harmless", and the
+  80% split flips sign. Worth re-running at the 60-day mark; the repro script
+  is deliberately not date-pinned.
+
+  WHAT TO DO NEXT, in order -- a THROUGH d ARE NOW DONE (2026-08-27):
+   a. DONE, batch-89, commit 66293348. Settle the deployment-day mass exit.
+      Resolved by making the exit check compare on ONE calibration basis
+      (Position.entry_prob_precal) rather than by draining positions: the
+      real defect was bigger than deployment day, since entry_prob and the
+      current probability could be on different bases at any refit. The
+      automated vector was also misnamed in the original entry --
+      order_executor._check_early_exits, not paper.check_model_exits.
+   b. DONE 2026-08-26/27. The anomaly halt STAYS overridable: it gates
+      placement only, and scanning plus shadow logging continue through it,
+      so honouring it costs no data. 'between' was left as-is (shadow-only,
+      4/20 gate) -- and the measurement that had argued for changing it was
+      RETRACTED (commit 621fd794): 69 of its 73 rows measured deleted code.
+   c. DONE, batch-90, commit 542ccf05. The observability/durability batch.
+      Note the entry's own diagnosis was incomplete: DEBUG was suppressed
+      TWICE, by root.setLevel(INFO) and by a process-global
+      logging.disable(logging.DEBUG) nobody had noticed. Fixing only the
+      first would have changed nothing. Routing DEBUG to disk also turned
+      out to be a SECRETS issue -- urllib3 logs request paths, and this repo
+      puts two live API keys in URLs -- caught in review, not by me.
+   d. DONE, batch-93, commit d0f32644. Re-derive 2's population by FIRST-scan
+      horizon. The METHOD this list proposed turned out to be impossible:
+      api_requests cannot reconstruct scan histories (the scan uses a LIST
+      endpoint; per-ticker coverage is 100% at d=0 against 79% at d>=1, i.e.
+      confounded with the exact variable under study). Answered by measuring
+      the selection's IMPACT instead -- see the narrowed caveat above.
+   e. NOT STARTED. 7's quantisation fix, measured separately from 2 so each
+      is attributable.
 
   If the goal is a trading system rather than a research platform, argue it
   from 5 or 6 -- they are the only paths that do not require beating a price
