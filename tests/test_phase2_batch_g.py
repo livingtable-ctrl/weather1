@@ -232,6 +232,9 @@ class TestRestoreDataConfirm:
         backup_root = sync_root / "KalshiBot" / "data" / "2026-01-01"
         backup_root.mkdir(parents=True)
         (backup_root / "paper_trades.json").write_text('{"restored": true}')
+        # Complete snapshot: restore_data refuses a database-less one, and
+        # neither of these tests is about that guard.
+        (backup_root / "predictions.db").write_bytes(b"db")
 
         with patch.object(cloud_backup, "_find_sync_folder", return_value=sync_root):
             result = cloud_backup.restore_data(data_dir=data_dir, confirm=True)
@@ -251,6 +254,9 @@ class TestRestoreDataConfirm:
         backup_root = sync_root / "KalshiBot" / "data" / "2026-01-01"
         backup_root.mkdir(parents=True)
         (backup_root / "paper_trades.json").write_text('{"restored": true}')
+        # Complete snapshot: restore_data refuses a database-less one, and
+        # neither of these tests is about that guard.
+        (backup_root / "predictions.db").write_bytes(b"db")
 
         with patch.object(cloud_backup, "_find_sync_folder", return_value=sync_root):
             cloud_backup.restore_data(data_dir=data_dir, confirm=True)

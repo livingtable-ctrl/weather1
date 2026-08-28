@@ -1810,7 +1810,16 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
                 brier=brier,
             )
     except Exception as exc:
-        _log.debug("_score_ensemble_members: skipped tracker update: %s", exc)
+        # WARNING: this scores settled ensemble members against the observed
+        # temperature, which happens exactly once per settlement. A swallowed
+        # failure here is not retried by anything, so the member's accuracy
+        # record for that day is permanently absent -- and per-model weights
+        # are fitted from those records.
+        _log.warning(
+            "_score_ensemble_members: tracker update FAILED — this "
+            "settlement's member scores are lost: %s",
+            exc,
+        )
 
 
 def close_paper_early(

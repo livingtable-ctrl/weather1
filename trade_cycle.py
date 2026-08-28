@@ -1258,7 +1258,22 @@ def _run_batch_prewarm_for_pairs(
 
         _flush_members()
     except Exception as _mv_exc:
-        _log.debug("member values flush skipped: %s", _mv_exc)
+        # WARNING for the same reason as flush_member_values' own handler:
+        # the comment directly above says a canceled run "must not silently
+        # drop what it already collected", and then logged the outcome at a
+        # level this repo discards.
+        #
+        # RETAINED, not dropped. flush_member_values swallows every
+        # Exception internally and returns 0, so this outer arm can only
+        # fire if the import itself raises -- and then the pending buffer
+        # was never drained, so nothing is lost yet. An earlier revision
+        # said "collected rows dropped", which is the same wrong-cause claim
+        # this batch exists to stop making: it would send someone hunting
+        # for data loss that had not happened.
+        _log.warning(
+            "member values flush could not run (rows retained in buffer): %s",
+            _mv_exc,
+        )
 
     # Step 2: per-city sources that don't support batching.
     def _warm_one(city_date: tuple[str, str]) -> None:

@@ -1,6 +1,123 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-27 -- found by batch-90's scoped regression run, PROVEN
+  PRE-EXISTING against unmodified HEAD in a throwaway worktree, and
+  deliberately not fixed there: different subsystem, its own investigation]
+  A main.py importlib.reload(utils) BREAKS AN IDENTITY ASSERTION IN ANOTHER
+  TEST FILE -- ORDER-DEPENDENT, AND CI ORDERING DECIDES WHETHER IT FIRES
+Priority: Medium -- it is a test-suite integrity problem, not a product bug,
+  but it makes a green run depend on which files were selected. Anyone
+  scoping a suite that happens to include both files sees a failure with no
+  connection to their change, which is how real findings get dismissed.
+Files: tests/test_phase2_batch_h.py (TestMosUtcDate::test_days_out_frozen),
+  tests/test_menu_ux.py (the cmd_settings tests), main.py:7901/7937/8177
+  (importlib.reload(_utils_mod)), mos.py (its `_utc_today` binding).
+
+Problem:
+  Minimal reproducer, on a clean checkout of 3477c4d1 with NO batch-90
+  changes present:
+      pytest tests/test_menu_ux.py tests/test_phase2_batch_h.py
+  ->  FAILED TestMosUtcDate::test_days_out_frozen
+      assert mos._utc_today is utils.utc_today
+      AssertionError: assert <function utc_today at 0x...D50>
+                          is <function utc_today at 0x...2A0>
+  Either file alone passes. So do batch_h + any of test_scan_funnel,
+  test_trade_cycle_engine, test_cron_integration, test_main_cron_smoke,
+  test_cloud_backup, test_batch33_reliability, test_batch75. Only
+  test_menu_ux triggers it.
+
+  Two DIFFERENT function objects with the same name is the tell:
+  test_menu_ux exercises main.cmd_settings, which calls
+  importlib.reload(_utils_mod). reload() rebinds every name in utils to a
+  NEW object, while mos._utc_today still holds the reference captured at
+  mos's own import. The identity assertion then compares a pre-reload
+  function against a post-reload one.
+
+  main.py's own module comment (~:115-125) already describes this hazard
+  for reload(utils) and says the call sites were converted for it -- so the
+  mechanism is known; what is new is that a TEST asserts cross-module
+  object identity that any reload in the same session invalidates.
+
+  Note this is not the monkeypatch-vs-reload interaction already recorded
+  elsewhere; nothing is patched here. It is plain object identity across a
+  module reload.
+
+What it would look like:
+  Decide which side is wrong. Either the assertion should compare by
+  qualified name / behaviour rather than `is` (identity across a reload is
+  not a property mos can guarantee), or test_menu_ux should restore
+  sys.modules["utils"] after any test that reaches a reload path, or
+  cmd_settings should stop reloading utils wholesale. The first is the
+  smallest and probably correct: the test's own docstring says it wants to
+  prove "the name mos binds is genuinely utils.utc_today", and that claim
+  survives a reload if it is checked by identity of __module__/__qualname__
+  instead of by `is`.
+
+  Whichever is chosen, add a regression that runs the two files together --
+  the bug is invisible to any test that runs either file alone.
+
+[RESOLVED 2026-08-27 by batch-90 -- never filed as OPEN; found by the user
+  asking why three numbers in one cron cycle disagreed, and fixed in the
+  same session]
+  THE SCAN FILTER BREAKDOWN SUMMED TO MORE MARKETS THAN WERE SCANNED
+Priority: was Low -- display only, no decision read it. Recorded because
+  the line is the operator's main view of why a scan produced what it did,
+  and it was arithmetically impossible on its face.
+Files: cron.py (_format_filter_breakdown, new), trade_cycle.py (the dbg
+  cascade it reports on).
+
+Problem:
+  Three counters in one cycle, none of which agreed:
+    [cron] scanned 810 market(s)
+    [cron] filter breakdown -- ... (sums to 808)
+    [cron] Scanned 794 market(s) -- 6 with edge
+  The 810/794 pair is benign and was simply unlabelled: 810 is
+  len(result.markets), the PRE-dedup raw fetch; 794 is result.scanned ==
+  len(deduped_markets). 16 markets were dropped as duplicate or stale.
+
+  The breakdown was the real defect -- it summed HIGHER than the markets
+  scanned, which reads as a counting bug. It is not: two of the nine printed
+  counters deliberately do not belong to the partition.
+    * same_day increments and then explicitly falls through
+      ("# fall through -- do not skip"), so a same-day market is ALSO
+      counted in whichever bucket it lands in.
+    * placement_gate is incremented in the later placement phase, over
+      markets already counted in `passed`.
+  The excess is exactly same_day + placement_gate, verified on both
+  available cycles: 808-794 = 14 = 12+2, and 566-560 = 6 = 6+0.
+
+  Separately, `analysis_errors` was never on this line at all. It is not
+  unread data -- cron writes `dict(_dbg)` wholesale into signals_cache.json,
+  so /api/scan-stats has always returned it and the dashboard's Risk tab
+  renders it under its raw key. But the terminal is where a cron cycle is
+  actually read, and there the one bucket meaning "the analysis raised" was
+  invisible -- and its omission is what made the printed list silently
+  UNDER-sum whenever it was non-zero, partially masking the overcount above.
+
+  (Grepping the repo for "analysis_errors" finds only its definition and its
+  increment, which is what made it look unread. The consumer passes the dict
+  whole and never names the key. See
+  [[feedback_grep_hit_needs_its_enclosing_function]] for the same shape.)
+
+RESOLVED 2026-08-27 (batch-90). Formatting extracted from cmd_cron into
+  cron._format_filter_breakdown(dbg, scanned), which had no test coverage at
+  all while inline. Two lines now: the seven-bucket partition with an
+  explicit "= N of M scanned" reconciliation, then the two overlapping tags
+  on their own line marked as overlapping.
+
+  The reconciliation makes both properties self-checking. A short total now
+  means the scan did not finish (kill switch mid-scan or the analysis
+  timeout, both of which break out of the loop) -- and a MISSING dict key is
+  reported as a missing key, not as a short scan, because "I cannot see the
+  counter" and "the scan stopped early" are different claims and only one is
+  an accusation.
+
+  One test binds _BREAKDOWN_PARTITION_KEYS to trade_cycle's ACTUAL
+  `dbg[...] += 1` sites via AST rather than to a copy of the list, so a new
+  exclusive bucket added upstream fails a test instead of silently making
+  every future scan report SHORT BY <that bucket's count>.
+
 
 [OPEN 2026-08-26 -- opus review of batch-85, LOW-5. Filed rather than fixed
   ONLY because batch-85 did not own cron.py (batch-86 held it in parallel);
@@ -1003,8 +1120,9 @@ What it would look like:
   torn-file assertion absolute. Do not "fix" it by raising the retry count
   -- that just moves the coin flip.
 
-[OPEN 2026-08-26 -- found by batch-86 item 1 while fixing the backup side
-  of the same hole; the user's AskUserQuestion answer scoped this batch to
+[RESOLVED 2026-08-27 by batch-90 -- resolution block at the end of this
+  entry. Originally filed 2026-08-26 by batch-86 item 1 while fixing the
+  backup side of the same hole; the user's AskUserQuestion answer scoped this batch to
   the backup half, so the restore half is filed rather than bundled]
   restore_data WILL HAPPILY RESTORE FROM A SNAPSHOT THAT HAS NO DATABASE IN
   IT
@@ -1037,8 +1155,57 @@ What it would look like:
   Whichever, the choice belongs to the user -- it trades "restore something
   now" against "do not silently restore a data-less snapshot".
 
-[OPEN 2026-08-26 -- found by batch-86 item 1 while measuring the real
-  backup folder] THE BACKUP ROOT'S PRE-ROTATION FLAT COPIES ARE NEVER
+RESOLVED 2026-08-27 (batch-90). The user chose the second option, as this
+  entry recommended: refuse rather than silently reach further back.
+
+  Re-verified before implementing, and the defective snapshot is still
+  there: 2026-08-25 holds 100 files (all .json) and ZERO .db, against
+  111 files / 2 .db for 2026-08-26 and 112/2 for 2026-08-27.
+  (CORRECTED after review: this block first said 96 / 104 / 105, every one
+  understated, and it contradicted backup_data's own batch-86 comment --
+  which had said "100 .json files and ZERO .db" and was right all along.
+  A re-measurement meant to re-verify an old number produced a worse one;
+  the counts above are a fresh `find -maxdepth 1 -type f` per directory.)
+  Still latent only because the
+  NEWEST is complete, and pruning removes oldest-first so 08-25 ages out
+  before the good ones -- it stays latent unless a future cycle writes a
+  fresh defective snapshot.
+
+  restore_data() gained `allow_missing_db: bool = False`, appended last and
+  defaulted (every call site in the repo already passes by keyword, checked
+  -- see [[feedback_inserted_param_rebinds_positional_callers]] for why the
+  position matters). When the selected snapshot holds no .db it now prints
+  what the snapshot actually contains, names the newest dated snapshot that
+  DOES hold a database, and returns False without copying anything.
+
+  Fails OPEN on an enumeration error rather than closed. Refusing on a bare
+  OSError would convert "I could not read the directory" into the much
+  stronger claim "this snapshot has no database" -- and OneDrive returns
+  transient errors for dehydrated files, which is exactly the case
+  backup_data's own glob already guards. A verdict built from absence is an
+  accusation; that path prints and proceeds.
+
+  ADJACENCY FIX, found while wiring the guard and fixed in the same change
+  (workflow step 27 -- it feeds the same data flow this entry is about):
+  `py main.py restore` HAS NEVER WORKED. main.py's dispatch called
+  `_restore()` with no arguments, restore_data requires confirm=True, and
+  nothing wrapped the call -- so the command raised an uncaught ValueError
+  every time rather than restoring. It now prompts at the operator boundary
+  ("Restore OVERWRITES files in your local data/ directory") and passes
+  confirm=True on "y", which is what that flag is documented to mean.
+
+  Three EXISTING tests had fixtures of exactly the defective shape (a dated
+  dir holding only .json) and would have started failing at the new guard:
+  test_phase2_batch_g's two restore tests and test_batch33_reliability's
+  pre_restore-nesting test. Each got a .db added to its fixture rather than
+  an exemption -- they are about JSON restore, snapshotting and nesting, and
+  none of them is about database presence. See
+  [[feedback_impossible_fixture_trips_an_unrelated_gate]].
+
+[RESOLVED 2026-08-27 by batch-90 -- decided, not coded: the user chose to
+  keep the files and document why. Resolution block at the end. Originally
+  filed 2026-08-26 by batch-86 item 1 while measuring the real backup
+  folder] THE BACKUP ROOT'S PRE-ROTATION FLAT COPIES ARE NEVER
   PRUNED, BECAUSE THE PRUNER ONLY LOOKS AT DIRECTORIES
 Priority: Low -- ~16 MB of dead weight, no correctness impact. Filed
   because it is invisible: every retention number the repo reasons about
@@ -1065,8 +1232,36 @@ Not done in batch-86 on purpose:
   in code. Recorded here so the next reader knows the files are known
   about, not overlooked.
 
-[OPEN 2026-08-26 -- found by batch-86 item 1 while establishing which code
-  path lost the database] EVERY _log.debug IN THIS CODEBASE IS DISCARDED IN
+RESOLVED 2026-08-27 (batch-90) as a DELIBERATE KEEP, re-confirmed by the
+  user against the same three options batch-86 offered. No pruner change.
+
+  Re-measured 2026-08-27 rather than trusting the entry's own figure: 35
+  flat files, 19.9 MB (the entry said ~16 MB, which was the .db subtotal --
+  archive.db 0 B, execution_log.db 53 KB, paper.db 0 B, paper_trades.db
+  0 B, predictions.db 16.2 MB, tracker.db 0 B, all 2026-04/05).
+
+  Kept because restore_data's `src = backup_root` fallback reads them: they
+  are the last-resort restore path when no dated directory exists. 19.9 MB
+  does not buy that back, and a prune loop that deletes individual FILES
+  from the backup root is a materially more dangerous loop to get wrong
+  than one that only removes whole dated directories.
+
+  What actually shipped is the documentation the entry asked for: a comment
+  at the `if not old_dir.is_dir(): continue` site recording that the skip is
+  deliberate, what the files are, why they stay, and the consequence for
+  anyone reading retention numbers -- every retention figure in that module
+  counts dated DIRECTORIES, and these files are in none of them. That was
+  the actual defect here: the entry's own Priority line says it was filed
+  "because it is invisible", and invisibility is what got fixed.
+
+  Note the fallback is currently unreachable anyway -- three dated
+  directories exist, so `src` never falls through to backup_root.
+
+[RESOLVED 2026-08-27 by batch-90 -- resolution block at the end of this
+  entry. The original text below keeps its INCOMPLETE diagnosis on purpose:
+  it named only root.setLevel(INFO) and missed a second, independent
+  process-global suppressor. Originally filed 2026-08-26 by batch-86 item 1
+  while establishing which code path lost the database] EVERY _log.debug IN THIS CODEBASE IS DISCARDED IN
   PRODUCTION, SO "LOGGED AT DEBUG" IS NOT LOGGED AT ALL
 Priority: Medium -- it is the reason batch-86's defect went unnoticed for a
   day, and the same reasoning error ("it is logged, so it is observable")
@@ -1097,6 +1292,211 @@ What it would look like:
   those specific ones; a skip that changes what a run produced is not a
   debug detail. Do NOT promote them all -- batch-25 already showed what 4
   spurious WARNINGs per cron cycle does to signal.
+
+RESOLVED 2026-08-27 (batch-90). Both pieces the entry separated, per the
+  user's choice of "debug file + narrow promotions".
+
+  THIS ENTRY'S DIAGNOSIS WAS INCOMPLETE, found while re-verifying it. It
+  named `root.setLevel(logging.INFO)` (its cited main.py:13019, now :13098)
+  as the cause. There is a SECOND, independent suppressor: main() called
+  `logging.disable(logging.DEBUG)` in the else-branch of its --debug
+  toggle. That is a PROCESS-GLOBAL kill that outranks every logger and
+  handler level, so fixing only the setLevel would have changed nothing and
+  looked like the fix had failed. Both are gone.
+
+  (1) Handler split. Root now sits at DEBUG and each handler carries its own
+  floor: console INFO, bot.log INFO, and a new bot.debug.log at DEBUG with
+  its own RotatingFileHandler budget (10 MB x 5). Nothing an operator
+  already reads gets noisier -- that is the point of a separate sink rather
+  than lowering the existing handler -- and a chatty debug stream cannot
+  evict WARNING/ERROR history from bot.log's rotation. `--debug` now means
+  "also put DEBUG on the console and in bot.log" rather than "start
+  recording it", since recording is now unconditional.
+
+  (2) Promotions: THREE sites, and not the obvious ones. weather_markets'
+  five "[CircuitBreaker] <x> circuit open -- skipping fetch" lines fire per
+  city/date (up to ~60 a cycle), so promoting them is precisely the
+  batch-25 failure mode this entry warns about -- and the breakers already
+  emit one WARNING on opening. cloud_backup's "no tables" line is likewise
+  already surfaced in aggregate by batch-86's own "N source(s) skipped as
+  empty" INFO line.
+
+  What got promoted instead is the set that silently DROPS FORWARD-ONLY
+  DATA, fires only on exception, and whose own comments already claimed the
+  loss was logged:
+    * weather_markets.flush_member_values -- its comment sells the design as
+      trading "a bounded, LOGGED loss for an unbounded memory leak". At
+      DEBUG the loss was bounded and SILENT. Member values are forward-only;
+      a dropped batch is gone, and the ens_var counter the EMOS go-live bar
+      reads just quietly stops advancing.
+    * trade_cycle._run_batch_prewarm_for_pairs' flush handler -- the comment
+      directly above it says a canceled run "must not silently drop what it
+      already collected", and then logged the drop at a discarded level.
+    * paper._score_ensemble_members' tracker-write handler -- runs once per
+      settlement, never retried, and per-model blend weights are fitted from
+      exactly those rows.
+
+  A live example of why the file half matters, from the 2026-08-27 17:31
+  cycle: `hrrr_openmeteo` opened after 3 failures. All three failures were
+  logged at DEBUG (weather_markets:3249) and discarded, so the CAUSE is
+  unrecoverable from that run -- only the breaker's own "OPEN after 3
+  failures" survived. (HRRR is in TRACKING_ONLY_MODEL_NAMES, so no trade was
+  affected; the point is the missing evidence, not the impact.)
+
+  Tests (re-derived at the moment of writing, after the review round): 27
+  new in tests/test_batch90_debug_logging_and_restore.py, with 14 causal
+  claims mutation-tested individually via the Edit tool, each reverted and
+  confirmed by a fresh grep for leftover markers. Scoped regression across
+  12 files: 446 passed, 1 failed. ruff/ruff-format/mypy clean via the
+  pre-commit hook.
+
+  THE 1 FAILURE IS PRE-EXISTING AND UNRELATED, proven rather than assumed:
+  tests/test_phase2_batch_h.py::TestMosUtcDate::test_days_out_frozen fails
+  identically on a clean worktree at 3477c4d1 with none of this change
+  present (baseline 419 passed / 1 failed; with this change 446 passed / 1
+  failed -- the same one). It is an order-dependent reload/identity problem
+  filed as its own entry at the top of this file. The first hypothesis here
+  was inspect.getsource contamination from editing during the run; that was
+  WRONG, and the baseline run is what showed it.
+
+  ONE TEST WAS VACUOUS on its first write, caught by mutation testing:
+  _score_ensemble_members has three early returns before the promoted
+  handler, so the original fixture never reached it and the assertion had
+  been written conditionally around that. Replaced with a real seeded
+  predictions+outcomes row and an unconditional assertion, then
+  mutation-confirmed. See
+  [[feedback_mutation_survivor_can_mean_the_test_is_vacuous]].
+
+  test_menu_ux's stub of logging.disable is kept but its comment corrected:
+  it described main()'s behaviour in the present tense, which is no longer
+  true. It now stands as a guard against reintroduction.
+
+OPUS REVIEW ROUND 1 -- 1 HIGH, 7 MEDIUM, 12 LOW, 6 INFO. Every finding
+  addressed; the HIGH was a security regression this change introduced.
+
+  H-1 (SECURITY, the important one). Raising the ROOT logger un-gates every
+  THIRD-PARTY library too, and urllib3 logs each request as
+  '%s://%s:%s "%s %s %s"' with the path AND query string included. This repo
+  authenticates two weather providers through the URL itself --
+  weather_markets:3471 puts PIRATE_WEATHER_API_KEY in the PATH
+  (f"{_PIRATE_FORECAST_BASE}/{api_key}/{lat},{lon}") and :3310 passes
+  WEATHERAPI_KEY as a query param -- and BOTH are set in the live .env. So
+  the change as first written would have begun writing live credentials to
+  disk on every fetch. websockets is the same story one level up: it caches
+  logger.isEnabledFor(DEBUG) at construction and then logs every handshake
+  header, which for kalshi_ws includes KALSHI-ACCESS-KEY and
+  KALSHI-ACCESS-SIGNATURE.
+
+  This directly reverses a position the repo already holds:
+  notify._redact_webhook_url exists precisely because "a Discord webhook
+  URL's path IS its bearer token". Verified by execution, not reasoning --
+  urllib3's effective level really is DEBUG after the new _setup_logging.
+
+  Fixed in two layers, because either alone is insufficient: urllib3 /
+  requests / websockets / asyncio / charset_normalizer are pinned back to
+  INFO in _setup_logging, AND the two repo-owned handlers that logged a
+  requests exception raw now go through a new weather_markets._redact_secret
+  (requests embeds the full failing URL in str(exc), so those leak even with
+  urllib3 pinned). The helper carries the same empty-string guard as
+  notify._redact_webhook_url, for the same reason: "abc".replace("", X)
+  inserts X between every character.
+
+  M-1/M-2: the reconciliation inferred "scan did not complete" from
+  arithmetic while TradeCycleResult.scan_completed -- the authoritative flag,
+  set from the loop's own for/else -- was sitting right there and already
+  read elsewhere in cron.py. It is now passed in: short + not completed says
+  the scan stopped; short + completed says the BUCKETS are wrong, which is
+  the only thing it can mean. An over-count also has its own arm now, since
+  the naive subtraction printed "SHORT BY -14" for exactly the defect this
+  function exists to fix.
+
+  M-3: the AST test asserted only MEMBERSHIP (no unknown counters), not the
+  exclusivity property its own constant claims. It now asserts each
+  partition bucket either `continue`s or clears passes_threshold, and that
+  claim is mutation-tested by deleting a `continue` in trade_cycle.
+
+  M-4: an earlier revision set EVERY handler to DEBUG under --debug,
+  including the console. Historically --debug routed DEBUG to bot.log and
+  never to the terminal. Restored to file-handlers-only -- which also means
+  --debug cannot print per-request lines to a shoulder-surfable screen.
+
+  M-5: bot.debug.log is now PID-suffixed. bot.log has never rotated once
+  (4.9 MB after months), but a DEBUG sink hits 10 MB routinely, and `watch`,
+  `web` and a scheduled `cron` are concurrent main.py processes that would
+  have shared one RotatingFileHandler path -- multi-process rollover on
+  Windows means dropped records in the file added so evidence survives.
+
+  M-6: tests/test_log_rotation.py calls _setup_logging with no cleanup and
+  has always leaked root-logger state into the rest of the session. Harmless
+  at INFO, not at DEBUG. Given the same snapshot/restore fixture the
+  batch-90 module already had.
+
+  M-7/L-6: the refusal message told the operator to "re-run with
+  allow_missing_db=True", which was unreachable -- `restore` is CLI-only and
+  the dispatch hard-coded the call. Added `--allow-missing-db`. This also
+  covers the legitimate case L-6 raised: backup_data deliberately skips
+  zero-table databases, so a genuinely fresh install produces a lawfully
+  database-less snapshot.
+
+  L-1: THE RE-MEASUREMENT IN THIS VERY ENTRY WAS WRONG, and it contradicted
+  backup_data's own (correct) batch-86 comment sitting in the same file.
+  Corrected above and in the two other places it had been copied to.
+
+  L-2/L-3: two mechanism claims were wrong while their conclusions were
+  right -- placement_gate is incremented in the SAME loop three lines after
+  `passed` (not "a later placement phase"), and the excess is same_day +
+  placement_gate MINUS analysis_errors (it equalled the simple sum on both
+  cited cycles only because analysis_errors was 0). Both corrected in
+  cron.py, this entry, and the test docstring that repeated them.
+
+  L-4: the trade_cycle WARNING said "collected rows dropped", but that arm
+  can only fire if the IMPORT raises -- in which case the buffer was never
+  drained and nothing was lost. Reworded to "rows retained in buffer". That
+  was the same wrong-cause claim this batch is otherwise fixing.
+
+  L-5: the guard used `glob("*.db") if p.is_file()` while its own
+  "try this one instead" helper used a bare glob. backup_data's comment
+  records as UNVERIFIED whether a OneDrive dehydrated placeholder reports
+  is_file() == True; on the backup side a wrong answer costs a warning, here
+  it would BLOCK A RECOVERY and then recommend a snapshot that fails
+  identically. Both now use the bare glob -- fail-open is the right
+  direction for this guard.
+
+  L-7: the new prompt raised EOFError without a TTY (scheduler, `< /dev/null`).
+  Now treated as declined, because this command overwrites live data and the
+  absence of an answer is not consent.
+
+  L-8: a refused restore printed to stdout and left no trace in bot.log --
+  in the module whose own comments keep pointing readers at bot.log. Now
+  logs a WARNING.
+
+  L-9: the retention estimate counted this repo's own ~250 debug sites and
+  omitted urllib3, which was the dominant source. Re-derived and rewritten
+  now that the third parties are pinned back to INFO.
+
+  L-10: _setup_logging removed file handlers without close()ing them --
+  pre-existing, but this change doubled the leak rate by installing two.
+  Now closed on removal.
+
+  L-11/L-12: test counts in this entry were wrong (18 vs 20 collected; 424
+  vs 426 passing). Both re-derived fresh; see the final numbers below.
+
+  I-1: _format_filter_breakdown's `dbg: dict` widened to `dict[str, int]` to
+  match TradeCycleResult.dbg's own annotation.
+  I-2: removing logging.disable also un-suppresses utils.py's "kalshi"
+  logger tree if LOG_LEVEL=DEBUG is ever set. Not set today; recorded
+  because the "nothing depends on it" check was scoped to logging.disable
+  CALL SITES, not to everything the global was incidentally suppressing.
+  I-3: tests/test_phase2_batch_h.py's stale logging.disable comment updated
+  (the same staleness already fixed in test_menu_ux.py).
+  I-5: the reviewer could NOT verify the mutation testing -- it was
+  constrained read-only and substituted AST re-derivation. The 14 mutations
+  (11 pre-review, 3 post-) were run here via the Edit tool, each reverted
+  individually and confirmed with a fresh grep for leftover markers.
+  I-6: the reviewer did not observe a real cron cycle's bot.debug.log, so
+  H-1 rests on its direct urllib3/requests experiments plus a measured
+  "urllib3 effective: DEBUG" -- which I reproduced independently before
+  fixing.
 
 [RESOLVED 2026-08-25 -- fix applied and the 30 contaminated rows removed;
   found by the independent opus review of the prod-data-guard entry below]

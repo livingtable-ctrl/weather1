@@ -13095,13 +13095,88 @@ def _setup_logging(log_file: str = "bot.log") -> None:
         datefmt="%H:%M:%S",
     )
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    # DEBUG, not INFO. A record rejected by the LOGGER's own level never
+    # reaches any handler, so the historical pairing of root=INFO with
+    # fh.setLevel(DEBUG) below meant the file handler's DEBUG level was
+    # moot and all ~250 _log.debug call sites in this repo were discarded
+    # outright. Comments and reviews across the codebase nonetheless treat
+    # "logged at DEBUG" as if it left a trace -- cloud_backup.backup_data's
+    # "no tables (nothing to back up)" line is the one that would have
+    # named the databases missing from the 2026-08-25 snapshot, and
+    # weather_markets' "hrrr_openmeteo circuit open -- skipping HRRR
+    # fetch" is the one that would have said an input model was absent for
+    # a whole cron cycle. Neither was ever written anywhere.
+    #
+    # Each handler now carries its own floor instead, so raising the
+    # logger does NOT make anything you already read noisier: the console
+    # and bot.log stay at INFO exactly as before, and DEBUG goes to its
+    # own file with its own rotation budget (below) so a chatty debug
+    # stream cannot evict WARNING/ERROR history from bot.log's.
+    root.setLevel(logging.DEBUG)
+
+    # SECURITY, and the reason this is not a one-line change. Raising the
+    # root logger un-gates every THIRD-PARTY library too, and urllib3 logs
+    # each request as '%s://%s:%s "%s %s %s"' with the path AND query string
+    # included. Two live credentials would have gone straight to disk:
+    #   * weather_markets:3471 puts PIRATE_WEATHER_API_KEY in the URL PATH
+    #     (f"{_PIRATE_FORECAST_BASE}/{api_key}/{lat},{lon}")
+    #   * weather_markets:3310 passes WEATHERAPI_KEY as a query param
+    # Both are set in the live .env. websockets is the same story a level
+    # up: Protocol.__init__ caches logger.isEnabledFor(DEBUG) and then logs
+    # every handshake header, which for kalshi_ws includes
+    # KALSHI-ACCESS-KEY and KALSHI-ACCESS-SIGNATURE.
+    #
+    # This repo already holds the position that a credential-bearing URL
+    # must never reach a log line -- see notify._redact_webhook_url, added
+    # because a Discord webhook's path IS its bearer token. Pinning these
+    # to INFO keeps that true rather than quietly reversing it, and it is
+    # also what keeps the debug file's retention usable (urllib3 alone
+    # would out-produce all ~250 of this repo's own _log.debug sites).
+    for _noisy in (
+        "urllib3",
+        "requests",
+        "websockets",
+        "asyncio",
+        "charset_normalizer",
+    ):
+        logging.getLogger(_noisy).setLevel(logging.INFO)
 
     fh = RotatingFileHandler(
         str(_log_path), maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
     fh.setFormatter(fmt)
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(logging.INFO)
+
+    # Separate DEBUG sink, a sibling of the main log ("bot.log" ->
+    # "bot.debug.log"). Same 10 MB x 5 rotation, so the worst case for a
+    # pathologically chatty cycle is bounded at 50 MB and self-trimming.
+    #
+    # Measured cost of routing DEBUG to disk rather than discarding it:
+    # 16.6 us and 118 bytes per record on this machine. Against a ~4-minute
+    # cron cycle that is 0.14% even at 20,000 records, so CPU is not the
+    # consideration -- RETENTION is. This repo's own ~250 _log.debug sites
+    # are the whole budget now that the third parties above are pinned back
+    # to INFO; before that pin urllib3 alone would have out-produced them
+    # (predictions.db's api_requests table shows ~1,400-1,900 Kalshi calls a
+    # day, 1-2 urllib3 records each, plus the weather providers). Treat the
+    # horizon as days, not weeks, and copy the file if you need to keep
+    # something rather than assuming it will still be there.
+    #
+    # PID-suffixed on purpose. bot.log has never rotated once (4.9 MB after
+    # months), but a DEBUG sink reaches 10 MB routinely -- and `watch`,
+    # `web` and a scheduled `cron` are all long-lived main.py processes that
+    # would otherwise share one RotatingFileHandler path. Concurrent
+    # rollover on Windows renames a file another process holds open, which
+    # surfaces as "--- Logging error ---" and DROPPED RECORDS in the very
+    # file added so evidence survives. One writer per file avoids that; the
+    # cost is a handful of files, each self-trimming at 10 MB x 5 and all
+    # covered by .gitignore's *.log / *.log.* pair.
+    _debug_path = _log_path.with_suffix(f".debug.{os.getpid()}{_log_path.suffix}")
+    dfh = RotatingFileHandler(
+        str(_debug_path), maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    dfh.setFormatter(fmt)
+    dfh.setLevel(logging.DEBUG)
 
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
@@ -13111,7 +13186,17 @@ def _setup_logging(log_file: str = "bot.log") -> None:
     for h in root.handlers[:]:
         if isinstance(h, logging.FileHandler):
             root.removeHandler(h)
+            # close() as well as remove. Detaching a handler does not
+            # release its open file, and this function now installs TWO
+            # file handlers per call, so a repeated setup leaked at double
+            # the old rate. On Windows an unreleased handle also makes
+            # pytest's tmp_path teardown fail with PermissionError.
+            try:
+                h.close()
+            except Exception:  # pragma: no cover - close() must never abort setup
+                pass
     root.addHandler(fh)
+    root.addHandler(dfh)
     root.addHandler(ch)
 
 
@@ -13285,10 +13370,32 @@ def main():
     # Already stripped from `args` at the top of this function (M2-4);
     # _setup_logging() also already ran up there (M2-5) -- only the actual
     # log-level toggle happens here.
+    # The root logger already sits at DEBUG (see _setup_logging), so this
+    # is no longer "start recording DEBUG" -- that always happens now, into
+    # bot.debug.log. --debug means "also put DEBUG on the console and in
+    # bot.log", which is the part an operator actually wants when they pass
+    # the flag.
+    #
+    # The old `else` branch called logging.disable(logging.DEBUG), a
+    # PROCESS-GLOBAL suppressor that outranks every logger and handler
+    # level. It was a second, independent reason DEBUG never reached disk,
+    # separate from root.setLevel(logging.INFO) -- and the one the backlog
+    # entry for this defect missed entirely, naming only the setLevel call.
+    # Leaving it would silently defeat the new debug handler, so it is gone
+    # rather than merely bypassed; nothing else in the repo calls
+    # logging.disable, so no path depends on it being set.
     if _debug_flag:
-        logging.getLogger().setLevel(logging.DEBUG)
-    else:
-        logging.disable(logging.DEBUG)
+        # FILE handlers only -- the console deliberately stays at INFO.
+        # Before this change --debug raised the ROOT logger while ch was
+        # pinned at INFO, so DEBUG reached bot.log and never the terminal.
+        # Setting every handler (an earlier revision of this change) would
+        # have started printing urllib3's per-request lines to the screen,
+        # which is both a flood and, until the pin added in _setup_logging,
+        # a way to put API keys on someone's shoulder-surfable terminal.
+        # Matching the old routing exactly keeps --debug's meaning stable.
+        for _h in logging.getLogger().handlers:
+            if isinstance(_h, logging.FileHandler):
+                _h.setLevel(logging.DEBUG)
 
     # Warn if cron is stale (skip for the cron command itself to avoid noise).
     if not (args and args[0].lower() == "cron"):
@@ -13478,7 +13585,49 @@ def main():
     elif cmd == "restore":
         from cloud_backup import restore_data as _restore
 
-        _restore()
+        # `_restore()` with no arguments raised ValueError every time: the
+        # function requires confirm=True and this call site never passed it,
+        # so `py main.py restore` has been an uncaught traceback rather than
+        # a restore. Found by adjacency while adding the database-less
+        # snapshot guard to the same function. Asking here is what confirm=
+        # True is documented to mean ("pass it only after verifying the
+        # backup source is correct"), so the prompt belongs at the operator
+        # boundary, not inside the library function.
+        # --allow-missing-db exists because restore_data's refusal message
+        # tells the operator to re-run with it. Without a flag here that
+        # instruction was unreachable from the only interface `restore` has
+        # (it is CLI-only, not in cmd_menu), leaving someone mid-incident to
+        # edit source or open a REPL. It also covers the legitimate case:
+        # backup_data deliberately skips zero-table databases, so a genuinely
+        # fresh install produces a lawfully database-less snapshot.
+        _allow_missing_db = "--allow-missing-db" in args
+        print(yellow("  Restore OVERWRITES files in your local data/ directory."))
+        print(
+            dim("  A .pre_restore_* snapshot is taken first, but this is not a drill.")
+        )
+        if _allow_missing_db:
+            print(
+                yellow(
+                    "  --allow-missing-db: a snapshot with NO database will be "
+                    "accepted."
+                )
+            )
+        try:
+            _proceed = (
+                input(yellow("  Proceed with restore? (y/N): ")).strip().lower() == "y"
+            )
+        except EOFError:
+            # No TTY (scheduler, `< /dev/null`, a pipe). Treat as declined:
+            # this command overwrites live data, so the absence of an answer
+            # is not consent. Previously this path raised -- first ValueError
+            # from the missing confirm=, and then EOFError once the prompt
+            # was added -- either way an uncaught traceback.
+            print(dim("\n  No input available — restore cancelled."))
+            _proceed = False
+        if _proceed:
+            _restore(confirm=True, allow_missing_db=_allow_missing_db)
+        else:
+            print(dim("  Restore cancelled."))
     elif cmd in ("simulate", "sandbox", "x"):
         cmd_simulate(client)
     elif cmd in ("weekly", "y"):

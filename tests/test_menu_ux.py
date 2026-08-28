@@ -1067,10 +1067,15 @@ class TestOperatorClose:
         # client build, startup housekeeping -- stubbed rather than run.
         monkeypatch.setattr(main, "validate_env", lambda *a, **k: True)
         monkeypatch.setattr(main, "build_client", lambda *a, **k: MagicMock())
-        # main() calls logging.disable(logging.DEBUG) before dispatch -- a
-        # PROCESS-WIDE mutation that is never restored and would silently
-        # suppress DEBUG records for every later test in the same pytest
-        # session (round-2 opus review L7).
+        # main() USED to call logging.disable(logging.DEBUG) before dispatch
+        # -- a PROCESS-WIDE mutation that is never restored and would
+        # silently suppress DEBUG records for every later test in the same
+        # pytest session (round-2 opus review L7). That call was removed when
+        # DEBUG logging was routed to its own file: it outranks every logger
+        # and handler level, so it defeated the new debug handler outright.
+        # The stub stays as a cheap guard against reintroduction -- if this
+        # ever starts mattering again, it means main() regained a global
+        # suppressor.
         monkeypatch.setattr(logging, "disable", lambda *a, **k: None)
         # Also stub the config preflight, so this test does not depend on the
         # developer's/CI's .env being valid -- a raise there becomes

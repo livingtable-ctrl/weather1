@@ -337,6 +337,11 @@ class TestRestoreSnapshotExcludesRecoveryDirs:
         backup_root = sync_root / "KalshiBot" / "data" / "2026-01-01"
         backup_root.mkdir(parents=True)
         (backup_root / "sample.json").write_text("{}")
+        # A .db so the snapshot is a COMPLETE one. restore_data now refuses a
+        # database-less snapshot outright, and this test is about the
+        # pre_restore nesting exclusion -- without a database it would fail
+        # at the new guard and never reach the behaviour it exists to check.
+        (backup_root / "predictions.db").write_bytes(b"db")
 
         data_dir = tmp_path / "data"
         data_dir.mkdir()

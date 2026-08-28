@@ -1270,6 +1270,108 @@ def _log_exit_rule_shadow(
     return len(rows), written, skipped, now_iso
 
 
+# The seven buckets below form a genuine PARTITION of `scanned`: every market
+# reaching trade_cycle's analysis loop increments exactly one of them and then
+# `continue`s. net_edge/prob_edge/passed look like three chances to be counted
+# but are three exclusive outcomes for one market -- prob_edge is guarded by
+# `passes_threshold and`, and `passed` by `if passes_threshold`.
+_BREAKDOWN_PARTITION_KEYS = (
+    "no_analysis",
+    "analysis_errors",
+    "mkt_prob",
+    "divergence",
+    "net_edge",
+    "prob_edge",
+    "passed",
+)
+# These two are NOT part of that partition and must not be summed into it.
+# same_day increments and then explicitly falls through ("# fall through -- do
+# not skip" in trade_cycle.py), so a same-day market is ALSO counted in
+# whichever partition bucket it lands in. placement_gate sits in the SAME loop
+# three lines after `passed`, guarded by `passes_threshold and not
+# clears_placement_gate` -- so it can only fire for a market that `passed`
+# already counted. (An earlier revision of this comment said "in the later
+# placement phase", which is the right conclusion from the wrong mechanism.)
+_BREAKDOWN_OVERLAP_KEYS = ("same_day", "placement_gate")
+
+
+def _format_filter_breakdown(
+    dbg: dict[str, int], scanned: int, scan_completed: bool | None = None
+) -> tuple[str, str]:
+    """Render the two scan-funnel lines: the partition, then the overlaps.
+
+    Printing all nine counters as one flat list made the line sum to MORE
+    than the markets scanned (808 against 794 on the 2026-08-27 17:31 cycle,
+    566 against 560 that morning) with nothing on screen saying why. The
+    excess is same_day + placement_gate MINUS analysis_errors, which the old
+    line also omitted; it happened to equal same_day + placement_gate on
+    both cycles above only because analysis_errors was 0 in each. Either way
+    it reads as a counting bug, so the two overlapping tags now get their
+    own line and the omitted counter is printed.
+
+    analysis_errors appears on this LINE for the first time, and its absence
+    is what made the printed list silently under-sum whenever it was
+    non-zero. It is not new data: cron writes `dict(_dbg)` wholesale into
+    signals_cache.json, so /api/scan-stats has always returned it and the
+    dashboard's Risk tab renders it -- under its raw key, since that tab's
+    label map has no entry for it. Grepping the repo for "analysis_errors"
+    finds only its definition and increment precisely because the consumer
+    passes the dict whole and never names the key. The gap this closes is
+    therefore the operator-facing one: the terminal is where a cron cycle is
+    actually read, and there the one bucket meaning "the analysis raised"
+    was invisible.
+
+    The reconciliation suffix makes both properties self-evident: with the
+    partition shown against `scanned`, a short total means the scan did not
+    finish (kill switch mid-scan, or the analysis timeout -- both break out
+    of the loop). A missing KEY is reported as a missing key rather than as
+    a short scan: "I cannot see the counter" and "the scan stopped early"
+    are different claims and only one of them is an accusation.
+    """
+    missing = [k for k in _BREAKDOWN_PARTITION_KEYS if k not in dbg]
+    total = sum(dbg.get(k, 0) for k in _BREAKDOWN_PARTITION_KEYS)
+    if missing:
+        recon = (
+            f"= {total} of {scanned} scanned (counter(s) absent: {', '.join(missing)})"
+        )
+    elif total == scanned:
+        recon = f"= {total} of {scanned} scanned"
+    elif total > scanned:
+        # Only reachable if a counter that does NOT partition is added to
+        # _BREAKDOWN_PARTITION_KEYS -- precisely the defect this function
+        # exists to fix. Without this arm it prints "SHORT BY -14", naming
+        # the wrong problem in the wrong direction.
+        recon = (
+            f"= {total} of {scanned} scanned "
+            f"(OVER BY {total - scanned} — the buckets are not exclusive)"
+        )
+    elif scan_completed is False:
+        recon = (
+            f"= {total} of {scanned} scanned "
+            f"(SHORT BY {scanned - total} — scan did not complete)"
+        )
+    else:
+        # Short, yet the engine says the loop ran to completion (or did not
+        # say). Blaming an interrupted scan here would be a guess, and on a
+        # completed scan a wrong one -- the arithmetic can only fall short
+        # then if some market incremented no bucket, i.e. the cascade
+        # stopped partitioning. TradeCycleResult.scan_completed is set from
+        # the loop's own for/else and is authoritative, so defer to it
+        # rather than re-deriving a cause from the numbers. This is the same
+        # mistake the missing-key arm above avoids, one level further out.
+        recon = (
+            f"= {total} of {scanned} scanned "
+            f"(SHORT BY {scanned - total} — BUG: the scan completed, so the "
+            f"buckets no longer cover every market)"
+        )
+    parts = " ".join(f"{k}:{dbg.get(k, 0)}" for k in _BREAKDOWN_PARTITION_KEYS)
+    overlaps = " ".join(f"{k}:{dbg.get(k, 0)}" for k in _BREAKDOWN_OVERLAP_KEYS)
+    return (
+        f"  [cron] filter breakdown — {parts} {recon}",
+        f"  [cron] also tagged (overlaps the line above) — {overlaps}",
+    )
+
+
 def check_market_anomalies(signals: list[dict]) -> list[dict]:
     """Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD."""
     return [
@@ -3103,16 +3205,15 @@ def _cmd_cron_body(
         if _gate_detail
         else "none"
     )
-    print(
-        dim(
-            f"  [cron] filter breakdown \u2014 no_analysis:{_dbg['no_analysis']} "
-            f"same_day_seen:{_dbg['same_day']} mkt_prob:{_dbg['mkt_prob']} "
-            f"divergence:{_dbg['divergence']} net_edge:{_dbg['net_edge']} "
-            f"prob_edge:{_dbg['prob_edge']} placement_gate:{_dbg['placement_gate']} "
-            f"passed:{_dbg['passed']}"
-        ),
-        flush=True,
+    # Direct attribute, not getattr(..., None): scan_completed is a declared
+    # TradeCycleResult field and is always present, so a default would only
+    # mask a real AttributeError -- and against a MagicMock, getattr with a
+    # default returns a Mock rather than the default anyway.
+    _breakdown_line, _overlap_line = _format_filter_breakdown(
+        _dbg, scanned, result.scan_completed
     )
+    print(dim(_breakdown_line), flush=True)
+    print(dim(_overlap_line), flush=True)
     print(dim(f"  [cron] analyze_trade gates \u2014 {_gate_str}"), flush=True)
     if _n_with_edge == 0:
         print(

@@ -268,8 +268,11 @@ class TestCronStartupOrdersUtc:
 
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger=cron._log.name):
-            # Explicit precondition rather than a silent vacuous pass:
-            # caplog.at_level does not undo a global logging.disable().
+            # Explicit precondition rather than a silent vacuous pass.
+            # (Batch-90 removed main()'s logging.disable(logging.DEBUG), so
+            # the specific global this once guarded against is gone; the
+            # check is kept because caplog.at_level still cannot undo a
+            # global disable, and this is a cheap non-vacuity assertion.)
             assert cron._log.isEnabledFor(logging.WARNING)
             with patch.object(
                 execution_log,

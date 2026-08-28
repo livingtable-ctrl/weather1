@@ -3336,8 +3336,17 @@ def fetch_temperature_weatherapi(city: str, target_date: date) -> dict | None:
         return result
     except Exception as exc:
         _weatherapi_cb.record_failure()
+        # `exc` is redacted, not logged raw: requests embeds the full failing
+        # URL in str(exc) ("404 Client Error: ... for url: <url>"), and this
+        # provider takes its credential as a query parameter. Now that DEBUG
+        # records actually reach a file, an unredacted exception here would
+        # accumulate WEATHERAPI_KEY on disk on every provider outage --
+        # exactly the accrual notify._redact_webhook_url exists to prevent.
         _log.debug(
-            "fetch_temperature_weatherapi(%s): %s: %s", city, type(exc).__name__, exc
+            "fetch_temperature_weatherapi(%s): %s: %s",
+            city,
+            type(exc).__name__,
+            _redact_secret(exc, WEATHERAPI_KEY),
         )
         _WEATHERAPI_CACHE.set(cache_key, None)
         return None
@@ -3649,8 +3658,37 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         }
     except Exception as exc:
         _pirate_cb.record_failure()
-        _log.debug("fetch_temperature_pirate_weather(%s): %s", city, exc)
+        # Redacted for the same reason as fetch_temperature_weatherapi's
+        # handler, and more urgently: this provider takes its credential in
+        # the URL PATH, so every requests exception carries the key.
+        _log.debug(
+            "fetch_temperature_pirate_weather(%s): %s",
+            city,
+            _redact_secret(exc, api_key),
+        )
         return None
+
+
+def _redact_secret(value: object, secret: str | None) -> str:
+    """str(value) with `secret` masked out.
+
+    For exception objects from `requests`, whose str() embeds the full
+    failing URL ("... for url: https://host/path?key=SECRET"). Two weather
+    providers here authenticate via the URL itself -- Pirate Weather in the
+    path, WeatherAPI in a query parameter -- so an unredacted exception in a
+    log line is a durable copy of a live credential. Mirrors
+    notify._redact_webhook_url's rationale for Discord webhook URLs.
+
+    The empty/None guard is load-bearing and not defensive noise:
+    "abc".replace("", "X") inserts the replacement BETWEEN EVERY CHARACTER,
+    so an unset key would corrupt the message into unreadable garbage rather
+    than leave it alone. notify._redact_webhook_url carries the same guard
+    for the same reason, added there by an opus review.
+    """
+    text = str(value)
+    if not secret:
+        return text
+    return text.replace(secret, "<redacted>")
 
 
 def _compute_ensemble_spread(temps: dict[str, float | None]) -> float:
@@ -4062,7 +4100,18 @@ def flush_member_values() -> int:
             _log.debug("flush_member_values: wrote %d member rows", written)
         return written
     except Exception as exc:
-        _log.debug("flush_member_values: skipped %d rows: %s", len(batch), exc)
+        # WARNING, not debug. The comment above sells this path as trading
+        # "a bounded, LOGGED loss for an unbounded memory leak" -- but at
+        # DEBUG the loss was not logged anywhere, so the trade was actually
+        # bounded-and-silent. Member values are forward-only: a dropped
+        # batch is gone, nothing recomputes it, and the ens_var counter the
+        # EMOS go-live bar reads just quietly stops advancing.
+        _log.warning(
+            "flush_member_values: DROPPED %d member row(s) — forward-only "
+            "data, not recoverable: %s",
+            len(batch),
+            exc,
+        )
         return 0
 
 

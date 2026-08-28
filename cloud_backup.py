@@ -421,6 +421,23 @@ def backup_data(data_dir: Path | None = None) -> bool:
         # policy removes several times more per pass than the flat window
         # did. Free insurance against a mid-iteration os.scandir surprise.
         for old_dir in list(backup_root.iterdir()):
+            # Non-directories are skipped DELIBERATELY, not as an oversight.
+            # Before the dated-folder scheme, backup_data wrote files straight
+            # into <sync>/KalshiBot/data/ and those flat copies are still
+            # there -- measured 2026-08-27: 35 files, 19.9 MB, dominated by a
+            # 16.2 MB predictions.db from 2026-05-01. They are stale by four
+            # months and nothing has ever aged them out.
+            #
+            # They stay because restore_data's `src = backup_root` fallback
+            # reads them: they are the last-resort restore path when no dated
+            # directory exists. 19.9 MB is not worth trading that for, and a
+            # prune loop that deletes individual FILES from the backup root
+            # is a materially more dangerous loop to get wrong than one that
+            # only ever removes whole dated directories.
+            #
+            # Consequence worth knowing when reading retention numbers: every
+            # retention figure in this module counts dated DIRECTORIES, and
+            # these files are in none of them.
             if not old_dir.is_dir():
                 continue
             try:
@@ -468,13 +485,27 @@ def backup_data(data_dir: Path | None = None) -> bool:
         return False
 
 
-def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
+def restore_data(
+    data_dir: Path | None = None,
+    confirm: bool = False,
+    allow_missing_db: bool = False,
+) -> bool:
     """
     Copy files from <sync_folder>/KalshiBot/data/ back into local data/.
     Use this on a new PC after cloning the repo.
 
     confirm=True is required to prevent accidental overwrites of live files.
     Returns True on success, False if nothing to restore.
+
+    allow_missing_db=True proceeds even when the selected snapshot contains
+    no .db file at all. Without it such a snapshot is REFUSED, because
+    batch-86 proved that shape really occurs (the live 2026-08-25 snapshot
+    holds 100 files and zero databases, and is still sitting in the backup
+    root) and the old behaviour was to restore its JSON, print "N file(s)
+    restored", and return True -- telling an operator mid-incident that a
+    restore succeeded when predictions.db and execution_log.db were never
+    in it. Appended last and defaulted so no existing keyword caller
+    changes meaning; every call site in the repo passes by keyword anyway.
     """
     if not confirm:
         raise ValueError(
@@ -495,15 +526,102 @@ def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
         print(f"No backup found at {backup_root}")
         return False
 
-    date_dirs = sorted(
-        (d for d in backup_root.iterdir() if d.is_dir()),
-        key=lambda d: d.name,
-        reverse=True,
-    )
+    # Guarded for the same reason as the database check below: this walks a
+    # cloud-synced tree that can return a transient OSError. Unguarded, an
+    # unreadable backup root crashed restore_data with a traceback instead
+    # of the "no backup found" it already knows how to report two lines up.
+    # Found by a test written for the refusal path, which patched iterdir
+    # globally and tripped this one first.
+    try:
+        date_dirs = sorted(
+            (d for d in backup_root.iterdir() if d.is_dir()),
+            key=lambda d: d.name,
+            reverse=True,
+        )
+    except OSError as _list_exc:
+        print(f"Could not list {backup_root}: {_list_exc}")
+        print("Nothing was restored — re-run once the sync folder is readable.")
+        return False
     src = next((d for d in date_dirs if d.name[:4].isdigit()), None)
     if src is None:
         # Fall back to backup_root itself for pre-rotation backups
         src = backup_root
+
+    # Refuse a database-less snapshot. The selection above sorts by NAME and
+    # takes the newest without looking inside, so a snapshot that holds only
+    # .json files is chosen exactly like a complete one -- and the operator
+    # reaching for a restore is, by definition, already having a bad day.
+    #
+    # Fails OPEN on an enumeration error rather than closed: refusing on a
+    # bare OSError would turn "I could not read the directory" into the
+    # accusation "this snapshot has no database", which is a different and
+    # much stronger claim. OneDrive can hand back a transient error for a
+    # dehydrated file; see backup_data's own glob for the same reasoning.
+    #
+    # Deliberately NO is_file() filter, and _has_db below matches it.
+    # backup_data's own comment records as UNVERIFIED the assumption that a
+    # OneDrive Files-On-Demand dehydrated placeholder still reports
+    # is_file() == True. On the BACKUP side a wrong answer there costs one
+    # warning; HERE it would block a recovery outright, print the false line
+    # "none of them .db", and then suggest a different snapshot that fails
+    # the same way. A name match on *.db is sufficient evidence that a
+    # snapshot is not empty of databases, and erring toward allowing the
+    # restore is the right direction for a guard that fails open everywhere
+    # else in this block.
+    try:
+        _snapshot_dbs = sorted(p.name for p in src.glob("*.db"))
+        _enumerated = True
+    except OSError as _glob_exc:
+        _snapshot_dbs, _enumerated = [], False
+        print(f"  Could not enumerate {src} to check for databases ({_glob_exc});")
+        print("  proceeding — an unreadable directory is not proof of an empty one.")
+
+    if _enumerated and not _snapshot_dbs and not allow_missing_db:
+        # Everything below only DESCRIBES a refusal that is already decided,
+        # so each lookup degrades to "unknown" instead of raising. Both walk
+        # the same cloud-synced tree whose unreadability this function
+        # already treats as non-fatal above -- and an OSError escaping here
+        # would replace a clear refusal with a traceback on the one code
+        # path an operator reaches mid-incident.
+        try:
+            _others: int | None = sum(1 for p in src.iterdir() if p.is_file())
+        except OSError:
+            _others = None
+        print(f"\n  REFUSING TO RESTORE — {src.name} contains no database.")
+        if _others is None:
+            print("  Its contents could not be listed, but it holds no .db.")
+        else:
+            print(f"  It holds {_others} file(s), none of them .db.")
+        print("  Restoring it would copy JSON over your local data/ and report")
+        print("  success, while predictions.db and execution_log.db stayed as")
+        print("  they are. That is not a restore.")
+
+        def _has_db(d: Path) -> bool:
+            try:
+                return any(d.glob("*.db"))
+            except OSError:
+                # Unreadable, so unknown -- excluded from the "try this one
+                # instead" suggestion rather than recommended blind.
+                return False
+
+        _complete = [d for d in date_dirs if d.name[:4].isdigit() and _has_db(d)]
+        if _complete:
+            print(f"\n  Newest snapshot that DOES hold a database: {_complete[0].name}")
+            print("  Move or rename the empty one to select it, or re-run")
+            print("  `py main.py restore --allow-missing-db` to take the JSON")
+            print("  from this one anyway.")
+        else:
+            print("\n  No dated snapshot here holds a database at all.")
+        # Log it too. Every other operator-visible failure in this module
+        # logs, and a refused restore that leaves no trace in bot.log is
+        # gone the moment the terminal scrolls -- in the module whose own
+        # comments keep pointing readers at bot.log.
+        _log.warning(
+            "restore_data: REFUSED %s — snapshot contains no database "
+            "(re-run with --allow-missing-db to override)",
+            src.name,
+        )
+        return False
 
     if data_dir is None:
         data_dir = DATA_DIR
