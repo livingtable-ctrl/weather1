@@ -44327,9 +44327,12 @@ When to revisit:
   it is a simultaneous exit of most of them at whatever the book offers.
 
 
-[OPEN 2026-08-26 -- surfaced by batch-87's opus review. Deliberately NOT
-  fixed there: the first is an operational sequencing decision the user has to
-  make, and the second needs its own measurement rather than a code change.]
+[RESOLVED 2026-08-27 -- BOTH items are now closed: A by batch-89 (the
+  deployment-day mass exit) and B by batch-93 (this population question).
+  Resolution blocks are at the end of the entry. Originally filed 2026-08-26,
+  surfaced by batch-87's opus review and deliberately NOT fixed there: the
+  first was an operational sequencing decision for the user, and the second
+  needed its own measurement rather than a code change.]
   IS THE d>=1 POPULATION THE CALIBRATION IS FITTED ON ITSELF SELECTED?
   (was: TWO THINGS TO SETTLE BEFORE THE ANALYSIS CALIBRATION'S FIRST LIVE
   SCAN -- item A, the deployment-day mass exit, RESOLVED 2026-08-26 by
@@ -44425,7 +44428,81 @@ When to revisit: A before the next live-ish scan; B at the 60-day mark
   to cite the calibration's numbers as evidence about the unbiased population
   rather than about the fit.
 
-  ITEM A RESOLVED 2026-08-26 (batch-89). Item B is untouched and stays OPEN.
+  ITEM A RESOLVED 2026-08-26 (batch-89).
+
+  ITEM B RESOLVED 2026-08-27 (batch-93). Repro:
+  audit/reproductions/batch93_dgte1_population_selection.py
+
+  THE METHOD THIS ENTRY PROPOSED CANNOT WORK, and following it would have
+  produced a confidently wrong answer rather than no answer. The entry said
+  to "reconstruct per-market scan histories from api_requests or cron.log".
+  Coverage of the analysis_attempts population, by source:
+
+      source            all    d>=1     d=0   traded  untraded
+      api_requests      90%     79%    100%     100%       89%
+      price_history     13%      8%     17%      92%        6%
+      cron.log          21%     23%     19%      98%       14%
+
+  api_requests is the trap. The SCAN uses a LIST endpoint (/trade-api/v2/
+  markets, 50,576 calls, no ticker in the path); the 14,414 per-ticker rows
+  come from position and settlement monitoring instead. So its coverage
+  tracks "did this market reach event day" almost exactly -- 100% at d=0
+  against 79% at d>=1. Reconstructing first-scan horizon from it would have
+  silently dropped a fifth of the d>=1 markets, and specifically the ones
+  that stopped being scanned, which is the exact population the entry set
+  out to study. Same shape as
+  [[feedback_counterfactual_window_is_the_position_not_the_market]]: the
+  instrument's coverage was confounded with the question.
+  price_history is a position-monitoring table (6% untraded vs 92% traded).
+  cron.log is the only one balanced on days_out, but it logs SIGNALS only,
+  so 79% of the population is absent.
+
+  ANSWERED A DIFFERENT WAY -- measure the selection's IMPACT instead of
+  removing it. The mechanism this entry already established is
+  analyze_trade's extreme_price gate, so partition the fit set on that same
+  predicate and ask whether the calibration changes where it is APPLIED.
+
+  This entry's earlier figures all reproduce (population has grown 191 ->
+  195): extreme-priced share 40.0% (was 40.3%), 75 of 78 priced <0.10 (was
+  74 of 77), production fit a=2.4989 b=-0.6972 (was a=2.5077 b=-0.6624).
+
+  IN-SAMPLE the answer looks alarming -- refitting on the 117 mid-priced
+  rows alone gives a=3.5068 b=-0.3741, diverging from the production curve
+  by up to +15.7pp at p=0.65, right where trades are placed.
+
+  OUT-OF-SAMPLE IT VANISHES. Chronological split, scored only on held-out
+  mid-priced rows:
+
+      split  n_test   mid-only   +extremes      diff
+       50%      59     0.09185     0.08672   -0.00512
+       60%      47     0.08784     0.08685   -0.00100
+       70%      36     0.10265     0.09748   -0.00518
+       80%      24     0.12358     0.12857   +0.00500
+
+  Including the selected extremes is if anything slightly BETTER on the
+  tradeable domain, in 3 of 4 splits. Paired bootstrap at the 60% split:
+  mean diff -0.00100, 95% CI [-0.02333, +0.02127], P(including them hurts)
+  = 0.468 -- a coin flip. Both fits comfortably beat the market (0.09718)
+  and crush the raw uncalibrated forecast (0.15872).
+
+  CONCLUSION: the selection is real and large in the POPULATION, and this
+  entry was right to flag it, but it has no detectable effect on the
+  calibration in the range the calibration is used. The batch-87 numbers
+  stay descriptively what this entry said -- a claim about extreme-priced
+  multi-day markets -- while the operational worry, that the fit is
+  distorted for tradeable markets, is not supported.
+
+  LIMITS, stated rather than buried. The held-out set is 47 rows and the CI
+  is +/-0.02 on a Brier of ~0.09, so this can only detect a large effect;
+  read it as "no detectable harm", not "proven harmless". The 80% split
+  flips sign, which is what an underpowered test looks like. And the whole
+  comparison is conditional on the extreme_price mechanism being the right
+  partition -- it is the one this entry itself established, but a different
+  selection mechanism would need its own predicate.
+
+  Worth re-running at the 60-day mark alongside the seasonal re-measure, as
+  this entry already scheduled: the script is not date-pinned precisely
+  because the answer should sharpen as n grows.
 
   THIS ENTRY NAMED THE WRONG FUNCTION. It said paper.check_model_exits would
   liquidate open positions. That function cannot liquidate anything: its only
