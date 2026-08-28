@@ -101,19 +101,31 @@ What it would look like:
   1. DO NOT switch to gfs013. Measured, significant, and in the wrong
      direction. DONE 2026-08-28: both call sites now carry a comment naming
      what gfs_seamless actually delivers and why it is deliberately kept.
-  2. FIX THE POLICY, because it is the thing that is wrong. HRRR is
-     materially helping at the horizon that trades, so
-     TRACKING_ONLY_MODEL_NAMES asserting it is "excluded from every live
-     blend" is a false statement about the system, not a rule the code is
-     violating. Either document the seamless exception explicitly or
-     reconsider what that constant is for. Note the irony: batch-50 admitted
-     HRRR as track-only after a go/no-go, and it has been quietly earning its
-     place ever since.
-  3. START RECORDING HRRR. ensemble_member_scores still holds ZERO rows for
-     ncep_hrrr_conus -- hrrr_forecast_mean is only set at days_out == 0 and
-     _score_ensemble_members skips None. A model contributing to live pricing
-     with no accuracy record is the remaining defect here, and it is now the
-     ONLY one: the pricing question is answered.
+  2. DONE 2026-08-28. TRACKING_ONLY_MODEL_NAMES now says what it actually
+     guarantees: "excluded from every live blend THAT NAMES A MODEL", with
+     the ncep_hrrr_conus / gfs_seamless route spelled out and the measurement
+     that justifies leaving it alone. Deliberately NOT fixed by dropping
+     ncep_hrrr_conus from the set -- that constant is load-bearing for
+     _model_weights' admission rule (`baseline | TRACKING_ONLY_MODEL_NAMES`),
+     so removing it would change which models can earn ENSEMBLE-blend weights,
+     a live behaviour change unrelated to the deterministic-path issue.
+
+  3. NOT A DEFECT -- it is four days old. Checked rather than assumed, and two
+     plausible causes were WRONG:
+       * "the METAR lock preempts the days_out==0 fetch" -- no. 48% of
+         same-day predictions rows are non-lockout, and 115 same-day cells
+         are scored.
+       * "_fetch_hrrr_temp is failing" -- no. Direct request with the
+         breaker bypassed (is_open() is a mutator, so the function itself was
+         not called): 5/5 cities, 24 usable hours each.
+     The real reason: the ncep_hrrr_conus key was wired into
+     model_forecast_means on 2026-08-24 (cd0f486d). Since then 15 trades have
+     entered, 4 have settled, and 1 carries the key. Zero rows is what "too
+     new" looks like.
+     WHAT WOULD MAKE IT A DEFECT: still zero once a few dozen trades have
+     settled from entries after 2026-08-24. The denominator is now recorded in
+     the code beside the fetch so the next reader checks it rather than
+     re-deriving it -- "zero rows" alone proves nothing about a writer.
 
 When to revisit: before any change to the deterministic blend's membership or
   weights, and alongside the gfs_seamless 2x entry -- same area, different

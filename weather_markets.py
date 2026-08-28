@@ -964,6 +964,27 @@ KNOWN_FORECAST_MODEL_NAMES = frozenset(
 # endpoint at all -- a fetch-eligibility concern, not a second weight-
 # exclusion mechanism. The three blend-weight sites above still read this
 # constant unmodified; only the prewarm fetch list carves an exception.
+# NOTE the name overstates what this guarantees, and the gap is measured.
+# It means "excluded from every live blend THAT NAMES A MODEL" -- i.e. from
+# _model_weights' and _forecast_model_weights' membership. It does NOT mean a
+# model here cannot reach live pricing by another route.
+#
+# ncep_hrrr_conus does exactly that. On FORECAST_BASE, "gfs_seamless" IS
+# ncep_hrrr_conus for hours 0-47 (measured 2026-08-28 across all 21
+# CITY_COORDS cities: 913/955 hours identical, 95.6%), so the deterministic
+# daily blend prices on HRRR at the horizon these markets settle at, while
+# this constant says it is excluded.
+#
+# Deliberately NOT "fixed" by dropping ncep_hrrr_conus from this set. Two
+# reasons. It is load-bearing for admission -- _model_weights admits
+# `baseline | TRACKING_ONLY_MODEL_NAMES`, so removing it would change which
+# models can earn ENSEMBLE-blend weights, a live behaviour change unrelated to
+# the deterministic-path issue. And HRRR is EARNING its place there: scored at
+# day-1 lead against settled actuals, 107 city-days over 18 cities,
+# gfs_seamless (HRRR at 0-48h) beats pure gfs013 at MAE 2.50 F vs 3.16 F,
+# paired diff -0.656 F, 95% CI [-1.233, -0.108]. Switching away would make the
+# forecast worse. See backlog.txt "THE DETERMINISTIC BLEND TRADES ON HRRR
+# UNDER A GFS LABEL".
 TRACKING_ONLY_MODEL_NAMES = frozenset(
     {"gem_global", "ukmo_global_ensemble_20km", "ncep_hrrr_conus"}
 )
@@ -17194,6 +17215,20 @@ def analyze_trade(
         # hrrr_forecast_mean (batch-50, dossier B4): track-only, same-day
         # (days_out == 0) only — ncep_hrrr_conus has a hard ~2-day horizon
         # and same-day is the only regime the go/no-go validation covered.
+        #
+        # ensemble_member_scores held ZERO ncep_hrrr_conus rows as of
+        # 2026-08-28, and that is EXPECTED, not a broken writer -- checked
+        # rather than assumed. This key was wired on 2026-08-24 (cd0f486d);
+        # since then 15 trades entered, 4 settled, 1 carried the key. The
+        # endpoint is healthy (direct request, breaker bypassed: 5/5 cities,
+        # 24 usable hours each) and the metar-lock does not preempt this path
+        # (48% of same-day rows are non-lockout, and 115 same-day cells are
+        # scored). So the count is a start-date artefact.
+        #
+        # WHAT WOULD MAKE IT A DEFECT: still zero once a few dozen trades have
+        # settled from entries after 2026-08-24. Check the denominator before
+        # concluding, the way this note did -- "zero rows" alone proves
+        # nothing about the writer.
         # Like gem/ukmo, does NOT participate in model_consensus or the
         # forecast_temp blend — see _fetch_hrrr_temp's own module comment.
         hrrr_forecast_mean: float | None = None
