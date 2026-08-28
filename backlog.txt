@@ -95,8 +95,9 @@ RESOLVED 2026-08-27 (batch-92).
   two modules mkdir cache subdirs at import time. Removed the empty
   directory; nothing to fix.
 
-[OPEN 2026-08-27 -- the other half of the same red CI run; separate causes,
-  so filed separately rather than bundled into batch-92]
+[RESOLVED 2026-08-27 by batch-94 -- resolution block at the end of this
+  entry, and the two turned out to have ONE root cause, not two. Originally
+  filed as the other half of the same red CI run]
   TWO MORE CI-ONLY TEST FAILURES: AN ESCAPING INJECTED OSError, AND A TEST
   THAT CALLS A pathlib API THAT DOES NOT EXIST ON CI'S PYTHON
 Priority: Medium -- CI stays red until both are dealt with, and a
@@ -132,6 +133,58 @@ What it would look like:
   hasattr(Path, "move") / sys.version_info. Picking per-test keeps producing
   tests that are green in exactly one place. Worth settling the target
   version once and auditing both entries against it.
+
+RESOLVED 2026-08-27 (batch-94). BOTH failures are ONE root cause, and this
+  entry's framing of them as "separate causes" was wrong: pathlib changed
+  between CI's Python 3.12 and this machine's 3.14, and each test depends on
+  a different part of that change. Diagnosed and both fixes verified on a
+  real 3.12.10 interpreter, not reasoned about -- `py -3.12` is available
+  locally, which nothing had used.
+
+  A. THE OSError WAS NEVER REACHING THE CODE UNDER TEST. The test patched
+  `stat` on the pathlib.Path CLASS, and _load_analysis_calibration calls
+  `_ANALYSIS_CAL_PATH.exists()` BEFORE the `.stat()` whose failure is the
+  subject. On 3.12, Path.exists() is implemented as `self.stat(...)` inside a
+  try that re-raises anything pathlib._ignore_error rejects -- and an
+  errno-less OSError is rejected. So the injected error escaped from exists()
+  before the loader's own try/except existed to catch it. On 3.14,
+  Path.exists() is `os.path.exists(self)` and never calls stat(), so the same
+  patch never fired there and the test passed. Confirmed by printing both
+  implementations and probing both interpreters.
+
+  Fixed by scoping the patch to the path OBJECT rather than the class: a
+  small shim whose exists() returns True and whose stat() raises, delegating
+  everything else. That is version-independent, and it is also the more
+  faithful test -- the intent was always "stat fails at the mtime check",
+  never "stat fails everywhere".
+
+  AND THE TEST WAS VACUOUS, on both versions, before and after that fix.
+  It asserted the loader returns the warm cache, but with the file's mtime
+  unchanged the `if _ANALYSIS_CAL_MTIME == mtime` branch returns that same
+  object -- so the assertion held whether or not stat() ever raised.
+  Mutation-tested: making stat() succeed left it green. Rewritten to rewrite
+  the file with a different table and bump its mtime first, so a WORKING stat
+  returns the new value (9.75) and only the OSError branch returns the cached
+  one (2.0), plus a self-healing positive control proving the rewrite landed.
+  Now fails under the same mutation. See
+  [[feedback_mutation_survivor_can_mean_the_test_is_vacuous]].
+
+  B. NOT A DECISION AFTER ALL -- the repo had already decided, and only the
+  test disagreed. prod_data_guard.py binds `_o_path_move = getattr(
+  pathlib.Path, "move", None)` and skips patching when it is None, with a
+  comment reading "pathlib grew copy/copy_into/move in 3.14". So the guard is
+  version-aware; the test simply assumed the API was always present. Added a
+  skipif on `hasattr(Path, "move")` mirroring the guard's own getattr, with
+  the reason spelled out. Verified on 3.12: `Path.move exists: False`, so
+  there is genuinely no such escape route to guard there -- the skip removes
+  a test of an API that does not exist in the target runtime, not real
+  coverage.
+
+  THE STANDING QUESTION IS STILL WORTH ANSWERING, and this entry was right to
+  raise it: development happens on 3.14 while CI pins 3.12, and that gap
+  produced two failures in one run plus the still-open Windows safe_io flake
+  that CI structurally cannot see. Nothing here settles which version the
+  repo targets; it only stops these two tests depending on the answer.
 
 [RESOLVED 2026-08-27 by batch-91 -- resolution block at the end of this
   entry. Originally found by batch-90's scoped regression run and PROVEN

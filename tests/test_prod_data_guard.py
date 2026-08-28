@@ -330,7 +330,24 @@ class TestMovesOutOfDataAreBlocked:
         _expect_blocked(lambda: mover(src, dst), op_contains="moved OUT of data/")
         assert not dst.exists(), "the guard let a production file escape data/"
 
+    @pytest.mark.skipif(
+        not hasattr(Path, "move"),
+        reason="pathlib grew Path.move in 3.14; on older runtimes there is no "
+        "such escape route to guard, which is why prod_data_guard binds it "
+        "with getattr(pathlib.Path, 'move', None)",
+    )
     def test_pathlib_move_out_of_data_is_blocked(self, tmp_path):
+        """Guards a 3.14-only API, so it must skip where that API is absent.
+
+        Without the skip this test passes on a 3.14 dev machine and can NEVER
+        pass on CI, which pins 3.12 -- it failed there with
+        AttributeError: 'PosixPath' object has no attribute 'move'. That is
+        not flakiness; it is a test of an API that does not exist in the
+        target runtime. The guard itself already handles the absence
+        correctly (prod_data_guard.py binds _o_path_move via getattr with a
+        None default and skips patching when it is None); only this test
+        assumed the API was always there.
+        """
         src = _real_data_dir() / f"{_PROBE_PREFIX}pathlib_move_src.json"
         _expect_blocked(
             lambda: src.move(tmp_path / "escaped.json"),

@@ -3785,22 +3785,73 @@ class TestAnalysisCalLoaderStates:
     def test_stat_failure_returns_the_last_good_table(self, monkeypatch):
         """Transient stat failure keeps whatever was last read rather than
         inventing a state; self-healing on the next successful stat."""
+        import json
+        import os as _os
+
         import ml_bias
 
         _write_analysis_cal(ml_bias, {"a": 2.0, "b": 0.0})
         warm = ml_bias._load_analysis_calibration()
         assert warm is not None
+        assert warm["multiday"]["a"] == 2.0
 
-        real_stat = ml_bias._ANALYSIS_CAL_PATH.__class__.stat
+        # Rewrite the file with a DIFFERENT table and bump its mtime, so a
+        # WORKING stat would see the change and return the new value. Without
+        # this the test was vacuous: with the mtime unchanged, the loader's
+        # `if _ANALYSIS_CAL_MTIME == mtime: return _ANALYSIS_CAL_CACHE` branch
+        # returns the very same warm object the OSError branch returns, so
+        # `is warm` held whether or not stat() ever raised. Mutation-tested --
+        # making stat() succeed used to leave this test green.
+        ml_bias._ANALYSIS_CAL_PATH.write_text(
+            json.dumps({"multiday": {"a": 9.75, "b": 0.5}})
+        )
+        _st = ml_bias._ANALYSIS_CAL_PATH.stat()
+        _os.utime(ml_bias._ANALYSIS_CAL_PATH, (_st.st_atime + 5, _st.st_mtime + 5))
 
-        def _boom(self, *a, **kw):
-            raise OSError("transient")
+        # Scoped to THIS path object, not to pathlib.Path as a class.
+        #
+        # The class-wide patch this replaces was version-dependent and failed
+        # only on CI. _load_analysis_calibration calls _ANALYSIS_CAL_PATH
+        # .exists() BEFORE the .stat() whose failure is under test, and on
+        # Python 3.12 (what .github/workflows/ci.yml pins) Path.exists() is
+        # implemented by calling self.stat() -- so the class patch fired
+        # there first. An errno-less OSError is not in pathlib._ignore_error's
+        # allowlist, so it propagated straight out of exists(), before the
+        # loader's own try/except could ever see it. On 3.14 (this dev
+        # machine) exists() is `os.path.exists(self)` and never touches
+        # stat(), so the same test passed. Same 3.12-vs-3.14 split as the
+        # Path.move test in tests/test_prod_data_guard.py.
+        #
+        # The intent was always "stat fails at the mtime check", never "stat
+        # fails everywhere", so the narrower patch is also the more faithful
+        # one -- and it is version-independent.
+        real_path = ml_bias._ANALYSIS_CAL_PATH
 
-        monkeypatch.setattr(ml_bias._ANALYSIS_CAL_PATH.__class__, "stat", _boom)
-        assert ml_bias._load_analysis_calibration() is warm
+        class _StatBoom:
+            """Delegates everything to the real path except stat()."""
 
-        monkeypatch.setattr(ml_bias._ANALYSIS_CAL_PATH.__class__, "stat", real_stat)
-        assert ml_bias._load_analysis_calibration() is not None
+            def __getattr__(self, name):
+                return getattr(real_path, name)
+
+            def exists(self, *a, **kw):
+                return True
+
+            def stat(self, *a, **kw):
+                raise OSError("transient")
+
+        monkeypatch.setattr(ml_bias, "_ANALYSIS_CAL_PATH", _StatBoom())
+        got = ml_bias._load_analysis_calibration()
+        assert got is warm, "a failed stat must keep the last good table"
+        assert got["multiday"]["a"] == 2.0, "returned the rewritten file, not the cache"
+
+        # POSITIVE CONTROL: self-healing. Once stat works again the loader
+        # must pick the rewritten table up -- which also proves the rewrite
+        # above really landed, so the assertions above are about the OSError
+        # branch rather than about a file that never changed.
+        monkeypatch.setattr(ml_bias, "_ANALYSIS_CAL_PATH", real_path)
+        healed = ml_bias._load_analysis_calibration()
+        assert healed is not None
+        assert healed["multiday"]["a"] == 9.75
 
 
 class TestAnalysisCalDeclinePolicy:
