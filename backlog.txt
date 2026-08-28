@@ -45630,14 +45630,37 @@ OPEN -- I. The market itself is compressed. Model-free.
   Correct next step: log the rule's picks in SHADOW for ~60 days and judge it
   on data it was not found in. Do not size anything off this table.
 
-OPEN -- J. Ladder-internal coherence arbitrage. Untested, model-free.
-  Strikes on one underlying must form a monotone CDF; mutually inconsistent
-  rungs are arbitrage requiring no forecast at all. `compute_market_implied_
-  distributions()` already exists. WAS blocked on data: orderbook_depth_
-  snapshots held 0 rows because the WS depth path had never run. UNBLOCKED
-  2026-08-28 -- the feed now connects and the table took its first 726 rows
-  (526 distinct tickers) on the 08:57 UTC cron run. The prerequisite is done;
-  what is left is the analysis itself.
+CLOSED -- J. Ladder-internal coherence arbitrage. ALREADY BUILT AND RUNNING;
+  this entry described work that has been in production for months.
+  consistency.py does exactly this -- P(high > 70) <= P(high > 65) <=
+  P(high > 60) across a city-day's strike ladder, plus the mirrored shape for
+  below-thresholds and for KXRAIN*M monthly totals. It reads Kalshi's own
+  floor_strike/strike_type fields rather than parsing tickers, works on real
+  bid/ask rather than mids, is called from main.py's cron path via
+  find_violations(markets) on every run, and PLACES corrective trades
+  (thesis="consistency-arb"), with rain held in shadow behind is_shadow.
+
+  IT WAS NEVER BLOCKED ON orderbook_depth_snapshots. It consumes the scan's
+  own market list. The "blocked on data" claim in this entry, and the
+  2026-08-28 note that "unblocked" it, were both wrong -- the second one
+  written by a session that corrected the staleness without first checking
+  whether the work existed. Grep before filing, and grep again before
+  declaring something unblocked.
+
+  ITS RECORD, WHICH IS THE ACTUAL RESULT: zero violations, ever.
+      data/rain_arb_shadow_observations.json:  17 cycles, 0 with violation
+      consistency-arb trades ever placed:      0
+      cron runs 2026-08-28 08:57 and 09:35:    no violation printed
+  That is the same efficient-market finding the parent entry reaches by every
+  other route, arrived at independently and without a forecast model.
+
+  ONE REAL CAVEAT BEFORE READING THAT AS SETTLED. find_violations only
+  considers rungs with a real quote (p > 0), and both observed runs were at
+  04:57 and 05:35 EASTERN -- the deadest hour. Measured from the depth
+  snapshots of the 09:35 UTC run, 24% of books (219/905) were one-sided and
+  therefore excluded from the check before it ran. So "0 violations" is
+  currently a statement about the overnight book with most of the ladder
+  missing. A daytime capture would be the first real test of this check.
 
 When to revisit:
   I and J together are the only paths here that do not require beating a price
@@ -45703,11 +45726,32 @@ THE OPTIONS THAT REMAIN
       feed, execution log and risk gates already exist.
     Against: a different discipline (inventory, adverse selection, latency);
       the forecasting code becomes irrelevant; needs real capital to test.
-      The "orderbook_depth_snapshots holds 0 rows, so there is ZERO
-      measurement on the thing it depends on" objection is RETIRED as of
-      2026-08-28: the WS depth path was fixed and the table now accrues real
-      prod rows every cron run. The measurement is possible; it has not been
-      done. Do not quote the 0-row figure again.
+      FIRST MEASUREMENT, 2026-08-28, from the 09:35 UTC run's 905 depth
+      snapshots over 570 tickers -- the "zero measurement" objection is
+      retired, and what replaces it is worse for this option:
+        one-sided books (cannot quote two-sided)   219/905   24%
+        two-sided but already at the 1c tick                 39%
+        makeable (spread >= 2c, 1c improvement)    400/905
+        median size at best on those              5 contracts
+        => capturing 1c on the median book          $0.05/round trip
+      The maker fee really is $0 here, which is the one fact in this
+      option's favour: utils.py's KALSHI_MAKER_FEE_RATE documentation says
+      Kalshi's M multiplier is nonzero only for ~50 non-weather series, so
+      KXHIGH*/KXLOW*/KXRAIN* pay nothing to rest an order. The deepest
+      makeable books are long-dated hurricane ladders at 20c spreads -- wide
+      because nobody trades them, not because there is spread to harvest.
+
+      THE CAVEAT THAT OUTWEIGHS ALL OF IT: both observed runs were 08:57 and
+      09:35 UTC, i.e. 04:57 and 05:35 EASTERN, the deadest hour for US
+      weather markets. Every number above describes the OVERNIGHT book.
+      Before this option is judged, capture during 14:00-20:00 UTC.
+
+      DELIBERATELY NOT CITED AS SUPPORT: 60-second mid movement measured
+      median 0.0000 / mean 0.0037 against 0.0077 capturable, which reads as
+      favourable and is not evidence. A book that does not move in 60s is one
+      where nothing traded -- staleness, not stability. Adverse selection is
+      conditional on being FILLED, and orderbook_depth_snapshots contains no
+      fills, so the central risk of this option remains entirely unmeasured.
 
  [4. THIN / LESS-EFFICIENT MARKETS -- REMOVED by the user 2026-08-26, and the
      data is more damning than the original "against" said. Measured on
@@ -45737,14 +45781,20 @@ THE OPTIONS THAT REMAIN
     Status: a hypothesis to validate FORWARD. Shadow-log its picks ~60 days and
       judge on data it was not found in. Size nothing off the discovery table.
 
- 6. LADDER-INTERNAL COHERENCE ARBITRAGE.  (untested)
-    For: model-free; strikes on one underlying must form a monotone CDF, so
-      inconsistent rungs are arbitrage. compute_market_implied_distributions()
-      already exists.
-    Against: still unmeasured -- but the reason has changed. The WS depth
-      path now runs (fixed 2026-08-28) and orderbook_depth_snapshots is
-      accruing real prod rows, so this is no longer blocked on a prerequisite,
-      only on someone doing the measurement.
+ 6. LADDER-INTERNAL COHERENCE ARBITRAGE.  (ALREADY BUILT -- see option J)
+    Status corrected 2026-08-28: this is not an unstarted option. consistency.
+      py implements it, main.py runs find_violations() every cron, and it
+      places corrective trades under thesis="consistency-arb". It reads
+      Kalshi's floor_strike/strike_type fields on real bid/ask; it never
+      needed orderbook_depth_snapshots and was never blocked on it.
+    Result: zero violations ever -- 17 shadow cycles on rain with 0 hits, 0
+      consistency-arb trades placed, nothing on either 2026-08-28 cron run.
+      Model-free confirmation of the same efficient-market finding.
+    Caveat: find_violations skips rungs without a real quote, and at the 05:00
+      Eastern hour both runs were observed at, 24% of books were one-sided and
+      excluded before the check ran. "0 violations" currently describes the
+      overnight book with most of the ladder missing. Needs a daytime capture
+      before it counts as a real test -- the same blocker as option 3.
 
  7. FIX THE BLEND'S DATA SOURCES, MEMBERSHIP AND WEIGHTS.  (added 2026-08-26
     after the user challenged the blanket "do not improve the forecast")
@@ -45783,14 +45833,22 @@ list below have all LANDED, and d's answer narrows this entry's own caveat)
        applied to 5's picks is the whole ask -- no new infrastructure.
   
   ROOT CAUSE FOUND 2026-08-28, and it was not what this entry says: the WebSocket had NEVER started in production -- cron.py read two env vars that exist nowhere else in the repo, so `_ws` was always None and the start path returned unlogged. Fixed; see "THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION". Re-read this entry's own gating claim against that before treating it as still blocked.
-  3, 6  unstarted. NO LONGER BLOCKED as of 2026-08-28: the prerequisite was
-       shipped and is producing data. The first real cron run after the fix
-       (2026-08-28 08:57 UTC, 548 subscribed tickers, 126 seconds) wrote 726
-       rows across 526 distinct tickers, all env=prod -- the first rows this
-       table has ever held. The "0 rows as of 2026-08-27" reading below is
-       superseded; re-derive against the live table rather than quoting it.
-       These remain the only two options that do not require beating a price
-       already better than the model, and they now have an input.
+  3    unstarted, and now MEASURED for the first time rather than merely
+       unblocked -- see option 3's own entry for the numbers. Short version:
+       24% of books unquotable, 39% of the rest already at the 1c tick, and
+       5 contracts resting at best on a makeable book, i.e. $0.05 a round
+       trip. Not obviously worth a different discipline.
+  6    NOT UNSTARTED -- it has been in production for months as
+       consistency.py, running every cron and placing corrective trades. It
+       never needed orderbook_depth_snapshots. Zero violations found, ever.
+       See option 6 / option J, both corrected 2026-08-28.
+
+       BOTH readings above come from cron runs at 04:57 and 05:35 EASTERN,
+       the deadest hour, so both describe the overnight book. The real
+       blocker for either option was never depth data and is not the model:
+       it is a capture during hours when the market is awake. The "0 rows as
+       of 2026-08-27" reading below is superseded either way -- the table now
+       holds real prod rows; re-derive against it rather than quoting it.
 
   WHAT THE 2026-08-27 WORK DID NOT CHANGE: none of it created edge, and none
   of it was meant to. Items a-d were risk reduction, observability and one
