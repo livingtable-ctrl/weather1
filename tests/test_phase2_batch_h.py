@@ -141,7 +141,35 @@ class TestMosUtcDate:
 
         # The name being patched above is really utils' UTC helper, not
         # some local-clock function that happens to share the alias.
-        assert mos._utc_today is utils.utc_today
+        #
+        # Compared by (module, qualname) rather than by `is`. Object identity
+        # is not a property this system maintains: main.cmd_settings calls
+        # importlib.reload(utils) -- in PRODUCTION, not just in tests -- and
+        # reload rebinds every name in utils to a new object while mos, which
+        # did `from utils import utc_today as _utc_today` at its own import,
+        # keeps the original. So after an operator opens the Settings menu,
+        # `mos._utc_today is utils.utc_today` is genuinely False in the
+        # running bot, and asserting it here encoded a claim about the
+        # system that the system does not honour.
+        #
+        # It showed up as an ORDER-DEPENDENT test failure: this file passes
+        # alone and fails after tests/test_menu_ux.py, which exercises
+        # cmd_settings. main.py's own module comment (~:114) had already
+        # audited this bug class and left it latent on the grounds that "no
+        # test currently asserts main.<symbol> is utils.<symbol> identity" --
+        # true of main, but this assertion was the same shape one module over.
+        #
+        # The claim the test actually needs is unchanged and still enforced:
+        # a rebinding to date.today is caught, since date.today's
+        # (__module__, __qualname__) is (None, 'date.today').
+        assert (
+            (mos._utc_today.__module__, mos._utc_today.__qualname__)
+            == (
+                utils.utc_today.__module__,
+                utils.utc_today.__qualname__,
+            )
+            == ("utils", "utc_today")
+        )
 
         # days_out is what this test is named for: both producers must
         # still compute "today" through the helper asserted above.

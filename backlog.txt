@@ -1,9 +1,10 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-27 -- found by batch-90's scoped regression run, PROVEN
-  PRE-EXISTING against unmodified HEAD in a throwaway worktree, and
-  deliberately not fixed there: different subsystem, its own investigation]
+[RESOLVED 2026-08-27 by batch-91 -- resolution block at the end of this
+  entry. Originally found by batch-90's scoped regression run and PROVEN
+  PRE-EXISTING against unmodified HEAD in a throwaway worktree; not fixed
+  there because it is a different subsystem needing its own investigation]
   A main.py importlib.reload(utils) BREAKS AN IDENTITY ASSERTION IN ANOTHER
   TEST FILE -- ORDER-DEPENDENT, AND CI ORDERING DECIDES WHETHER IT FIRES
 Priority: Medium -- it is a test-suite integrity problem, not a product bug,
@@ -56,6 +57,62 @@ What it would look like:
 
   Whichever is chosen, add a regression that runs the two files together --
   the bug is invisible to any test that runs either file alone.
+
+RESOLVED 2026-08-27 (batch-91). BOTH sides fixed, per the user's choice --
+  the assertion was asserting something false, and the leak was real
+  independently of it.
+
+  CONFIRMED ON CI BEFORE FIXING, which upgrades this entry's own claim: a
+  GitHub Actions run on ubuntu-latest / Python 3.12 shows the identical
+  failure, so it is ordering that decides it, not platform. The entry was
+  filed from a Windows reproduction and had only assumed that.
+
+  Triggering tests narrowed to two classes, both of which drive
+  main.cmd_settings: TestCmdSettingsAuthoritativeWrite and
+  TestKalshiEnvBannerAndEdit. The other six classes in test_menu_ux are
+  harmless.
+
+  (1) THE ASSERTION WAS WRONG, not merely fragile. cmd_settings calls
+  importlib.reload(utils) in PRODUCTION -- that is its whole purpose, to
+  re-read env-driven constants -- so after an operator opens the Settings
+  menu, `mos._utc_today is utils.utc_today` is genuinely False in the
+  running bot. The test encoded a property the system does not maintain.
+  Now compares (__module__, __qualname__) against ("utils", "utc_today").
+
+  No strength lost, and that is measured rather than asserted: rebinding
+  mos._utc_today to date.today -- the exact mutation the test's own
+  docstring says it must catch -- still fails, because date.today's pair is
+  (None, 'date.today'). A plain hasattr check, which the docstring already
+  rejects as insufficient, would still pass.
+
+  (2) THE LEAK IS CONTAINED AT SOURCE. tests/test_menu_ux.py gained an
+  autouse fixture that snapshots and restores vars(utils). Restoring
+  sys.modules["utils"] would have been a no-op -- reload re-executes the
+  module in its EXISTING object, so the module identity never changed;
+  only its names were rebound. Verified interactively before writing it.
+
+  (3) THE FIXTURE HAS ITS OWN TEST, because fixing (1) made it otherwise
+  unfalsifiable -- with the assertion reload-proof, deleting the fixture
+  broke nothing else in the suite, and a guard nothing can fail is not a
+  guard. TestUtilsReloadIsContained sits LAST in the file (pytest runs a
+  file's tests in definition order, so every cmd_settings test has already
+  run by then) and compares utils.utc_today against a reference captured at
+  module import. Mutation-tested: disabling the fixture's restore fails it.
+
+  Scoped regression: 448 passed, 0 failed across the same 12 files where
+  this surfaced (previously 446 passed / 1 failed -- this one).
+
+  NOT FIXED HERE, and not caused by this or batch-90: the same CI run shows
+  six other failures, verified against commit scope as untouched by either
+  batch. Four are one class -- the prod-data guard correctly blocking real
+  data/ writes through unredirected path constants
+  (.feature_activations.json in TestRegimeBlend x2, .hurdat2_ATL.txt,
+  .emergency/) which pass locally only because a populated data/ makes the
+  code short-circuit before writing. One is test_ml_bias leaking an
+  injected OSError. One is test_prod_data_guard's
+  test_pathlib_move_out_of_data_is_blocked calling Path.move, which exists
+  in 3.14 (local) but NOT in 3.12 (what CI pins) -- so it passes here and
+  can never pass there. Each needs its own entry; flagged to the user.
 
 [RESOLVED 2026-08-27 by batch-90 -- never filed as OPEN; found by the user
   asking why three numbers in one cron cycle disagreed, and fixed in the

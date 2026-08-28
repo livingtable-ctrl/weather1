@@ -5,6 +5,46 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import utils as _utils_at_import
+
+# Captured before any test runs, so TestUtilsReloadIsContained at the bottom
+# of this file can prove the fixture below actually restored what the
+# cmd_settings tests reloaded.
+_UTILS_UTC_TODAY_AT_IMPORT = _utils_at_import.utc_today
+
+
+@pytest.fixture(autouse=True)
+def _contain_utils_reload():
+    """Keep main.cmd_settings' importlib.reload(utils) inside this module.
+
+    cmd_settings reloads utils to re-read env-driven constants, and several
+    tests here drive it. reload() re-executes the module in its EXISTING
+    module object, so sys.modules["utils"] stays the same object while every
+    NAME in it is rebound to a fresh one. Any module that did
+    `from utils import X` at import time keeps the original X, and from that
+    point on `other_module.X is utils.X` is False for the rest of the pytest
+    session.
+
+    That leaked out of this file and failed
+    tests/test_phase2_batch_h.py::TestMosUtcDate::test_days_out_frozen, which
+    asserted exactly that identity for mos. Either file passed alone; the
+    pair failed. A leak whose only symptom is in someone else's file, and
+    only in some orderings, is the kind of failure that gets written off as
+    flake -- so it is contained at the source rather than only worked around
+    at the assertion.
+
+    Restoring vars(utils) is what actually undoes it: replacing
+    sys.modules["utils"] would be a no-op, since reload never swapped the
+    module object out in the first place.
+    """
+    import utils
+
+    snapshot = dict(vars(utils))
+    yield
+    if vars(utils) != snapshot:
+        vars(utils).clear()
+        vars(utils).update(snapshot)
+
 
 class TestCronOutputFlush:
     def test_stdout_flushed_before_cmd_cron(self, monkeypatch):
@@ -1100,3 +1140,35 @@ class TestOperatorClose:
         assert seen == [["42", "0.50"]], (
             "top-level close must forward args[1:] to cmd_close"
         )
+
+
+class TestUtilsReloadIsContained:
+    """Pins the _contain_utils_reload fixture at the top of this module.
+
+    Placed LAST on purpose. pytest runs a file's tests in definition order,
+    so by the time this class runs, every cmd_settings test above has already
+    driven main.cmd_settings -> importlib.reload(utils). Without the fixture
+    those reloads have rebound every name in utils and this assertion fails;
+    with it, each one is undone as its test finishes.
+
+    This exists because the fixture would otherwise be untested: the
+    assertion it was written to protect (mos._utc_today is utils.utc_today,
+    in tests/test_phase2_batch_h.py) was simultaneously changed to compare by
+    (module, qualname), which is reload-proof -- so deleting the fixture no
+    longer breaks anything else in the suite. A guard nothing can fail is not
+    a guard.
+    """
+
+    def test_utils_names_survive_this_modules_reloads(self):
+        import utils
+
+        assert utils.utc_today is _UTILS_UTC_TODAY_AT_IMPORT, (
+            "a reload in this module leaked: utils.utc_today is no longer the "
+            "object bound at import, so every module that did "
+            "`from utils import ...` now holds a stale reference for the rest "
+            "of the session"
+        )
+        # POSITIVE CONTROL: the reference captured at import is the real
+        # helper, so the identity check above is not comparing two Nones or
+        # two copies of some placeholder.
+        assert _UTILS_UTC_TODAY_AT_IMPORT.__qualname__ == "utc_today"
