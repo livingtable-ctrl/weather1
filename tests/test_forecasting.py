@@ -2734,7 +2734,7 @@ class TestNbmOpenMeteoErrorLogging:
     """fetch_temperature_nbm's Open-Meteo fallback is the structural twin of
     _fetch_hrrr_temp -- same FORECAST_BASE, same start_date/end_date + models=
     shape, same threshold-3 breaker, same reason string that used to go to
-    DEBUG under a root logger at INFO. It matters MORE: this value reaches
+    DEBUG, which never reaches the console handler. It matters MORE: this value reaches
     model_temps["nbm"] and _compute_ensemble_spread on the live pricing path,
     where HRRR is only tracked. Open-Meteo has already retired this model name
     once, and a second rename would produce a permanent 400 whose only trace

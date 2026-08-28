@@ -46,7 +46,8 @@ _log = logging.getLogger(__name__)
 # smoke test reading prod prices does not validate what it claims to.
 #
 # Note for whoever runs that smoke test: there is only one credential pair
-# in this repo (KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM, no demo variants),
+# in this repo (KALSHI_KEY_ID plus KALSHI_PRIVATE_KEY_PATH, with
+# KALSHI_PRIVATE_KEY_PEM as an inline alternative; no demo variants),
 # so a demo run using prod credentials will most likely fail auth against
 # demo-api.kalshi.co and reconnect-loop rather than produce a feed at all.
 # That is the correct direction -- no data beats wrong data, and
@@ -625,8 +626,29 @@ def parse_message(msg: dict) -> dict | None:
         }
 
     elif msg_type == "ticker":
-        yes_bid_str = inner.get("yes_bid") or inner.get("yes_dollars_fp") or "0"
-        yes_ask_str = inner.get("yes_ask") or "0"
+        # Kalshi's ticker channel sends yes_bid_dollars / yes_ask_dollars /
+        # price_dollars -- dollar strings, matching the _dollars_fp
+        # convention the orderbook_snapshot branch above already handles.
+        # The bare yes_bid/yes_ask/last_price names this branch read do NOT
+        # appear on the wire: captured live 2026-08-28 across 32 ticker
+        # messages from 30 real markets, yes_bid/yes_ask/last_price were
+        # present in 0 of 32 while the _dollars names were present in 32 of
+        # 32. So every parsed ticker came out {yes_bid: 0.0, yes_ask: 0.0,
+        # mid_price: 0.0} against a real 0.47/0.48 book.
+        #
+        # That silently disabled every downstream consumer, each of which
+        # guards on `> 0`: update_orderbook_cache never called
+        # flash_crash_cb.check(), order_executor's breaker fell through to
+        # the REST mid, and _get_current_book rejected the cache for
+        # reprice/chase. Legacy names kept as a fallback so an older capture
+        # or replay still parses.
+        yes_bid_str = (
+            inner.get("yes_bid_dollars")
+            or inner.get("yes_bid")
+            or inner.get("yes_dollars_fp")
+            or "0"
+        )
+        yes_ask_str = inner.get("yes_ask_dollars") or inner.get("yes_ask") or "0"
         try:
             yes_bid = float(yes_bid_str)
             yes_ask = float(yes_ask_str)
@@ -641,7 +663,9 @@ def parse_message(msg: dict) -> dict | None:
             "yes_bid": yes_bid,
             "yes_ask": yes_ask,
             "mid_price": mid,
-            "last_price": float(inner.get("last_price") or 0),
+            "last_price": float(
+                inner.get("price_dollars") or inner.get("last_price") or 0
+            ),
             "ts": datetime.now(UTC).isoformat(),
         }
 
@@ -651,10 +675,113 @@ def parse_message(msg: dict) -> dict | None:
 # ── Order book cache ──────────────────────────────────────────────────────────
 
 
-def update_orderbook_cache(ticker: str, data: dict) -> None:
-    """Update in-memory and on-disk cache for a ticker."""
+# Disk-cache write throttle. The in-memory _orderbook is updated on EVERY
+# message and stays exact -- this bounds only how often that state is
+# serialised to disk for OTHER processes to read. Consumers gate on
+# WS_CACHE_TTL_SECS (900s), so a couple of seconds of lag is immaterial;
+# a starved event loop is not.
+_cache_disk_lock = threading.Lock()
+_cache_last_disk_write = 0.0
+
+
+def _cache_disk_interval() -> float:
+    """Seconds between disk serialisations of the in-memory book cache.
+
+    Read per call, not captured at import -- the same reason
+    _depth_snapshot_interval() gives: a long-running process must pick up a
+    changed env var. 0 or negative disables the throttle entirely (every
+    message writes, the pre-2026-08-28 behaviour), which is what the tests
+    that assert on file contents after a single message need.
+    """
+    raw = os.getenv("WS_CACHE_DISK_INTERVAL_SECS", "2.0")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        _log.warning("WS_CACHE_DISK_INTERVAL_SECS=%r is not a number — using 2.0", raw)
+        return 2.0
+
+
+def _maybe_write_cache_to_disk(force: bool = False) -> bool:
+    """Serialise the in-memory book cache to disk, at most once per interval.
+
+    Returns True when a write happened. `force=True` bypasses the throttle --
+    used on shutdown so the final state is not left unwritten.
+
+    Writes EVERY ticker in _orderbook, not just the one that triggered this
+    call: with a throttle in place, per-ticker writes would drop whichever
+    tickers were updated inside the throttle window. The file is still
+    read-merged first so entries written by another process are preserved,
+    which is the pre-throttle behaviour.
+    """
+    global _cache_last_disk_write
     import safe_io
 
+    now = time.monotonic()
+    with _cache_disk_lock:
+        if not force and (now - _cache_last_disk_write) < _cache_disk_interval():
+            return False
+        # Reserve the slot before writing, inside the lock, so a slow write
+        # cannot let a second caller straight through behind it.
+        _cache_last_disk_write = now
+
+    try:
+        with _cache_lock:
+            snapshot = dict(_orderbook)
+        cache = {}
+        if _CACHE_PATH.exists():
+            cache = json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+        cache.update(snapshot)
+        cache["_updated_at"] = datetime.now(UTC).isoformat()
+        # Opus review (batch-58, L2): stamp which environment produced these
+        # snapshots. The cache file is a single env-agnostic path keyed only
+        # by ticker, so without this an operator who runs prod, stops,
+        # switches KALSHI_ENV=demo and starts the L6585 demo smoke test
+        # inside WS_CACHE_TTL_SECS (900s) would have _get_fresh_ticker_entry's
+        # disk fallback serve the still-fresh PROD entries -- feeding prod
+        # prices to reprice/chase and the flash-crash breaker exactly as
+        # before item 2's fix, i.e. defeating the fix in the one scenario it
+        # was written for.
+        cache["_env"] = os.getenv("KALSHI_ENV", "demo")
+        _CACHE_PATH.parent.mkdir(exist_ok=True)
+        # emergency_copy=False: this is the disposable/re-fetchable JSON case
+        # safe_io's own docstring names. With the default, a failed write
+        # leaves an emergency copy that cron.check_emergency_copies() pages on
+        # every cycle until someone deletes it by hand -- for a cache the next
+        # connect rebuilds from scratch.
+        safe_io.atomic_write_json(cache, _CACHE_PATH, emergency_copy=False)
+        return True
+    except Exception as exc:
+        _log.warning("update_orderbook_cache: disk write failed: %s", exc)
+        return False
+
+
+def prune_orderbook_cache(keep: set[str] | None = None) -> int:
+    """Drop in-memory ticker cache entries outside `keep`.
+
+    The exact sibling of prune_depth_books, and needed for the same reason it
+    gives: cmd_cron() runs repeatedly for the lifetime of a `watch`/`loop`
+    process while these module globals survive, and weather tickers are
+    date-scoped, so _orderbook otherwise accumulates an entry per ticker per
+    day forever. That is worse here than for depth, because EVERY entry is
+    re-serialised on every disk write -- unbounded growth turns into
+    unbounded write cost (~600 new tickers/day compounds into a multi-MB
+    rewrite within a week).
+    """
+    with _cache_lock:
+        current = {t for t in _orderbook if not t.startswith("_")}
+        drop = current if keep is None else current - keep
+        for t in drop:
+            _orderbook.pop(t, None)
+    if drop:
+        _log.debug("prune_orderbook_cache: dropped %d ticker(s)", len(drop))
+    return len(drop)
+
+
+def update_orderbook_cache(ticker: str, data: dict) -> None:
+    """Update the in-memory cache for a ticker; disk write is throttled.
+
+    See _maybe_write_cache_to_disk for why the disk half is no longer inline.
+    """
     _msg_type = data.get("type")
 
     with _cache_lock:
@@ -709,27 +836,24 @@ def update_orderbook_cache(ticker: str, data: dict) -> None:
         else:
             _orderbook[ticker] = data
             merged = data
-        try:
-            cache = {}
-            if _CACHE_PATH.exists():
-                cache = json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
-            cache[ticker] = merged
-            cache["_updated_at"] = datetime.now(UTC).isoformat()
-            # Opus review (batch-58, L2): stamp which environment produced
-            # these snapshots. The cache file is a single env-agnostic path
-            # keyed only by ticker, so without this an operator who runs
-            # prod, stops, switches KALSHI_ENV=demo and starts the L6585
-            # demo smoke test inside WS_CACHE_TTL_SECS (900s) would have
-            # _get_fresh_ticker_entry's disk fallback serve the still-fresh
-            # PROD entries -- feeding prod prices to reprice/chase and the
-            # flash-crash breaker exactly as before item 2's fix, i.e.
-            # defeating the fix in the one scenario it was written for.
-            cache["_env"] = os.getenv("KALSHI_ENV", "demo")
-            # Fix 6: mkdir called here, just before the write
-            _CACHE_PATH.parent.mkdir(exist_ok=True)
-            safe_io.atomic_write_json(cache, _CACHE_PATH)
-        except Exception as exc:
-            _log.warning("update_orderbook_cache: disk write failed: %s", exc)
+    # Disk write is THROTTLED and happens outside _cache_lock. It used to run
+    # inline here on every single message: read the whole file, json.loads it,
+    # json.dumps it back, temp-file + fsync + rename -- synchronously, on the
+    # asyncio event loop, while holding _cache_lock.
+    #
+    # That is survivable at 3 tickers and fatal at real scale. Measured live
+    # against prod at 596 tickers (the current KNOWN_WEATHER_SERIES count),
+    # offered load ~300 msg/s: event-loop lag reached 28 SECONDS and the
+    # connection died with "keepalive ping timeout", after which _ws_listener
+    # sleeps 10s, reconnects, and replays the whole 596-message snapshot burst
+    # -- forever. Isolated benchmark: 19 ms/message at 200 tickers, 52 ms at
+    # 700, plus ~35-50 MB/s of sustained rewrite.
+    #
+    # This module had already solved exactly this for the DB write (see the
+    # depth-writer comment above: "A stalled loop stops reading messages,
+    # which risks a ping timeout and a dropped connection") and left the far
+    # more expensive JSON write inline.
+    _maybe_write_cache_to_disk()
 
     # Real-time flash-crash detection: only a "ticker"-type message carries a
     # genuine mid_price (see the comment on the delta branch above) -- feed it
@@ -873,7 +997,9 @@ def build_subscribe_message(
     }
 
 
-async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -> None:
+async def _ws_listener(
+    api_key: str, private_key_pem: str | bytes, tickers: list[str]
+) -> None:
     """
     Async WebSocket listener. Connects, authenticates, subscribes to tickers,
     and processes incoming messages indefinitely.
@@ -1007,7 +1133,12 @@ class KalshiWebSocket:
         ws.stop()
     """
 
-    def __init__(self, api_key: str, private_key_pem: str) -> None:
+    def __init__(self, api_key: str, private_key_pem: str | bytes) -> None:
+        # str | bytes because _ws_listener already accepts either (it encodes
+        # a str before load_pem_private_key), and cron reads the key file with
+        # read_bytes -- which is what load_pem_private_key wants and avoids a
+        # locale-dependent decode. The annotation was narrower than the real
+        # contract.
         self._api_key = api_key
         self._private_key_pem = private_key_pem
         self._tickers: list[str] = []
@@ -1036,8 +1167,9 @@ class KalshiWebSocket:
         # opens and only the final set is the real subscription.
         try:
             prune_depth_books(keep=set(self._tickers))
+            prune_orderbook_cache(keep=set(self._tickers))
         except Exception as exc:  # never block the listener starting
-            _log.debug("prune_depth_books skipped: %s", exc)
+            _log.debug("prune on start skipped: %s", exc)
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True, name="KalshiWS")
         self._thread.start()
@@ -1064,6 +1196,20 @@ class KalshiWebSocket:
                 self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread:
             self._thread.join(timeout=timeout)
+            if self._thread.is_alive():
+                # WARNING, not DEBUG: cmd_loop calls cmd_cron in-process every
+                # few hours, so a thread that outlives its stop() is still
+                # subscribed when the NEXT cycle starts another one, and the
+                # subscriptions stack. Silent here meant the leak was
+                # invisible.
+                _log.warning(
+                    "kalshi_ws: listener thread did not exit within %.1fs — "
+                    "it stays subscribed and a later cycle will start another",
+                    timeout,
+                )
+        # Final flush: the throttled writer may hold state that never reached
+        # disk, and this is the last chance before the process or cycle ends.
+        _maybe_write_cache_to_disk(force=True)
         _log.info("kalshi_ws: stopped")
 
     def _run(self) -> None:

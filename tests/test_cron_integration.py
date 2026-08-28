@@ -1800,7 +1800,13 @@ def test_cmd_cron_body_registers_real_websocket_before_cleanup(cron_env, monkeyp
     import cron as cron_module
     import kalshi_ws
 
-    monkeypatch.setenv("KALSHI_API_KEY", "test-key")
+    # THIS TEST USED TO ENCODE THE BUG. It set KALSHI_API_KEY /
+    # KALSHI_PRIVATE_KEY_PEM -- names that exist nowhere else in this repo and
+    # are not in .env -- and so proved the WS starts while production, which
+    # has neither, silently never started one at all. The env names here must
+    # be the ones the rest of the repo (config.py, main.py, kalshi_client.py)
+    # actually reads, or this test asserts nothing about production.
+    monkeypatch.setenv("KALSHI_KEY_ID", "test-key")
     monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "test-pem")
 
     fake_ws_instance = MagicMock()
@@ -3608,3 +3614,296 @@ class TestScanRunRecordHaltedAndTruncated:
         # Stamped before the engine was entered, and finished after it.
         assert rows[0]["started_at"] <= entered_at[0]
         assert rows[0]["finished_at"] >= entered_at[0]
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_reads_the_private_key_from_its_path(cron_env, monkeypatch):
+    """The deployed credential shape is KALSHI_KEY_ID + a PEM FILE path.
+
+    Before 2026-08-28 this block read KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM
+    -- names absent from .env and from every other module -- so the gate was
+    always False, `_ws` was always None, and _subscribe_and_start_ws returned
+    at its own `if _ws is None: return` with no log at any level. The
+    WebSocket had never started in production: orderbook_depth_snapshots sat
+    at 0 rows and get_cached_mid_price (the flash-crash breaker's preferred
+    input) was permanently empty.
+    """
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    key_file = tmp_path / "kalshi_key.pem"
+    key_file.write_text(
+        "-----BEGIN PRIVATE KEY-----\nFAKE\n-----END PRIVATE KEY-----\n"
+    )
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id-from-env")
+    monkeypatch.delenv("KALSHI_PRIVATE_KEY_PEM", raising=False)
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PATH", str(key_file))
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    # bytes, not text: load_pem_private_key wants bytes and _ws_listener
+    # accepts them, so cron skips a locale-dependent decode a BOM would break.
+    fake_ws_class.assert_called_once_with("key-id-from-env", key_file.read_bytes())
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_prefers_the_path_over_the_inline_pem(cron_env, monkeypatch):
+    """The PATH wins when both are set, so the WS and REST sign with one key.
+
+    KalshiClient reads ONLY KALSHI_PRIVATE_KEY_PATH and never the inline
+    variable. If cron preferred the inline PEM, a stale KALSHI_PRIVATE_KEY_PEM
+    would make the WebSocket authenticate as a different key than every REST
+    call in the same process -- the same silent-desync class main.py works
+    hard to prevent for KALSHI_ENV -- and it would preference exactly the
+    plaintext-key-in-.env shape _check_env_file_permissions() exists to
+    discourage. The inline variable stays supported, as the fallback."""
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    key_file = tmp_path / "real_key.pem"
+    key_file.write_text("FROM-THE-FILE")
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "STALE-INLINE-PEM")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PATH", str(key_file))
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    fake_ws_class.assert_called_once_with("key-id", b"FROM-THE-FILE")
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_falls_back_to_inline_pem_when_no_path(cron_env, monkeypatch):
+    """The inline PEM is still honoured when no usable path is configured."""
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "INLINE-PEM")
+    monkeypatch.delenv("KALSHI_PRIVATE_KEY_PATH", raising=False)
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    fake_ws_class.assert_called_once_with("key-id", "INLINE-PEM")
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_does_not_start_ws_on_the_old_names_alone(cron_env, monkeypatch):
+    """REGRESSION PIN. KALSHI_API_KEY is not a credential name this repo uses.
+
+    If someone reintroduces it, the gate would pass in a test environment
+    while production -- which has KALSHI_KEY_ID instead -- silently goes back
+    to never starting a feed. Paired with a positive control below so this
+    cannot pass merely because the WS never starts in this harness at all.
+    """
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_API_KEY", "old-name-key")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "some-pem")
+    monkeypatch.delenv("KALSHI_KEY_ID", raising=False)
+    monkeypatch.delenv("KALSHI_PRIVATE_KEY_PATH", raising=False)
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    assert not fake_ws_class.called, (
+        "KALSHI_API_KEY must not be sufficient -- it is not a name this repo "
+        "reads anywhere else, and treating it as one is the original defect"
+    )
+
+    # POSITIVE CONTROL: the same harness, with the REAL name added, does
+    # construct the WS -- so the assertion above is about the name, not about
+    # this test being unable to start a WS under any circumstances.
+    fake_ws_class.reset_mock()
+    monkeypatch.setenv("KALSHI_KEY_ID", "real-name-key")
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+    assert fake_ws_class.called, (
+        "positive control failed: the harness cannot start a WS at all, so "
+        "the negative assertion above proves nothing"
+    )
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_warns_loudly_when_ws_credentials_are_missing(
+    cron_env, monkeypatch, caplog
+):
+    """A disabled real-time feed must announce itself.
+
+    The original failure was not an exception -- it was a falsy credential
+    check falling through to an unlogged `return`, which is why it survived
+    months of cron runs and a live cron transcript with zero kalshi_ws lines
+    in it. WARNING because DEBUG never reaches the CONSOLE handler (pinned
+    at INFO) -- it does reach the per-pid debug file, which is not where
+    an operator looks.
+    """
+    import logging
+
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    for var in (
+        "KALSHI_KEY_ID",
+        "KALSHI_PRIVATE_KEY_PEM",
+        "KALSHI_PRIVATE_KEY_PATH",
+        "KALSHI_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    with caplog.at_level(logging.DEBUG, logger="cron"):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert not fake_ws_class.called  # precondition: really is the disabled path
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "WebSocket DISABLED" in r.getMessage()
+    ]
+    assert len(warnings) == 1, (
+        "a disabled WebSocket must be reported at WARNING -- at DEBUG it is "
+        f"invisible under the root logger's INFO level. Records: "
+        f"{[r.getMessage()[:60] for r in caplog.records if r.levelno >= logging.WARNING]}"
+    )
+    assert "KALSHI_KEY_ID" in warnings[0].getMessage(), (
+        "the message must name the variables an operator has to set"
+    )
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_warns_when_the_ws_constructor_raises(
+    cron_env, monkeypatch, caplog
+):
+    """The `except` branch's LEVEL is half the original root cause.
+
+    Credentials were absent AND the failure path logged at DEBUG, which never
+    reaches the console handler an operator watches. A review found that
+    demoting this back to DEBUG survived the suite, because nothing exercised
+    the exception path at all."""
+    import logging
+
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "pem")
+    monkeypatch.delenv("KALSHI_PRIVATE_KEY_PATH", raising=False)
+
+    def _boom(*a, **k):
+        raise RuntimeError("constructor exploded")
+
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", _boom)
+
+    with caplog.at_level(logging.DEBUG, logger="cron"):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "WebSocket not available" in r.getMessage()
+    ]
+    assert len(warnings) == 1, (
+        "a WS construction failure must reach WARNING -- at DEBUG it lands "
+        "only in the per-pid debug file, not the console"
+    )
+    assert "constructor exploded" in warnings[0].getMessage()
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_does_not_warn_when_the_ws_starts_fine(
+    cron_env, monkeypatch, caplog
+):
+    """Negative half of the DISABLED warning, with a positive control.
+
+    Without this, a regression that warns on EVERY cycle -- including healthy
+    ones -- ships green, and the operator learns to ignore the line. A review
+    found `if _ws is None:` -> `if True:` survived the suite for exactly this
+    reason."""
+    import logging
+
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "pem")
+    monkeypatch.delenv("KALSHI_PRIVATE_KEY_PATH", raising=False)
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    with caplog.at_level(logging.DEBUG, logger="cron"):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    # Positive control: the WS really was constructed on this run, so the
+    # absence below is about a healthy path and not about the WS never
+    # starting in this harness.
+    assert fake_ws_class.called, "positive control: the WS must have started"
+    assert not [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "WebSocket DISABLED" in r.getMessage()
+    ], "a healthy cycle must not report the feed as disabled"
+
+
+@pytest.mark.cron_integration
+def test_cmd_cron_body_falls_back_when_the_key_path_is_missing(cron_env, monkeypatch):
+    """A configured-but-nonexistent path must fall through to the inline PEM.
+
+    With path-first precedence the `.exists()` guard is load-bearing: without
+    it, read_bytes() raises, the except logs and `_ws` stays None -- so a
+    typo'd KALSHI_PRIVATE_KEY_PATH would disable the feed even though a
+    perfectly good KALSHI_PRIVATE_KEY_PEM was sitting right there."""
+    tmp_path, client, main, paper = cron_env
+    import kalshi_ws
+
+    monkeypatch.setenv("KALSHI_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PEM", "INLINE-PEM")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PATH", str(tmp_path / "does_not_exist.pem"))
+
+    fake_ws_class = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(kalshi_ws, "KalshiWebSocket", fake_ws_class)
+
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+
+    fake_ws_class.assert_called_once_with("key-id", "INLINE-PEM")

@@ -1521,6 +1521,83 @@ def _clear_trading_paused(monkeypatch):
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def isolate_orderbook_cache(tmp_path, monkeypatch):
+    """Redirect kalshi_ws's book-cache path away from the real data/ dir.
+
+    A genuine gap in the isolate_* family: every test that wanted this
+    patched `kalshi_ws._CACHE_PATH` itself, so any code path reaching the
+    write from somewhere else hit production. The prod-data guard has been
+    catching those attempts (thread 'KalshiWS', and now the shutdown flush in
+    stop()) and reporting exactly this fix.
+
+    Patched on kalshi_ws, not on paths: the module does `from paths import
+    ORDERBOOK_CACHE_PATH as _CACHE_PATH` at import, so it holds its own
+    binding and patching paths alone would not reach it. Tests that set their
+    own path still win -- autouse runs first."""
+    try:
+        import kalshi_ws
+
+        monkeypatch.setattr(kalshi_ws, "_CACHE_PATH", tmp_path / "orderbook_cache.json")
+    except Exception:  # pragma: no cover - kalshi_ws import is not universal
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _disable_ws_cache_disk_throttle(monkeypatch):
+    """Write the WS book cache to disk on every message, as tests expect.
+
+    kalshi_ws throttles that write to once per WS_CACHE_DISK_INTERVAL_SECS
+    (default 2s) because doing it inline per message starved the event loop
+    at real subscription sizes. The throttle keeps its state in a module
+    global, which leaks across tests: a test that writes leaves the clock
+    warm, so the NEXT test's write inside the window is silently skipped and
+    it fails on file contents it did write. Verified: the affected tests pass
+    in isolation and fail in sequence.
+
+    0 disables the throttle, restoring per-message writes for the suite, and
+    resetting the clock keeps tests order-independent."""
+    monkeypatch.setenv("WS_CACHE_DISK_INTERVAL_SECS", "0")
+    try:
+        import kalshi_ws
+
+        monkeypatch.setattr(kalshi_ws, "_cache_last_disk_write", 0.0, raising=False)
+    except Exception:  # pragma: no cover - kalshi_ws import is not universal
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _clear_ws_credentials(monkeypatch):
+    """Strip the WebSocket credentials from the real .env.
+
+    This module imports `main` at collection time precisely so its
+    module-level load_dotenv() runs once (see the header comment and :931),
+    which means the operator's REAL KALSHI_KEY_ID / KALSHI_PRIVATE_KEY_PATH
+    and KALSHI_ENV=prod are in os.environ for every test. From the moment
+    cron.py's WS bootstrap started reading those real names (2026-08-28 --
+    before that it read two names nothing sets, which is the bug it fixed),
+    every cmd_cron test satisfied the credential gate and started a REAL
+    background thread that authenticated against wss://api.elections.kalshi.com
+    and tried to write the real data/orderbook_cache.json.
+
+    Measured before this fixture: 36 WS threads and 11 live prod connections
+    from tests/test_cron_integration.py alone, with the prod-data guard
+    tripping on writes "on thread 'KalshiWS'" -- and, because the failures
+    depend on which test happens to still be running when a socket delivers,
+    a randomized-order run failed a DIFFERENT set of tests each time (1 and
+    6 in two runs). A clean pass was ordering luck.
+
+    The handful of tests that DO want a WS set these variables themselves,
+    so removing them here cannot mask a real behaviour."""
+    for _var in (
+        "KALSHI_KEY_ID",
+        "KALSHI_PRIVATE_KEY_PEM",
+        "KALSHI_PRIVATE_KEY_PATH",
+        "KALSHI_API_KEY",
+    ):
+        monkeypatch.delenv(_var, raising=False)
+
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

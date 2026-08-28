@@ -692,3 +692,97 @@ class TestOrderbookCacheEnvNamespacing:
         path.write_text(json.dumps(cache), encoding="utf-8")
 
         assert kalshi_ws.get_cached_mid_price("KXHIGHNY-26APR17-T72") is None
+
+
+class TestTickerChannelRealWireFormat:
+    """The ticker channel sends *_dollars names, and nothing pinned that.
+
+    Captured live 2026-08-28 from 30 real markets: yes_bid_dollars /
+    yes_ask_dollars / price_dollars present in 32 of 32 messages; the bare
+    yes_bid / yes_ask / last_price this parser read present in 0 of 32. So
+    every ticker parsed to {yes_bid: 0.0, yes_ask: 0.0, mid_price: 0.0}
+    against real books, and every consumer -- all of which guard on `> 0` --
+    silently did nothing: update_orderbook_cache never called
+    flash_crash_cb.check(), order_executor's breaker fell back to the REST
+    mid, and _get_current_book rejected the cache for reprice/chase.
+
+    The pre-existing ticker tests fed the LEGACY names, so they passed both
+    before and after the fix and could never have caught this.
+    """
+
+    def _live_shaped(self):
+        # Field names and value shapes copied from a real captured message.
+        return {
+            "type": "ticker",
+            "sid": 1,
+            "seq": 7,
+            "msg": {
+                "market_id": "0e884793-755d-407d-b1aa-7e2f1d69514b",
+                "market_ticker": "KXHIGHNY-26AUG28-B80.5",
+                "price_dollars": "0.4900",
+                "yes_bid_dollars": "0.4700",
+                "yes_ask_dollars": "0.4800",
+                "yes_bid_size_fp": "120.00",
+                "yes_ask_size_fp": "80.00",
+                "volume_fp": "7830.00",
+                "ts_ms": 1787900000000,
+            },
+        }
+
+    def test_real_wire_ticker_yields_a_usable_mid(self):
+        from kalshi_ws import parse_message
+
+        result = parse_message(self._live_shaped())
+        assert result is not None
+        assert result["yes_bid"] == pytest.approx(0.47)
+        assert result["yes_ask"] == pytest.approx(0.48)
+        assert result["mid_price"] == pytest.approx(0.475)
+        assert result["last_price"] == pytest.approx(0.49)
+
+    def test_mid_is_greater_than_zero_which_is_what_every_consumer_gates_on(self):
+        """The specific property that was broken. Every downstream reader --
+        update_orderbook_cache's flash-crash call, order_executor's
+        `if cached_mid and cached_mid > 0`, _get_current_book's guards --
+        tests `> 0`, so a 0.0 mid is indistinguishable from 'no data' and
+        silently disables all three."""
+        from kalshi_ws import parse_message
+
+        result = parse_message(self._live_shaped())
+        assert result["mid_price"] > 0, (
+            "a real two-sided book must produce a positive mid -- 0.0 reads "
+            "as 'no data' to every consumer and disables the flash-crash "
+            "breaker's preferred input"
+        )
+
+    def test_legacy_names_still_parse(self):
+        """The fallback is deliberate, so an older capture or a replay of
+        stored messages keeps working."""
+        from kalshi_ws import parse_message
+
+        result = parse_message(
+            {
+                "type": "ticker",
+                "msg": {
+                    "market_ticker": "KXHIGHNY-26APR17-T72",
+                    "yes_bid": "0.6300",
+                    "yes_ask": "0.6700",
+                    "last_price": "0.6400",
+                },
+            }
+        )
+        assert result["mid_price"] == pytest.approx(0.65)
+        assert result["last_price"] == pytest.approx(0.64)
+
+    def test_dollars_names_win_when_both_are_present(self):
+        """If a message ever carried both, the documented wire name must be
+        the one used -- otherwise the fallback silently shadows the truth."""
+        from kalshi_ws import parse_message
+
+        msg = self._live_shaped()
+        msg["msg"]["yes_bid"] = "0.9900"
+        msg["msg"]["yes_ask"] = "0.9900"
+        msg["msg"]["last_price"] = "0.9900"
+        result = parse_message(msg)
+        assert result["yes_bid"] == pytest.approx(0.47)
+        assert result["yes_ask"] == pytest.approx(0.48)
+        assert result["last_price"] == pytest.approx(0.49)

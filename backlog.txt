@@ -207,7 +207,8 @@ What it would look like:
   instead of removing it. See that entry's ROUND 2 block.
 
   ALSO FIXED, same payload: the reason string was going to _log.debug, and
-  the root logger sits at INFO, so for two months the ONLY trace of a
+  DEBUG never reaches the CONSOLE handler (pinned at INFO), so for two
+  months the only trace an operator could see of a
   permanent 400 in cron.log was the breaker opening
   ([[feedback_debug_log_is_not_a_trace]]). A 4xx is now logged at WARNING
   with the response body -- it is a permanent request-shape bug the breaker
@@ -862,6 +863,231 @@ TESTS (counts re-derived by collection at the moment of writing):
   broke exactly the test written for it.
   Full sweep over all 25 test files referencing enrich_with_forecast: 1897
   passed, 2 skipped. ruff + ruff-format + mypy clean.
+
+
+[RESOLVED 2026-08-28 -- root-caused while acting on the direction entry's own
+  "turn on WS depth capture, it is the cheap prerequisite" recommendation.
+  It was not a build task: the capture code was already complete, already
+  enabled by default, and had simply never run.]
+  THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION -- cron.py READS TWO ENV VARS
+  THAT EXIST NOWHERE ELSE IN THIS REPO, AND SAYS NOTHING WHEN THEY ARE MISSING
+Priority: was MEDIUM. No wrong price -- but it silently zeroed a data source
+  two of the project's remaining strategy options are blocked on, and left
+  the flash-crash breaker permanently on its fallback input.
+Files: cron.py (the WS bootstrap in _cmd_cron_body), kalshi_ws.py (a comment
+  that asserted the wrong credential names), tests/test_cron_integration.py
+
+THE BUG. cron.py read:
+
+    api_key = os.getenv("KALSHI_API_KEY", "")
+    key_pem = os.getenv("KALSHI_PRIVATE_KEY_PEM", "")
+    if api_key and key_pem:
+        _ws = KalshiWebSocket(api_key, key_pem)
+
+  Neither name is in .env, and cron.py was the ONLY reader of either in the
+  whole repo. config.py, main.py and kalshi_client.py all use KALSHI_KEY_ID
+  plus KALSHI_PRIVATE_KEY_PATH. Evaluated against the real .env:
+
+      KALSHI_API_KEY           ** EMPTY **
+      KALSHI_PRIVATE_KEY_PEM   ** EMPTY **
+      KALSHI_KEY_ID            SET (len 36)
+      KALSHI_PRIVATE_KEY_PATH  SET (len 51)
+      gate `if api_key and key_pem:` -> False   =>  _ws is None
+
+  So `_ws` was always None and _subscribe_and_start_ws returned at its own
+  `if _ws is None: return` -- with NO log at any level. The except beside it
+  logged at DEBUG, which reaches the per-pid debug file but never the
+  console handler an operator watches. That is why a live
+  cron transcript contains zero kalshi_ws lines and why this survived months.
+
+WHY IT LOOKED LIKE SOMETHING ELSE. The direction entry files options 3
+  (market-making) and 6 (ladder-coherence arbitrage) as "blocked on
+  orderbook_depth_snapshots, which has never been written; turning on WS
+  depth capture unblocks BOTH and is cheap". PUBLIC TRADE-FLOW SIGNAL and
+  MARKET_LIFECYCLE_V2 are both filed as "gated on an always-on host providing
+  continuous WS coverage". All four descriptions are downstream of the same
+  single fact, and none of them names it: the feed never connects AT ALL, so
+  coverage between scans was never the binding constraint.
+
+RULED OUT FIRST, rather than stopping at the first plausible cause:
+  * The capture code works. Drove the real chain end to end (parse_message ->
+    update_orderbook_cache -> _apply_orderbook_snapshot -> _maybe_persist_depth
+    -> writer thread -> tracker.log_orderbook_depth) with a spec-shaped
+    message: it wrote a row.
+  * The field names are right. Kalshi's published spec
+    (docs.kalshi.com/websockets/orderbook-updates) gives yes_dollars_fp /
+    no_dollars_fp, which is exactly what parse_message reads, and confirms a
+    snapshot IS sent on subscribe. The "wrong payload field names" failure the
+    snapshot handler's own docstring warns about is not what happened here.
+  * DEPTH_SNAPSHOT_INTERVAL_SECS is unset, so it defaults to 60 -- enabled.
+    Only a value <= 0 disables persistence.
+
+PROVEN LIVE BEFORE CHANGING ANYTHING. With KALSHI_KEY_ID and the PEM read
+  from KALSHI_PRIVATE_KEY_PATH, against prod, 3 real tickers, 45 seconds:
+      connected to wss://api.elections.kalshi.com/trade-api/ws/v2
+      3 depth books, all valid (1/63, 11/52, 0/61 levels)
+      3 rows written to orderbook_depth_snapshots
+  So the fix produces exactly the data options 3 and 6 need, and nothing else
+  was wrong.
+
+A TEST WAS PINNING THE BUG. tests/test_cron_integration.py's
+  test_cmd_cron_body_registers_real_websocket_before_cleanup set
+  KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM and asserted the WS is constructed.
+  It passed -- while production, which has neither variable, never started
+  one. An end-to-end test that supplies credentials production does not have
+  proves nothing about production. Now uses the real names.
+
+FIXED 2026-08-28. Read KALSHI_KEY_ID; use KALSHI_PRIVATE_KEY_PEM when set
+  (the documented inline alternative kalshi_client.py warns about keeping in
+  plaintext) and otherwise read the PEM text from KALSHI_PRIVATE_KEY_PATH.
+  The except went DEBUG -> WARNING, and a new `if _ws is None:` block WARNs
+  naming the variables to set -- because the original failure was not an
+  exception at all but a falsy check falling through to an unlogged return,
+  and that silence is what cost the months. Also corrected kalshi_ws.py's
+  comment asserting "there is only one credential pair in this repo
+  (KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM)", which is probably why nobody
+  looked.
+
+WHAT THIS TURNS ON, stated plainly because it is a live-path change: a
+  background thread and a ~700-ticker subscription per cron cycle, and
+  get_cached_mid_price starts returning values to order_executor's
+  flash-crash breaker and reprice/chase logic, which have only ever seen the
+  REST fallback. The fallback is correct and stays in place; this restores
+  the fresher input it was written to prefer.
+
+INDEPENDENT REVIEW FOUND THREE MORE THINGS, TWO OF WHICH MADE THE ORIGINAL
+FIX UNSHIPPABLE ON ITS OWN. All are now fixed.
+
+  1. TURNING THE FEED ON MADE THE TEST SUITE CONNECT TO PRODUCTION. conftest
+     imports main at collection time so its module-level load_dotenv() puts
+     the REAL KALSHI_KEY_ID / KALSHI_PRIVATE_KEY_PATH and KALSHI_ENV=prod into
+     os.environ for every test. The moment cron read those real names, every
+     cmd_cron test satisfied the gate and started a live background thread:
+     measured 36 WS threads and 11 authenticated connections to
+     wss://api.elections.kalshi.com from test_cron_integration.py alone, with
+     the prod-data guard tripping on writes "on thread 'KalshiWS'". My
+     reported "178 passed" was ordering luck -- randomized runs failed a
+     DIFFERENT set each time (1 and 6). Fixed with an autouse fixture that
+     delenvs the credentials; the tests that want a WS set them themselves.
+     Now 198 passed across repeated randomized runs.
+
+  2. AT REAL SUBSCRIPTION SIZE THE FEED KILLS ITSELF. update_orderbook_cache
+     read, json.loads'd, json.dumps'd and fsync-renamed the WHOLE cache file
+     on EVERY message, synchronously on the asyncio loop, holding _cache_lock.
+     Measured live at 596 tickers (~300 msg/s): event-loop lag reached 28
+     SECONDS and the connection died with "keepalive ping timeout", after
+     which the listener sleeps 10s, reconnects and replays the entire
+     snapshot burst -- forever. My own live check was 3 tickers for 45s and
+     could not have surfaced it.
+       The module had already solved exactly this for the DB write (see the
+     depth-writer comment: "A stalled loop stops reading messages, which
+     risks a ping timeout and a dropped connection") and left the far more
+     expensive JSON write inline.
+       Fixed by throttling the DISK write to once per
+     WS_CACHE_DISK_INTERVAL_SECS (default 2s, read per call like
+     _depth_snapshot_interval, 0 disables) while the in-memory book stays
+     exact on every message. Each write now serialises every pending ticker,
+     not just the triggering one, so the throttle cannot drop updates, and it
+     still read-merges the file so another process's entries survive.
+     Measured on the fixed code, 3000 messages across 600 tickers:
+         before  10.739 ms/message, 3000 disk writes
+         after    0.005 ms/message,    1 disk write   (2000x)
+       VERIFIED LIVE AT PRODUCTION SCALE before shipping, because a synthetic
+     benchmark cannot prove the connection survives. Real feed, 548 tickers
+     (the actual cron ticker set), 3 minutes:
+         messages processed  26,795      connection alive at end  True
+         max event-loop lag      31 ms   (28,000 ms before the fix)
+         disk writes             91      (unthrottled would be ~26,795)
+         depth rows written     926      books built            548/548
+     The failure mode this fixes -- lag climbing until a keepalive ping
+     timeout kills the socket and it reconnect-thrashes -- did not occur.
+     Also emergency_copy=False -- this is the disposable/re-fetchable JSON
+     case safe_io's docstring names, and the default leaves a file
+     cron.check_emergency_copies() pages on every cycle until deleted by hand.
+
+  3. THE HEADLINE BENEFIT WOULD NOT HAVE LANDED. parse_message's TICKER
+     branch read yes_bid / yes_ask / last_price. The wire sends
+     yes_bid_dollars / yes_ask_dollars / price_dollars. Captured live
+     2026-08-28 across 32 ticker messages from 30 real markets: the names the
+     parser read were present in 0 of 32; the _dollars names in 32 of 32. So
+     every ticker parsed to {yes_bid: 0.0, yes_ask: 0.0, mid_price: 0.0}
+     against a real 0.47/0.48 book, and every consumer -- all of which guard
+     on `> 0` -- silently did nothing: update_orderbook_cache never called
+     flash_crash_cb.check(), order_executor's breaker kept using the REST
+     mid, _get_current_book kept rejecting the cache for reprice/chase.
+     A SECOND, INDEPENDENT DEFECT stacked on the credential one: fixing the
+     credentials alone would have started a feed whose price half still did
+     nothing. Fixed to prefer the wire names with the legacy ones as
+     fallback, mirroring what the orderbook_snapshot branch already did.
+     The pre-existing ticker tests fed the LEGACY names, so they passed
+     before and after and could never have caught it.
+
+  Also fixed from the same review: the WS/REST key-desync risk (path now
+  wins over the inline PEM, since KalshiClient reads ONLY the path -- a stale
+  KALSHI_PRIVATE_KEY_PEM would otherwise have the WS authenticate as a
+  different key than every REST call in the same process); the key is read
+  with read_bytes and gets KalshiClient's own _check_key_permissions warning;
+  _orderbook grew forever with no equivalent of prune_depth_books, and every
+  entry is re-serialised on every write, so it now prunes on start(); stop()
+  WARNs when the listener thread outlives its join (cmd_loop starts another
+  one next cycle and the subscriptions stack) and force-flushes the throttled
+  cache; and get_ws_health's stale warning is suppressed unless a feed is
+  actually alive, since it runs BEFORE the WS is created and would otherwise
+  have announced "cache is stale (idle 14400s)" every cycle from the second
+  one on.
+
+  ONE OF MY OWN CLAIMS WAS WRONG, and it is corrected everywhere it appears,
+  including in already-merged work: "the root logger sits at INFO, so a DEBUG
+  is invisible". Commit 542ccf05 set root to DEBUG, removed the process-global
+  logging.disable(logging.DEBUG) and added a per-pid bot.debug.*.log. DEBUG
+  records are NOT discarded -- they reach that file. WARNING is still right,
+  for a better reason: the CONSOLE handler is pinned at INFO, and the console
+  is what an operator watches a cron run through. The corollary matters more
+  than the wording -- "the transcript contains zero kalshi_ws lines" is weaker
+  evidence than it looked, because the debug file was never checked.
+
+  A NOTE FOR WHOEVER WATCHES THE FIRST REAL CRON RUN: the flash-crash breaker
+  will now actually fire. It fed on WS ticker messages that never arrived, so
+  in production it has only ever seen the REST mid via order_executor. During
+  the 3-minute live test it tripped on 18 tickers -- 20% to 75% moves inside
+  a 300s window, all on thin hourly/temperature markets, all genuine. Those
+  cooldowns only ever BLOCK a trade, never enable one, so the direction is
+  safe; but expect "FLASH CRASH CB" warnings that have never appeared before,
+  and do not read them as a new defect.
+
+TESTS (counts re-derived by collection at the moment of writing): 12 tests
+  match "cmd_cron_body or websocket" in tests/test_cron_integration.py --
+  PEM read from its path (as bytes); path wins over a stale inline PEM;
+  inline PEM used when no path; a missing path falls back to the inline PEM;
+  the OLD names alone must NOT start a WS, paired with a positive control
+  that the same harness DOES start one once the real name is added; the
+  missing-credential WARNING; the constructor-raises WARNING; and a healthy
+  cycle must NOT report the feed disabled. Plus 4 new in
+  tests/test_kalshi_ws.py (TestTickerChannelRealWireFormat) pinning the real
+  wire shape. Scoped suite (test_cron_integration, test_cron_group_c,
+  test_main_cron_smoke, test_kalshi_ws, test_flash_crash_cb): 198 passed,
+  stable across repeated randomized-order runs. Four mutations applied individually via the
+  Edit tool and reverted -- reverting to the old name, dropping the key-path
+  fallback, demoting the WARNING to DEBUG, and ignoring the inline PEM --
+  each broke exactly the test written for it.
+
+  A NOTE ON SCOPING THE TEST RUN, because I got it wrong first: building the
+  list as "every file mentioning kalshi_ws or cmd_cron" gave 36 files and 392
+  cross-file fixture errors, none of them caused by this change
+  (test_web_app.py passes 107/107 alone). That interference is the open
+  "intermittent failure when files run in parallel" entry. Scope by which
+  tests exercise the changed lines, not by which files mention the module.
+
+  INCIDENT, recorded because it contaminated a production file: the first
+  diagnostic script isolated tracker.DB_PATH but not kalshi_ws._CACHE_PATH,
+  so one call to update_orderbook_cache replaced data/orderbook_cache.json
+  with a single synthetic ticker. Inert for every production reader -- the row
+  was stamped _env "demo" while the bot runs prod, and kalshi_ws rejects the
+  whole disk cache on _env mismatch -- and the file was removed so the next
+  connect rebuilds it. The real cost was destroying that file's mtime, which
+  was the independent evidence of how long the feed had been dead. The repo's
+  prod-data guard would have caught it, but it is a pytest plugin and does not
+  exist outside pytest.
 
 
 [OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS
@@ -16301,6 +16527,8 @@ UPDATE 2026-08-03 (no live-signal code shipped against this entry -- scope
   without needing the WS mechanism whose own gate hasn't cleared. See that
   entry's 2026-08-03 resolution note below for what shipped and the actual
   finding.
+
+  ROOT CAUSE FOUND 2026-08-28, and it was not what this entry says: the WebSocket had NEVER started in production -- cron.py read two env vars that exist nowhere else in the repo, so `_ws` was always None and the start path returned unlogged. Fixed; see "THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION". Re-read this entry's own gating claim against that before treating it as still blocked.
   This entry itself remains fully open and unbuilt -- "When to revisit"
   above is unchanged: still gated on genuinely continuous (not
   periodic-cron-with-teardown) WS coverage, which an always-on host (see
@@ -18227,6 +18455,8 @@ RESOLVED 2026-08-22 (precursor check only -- live wiring above is still
   price_history data, no existing code calls it (by design), no new table
   or migration, TRADING_PAUSED/ENABLE_MICRO_LIVE untouched, no order was
   placed or closed.
+
+  ROOT CAUSE FOUND 2026-08-28, and it was not what this entry says: the WebSocket had NEVER started in production -- cron.py read two env vars that exist nowhere else in the repo, so `_ws` was always None and the start path returned unlogged. Fixed; see "THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION". Re-read this entry's own gating claim against that before treating it as still blocked.
   Still open: subscribing market_lifecycle_v2 itself and the live
   new-listing maker-order flow -- both remain blocked behind the always-on
   host decision per this entry's own "When to revisit" above, unchanged.
@@ -45429,7 +45659,9 @@ list below have all LANDED, and d's answer narrows this entry's own caveat)
        batch-89/90 built exit_rule_shadow_log, whose first cycles confirmed
        it prices every position in the tradeable window. The same pattern
        applied to 5's picks is the whole ask -- no new infrastructure.
-    3, 6  unstarted, both STILL blocked on the same cheap prerequisite:
+  
+  ROOT CAUSE FOUND 2026-08-28, and it was not what this entry says: the WebSocket had NEVER started in production -- cron.py read two env vars that exist nowhere else in the repo, so `_ws` was always None and the start path returned unlogged. Fixed; see "THE WEBSOCKET HAS NEVER STARTED IN PRODUCTION". Re-read this entry's own gating claim against that before treating it as still blocked.
+  3, 6  unstarted, both STILL blocked on the same cheap prerequisite:
        orderbook_depth_snapshots has never been written (0 rows as of
        2026-08-27). Turning on WS depth capture unblocks BOTH at once, and
        is the single highest-leverage unstarted item in this entry -- these

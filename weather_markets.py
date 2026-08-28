@@ -3415,7 +3415,10 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
         # 2026-08-28, when a mutually-exclusive forecast_days/start_date pair
         # made every call a 400 -- the only trace in cron.log was "Circuit
         # 'hrrr_openmeteo' OPEN after 3 failures", because the reason string
-        # went to _log.debug and the root logger sits at INFO.
+        # went to _log.debug. DEBUG is not discarded -- main._setup_logging
+        # sets root to DEBUG and adds a per-pid bot.debug.*.log -- but it
+        # never reaches the CONSOLE handler, which is pinned at INFO and is
+        # what an operator watches a cron run through.
         #
         # The band is 4xx SPECIFICALLY, not "any status" and not "any response
         # object". A 5xx is exactly what the breaker exists to absorb during a

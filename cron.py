@@ -2696,12 +2696,67 @@ def _cmd_cron_body(
     try:
         from kalshi_ws import KalshiWebSocket
 
-        api_key = os.getenv("KALSHI_API_KEY", "")
-        key_pem = os.getenv("KALSHI_PRIVATE_KEY_PEM", "")
-        if api_key and key_pem:
-            _ws = KalshiWebSocket(api_key, key_pem)
+        # CREDENTIAL NAMES: these must match what the rest of the repo reads.
+        # This block used to read KALSHI_API_KEY / KALSHI_PRIVATE_KEY_PEM --
+        # names that appear NOWHERE else in this codebase and are not in .env.
+        # config.py, main.py and kalshi_client.py all use KALSHI_KEY_ID plus
+        # KALSHI_PRIVATE_KEY_PATH. So `if api_key and key_pem` was always
+        # False, `_ws` was always None, and _subscribe_and_start_ws returned
+        # at its own `if _ws is None: return` -- silently, at no log level.
+        # The WebSocket had therefore NEVER started in production: zero rows
+        # in orderbook_depth_snapshots, and get_cached_mid_price (the
+        # flash-crash breaker's preferred input) permanently empty, falling
+        # back to the REST quote. Verified live 2026-08-28: with the names
+        # below, the feed authenticates against prod, builds real depth books
+        # and writes rows.
+        key_id = os.getenv("KALSHI_KEY_ID", "")
+        key_pem: str | bytes = b""
+        # PATH FIRST, inline PEM only as a fallback. KalshiClient reads ONLY
+        # KALSHI_PRIVATE_KEY_PATH and never the inline variable, so preferring
+        # the inline one here would let the WS authenticate as a different key
+        # than every REST call in the same process whenever a stale
+        # KALSHI_PRIVATE_KEY_PEM is lying around -- the same silent-desync
+        # class main.py works hard to prevent for KALSHI_ENV. Path-first also
+        # keeps the shape _check_env_file_permissions() exists to discourage
+        # (a private key sitting in .env in plaintext) as the exception.
+        _key_path = os.getenv("KALSHI_PRIVATE_KEY_PATH", "")
+        if _key_path and Path(_key_path).exists():
+            # read_bytes, not read_text: load_pem_private_key wants bytes and
+            # _ws_listener already accepts them, so this skips a locale-
+            # dependent decode that a UTF-8 BOM would break.
+            key_pem = Path(_key_path).read_bytes()
+            try:
+                # Same permission warning KalshiClient emits for this file --
+                # cron was reading the key without it.
+                from kalshi_client import _check_key_permissions
+
+                _check_key_permissions(Path(_key_path))
+            except Exception as _perm_exc:
+                _log.debug("key permission check skipped: %s", _perm_exc)
+        else:
+            key_pem = os.getenv("KALSHI_PRIVATE_KEY_PEM", "")
+        if key_id and key_pem:
+            _ws = KalshiWebSocket(key_id, key_pem)
     except Exception as exc:
-        _log.debug("WebSocket not available: %s", exc)
+        # WARNING, not DEBUG. DEBUG is not discarded -- main._setup_logging
+        # sets the root logger to DEBUG and adds a per-pid bot.debug.*.log --
+        # but it never reaches the CONSOLE handler, which is pinned at INFO
+        # and is what an operator actually watches a cron run through. A
+        # permanent credential misconfiguration belongs there, not only in a
+        # debug file nobody opens.
+        _log.warning("WebSocket not available: %s", exc)
+
+    if _ws is None:
+        # Also loud, and separate from the except: the original failure was
+        # not an exception at all, it was a falsy credential check that fell
+        # through to an unlogged `return`. A disabled real-time feed is an
+        # operational fact worth one line per cycle on the console.
+        _log.warning(
+            "[cron] WebSocket DISABLED — no usable credentials "
+            "(KALSHI_KEY_ID + KALSHI_PRIVATE_KEY_PATH or "
+            "KALSHI_PRIVATE_KEY_PEM). Mid-prices fall back to REST quotes "
+            "and orderbook_depth_snapshots will not accrue."
+        )
 
     # H-1: import inside try so a missing/broken kalshi_ws module doesn't crash
     # _cmd_cron_body before any market analysis runs.
@@ -2709,7 +2764,15 @@ def _cmd_cron_body(
         from kalshi_ws import get_ws_health as _get_ws_health
 
         _ws_h = _get_ws_health()
-        if _ws_h["stale"]:
+        # Only meaningful when a feed was actually running. This check sits
+        # BEFORE the WS is created, so it reads _ws_last_message_ts left by
+        # the PREVIOUS cycle -- and cmd_loop's interval (hours) dwarfs
+        # WS_CACHE_TTL_SECS (900s), so from the second cycle on it would warn
+        # "cache is stale (idle 14400s)" immediately before starting a fresh,
+        # healthy feed. Pre-2026-08-28 this could never fire because no feed
+        # ever ran; enabling the WS is what would have turned it into a
+        # per-cycle false alarm. Suppress when nothing is live to be stale.
+        if _ws_h["stale"] and _ws_h.get("alive"):
             _log.warning(
                 "[cron] WebSocket cache is stale (idle %.0fs) — mid-prices may be unreliable",
                 _ws_h["idle_secs"],
