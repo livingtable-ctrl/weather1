@@ -230,7 +230,16 @@ def main() -> None:
     print("\n4. SHUFFLED-PATH NULL TEST -- the check that killed the ratchet")
     print("   Give each trade a RANDOM other trade's price path. A rule whose")
     print("   gain is structural rather than path-reading scores positive anyway.")
-    for name, fn in (
+    # `null_fn`, not `fn`: these lambdas take (trade, rows) while section 3's
+    # take (trade) alone, and mypy binds a name's type at its FIRST assignment
+    # in a scope -- reusing `fn` made it Callable[[Any], Any] there and then
+    # reported this rebinding plus both call sites below as errors. Runtime
+    # was always correct (each loop's lambdas match its own call sites); the
+    # separate name is what makes that legible to the checker. Note
+    # .pre-commit-config.yaml's mypy hook carries `exclude: ^audit/`, so
+    # nothing in this directory is type-checked by the normal commit path --
+    # these three errors only surface on a repo-wide `mypy .`.
+    for name, null_fn in (
         ("ratchet keep-70%-of-peak", lambda t, rows: ratchet(t, paths, 0.30, rows=rows)),
         ("time-tightening", lambda t, rows: time_tightening(t, paths, rows=rows)),
     ):
@@ -247,11 +256,11 @@ def main() -> None:
             nulls.append(
                 sum(
                     d
-                    for d in (fn(t, paths[k]) for t, k in zip(trades, keys))
+                    for d in (null_fn(t, paths[k]) for t, k in zip(trades, keys))
                     if d is not None
                 )
             )
-        real = sum(d for d in (fn(t, None) for t in trades) if d is not None)
+        real = sum(d for d in (null_fn(t, None) for t in trades) if d is not None)
         nulls.sort()
         p = sum(1 for x in nulls if x >= real) / len(nulls)
         print(
