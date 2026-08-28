@@ -11425,3 +11425,272 @@ def test_ci_realignment_clamp_can_only_under_size():
     # Positive control: the clamp actually fired for several of these, so the
     # assertion above is not vacuously true on an interval that never clamps.
     assert saw_clamped >= 5, f"clamp only bit {saw_clamped} times"
+
+
+class TestEnrichSkipsPastLocalTargetDates:
+    """The scan engine pays for a forecast that analyze_trade then discards.
+
+    A target date already past in the CITY's timezone falls outside
+    Open-Meteo's forecast window (which starts at that city's local today),
+    so it misses OM, misses NBM, misses weatherapi, and lands on a slow
+    Pirate Weather time-machine request -- whose value analyze_trade's
+    `past_date` gate throws away. Measured on the 2026-08-28 05:24 UTC cron
+    run: exactly the 8 America/Chicago cities, 6 dates each, ~72s of scan
+    wall-clock, every result discarded.
+    """
+
+    def _ticker_for(self, city_code: str, d: "object") -> str:
+        _MONTHS = (
+            "JAN",
+            "FEB",
+            "MAR",
+            "APR",
+            "MAY",
+            "JUN",
+            "JUL",
+            "AUG",
+            "SEP",
+            "OCT",
+            "NOV",
+            "DEC",
+        )
+        # Fixed ASCII month table, not strftime("%b") -- that is locale
+        # dependent, a trap this repo has already been bitten by once.
+        return f"KXHIGHCHI-{d.year % 100:02d}{_MONTHS[d.month - 1]}{d.day:02d}-T80"
+
+    def _run(self, days_offset: int, **kwargs) -> tuple:
+        """Enrich a Chicago market whose target date is offset from Chicago's
+        own local today. Returns (call_count, enriched)."""
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        chicago_today = datetime.now(ZoneInfo("America/Chicago")).date()
+        target = chicago_today + timedelta(days=days_offset)
+        market = {"ticker": self._ticker_for("CHI", target), "title": ""}
+
+        calls = {"n": 0}
+
+        def _fake_forecast(city, target_date):
+            calls["n"] += 1
+            return {"date": target_date.isoformat(), "city": city, "high_f": 80.0}
+
+        with patch.object(wm, "get_weather_forecast", side_effect=_fake_forecast):
+            enriched = wm.enrich_with_forecast(market, **kwargs)
+        return calls["n"], enriched
+
+    def test_past_local_date_skips_the_fetch_when_opted_in(self):
+        calls, enriched = self._run(-1, skip_past_target_dates=True)
+        assert calls == 0, (
+            "a target date already past in the city's own timezone must not "
+            "reach get_weather_forecast -- analyze_trade discards it anyway"
+        )
+        assert enriched.get("_forecast") is None
+
+    def test_today_still_fetches_when_opted_in(self):
+        """Positive control for the assertion above: with the SAME flag set,
+        a still-current date must reach the fetch. Without this, the skip test
+        would pass just as happily if the ticker stopped parsing, the city
+        stopped resolving, or the fetch were disabled outright."""
+        calls, enriched = self._run(0, skip_past_target_dates=True)
+        assert calls == 1, "today's date must still be fetched"
+        assert enriched.get("_forecast") is not None
+
+    def test_future_date_still_fetches_when_opted_in(self):
+        calls, _ = self._run(3, skip_past_target_dates=True)
+        assert calls == 1
+
+    def test_default_is_off_so_no_existing_caller_changes(self):
+        """The flag is keyword-only and defaults False: the ~25 pre-existing
+        call sites, including the web_app dashboard routes that legitimately
+        display yesterday's value, must be byte-for-byte unaffected."""
+        calls, enriched = self._run(-1)
+        assert calls == 1, "default behaviour must still fetch a past-local date"
+        assert enriched.get("_forecast") is not None
+
+    def test_boundary_is_city_local_not_utc_at_a_frozen_divergent_instant(self):
+        """Pin the boundary at an instant where UTC and the city DISAGREE.
+
+        The other tests here derive their target from the real wall clock, so
+        they only kill a UTC-based boundary during the ~5h window where UTC has
+        rolled over and Chicago has not -- about 21% of the day. Every other
+        hour a `datetime.now(UTC).date()` regression passes green. That matters
+        because production cron runs at 05:24 UTC = 00:24 CDT, squarely inside
+        the divergent window: a UTC boundary would skip every Central-city
+        same-day market on every nightly run, and CI would only catch it if the
+        suite happened to run in the same 5 hours.
+
+        Frozen with a real datetime SUBCLASS, not a Mock -- a Mock's now(tz)
+        ignores its argument, so it cannot prove which zone was resolved.
+        """
+        from datetime import date, datetime
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        # 04:00Z  ->  Chicago 2026-08-27 23:00 (still the 27th)
+        #         ->  UTC     2026-08-28       (already the 28th)
+        frozen = datetime(2026, 8, 28, 4, 0, 0, tzinfo=UTC)
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return frozen.astimezone(tz) if tz is not None else frozen
+
+        target = date(2026, 8, 27)
+        market = {"ticker": self._ticker_for("CHI", target), "title": ""}
+
+        # Sanity: the fixture really is in the divergent window, so a green
+        # result below cannot come from the two zones agreeing.
+        assert frozen.astimezone(ZoneInfo("America/Chicago")).date() == target
+        assert frozen.date() != target
+
+        calls = {"n": 0}
+
+        def _fake_forecast(city, target_date):
+            calls["n"] += 1
+            return {"date": target_date.isoformat(), "city": city, "high_f": 80.0}
+
+        with (
+            patch.object(wm, "datetime", _FrozenDatetime),
+            patch.object(wm, "get_weather_forecast", side_effect=_fake_forecast),
+        ):
+            enriched = wm.enrich_with_forecast(market, skip_past_target_dates=True)
+
+        assert calls["n"] == 1, (
+            "2026-08-27 is still TODAY in America/Chicago at this instant, so "
+            "the market must be fetched. Skipping it means the boundary is "
+            "resolving in UTC (or another zone) rather than the city's own."
+        )
+        assert not enriched.get("_forecast_skipped_past_date")
+
+    def test_skipped_market_still_lands_on_past_date_not_no_forecast(self):
+        """The skip must not change WHICH gate rejects the market.
+
+        analyze_trade's `no_forecast` gate runs ~150 lines before `past_date`,
+        WARNs (vs past_date's DEBUG) and is stage="inputs" (vs "timing"). With
+        the forecast skipped, `forecast` is None, so without an explicit
+        carve-out every past-local market stops at `no_forecast` instead. On
+        the 2026-08-28 05:26 UTC scan that is all 96 of them: 96 new WARNINGs
+        per cycle at the level cron prints, and `no_forecast` -- the gate an
+        operator watches for a real Open-Meteo/NBM/Pirate outage -- goes from
+        a reliable zero to a permanent 96, so an actual outage would be
+        indistinguishable from routine skips.
+        """
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        chicago_today = datetime.now(ZoneInfo("America/Chicago")).date()
+        target = chicago_today - timedelta(days=1)
+        market = {
+            "ticker": self._ticker_for("CHI", target),
+            "title": "",
+            "yes_bid": 40,
+            "yes_ask": 45,
+            "volume": 5000,
+            "open_interest": 5000,
+        }
+
+        enriched = wm.enrich_with_forecast(market, skip_past_target_dates=True)
+        assert enriched.get("_forecast") is None
+        assert enriched.get("_forecast_skipped_past_date") is True
+
+        wm.reset_gate_counts()
+        result = wm.analyze_trade(enriched)
+        counts = wm.get_gate_counts()
+
+        assert result is None
+        assert counts.get("no_forecast", 0) == 0, (
+            "a deliberately skipped forecast is not a MISSING forecast -- "
+            f"counting it as one blinds the outage signal. Gates hit: {counts}"
+        )
+        assert counts.get("past_date", 0) == 1, (
+            "the market must still be attributed to the timing gate that "
+            f"actually applies. Gates hit: {counts}"
+        )
+
+    def test_no_forecast_still_fires_when_the_fetch_really_failed(self):
+        """Positive control for the carve-out above: it must be scoped to the
+        skip, not disable the gate. A market whose date is CURRENT (so nothing
+        is skipped) but whose forecast genuinely came back None must still be
+        caught by `no_forecast`."""
+        from datetime import datetime
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        chicago_today = datetime.now(ZoneInfo("America/Chicago")).date()
+        market = {
+            "ticker": self._ticker_for("CHI", chicago_today),
+            "title": "",
+            "yes_bid": 40,
+            "yes_ask": 45,
+            "volume": 5000,
+            "open_interest": 5000,
+        }
+
+        with patch.object(wm, "get_weather_forecast", return_value=None):
+            enriched = wm.enrich_with_forecast(market, skip_past_target_dates=True)
+        assert enriched.get("_forecast") is None
+        assert not enriched.get("_forecast_skipped_past_date")
+
+        wm.reset_gate_counts()
+        wm.analyze_trade(enriched)
+        counts = wm.get_gate_counts()
+        assert counts.get("no_forecast", 0) == 1, (
+            "a real fetch failure must still be reported as no_forecast -- "
+            f"the carve-out is scoped to the deliberate skip. Gates hit: {counts}"
+        )
+
+    def test_scan_engine_opts_in(self):
+        """trade_cycle's scan closure is the one caller that sets it -- pinned
+        so the flag cannot be silently dropped from the only path that pays
+        for it.
+
+        Bound to the AST node, not grepped file-wide: a bare substring search
+        over trade_cycle.py would be satisfied by this flag appearing in any
+        unrelated function, or in a comment, and would keep passing after the
+        real call site lost it.
+        """
+        import ast
+        import inspect
+
+        import trade_cycle
+
+        tree = ast.parse(inspect.getsource(trade_cycle))
+        targets = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_enrich_and_analyze"
+        ]
+        assert len(targets) == 1, (
+            f"expected exactly one _enrich_and_analyze definition, found "
+            f"{len(targets)} -- this test binds to that node by name"
+        )
+
+        enrich_calls = [
+            c
+            for c in ast.walk(targets[0])
+            if isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Attribute)
+            and c.func.attr == "enrich_with_forecast"
+        ]
+        assert len(enrich_calls) == 1, (
+            "expected exactly one enrich_with_forecast call inside the scan closure"
+        )
+        kwargs = {
+            k.arg: k.value
+            for k in enrich_calls[0].keywords
+            if isinstance(k.value, ast.Constant)
+        }
+        assert kwargs.get("skip_past_target_dates") is not None, (
+            "the scan closure must pass skip_past_target_dates -- it is the "
+            "only caller that pays the past-local-date fallback cost"
+        )
+        assert kwargs["skip_past_target_dates"].value is True

@@ -263,7 +263,7 @@ def test_cron_skips_stale_markets_before_analysis(cron_env):
 
     enriched_tickers: list[str] = []
 
-    def _tracking_enrich(market):
+    def _tracking_enrich(market, **_kw):
         enriched_tickers.append(market.get("ticker", ""))
         return fake_enriched
 
@@ -1733,7 +1733,7 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr(main, "get_weather_markets", lambda client: fake_markets)
 
     # Create the kill switch as a side effect of the first enrich call (mid-scan)
-    def _enrich_and_activate_ks(m):
+    def _enrich_and_activate_ks(m, **_kw):
         ks_path.touch()
         return dict(m, _city="NYC", _date="2026-05-10", _target_date="2026-05-10")
 

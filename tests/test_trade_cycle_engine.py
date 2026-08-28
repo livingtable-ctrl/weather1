@@ -730,7 +730,7 @@ class TestMidScanAndPrePlacementKillSwitch:
         ]
         ks_path = tmp_path / ".kill_switch"
 
-        def _enrich_and_activate(m):
+        def _enrich_and_activate(m, **_kw):
             ks_path.touch()
             return dict(m, _city="NYC", _date="2026-05-10", _target_date="2026-05-10")
 
@@ -769,7 +769,7 @@ class TestMidScanAndPrePlacementKillSwitch:
             placed.append(1)
             return 0
 
-        def _enrich_then_activate_ks(m):
+        def _enrich_then_activate_ks(m, **_kw):
             # Kill switch appears AFTER analysis completes but BEFORE the
             # pre-placement re-check -- simulates a mid-cycle activation.
             ks_path.touch()
@@ -923,7 +923,7 @@ class TestCmdWatchDisplayScanUnification:
         monkeypatch.setattr(
             main, "get_weather_markets", lambda c: scan_calls.append(1) or [market]
         )
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -946,7 +946,7 @@ class TestCmdWatchDisplayScanUnification:
         market, enriched, analysis = _strong_market_analysis()
 
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -988,7 +988,7 @@ class TestCmdWatchDisplayScanUnification:
         }
 
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(
             paper, "get_open_trades", lambda: [existing_open_no_position]
@@ -1022,7 +1022,7 @@ class TestCmdWatchDisplayScanUnification:
             "get_weather_markets",
             lambda c: [market, duplicate_ticker_market],
         )
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -1054,7 +1054,7 @@ class TestCmdWatchDisplayScanUnification:
         raw_min_edge = floor / 2  # deliberately below the real floor
 
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -1087,7 +1087,7 @@ class TestCmdWatchDisplayScanUnification:
             lambda **kw: alerts.append(kw),
         )
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -1123,7 +1123,7 @@ class TestCmdWatchDisplayScanUnification:
             lambda **kw: alerts.append(kw),
         )
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
-        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m, **_kw: enriched)
         monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
         monkeypatch.setattr(paper, "get_open_trades", lambda: [])
         self._drive_one_cycle(main, monkeypatch)
@@ -1183,7 +1183,7 @@ class TestCmdWatchDisplayScanUnification:
         buy_enriched = dict(buy_market, _city="NYC")
         sell_enriched = dict(sell_market, _city="NYC")
 
-        def _fake_enrich(m):
+        def _fake_enrich(m, **_kw):
             return (
                 buy_enriched if m["ticker"] == buy_market["ticker"] else sell_enriched
             )
@@ -1268,7 +1268,7 @@ class TestCmdWatchDisplayScanUnification:
         buy_enriched = dict(buy_market, _city="Seattle")
         sell_enriched = dict(sell_market, _city="Seattle")
 
-        def _fake_enrich(m):
+        def _fake_enrich(m, **_kw):
             return (
                 buy_enriched if m["ticker"] == buy_market["ticker"] else sell_enriched
             )
@@ -1372,7 +1372,7 @@ class TestLiveConfigThreading:
             patch.object(
                 main,
                 "enrich_with_forecast",
-                side_effect=lambda m: enriched_by_ticker[m["ticker"]],
+                side_effect=lambda m, **_kw: enriched_by_ticker[m["ticker"]],
             ),
             patch.object(
                 main,
@@ -2161,7 +2161,7 @@ class TestKillSwitchClearedBetweenMidScanAndPlacement:
         ks_path = tmp_path / ".kill_switch"
         market, enriched, analysis = _strong_market_analysis()
 
-        def _enrich_touch_then_clear(m):
+        def _enrich_touch_then_clear(m, **_kw):
             ks_path.touch()
             ks_path.unlink()
             return enriched
@@ -2226,7 +2226,7 @@ class TestPlacementAttemptedBannerAllConditions:
             patch.object(
                 main,
                 "enrich_with_forecast",
-                side_effect=lambda m: enriched_by_ticker[m["ticker"]],
+                side_effect=lambda m, **_kw: enriched_by_ticker[m["ticker"]],
             ),
             patch.object(
                 main,
@@ -2588,7 +2588,7 @@ class TestBannerReflectsActualPlacementCount:
             patch.object(
                 main,
                 "enrich_with_forecast",
-                side_effect=lambda m: enriched_by_ticker[m["ticker"]],
+                side_effect=lambda m, **_kw: enriched_by_ticker[m["ticker"]],
             ),
             patch.object(
                 main,
@@ -2708,7 +2708,7 @@ class TestAnalysisAttemptDataLoss:
             patch.object(
                 main,
                 "enrich_with_forecast",
-                side_effect=lambda m: enriched_by_ticker[m["ticker"]],
+                side_effect=lambda m, **_kw: enriched_by_ticker[m["ticker"]],
             ),
             patch.object(
                 main,
@@ -2753,7 +2753,7 @@ class TestWebSocketStartOrdering:
         def _on_markets_fetched(markets):
             call_order.append(("ws_start", tuple(m["ticker"] for m in markets)))
 
-        def _tracking_enrich(m):
+        def _tracking_enrich(m, **_kw):
             call_order.append(("enrich", m["ticker"]))
             return enriched
 

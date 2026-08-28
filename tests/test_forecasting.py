@@ -1316,8 +1316,6 @@ class TestHRRR:
     def test_fetch_hrrr_temp_returns_float_or_none(self, monkeypatch):
         from datetime import date
 
-        import requests
-
         import weather_markets as wm
         from weather_markets import _HRRR_CACHE
 
@@ -1344,14 +1342,12 @@ class TestHRRR:
                     }
                 }
 
-        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
         assert result is None or isinstance(result, float)
 
     def test_fetch_hrrr_temp_returns_max_of_hourly(self, monkeypatch):
         from datetime import date
-
-        import requests
 
         import weather_markets as wm
         from weather_markets import _HRRR_CACHE
@@ -1380,7 +1376,7 @@ class TestHRRR:
                     }
                 }
 
-        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
         assert result is not None, "_fetch_hrrr_temp returned None — check cache clear"
         assert result == pytest.approx(88.5)
@@ -1419,7 +1415,7 @@ class TestHRRR:
             call_count["n"] += 1
             raise requests.RequestException("timeout")
 
-        monkeypatch.setattr(requests, "get", _raise)
+        monkeypatch.setattr(wm, "_om_request", _raise)
         first = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
         assert first is None
         assert call_count["n"] == 1
@@ -1435,8 +1431,6 @@ class TestHRRR:
         guards against best_match silently drifting to a non-HRRR source
         later; a regression back to best_match would defeat that."""
         from datetime import date
-
-        import requests
 
         import weather_markets as wm
         from weather_markets import _HRRR_CACHE
@@ -1461,20 +1455,374 @@ class TestHRRR:
                     }
                 }
 
-        def _fake_get(url, params=None, timeout=None):
+        def _fake_get(method, url, params=None, timeout=None):
             captured_params.update(params or {})
             return MockResp()
 
-        monkeypatch.setattr(requests, "get", _fake_get)
+        monkeypatch.setattr(wm, "_om_request", _fake_get)
         _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
         assert captured_params.get("models") == "ncep_hrrr_conus", (
             f"expected pinned models=ncep_hrrr_conus, got {captured_params.get('models')!r}"
         )
 
-    def test_fetch_hrrr_temp_skips_fetch_when_circuit_open(self, monkeypatch):
-        """The dedicated _hrrr_om_cb breaker must short-circuit the fetch
-        (fail toward last-known-good / cache, never hammer a known-down
-        endpoint) instead of always attempting requests.get."""
+    def test_fetch_hrrr_temp_never_sends_forecast_days_with_a_date_range(
+        self, monkeypatch
+    ):
+        """Open-Meteo rejects 'forecast_days' alongside 'start_date'/'end_date'
+        with HTTP 400 -- and _fetch_hrrr_temp sent all three from 2026-06-28
+        (fc79bb05) until 2026-08-28, so raise_for_status() fired a
+        record_failure() on every single call, opening _hrrr_om_cb once per
+        cron cycle and leaving ensemble_member_scores with ZERO
+        ncep_hrrr_conus rows while every peer model held 49-116.
+
+        The sibling models= test above already captured the params dict and
+        did not catch this, because it only asserted the one key it cared
+        about. This asserts the request is one Open-Meteo will actually
+        answer: a single-day window expressed by start_date == end_date, with
+        no forecast_days at all."""
+        from datetime import date
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        captured_params = {}
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-07-01T18:00"],
+                        "temperature_2m": [88.5],
+                    }
+                }
+
+        def _fake_get(method, url, params=None, timeout=None):
+            captured_params.update(params or {})
+            return MockResp()
+
+        monkeypatch.setattr(wm, "_om_request", _fake_get)
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+
+        assert result == pytest.approx(88.5), (
+            "fetch must still return the hourly extreme -- check cache clear"
+        )
+        assert "forecast_days" not in captured_params, (
+            "forecast_days is mutually exclusive with start_date/end_date on "
+            "Open-Meteo; sending both makes every HRRR call a 400 and trips "
+            f"_hrrr_om_cb every cycle. Params sent: {sorted(captured_params)}"
+        )
+        assert captured_params.get("start_date") == "2026-07-01"
+        assert captured_params.get("end_date") == "2026-07-01", (
+            "the single-day window must come from start_date == end_date, "
+            "not from forecast_days"
+        )
+
+    def test_fetch_hrrr_temp_logs_a_4xx_at_warning(self, monkeypatch, caplog):
+        """A 4xx is a permanent request-shape bug the breaker can only mask,
+        so its reason must reach the level cron actually prints. The
+        forecast_days/start_date 400 above was invisible for two months
+        precisely because the reason string went to _log.debug while the root
+        logger sat at INFO -- cron.log only ever showed "Circuit
+        'hrrr_openmeteo' OPEN after 3 failures"."""
+        import logging
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+
+        class MockResp:
+            status_code = 400
+            text = (
+                '{"error":true,"reason":"Parameter \'forecast_days\' is mutually '
+                "exclusive with 'start_date' and 'end_date'\"}"
+            )
+
+            def raise_for_status(self):
+                err = requests.HTTPError("400 Client Error")
+                err.response = self
+                raise err
+
+            def json(self):  # pragma: no cover - never reached
+                return {}
+
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = _fetch_hrrr_temp("NYC", date(2026, 7, 3), var="max")
+
+        assert result is None
+        warnings = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "_fetch_hrrr_temp" in r.getMessage()
+        ]
+        assert len(warnings) == 1, (
+            "a 4xx must be logged at WARNING, not DEBUG -- otherwise the only "
+            "trace in cron.log is the breaker opening, with no reason attached. "
+            f"Records seen: {[(r.levelname, r.getMessage()[:80]) for r in caplog.records]}"
+        )
+        msg = warnings[0].getMessage()
+        assert "400" in msg
+        assert "mutually exclusive" in msg, (
+            "the response body carries the actual diagnosis and must be included"
+        )
+
+    def test_fetch_hrrr_temp_keeps_transient_failures_at_debug(
+        self, monkeypatch, caplog
+    ):
+        """Absorbing transient network failures is exactly what _hrrr_om_cb is
+        for, so those must NOT be promoted to WARNING -- only permanent 4xx
+        request-shape errors are. Paired with a positive control (the breaker
+        failure IS recorded) so this absence-assertion cannot pass vacuously
+        by the except block never being reached at all."""
+        import logging
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        recorded = {"n": 0}
+        monkeypatch.setattr(
+            wm._hrrr_om_cb,
+            "record_failure",
+            lambda *a, **k: recorded.__setitem__("n", recorded["n"] + 1),
+        )
+        monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: False)
+
+        def _timeout(*a, **k):
+            raise requests.Timeout("connection timed out")
+
+        monkeypatch.setattr(wm, "_om_request", _timeout)
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = _fetch_hrrr_temp("NYC", date(2026, 7, 4), var="max")
+
+        assert result is None
+        # Positive control: the except block really did run, so the absence
+        # assertion below is about the LEVEL chosen, not about the path being
+        # skipped upstream (e.g. by an open circuit or an unmapped city).
+        assert recorded["n"] == 1, (
+            "the except block must have been reached and recorded a breaker "
+            "failure -- otherwise the no-WARNING assertion below proves nothing"
+        )
+        assert any(
+            "_fetch_hrrr_temp" in r.getMessage() and r.levelno == logging.DEBUG
+            for r in caplog.records
+        ), "a transient failure must still leave a DEBUG trace"
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "_fetch_hrrr_temp" in r.getMessage()
+        ], "a transient timeout must stay at DEBUG -- that is what the breaker absorbs"
+
+    def test_fetch_hrrr_temp_keeps_a_5xx_at_debug(self, monkeypatch, caplog):
+        """A 5xx carries a response object AND a status, so it is the only
+        case that pins the UPPER edge of the 4xx band. The transient test
+        above cannot: requests.Timeout("x").response is None, so it exercises
+        "no response at all" and passes just as happily against `400 <= s <
+        600` or a bare `if _err_resp is not None:`. An Open-Meteo 503 is a
+        real outage -- precisely what _hrrr_om_cb exists to absorb -- so
+        promoting it to WARNING would turn the de-blinding fix into the new
+        noise source."""
+        import logging
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        recorded = {"n": 0}
+        monkeypatch.setattr(
+            wm._hrrr_om_cb,
+            "record_failure",
+            lambda *a, **k: recorded.__setitem__("n", recorded["n"] + 1),
+        )
+        monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: False)
+
+        class MockResp:
+            status_code = 503
+            text = "upstream temporarily unavailable"
+
+            def raise_for_status(self):
+                err = requests.HTTPError("503 Server Error")
+                err.response = self
+                raise err
+
+            def json(self):  # pragma: no cover - never reached
+                return {}
+
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = _fetch_hrrr_temp("NYC", date(2026, 7, 5), var="max")
+
+        assert result is None
+        # Positive control, same reasoning as the transient test: prove the
+        # except block ran, so "no WARNING" is a statement about the band and
+        # not about the path being skipped.
+        assert recorded["n"] == 1
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "_fetch_hrrr_temp" in r.getMessage()
+        ], (
+            "a 5xx is an outage the breaker absorbs and must stay at DEBUG -- "
+            "only a permanent 4xx request-shape error is promoted"
+        )
+
+    def test_fetch_hrrr_temp_keeps_a_429_at_debug(self, monkeypatch, caplog):
+        """429 is a 4xx but NOT a permanent request-shape error.
+
+        _om_request returns a 429 without raising and logs it at DEBUG with
+        "CB failure recorded, fallback will engage" -- this module already
+        classifies rate-limiting as a transient the breaker plus fallback
+        handles. Waiting DOES fix a 429, which is exactly what disqualifies it
+        from a branch whose claim is "the breaker cannot fix this by waiting".
+        Without this test the 429 carve-out is silently revertible."""
+        import logging
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        recorded = {"n": 0}
+        monkeypatch.setattr(
+            wm._hrrr_om_cb,
+            "record_failure",
+            lambda *a, **k: recorded.__setitem__("n", recorded["n"] + 1),
+        )
+        monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: False)
+
+        class MockResp:
+            status_code = 429
+            text = "rate limited"
+
+            def raise_for_status(self):
+                err = requests.HTTPError("429 Too Many Requests")
+                err.response = self
+                raise err
+
+            def json(self):  # pragma: no cover - never reached
+                return {}
+
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = _fetch_hrrr_temp("NYC", date(2026, 7, 8), var="max")
+
+        assert result is None
+        # Positive control: the except branch ran.
+        assert recorded["n"] == 1
+        assert not [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "_fetch_hrrr_temp" in r.getMessage()
+        ], "429 is a transient the breaker absorbs and must stay at DEBUG"
+
+    def test_fetch_hrrr_temp_warns_when_all_hours_are_null(self, monkeypatch, caplog):
+        """Past ncep_hrrr_conus' ~2-day horizon Open-Meteo answers HTTP 200
+        with an all-null series instead of an error (measured live
+        2026-08-28: days_out 0 -> 24/24 valid, 2 -> 0/24 with a 200). That
+        branch spends a breaker failure, and before this change it logged at
+        no level at all -- the last invisible failure path left in the
+        function."""
+        import logging
+        from datetime import date
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        recorded = {"n": 0}
+        monkeypatch.setattr(
+            wm._hrrr_om_cb,
+            "record_failure",
+            lambda *a, **k: recorded.__setitem__("n", recorded["n"] + 1),
+        )
+        monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: False)
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": [f"2026-07-06T{h:02d}:00" for h in range(24)],
+                        "temperature_2m": [None] * 24,
+                    }
+                }
+
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = _fetch_hrrr_temp("NYC", date(2026, 7, 6), var="max")
+
+        assert result is None
+        assert recorded["n"] == 1, "the all-null branch must record a breaker failure"
+        warnings = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "_fetch_hrrr_temp" in r.getMessage()
+        ]
+        assert len(warnings) == 1, (
+            "an HTTP 200 with zero usable hours must be visible -- it is how a "
+            "caller violating the days_out == 0 contract shows up"
+        )
+        assert "24" in warnings[0].getMessage(), (
+            "the hour count distinguishes an all-null series from an empty one"
+        )
+
+    def test_fetch_hrrr_temp_returns_none_when_response_body_is_unreadable(
+        self, monkeypatch
+    ):
+        """Pins the INNER try/except around the body read.
+
+        Response.text is a decoding property that can raise something other
+        than AttributeError, which getattr(..., "") does NOT swallow. Removing
+        that inner try fails this test (the RuntimeError escapes). Note what
+        this does NOT pin: moving the cache write and record_failure back
+        below the logging block passes it unchanged, because the inner try
+        already makes the logging unable to raise. The ordering is defence in
+        depth, not a tested invariant -- see the comment on it."""
         from datetime import date
 
         import requests
@@ -1488,13 +1836,58 @@ class TestHRRR:
         _HRRR_CACHE.clear()
         call_count = {"n": 0}
 
+        class MockResp:
+            status_code = 400
+
+            @property
+            def text(self):
+                raise RuntimeError("body decode blew up")
+
+            def raise_for_status(self):
+                err = requests.HTTPError("400 Client Error")
+                err.response = self
+                raise err
+
+            def json(self):  # pragma: no cover - never reached
+                return {}
+
         def _fake_get(*a, **k):
             call_count["n"] += 1
-            raise AssertionError(
-                "requests.get must not be called while circuit is open"
-            )
+            return MockResp()
 
-        monkeypatch.setattr(requests, "get", _fake_get)
+        monkeypatch.setattr(wm, "_om_request", _fake_get)
+
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 7), var="max")
+        assert result is None, "must return None, not propagate the decode error"
+
+        # The negative cache write must have happened despite the unreadable
+        # body -- otherwise every subsequent call re-fetches.
+        second = _fetch_hrrr_temp("NYC", date(2026, 7, 7), var="max")
+        assert second is None
+        assert call_count["n"] == 1, (
+            "the failure must still be negative-cached when the body cannot be read"
+        )
+
+    def test_fetch_hrrr_temp_skips_fetch_when_circuit_open(self, monkeypatch):
+        """The dedicated _hrrr_om_cb breaker must short-circuit the fetch
+        (fail toward last-known-good / cache, never hammer a known-down
+        endpoint) instead of always attempting the request."""
+        from datetime import date
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        call_count = {"n": 0}
+
+        def _fake_get(*a, **k):
+            call_count["n"] += 1
+            raise AssertionError("_om_request must not be called while circuit is open")
+
+        monkeypatch.setattr(wm, "_om_request", _fake_get)
         monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: True)
 
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 2), var="max")
@@ -1521,7 +1914,7 @@ class TestHRRR:
         def _raise(*a, **k):
             raise requests.RequestException("timeout")
 
-        monkeypatch.setattr(requests, "get", _raise)
+        monkeypatch.setattr(wm, "_om_request", _raise)
         before = wm._hrrr_om_cb.failure_count
         _fetch_hrrr_temp("NYC", date(2026, 7, 3), var="max")
         assert wm._hrrr_om_cb.failure_count == before + 1
@@ -1532,8 +1925,6 @@ class TestHRRR:
         source's CB in this file. Untested before this: only the exception
         and is_open()-short-circuit paths had coverage."""
         from datetime import date
-
-        import requests
 
         import weather_markets as wm
         from weather_markets import _HRRR_CACHE
@@ -1561,7 +1952,7 @@ class TestHRRR:
                     }
                 }
 
-        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 4), var="max")
         assert result == pytest.approx(90.0)
         assert wm._hrrr_om_cb.failure_count == 0
@@ -1573,8 +1964,6 @@ class TestHRRR:
         finding) must record_failure(), not record_success(). Untested
         before this: only the exception path recorded a failure."""
         from datetime import date
-
-        import requests
 
         import weather_markets as wm
         from weather_markets import _HRRR_CACHE
@@ -1596,7 +1985,7 @@ class TestHRRR:
                     "hourly": {"time": ["2026-07-05T18:00"], "temperature_2m": [None]}
                 }
 
-        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        monkeypatch.setattr(wm, "_om_request", lambda *a, **k: MockResp())
         before = wm._hrrr_om_cb.failure_count
         result = _fetch_hrrr_temp("NYC", date(2026, 7, 5), var="max")
         assert result is None
@@ -2339,3 +2728,125 @@ class TestFeatureActivationIsolation:
         )
         after = real_path.read_bytes() if real_path.exists() else None
         assert after == before, "a test mutated the real feature_activations.json"
+
+
+class TestNbmOpenMeteoErrorLogging:
+    """fetch_temperature_nbm's Open-Meteo fallback is the structural twin of
+    _fetch_hrrr_temp -- same FORECAST_BASE, same start_date/end_date + models=
+    shape, same threshold-3 breaker, same reason string that used to go to
+    DEBUG under a root logger at INFO. It matters MORE: this value reaches
+    model_temps["nbm"] and _compute_ensemble_spread on the live pricing path,
+    where HRRR is only tracked. Open-Meteo has already retired this model name
+    once, and a second rename would produce a permanent 400 whose only trace
+    is the breaker opening.
+
+    Round 2 of this change's own review found the branch had ZERO coverage and
+    that two mutations survived the whole suite: widening the band to 5xx, and
+    corrupting the message. These tests exist to kill both.
+    """
+
+    def _drive(self, monkeypatch, caplog, resp_or_exc):
+        """Force the Open-Meteo fallback (no IEM NBS value) and return the
+        records logged by the except branch."""
+        import logging
+        from datetime import date
+
+        import weather_markets as wm
+        from weather_markets import _NBM_CACHE
+
+        _NBM_CACHE.clear()
+        # No station -> skip the IEM NBS branch entirely and fall through to
+        # the Open-Meteo request this test is about.
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda *a, **k: None)
+
+        recorded = {"n": 0}
+        monkeypatch.setattr(
+            wm._nbm_om_cb,
+            "record_failure",
+            lambda *a, **k: recorded.__setitem__("n", recorded["n"] + 1),
+        )
+        monkeypatch.setattr(wm._nbm_om_cb, "is_open", lambda: False)
+
+        def _fake(*a, **k):
+            if isinstance(resp_or_exc, Exception):
+                raise resp_or_exc
+            return resp_or_exc
+
+        monkeypatch.setattr(wm, "_om_request", _fake)
+
+        with caplog.at_level(logging.DEBUG, logger="weather_markets"):
+            result = wm.fetch_temperature_nbm("NYC", date(2026, 7, 9), var="max")
+
+        assert result is None
+        # Positive control: the except branch really ran, so a "no WARNING"
+        # assertion below is about the LEVEL, not about the path being skipped.
+        assert recorded["n"] == 1, (
+            "the except branch must have been reached and recorded a breaker "
+            "failure -- otherwise these assertions prove nothing"
+        )
+        return [r for r in caplog.records if "nbm_openmeteo" in r.getMessage()]
+
+    def _http_error(self, status, body):
+        import requests
+
+        class MockResp:
+            status_code = status
+            text = body
+
+            def raise_for_status(self):
+                err = requests.HTTPError(f"{status} Error")
+                err.response = self
+                raise err
+
+            def json(self):  # pragma: no cover - never reached
+                return {}
+
+        return MockResp()
+
+    def test_4xx_logs_at_warning_with_the_body(self, monkeypatch, caplog):
+        import logging
+
+        records = self._drive(
+            monkeypatch,
+            caplog,
+            self._http_error(400, '{"reason":"Cannot initialize model nbm"}'),
+        )
+        warnings = [r for r in records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1, (
+            "a 4xx on the live pricing path must be visible at the level cron "
+            f"prints. Records: {[(r.levelname, r.getMessage()[:70]) for r in records]}"
+        )
+        msg = warnings[0].getMessage()
+        assert "400" in msg
+        assert "Cannot initialize model nbm" in msg, (
+            "the response body carries the diagnosis -- a retired model name "
+            "looks exactly like this"
+        )
+
+    def test_5xx_stays_at_debug(self, monkeypatch, caplog):
+        """Pins the UPPER edge of the band. A 5xx is a real Open-Meteo outage,
+        which is precisely what _nbm_om_cb exists to absorb -- promoting it
+        would turn the de-blinding fix into the new noise source on the money
+        path. Round 2 found widening the band to `< 600` survived the suite."""
+        import logging
+
+        records = self._drive(
+            monkeypatch, caplog, self._http_error(503, "upstream unavailable")
+        )
+        assert not [r for r in records if r.levelno >= logging.WARNING], (
+            "a 5xx must stay at DEBUG -- only a permanent client error is promoted"
+        )
+        assert any(r.levelno == logging.DEBUG for r in records)
+
+    def test_transient_stays_at_debug(self, monkeypatch, caplog):
+        """A timeout carries no response object at all, so it exercises the
+        other side of the guard from the 5xx case above."""
+        import logging
+
+        import requests
+
+        records = self._drive(
+            monkeypatch, caplog, requests.Timeout("connection timed out")
+        )
+        assert not [r for r in records if r.levelno >= logging.WARNING]
+        assert any(r.levelno == logging.DEBUG for r in records)

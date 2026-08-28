@@ -110,7 +110,10 @@ What it would look like:
      so removing it would change which models can earn ENSEMBLE-blend weights,
      a live behaviour change unrelated to the deterministic-path issue.
 
-  3. NOT A DEFECT -- it is four days old. Checked rather than assumed, and two
+  3. WRONG -- SEE THE CORRECTION IMMEDIATELY BELOW. It WAS a defect, and the
+     "not a defect" reasoning in this item is superseded. Kept verbatim
+     because how it went wrong is the reusable part.
+     NOT A DEFECT -- it is four days old. Checked rather than assumed, and two
      plausible causes were WRONG:
        * "the METAR lock preempts the days_out==0 fetch" -- no. 48% of
          same-day predictions rows are non-lockout, and 115 same-day cells
@@ -126,6 +129,202 @@ What it would look like:
      settled from entries after 2026-08-24. The denominator is now recorded in
      the code beside the fetch so the next reader checks it rather than
      re-deriving it -- "zero rows" alone proves nothing about a writer.
+
+  3-CORRECTION, 2026-08-28 (same day, later session, prompted by the user
+  asking why a circuit breaker was tripping in a live cron run). ITEM 3 IS
+  WRONG. _fetch_hrrr_temp WAS failing, on every single call, since
+  2026-06-28 -- and the probe that "ruled that out" tested a request the code
+  does not send.
+
+    THE BUG. The params dict carried BOTH "start_date"/"end_date" AND
+  "forecast_days": 1. Open-Meteo rejects that pair outright:
+      HTTP 400  {"error":true,"reason":"Parameter 'forecast_days' is mutually
+                 exclusive with 'start_date' and 'end_date'"}
+  Reproduced live 2026-08-28 on 5 cities (Austin, Chicago, NewYork, Denver,
+  Miami): 400 on all 5. Drop forecast_days and the identical request returns
+  200 with 24/24 valid hours. So resp.raise_for_status() raised on every
+  call, the except recorded a breaker failure, and three of those opened
+  _hrrr_om_cb -- which is why the live cron run showed "Circuit
+  'hrrr_openmeteo' OPEN after 3 failures" with trip_count already at 4 in
+  data/.cb_state.json. It trips every cycle, by construction.
+
+    HOW ITEM 3'S PROBE MISSED IT. Item 3 bypassed the breaker by hand-building
+  a request instead of calling the function (correct, since is_open() is a
+  mutator -- see [[feedback_is_open_probe_is_stateful]]). But the hand-built
+  request omitted forecast_days, so it exercised a DIFFERENT request shape
+  than production. 5/5 cities succeeded because the probe was well-formed and
+  the code is not. Generalisable: when bypassing a stateful guard to test a
+  fetch, copy the production params dict verbatim -- a hand-rolled equivalent
+  silently tests your understanding of the request instead of the request.
+
+    "TOO NEW" WAS ALSO CHECKABLE AND FALSE. git blame puts the contradictory
+  params at fc79bb05 (2026-06-28), two months before the 2026-08-24 wiring
+  item 3 blamed. And the zero was never ambiguous against its peers -- read
+  live from data/predictions.db 2026-08-28:
+      blended 115 | ecmwf_aifs025_ensemble 49 | ecmwf_ifs025 49 | gem_global 49
+      gfs_seamless 116 | icon_seamless 116 | metar_lock_extreme 69 | ukmo 49
+      ncep_hrrr_conus 0
+  A model wired in 4 days ago sits at a small number, not at zero while seven
+  peers sit at 49-116. The denominator item 3 recorded beside the fetch was
+  the right instinct pointed at the wrong denominator.
+
+  FIXED 2026-08-28. Deleted the forecast_days line (start_date == end_date
+  already specifies the single-day window) and left a comment naming the 400
+  so it cannot come back. Not merely adequate but bit-identical: the two
+  request shapes were compared directly against the live API and returned
+  equal `time` arrays and equal temperatures.
+    Swept all 21 Open-Meteo call sites REPO-WIDE -- not just
+  weather_markets.py's own 4 start_date / 11 forecast_days sites, which was
+  the narrower evidence an earlier draft of this note offered while claiming
+  repo scope. _fetch_hrrr_temp was the only site mixing the two. tracker.py
+  (x2) and backtest.py pair past_days with forecast_days, which is legal:
+  the exclusivity is date-RANGE vs day-COUNT, and those carry no date range.
+    One site is worth knowing about: _model_prob_and_mean is the only
+  ENSEMBLE_BASE call scoped by start_date/end_date while every sibling uses
+  forecast_days=16, and it is on the live pricing path. A future
+  "make these consistent" edit that copies forecast_days in from a neighbour
+  reintroduces exactly this bug there. It now carries a guard comment.
+
+  THE STALE COMMENTS THIS CORRECTION MADE FALSE were fixed with it, which
+  matters more than the backlog text: the wrong reasoning lived at the
+  higher-traffic location. The comment block beside the analyze_trade call
+  site -- the one this entry's own item 3 said it was placing "beside the
+  fetch so the next reader checks it" -- still asserted "that is EXPECTED,
+  not a broken writer" and "the endpoint is healthy ... 5/5 cities". It now
+  states the real history and names why the probe misled. Its tripwire
+  ("WHAT WOULD MAKE IT A DEFECT: still zero once a few dozen trades have
+  settled") was deleted rather than left to fire for the wrong reason: rows
+  now arrive because the bug was fixed, not because the hypothesis held.
+    Two further copies of "ensemble_member_scores holds ZERO rows for it"
+  (weather_markets.py and trade_cycle.py, byte-identical) go false on the
+  first scan after this ships and were amended together -- `git grep
+  'holds ZERO rows for it'` finds both, and the policy half of what they
+  argue is still open and deliberately unchanged.
+
+  ONE FALSE ALARM THIS FIX WOULD HAVE CREATED, caught by the round-2 review
+  of the sibling past-date entry and worth recording HERE too because it is
+  the same lesson: the de-blinding change had a twin that manufactured noise
+  instead of removing it. See that entry's ROUND 2 block.
+
+  ALSO FIXED, same payload: the reason string was going to _log.debug, and
+  the root logger sits at INFO, so for two months the ONLY trace of a
+  permanent 400 in cron.log was the breaker opening
+  ([[feedback_debug_log_is_not_a_trace]]). A 4xx is now logged at WARNING
+  with the response body -- it is a permanent request-shape bug the breaker
+  can only mask, never recover from. Transient failures AND 5xx stay at
+  DEBUG, since absorbing those is exactly what the breaker is for.
+    The same treatment was applied to fetch_temperature_nbm, which an
+  independent review found is the structural twin -- same FORECAST_BASE,
+  same start_date/end_date + models= shape, same threshold-3 breaker, same
+  DEBUG reason string -- except that it IS on the live pricing path
+  (model_temps["nbm"] -> _compute_ensemble_spread), and Open-Meteo has
+  ALREADY retired its model name once. A second rename would produce the
+  identical two-month blind spot on a path that moves money. Also raised
+  batch_prewarm_ensemble's two _ensemble_cb failure logs from DEBUG to INFO,
+  matching the four sibling open_meteo_ensemble sites; the prewarm is the
+  one that actually fills the live blend cache in production and was the odd
+  DEBUG out.
+    And the all-null branch INSIDE _fetch_hrrr_temp logged at no level at
+  all, which would have left it the last invisible failure path in the
+  function just de-blinded. It matters because Open-Meteo answers HTTP 200
+  with an all-null series past HRRR's ~2-day horizon rather than erroring
+  (measured 2026-08-28: days_out 0 -> 24/24 valid, 1 -> 21/24, 2 and 3 ->
+  0/24 with a 200), so that branch is how a caller ignoring the docstring's
+  days_out == 0 contract shows up -- silently, while spending breaker
+  failures. Now WARNs with the hour count.
+    _fetch_hrrr_temp was also the ONLY Open-Meteo call in the module that
+  bypassed _om_request. That cost nothing while every call 400'd behind an
+  open breaker (~3 requests per 300s) but stops being free the moment the
+  params are fixed: 21 cities x 2 vars per 4h window, issued from inside
+  analyze_trade's per-market thread pool, ignoring the shared per-endpoint
+  rate limiter the other twelve sites coordinate on. Routed through
+  _om_request; the 14 TestHRRR patch sites moved from requests.get to it.
+
+  NO PRICING CHANGE, traced rather than assumed. The restored value flows
+  hrrr_forecast_mean -> model_forecast_means["ncep_hrrr_conus"] ->
+  paper._score_ensemble_members -> ensemble_member_scores, and stops there:
+  _weights_from_mae `continue`s on TRACKING_ONLY_MODEL_NAMES, so HRRR cannot
+  reach mae_weights or learned_weights.json, so _model_weights' tiers 1/2
+  cannot give it blend weight; and _QUARANTINE_CANDIDATE_MODELS is hardcoded
+  without it, so the quarantine peer set stays uncontaminated. What this
+  actually does is start the HRRR graduation sample clock that the entry
+  below ("GRADUATE HRRR (ncep_hrrr_conus) FROM TRACK-ONLY INTO THE LIVE
+  BLEND") has been waiting on -- from a true zero, as of today.
+
+  ROUND 2 (an independent review of the ROUND 1 FIXES, per this project's own
+  workflow) found one HIGH the first round could not have seen, because the
+  first round predated the change that caused it:
+
+    THE SKIP MOVED 96 MARKETS/SCAN ONTO THE WRONG GATE. analyze_trade's
+  `no_forecast` gate runs ~150 lines BEFORE `past_date`. With the forecast
+  deliberately skipped, `forecast` is None, so every past-local market stopped
+  at `no_forecast` instead -- which WARNs (past_date DEBUGs) and is
+  stage="inputs" (past_date is "timing"). Verified against the real funnel
+  from the 2026-08-28 05:26 UTC scan: all 96 of them. That is 96 new WARNING
+  lines per cycle at the level cron prints, the operator gate summary flipping
+  from past_date:96 to no_forecast:96, and -- the actual damage -- `no_forecast`
+  going from a reliable zero to a permanent 96, so a genuine Open-Meteo/NBM/
+  Pirate outage would no longer be distinguishable from routine skips.
+    Fixing a silent-signal bug by manufacturing 96 false alarms in the same
+  payload. Fixed by stamping `_forecast_skipped_past_date` on the enriched
+  dict and excluding it from the `no_forecast` gate, so those markets land on
+  `past_date` exactly as before. Pinned by a test asserting the gate counts
+  ({"past_date": 1}, no_forecast 0) -- nothing covered the interaction at all
+  -- plus a positive control proving a REAL fetch failure still trips
+  no_forecast, so the carve-out cannot silently disable the gate.
+
+  Round 2 also killed two mutations that had survived, and corrected two
+  overclaims of mine:
+   * fetch_temperature_nbm's new 4xx branch had ZERO tests -- widening its
+     band to 5xx and dropping the response body both survived the suite.
+     Three tests added (4xx WARNs with the body, 5xx stays DEBUG, transient
+     stays DEBUG), each with the record_failure positive control.
+   * the city-local boundary test only killed a UTC regression ~21% of the
+     day, because it derived its target from the real wall clock and the two
+     zones only disagree between 00:00 and 05:00 UTC. Production cron runs at
+     05:24 UTC -- inside that window -- so a UTC regression would skip every
+     Central-city same-day market nightly while CI stayed green. Re-pinned
+     against a FROZEN datetime subclass (not a Mock, whose now(tz) ignores its
+     argument and so cannot prove which zone resolved) at 2026-08-28T04:00Z,
+     where Chicago is still on the 27th and UTC is already the 28th.
+   * THE HOIST IS REDUNDANT AND ITS COMMENT OVERSOLD IT. Moving the cache
+     write and record_failure back below the logging block fails NO test: the
+     inner try/except around the body read already makes the logging unable to
+     raise. The comment claimed the ordering protected the `-> float | None`
+     contract, and the test presented as its proof actually pins the inner
+     try. Both are kept as defence in depth, but the comment now says so and
+     the test docstring says what it really pins -- a redundant guard with a
+     vacuous test is exactly the pair this repo has a memory about.
+   * 429 IS NOW EXCLUDED from the WARNING band. _om_request returns a 429
+     without raising and logs it at DEBUG as a transient the breaker plus
+     fallback handles -- waiting genuinely does fix a 429, which disqualifies
+     it from a branch whose whole claim is "the breaker cannot fix this by
+     waiting". Pinned by its own test.
+   * the "42 calls per 4h window" figure was the cache-key CEILING, not the
+     reachable count: the call sits behind days_out == 0, the ens_prob/temps
+     guard and every market-quality gate, so it is ~10 per scan. Corrected in
+     the code comment. The rate-limiter argument for routing through
+     _om_request is unaffected.
+  Accepted without change, reasoned rather than dropped: routing through
+  _om_request doubles the worst-case 5xx latency (10s -> ~20.5s via
+  Retry(total=1)) inside analyze_trade's worker. That worker's own timeout is
+  360s and at most 3 such calls precede the breaker opening, so it is bounded
+  and cheaper than the un-coordinated traffic it replaces.
+
+TESTS (counts re-derived by collection at the moment of writing):
+  tests/test_forecasting.py TestHRRR 9 -> 16; TestNbmOpenMeteoErrorLogging 3
+  (new); tests/test_weather_markets.py TestEnrichSkipsPastLocalTargetDates 8
+  (new, covering both this entry and the sibling past-date-skip entry). The pre-existing
+  ..._pins_ncep_hrrr_conus_not_best_match test already captured the params
+  dict and did not catch this, because it asserted only the one key it cared
+  about -- the new params test asserts the request is one Open-Meteo will
+  actually answer. Five mutations applied individually via the Edit tool and
+  reverted: re-adding forecast_days, disabling the 4xx branch, widening it to
+  every failure, dropping the response body, and shifting the band to 5xx --
+  each broke exactly the test written for it. The transient-failure test's
+  no-WARNING assertion is paired with a positive control (the breaker failure
+  IS recorded); mutating the circuit to open makes that control fail, proving
+  the absence assertion cannot pass vacuously.
 
 When to revisit: before any change to the deterministic blend's membership or
   weights, and alongside the gfs_seamless 2x entry -- same area, different
@@ -563,6 +762,106 @@ RESOLVED 2026-08-27 (batch-95). Both caps, not just the one in the title --
   survived the reclassification that invalidated the taxonomy introducing
   it, and got MORE right, since both caps now emit per-signal lines to point
   at.
+
+
+[RESOLVED 2026-08-28 -- found by the same session that fixed the HRRR
+  breaker above, from the same live cron run; a genuinely separate defect in
+  a different subsystem, fixed in the same payload at the user's direction.]
+  THE SCAN PAYS FOR A FORECAST ON EVERY PAST-LOCAL-DATE MARKET AND THEN
+  THROWS IT AWAY -- ~72s AND THREE FALLBACK PROVIDERS PER CYCLE
+Priority: was Low -- pure waste, no wrong price. Worth recording because the
+  symptom reads exactly like a provider outage and is not one.
+Files: weather_markets.py (enrich_with_forecast, get_weather_forecast's
+  fallback chain), trade_cycle.py (_enrich_and_analyze)
+
+Symptom, 2026-08-28 05:24 UTC cron run: 48 "get_weather_forecast: using
+Pirate Weather fallback" lines, spanning 01:26:43 to 01:27:55 -- 72 seconds
+of the scan. Pirate Weather is documented in this repo as a RARE last-resort
+path reached only when Open-Meteo AND NBM AND weatherapi have all failed.
+
+  The cities were not a random subset. They were Austin, OklahomaCity,
+  Minneapolis, Chicago, Dallas, Houston, SanAntonio and NewOrleans -- which
+  is EXACTLY and ONLY the eight America/Chicago entries in CITY_COORDS, all
+  eight of them and nothing else. That is what made it worth chasing.
+
+MECHANISM, reproduced live rather than inferred (the first three hypotheses
+-- a fetch failure, a circuit breaker, a rate limit -- were all wrong, and
+each would have printed a log line that was absent):
+
+    Chicago  2026-08-27  America/Chicago      -> pirate_weather  (1 model)
+    NYC      2026-08-27  America/New_York     -> pirate_weather  (1 model)
+    LA       2026-08-27  America/Los_Angeles  -> batch_prewarm   (3 models)
+    Denver   2026-08-27  America/Denver       -> batch_prewarm   (3 models)
+
+  Open-Meteo's forecast window (timezone=auto, forecast_days=16) starts at
+  the city's own LOCAL today. At 00:24 CDT the Central cities had just
+  rolled over to 08-28, so their still-listed 08-27 markets fell out of the
+  window; LA and Denver were still on 08-27 locally and resolved from cache.
+  Nothing failed. `target_str not in dates` simply left `highs` empty, and
+  the chain walked all the way down: 3 useless Open-Meteo calls, then NBM,
+  then weatherapi, then a slow Pirate Weather time-machine request. The
+  timezone-of-the-day is why the set of affected cities rotates with the
+  clock rather than looking like a broken provider.
+
+NO WRONG PRICE, CHECKED RATHER THAN ASSUMED. analyze_trade's `past_date`
+gate resolves "today" through the SAME _CITY_TZ city-local expression, so
+the two boundaries coincide exactly: every forecast bought this way is
+discarded by that gate (past_date:96 on the run above). The degraded
+single-model value (models_used=1, zero-width high_range, which feeds sigma
+and confidence) never reaches a decision. This is cost and noise, not a
+correctness bug -- but the cost is real: ~72s of every cycle plus free-tier
+quota on all three fallback providers.
+
+  The repo already knew half of it. enrich_with_forecast's own docstring has
+  documented this waste since backtest.py started passing fetch_forecast=
+  False for exactly this reason. The live scan just never got the same
+  guard.
+
+FIXED 2026-08-28. enrich_with_forecast gained a keyword-only
+  `skip_past_target_dates: bool = False`, and trade_cycle._enrich_and_analyze
+  -- the one engine both cron and `watch --auto` run -- passes True.
+
+  Scoped to the scan deliberately, not applied inside enrich_with_forecast
+  for everyone: it has ~25 call sites, and the web_app dashboard routes
+  legitimately display a time-machine value for yesterday. Defaulting to
+  False means no existing caller changes at all.
+
+  The threshold is COPIED from analyze_trade's past_date gate, not invented
+  -- same _CITY_TZ lookup, same America/New_York default, same UTC fallback.
+  If the two ever diverge the guard either skips a market that would have
+  been analysed (a real regression) or keeps paying for one that will not
+  be. A boundary mutation (`<` -> `<=`) is caught by the today-still-fetches
+  test.
+
+  WHAT THIS BROKE, and it is the interesting part: adding one keyword-only
+  argument with a default failed 16 tests across
+  tests/test_trade_cycle_engine.py and tests/test_cron_integration.py. Not
+  one of them was a real behaviour change -- every failure was a test DOUBLE
+  with fixed arity (`def _tracking_enrich(m):`, `lambda m: enriched`) raising
+  TypeError on the new kwarg, and the resulting symptoms were misleading
+  ("kill switch must be logged as WARNING: assert False"), never a
+  TypeError. Confirmed against a detached worktree at the clean base commit
+  that all 16 pass there, so they were caused by this change and not
+  pre-existing. Seventeen doubles were widened to accept **_kw; they were
+  brittle to ANY future keyword argument, not just this one.
+
+TESTS (counts re-derived by collection at the moment of writing):
+  tests/test_forecasting.py TestHRRR 9 -> 16.
+  tests/test_weather_markets.py TestEnrichSkipsPastLocalTargetDates -- 8 new,
+  three of them added by round 2: the gate-attribution pin, its real-failure
+  positive control, and the frozen-clock timezone boundary.
+  The scan-engine pin walks trade_cycle's AST to the _enrich_and_analyze
+  node and asserts the kwarg on the enrich call INSIDE it, rather than
+  grepping the file -- a file-wide substring search would be satisfied by
+  the flag appearing in any unrelated function or in a comment. The skip
+  assertion is paired with a positive control (the same flag, a current
+  date, must still fetch), so it cannot pass vacuously if the ticker ever
+  stops parsing or the city stops resolving.
+  Mutations applied individually via the Edit tool and reverted: the `<` ->
+  `<=` boundary, and dropping the flag at the trade_cycle call site. Each
+  broke exactly the test written for it.
+  Full sweep over all 25 test files referencing enrich_with_forecast: 1897
+  passed, 2 skipped. ruff + ruff-format + mypy clean.
 
 
 [OPEN 2026-08-26 -- opus review of batch-82, MEDIUM] THE 0.85 NWS CEILING IS

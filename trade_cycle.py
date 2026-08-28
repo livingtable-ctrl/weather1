@@ -534,7 +534,16 @@ def run_trade_cycle(
     }
 
     def _enrich_and_analyze(m: dict) -> tuple[dict, dict, dict | None]:
-        enriched = ctx.enrich_with_forecast(m)
+        # skip_past_target_dates=True: analyze_trade rejects a past-local
+        # target date at its `past_date` gate, but the enrichment above it
+        # would still have paid for the forecast first -- and a past-local
+        # date falls outside Open-Meteo's window, so it misses OM, misses
+        # NBM, misses weatherapi, and lands on a slow Pirate Weather
+        # time-machine request whose value is then discarded. Measured on the
+        # 2026-08-28 05:24 UTC run: 8 cities x 6 dates, ~72s of the scan, and
+        # free-tier quota on all three fallback providers, for nothing. Only
+        # the scan sets this; the dashboards keep the old behaviour.
+        enriched = ctx.enrich_with_forecast(m, skip_past_target_dates=True)
         return m, enriched, ctx.analyze_trade(enriched)
 
     # Per-market analysis timeout: 6 min total for all markets, 8 parallel
@@ -1221,8 +1230,12 @@ def _run_batch_prewarm_for_pairs(
     #
     # That matters twice over. ncep_hrrr_conus is in TRACKING_ONLY_MODEL_NAMES,
     # which this repo defines as "excluded from every live blend", and
-    # ensemble_member_scores holds ZERO rows for it -- so the model is neither
-    # supposed to be here nor actually being tracked. And the choice is not
+    # ensemble_member_scores held ZERO rows for it until 2026-08-28 -- so the
+    # model was neither supposed to be here nor actually being tracked. The
+    # tracking half is now fixed (_fetch_hrrr_temp was sending Open-Meteo a
+    # mutually-exclusive forecast_days/start_date pair and 400'ing on every
+    # call since 2026-06-28), so rows accrue from 2026-08-28 forward; the
+    # policy half below is unchanged and still open. And the choice is not
     # cosmetic: day-1 daily max differs from gfs013 by a mean of 3.87 F
     # (median 3.06, max 12.42 in San Francisco) against ~1 F strike spacing.
     #

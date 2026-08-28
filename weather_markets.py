@@ -2489,8 +2489,12 @@ def batch_prewarm_forecasts(
     #
     # That matters twice over. ncep_hrrr_conus is in TRACKING_ONLY_MODEL_NAMES,
     # which this repo defines as "excluded from every live blend", and
-    # ensemble_member_scores holds ZERO rows for it -- so the model is neither
-    # supposed to be here nor actually being tracked. And the choice is not
+    # ensemble_member_scores held ZERO rows for it until 2026-08-28 -- so the
+    # model was neither supposed to be here nor actually being tracked. The
+    # tracking half is now fixed (_fetch_hrrr_temp was sending Open-Meteo a
+    # mutually-exclusive forecast_days/start_date pair and 400'ing on every
+    # call since 2026-06-28), so rows accrue from 2026-08-28 forward; the
+    # policy half below is unchanged and still open. And the choice is not
     # cosmetic: day-1 daily max differs from gfs013 by a mean of 3.87 F
     # (median 3.06, max 12.42 in San Francisco) against ~1 F strike spacing.
     #
@@ -2839,7 +2843,13 @@ def batch_prewarm_ensemble(
 
             except Exception as exc:
                 _ensemble_cb.record_failure()
-                _log.debug(
+                # INFO, matching every other _ensemble_cb consumer (the four
+                # open_meteo_ensemble sites below). This one was the odd
+                # DEBUG out, and it is the site that actually fills the live
+                # blend cache in production -- the same "records a breaker
+                # failure at a level nobody prints" shape that hid the HRRR
+                # 400 for two months.
+                _log.info(
                     "batch_prewarm_ensemble: model=%s var=%s — %s: %s",
                     model,
                     var_str,
@@ -2944,7 +2954,8 @@ def batch_prewarm_ensemble(
 
         except Exception as exc:
             _ensemble_cb.record_failure()
-            _log.debug(
+            # INFO for the same reason as the sibling site above.
+            _log.info(
                 "batch_prewarm_ensemble precip: model=%s — %s: %s",
                 model,
                 type(exc).__name__,
@@ -3209,15 +3220,49 @@ def fetch_temperature_nbm(
         _NBM_CACHE.set(cache_key, None)
         return None
     except Exception as exc:
-        _nbm_om_cb.record_failure()
-        _log.debug(
-            "nbm_openmeteo: failure #%d (NBM/%s) — %s: %s",
-            _nbm_om_cb.failure_count,
-            city,
-            type(exc).__name__,
-            exc,
-        )
         _NBM_CACHE.set(cache_key, None)
+        _nbm_om_cb.record_failure()
+        # Same 4xx promotion as _fetch_hrrr_temp, and it matters MORE here:
+        # this value reaches model_temps["nbm"] and _compute_ensemble_spread
+        # on the live pricing path, where HRRR is only tracked. This function
+        # has the identical shape that hid the HRRR bug for two months --
+        # FORECAST_BASE, a start_date/end_date + models= request, a
+        # threshold-3 breaker, and a reason string at DEBUG under a root
+        # logger at INFO -- and Open-Meteo has ALREADY retired this model
+        # name once (see this function's docstring). A second rename would
+        # produce a permanent 400 whose only trace is "Circuit
+        # 'nbm_openmeteo' OPEN after 3 failures", on a path that moves money.
+        # 5xx stays at DEBUG: that is a real outage and the breaker's job.
+        _err_resp = getattr(exc, "response", None)
+        _status = getattr(_err_resp, "status_code", None)
+        if isinstance(_status, int) and 400 <= _status < 500 and _status != 429:
+            try:
+                # getattr for mypy (_err_resp is Any | None here) AND the
+                # try for safety: getattr's default only swallows
+                # AttributeError, while Response.text is a decoding property
+                # that can raise anything.
+                _body = (getattr(_err_resp, "text", "") or "")[:300]
+            except Exception:
+                _body = "<response body unreadable>"
+            _log.warning(
+                "nbm_openmeteo: %s %s got HTTP %s from Open-Meteo — a client "
+                "error the circuit breaker cannot fix by waiting (400 = the "
+                "request itself is wrong, and a retired model name looks "
+                "exactly like this; 429 = rate limited; 403 = blocked). "
+                "Response: %s",
+                city,
+                target_date.isoformat(),
+                _status,
+                _body,
+            )
+        else:
+            _log.debug(
+                "nbm_openmeteo: failure #%d (NBM/%s) — %s: %s",
+                _nbm_om_cb.failure_count,
+                city,
+                type(exc).__name__,
+                exc,
+            )
         return None
 
 
@@ -3264,8 +3309,6 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
     (_hrrr_om_cb) — see that breaker's own comment for why it's separate
     from _forecast_cb/_ecmwf_om_cb despite sharing FORECAST_BASE.
     """
-    import requests as _req
-
     cache_key = f"{city}_{target_date.isoformat()}_{var}"
     _cached_val, _cache_hit, _ = _HRRR_CACHE.get_with_ts(cache_key)
     if _cache_hit:
@@ -3284,7 +3327,20 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
 
     date_str = target_date.isoformat()
     try:
-        resp = _req.get(
+        # _om_request, not a bare requests.get: this was the ONLY Open-Meteo
+        # call in this module that bypassed it, which cost nothing while every
+        # call 400'd behind an open breaker (~3 requests per 300s) but stops
+        # being free now that the params are fixed. Up to 21 cities x 2 vars
+        # per 4h cache window -- but that is the cache-key ceiling, not the
+        # reachable count: in practice ~10 per scan, because the call sits
+        # behind days_out == 0, the ens_prob/temps guard, and every
+        # liquidity/volume/spread/extreme-price gate ahead of it. Issued from
+        # inside analyze_trade's per-market thread pool. _om_request supplies the shared per-endpoint 0.5s
+        # forecast rate limiter, the pooled session, and 429 handling that the
+        # other twelve Open-Meteo sites coordinate on; going around it would
+        # let this function's restored traffic push THEM into 429s.
+        resp = _om_request(
+            "GET",
             FORECAST_BASE,
             params={
                 "latitude": lat,
@@ -3295,7 +3351,18 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
                 "start_date": date_str,
                 "end_date": date_str,
                 "models": "ncep_hrrr_conus",
-                "forecast_days": 1,
+                # DO NOT add "forecast_days" here. Open-Meteo rejects it
+                # alongside start_date/end_date with HTTP 400 ("Parameter
+                # 'forecast_days' is mutually exclusive with 'start_date' and
+                # 'end_date'"), which raise_for_status() turns into a
+                # record_failure() on EVERY call -- three of those open
+                # _hrrr_om_cb for 300s, and the half-open probe re-fails, so
+                # the breaker trips once per cron cycle forever. That is
+                # exactly what happened between 2026-06-28 (fc79bb05, which
+                # added both) and 2026-08-28: ensemble_member_scores held ZERO
+                # ncep_hrrr_conus rows the whole time while every peer model
+                # held 49-116. The single-day window is already fully
+                # specified by start_date == end_date.
             },
             timeout=10,
         )
@@ -3304,17 +3371,86 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
         if not valid:
+            # Beyond ncep_hrrr_conus' ~2-day horizon Open-Meteo answers 200
+            # with an all-null series rather than an error -- measured live
+            # 2026-08-28: days_out 0 -> 24/24 valid, 1 -> 21/24, 2 and 3 ->
+            # 0/24 with HTTP 200. So this branch is how a caller that ignores
+            # the days_out == 0 contract in this function's docstring shows
+            # up, and it spends breaker failures doing it. It used to log at
+            # NO level at all, which would have made it the last invisible
+            # failure path left in the function the 4xx branch below was
+            # written to de-blind.
             _hrrr_om_cb.record_failure()
             _HRRR_CACHE.set(cache_key, None)
+            _log.warning(
+                "_fetch_hrrr_temp: %s %s returned HTTP 200 with %d hours but "
+                "0 usable values — ncep_hrrr_conus has a ~2-day horizon, so "
+                "check the caller is honouring days_out == 0",
+                city,
+                date_str,
+                len(temps),
+            )
             return None
         result = float(max(valid) if var == "max" else min(valid))
         _hrrr_om_cb.record_success()
         _HRRR_CACHE.set(cache_key, result)
         return result
     except Exception as exc:
-        _hrrr_om_cb.record_failure()
-        _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
+        # Cleanup first, logging second -- defence in depth, and stated
+        # honestly: the REAL guard is the inner try/except around the body
+        # read below, and a mutation moving these two lines back down does
+        # NOT fail any test, because that inner try already makes the logging
+        # unable to raise. Both are kept (Response.text is a decoding property
+        # that can raise something getattr's default does not swallow, and
+        # this function's `-> float | None` contract plus its negative cache
+        # depend on reaching the return), but do not mistake this ordering for
+        # a tested invariant. The same ordering is used in the all-null branch
+        # above so the two do not contradict each other.
         _HRRR_CACHE.set(cache_key, None)
+        _hrrr_om_cb.record_failure()
+        # A 4xx is a PERMANENT request-shape bug, not an outage: the breaker
+        # can only mask it (open, half-open, re-fail, forever), never recover
+        # from it, so it has to be visible at the level cron actually prints.
+        # This is exactly the signal that was missing between 2026-06-28 and
+        # 2026-08-28, when a mutually-exclusive forecast_days/start_date pair
+        # made every call a 400 -- the only trace in cron.log was "Circuit
+        # 'hrrr_openmeteo' OPEN after 3 failures", because the reason string
+        # went to _log.debug and the root logger sits at INFO.
+        #
+        # The band is 4xx SPECIFICALLY, not "any status" and not "any response
+        # object". A 5xx is exactly what the breaker exists to absorb during a
+        # real Open-Meteo outage and must stay at DEBUG, or the de-blinding
+        # fix becomes the new noise source.
+        #
+        # 429 is EXCLUDED for the same reason: _om_request returns it without
+        # raising and logs it at DEBUG with "CB failure recorded, fallback
+        # will engage" -- this module already classifies rate-limiting as a
+        # transient the breaker plus fallback handles. Waiting does fix a 429,
+        # which is exactly what disqualifies it from a branch whose whole
+        # claim is "the breaker cannot fix this by waiting".
+        _err_resp = getattr(exc, "response", None)
+        _status = getattr(_err_resp, "status_code", None)
+        if isinstance(_status, int) and 400 <= _status < 500 and _status != 429:
+            try:
+                # getattr for mypy (_err_resp is Any | None here) AND the
+                # try for safety: getattr's default only swallows
+                # AttributeError, while Response.text is a decoding property
+                # that can raise anything.
+                _body = (getattr(_err_resp, "text", "") or "")[:300]
+            except Exception:
+                _body = "<response body unreadable>"
+            _log.warning(
+                "_fetch_hrrr_temp: %s %s got HTTP %s from Open-Meteo — a client "
+                "error the circuit breaker cannot fix by waiting (400 = the "
+                "request itself is wrong, 429 = we are rate limited, 403 = "
+                "blocked). Response: %s",
+                city,
+                date_str,
+                _status,
+                _body,
+            )
+        else:
+            _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
         return None
 
 
@@ -8199,7 +8335,12 @@ def parse_ticker_hour(ticker: str) -> int | None:
         return None
 
 
-def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
+def enrich_with_forecast(
+    market: dict,
+    fetch_forecast: bool = True,
+    *,
+    skip_past_target_dates: bool = False,
+) -> dict:
     """
     Attach forecast data to a market dict.
     Parses city, date, and (for hourly markets) hour from the ticker.
@@ -8212,6 +8353,14 @@ def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
     weatherapi.com all miss, so the call falls all the way through to a slow
     (~5s+) Pirate Weather time-machine request whose result would just be
     discarded. _forecast/_forecast_uncertain are None when skipped.
+
+    skip_past_target_dates: keyword-only, default False so no existing caller
+    changes behaviour. Set True to apply that same reasoning per-market rather
+    than per-caller: skip the fetch when the target date is ALREADY PAST in
+    the city's own timezone, which is exactly the population analyze_trade's
+    `past_date` gate discards anyway. The scan engine (trade_cycle) passes
+    True; the web_app dashboard routes deliberately do not, since a
+    time-machine value for yesterday is legitimate content to display.
     """
     ticker = market.get("ticker", "")
     title = market.get("title") or ""
@@ -8301,8 +8450,45 @@ def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
                     pass
 
     forecast = None
-    if city and target_date and fetch_forecast:
+    _past_local = False
+    if skip_past_target_dates and city and target_date:
+        # THRESHOLD COPIED, NOT INVENTED: this must be the same boundary
+        # analyze_trade's own `past_date` gate uses, or the two disagree and
+        # we either skip a market that would have been analysed or keep
+        # paying for one that won't be. That gate resolves "today" in the
+        # CITY's timezone via _CITY_TZ with an America/New_York default and
+        # falls back to UTC if ZoneInfo is unavailable -- mirrored here
+        # exactly, including the fallback.
+        try:
+            from zoneinfo import ZoneInfo as _ZoneInfoEnrich
+
+            _enrich_today = datetime.now(
+                _ZoneInfoEnrich(_CITY_TZ.get(city or "", "America/New_York"))
+            ).date()
+        except Exception:
+            _enrich_today = datetime.now(UTC).date()
+        _past_local = target_date < _enrich_today
+
+    if city and target_date and fetch_forecast and not _past_local:
         forecast = get_weather_forecast(city, target_date)
+    elif _past_local and fetch_forecast:
+        # Open-Meteo's forecast window starts at the city's local today, so a
+        # past-local date misses it, misses NBM and weatherapi too, and falls
+        # all the way through to a slow Pirate Weather time-machine request --
+        # whose result analyze_trade then discards at the `past_date` gate.
+        # This function's own docstring has documented that waste since
+        # backtest.py started passing fetch_forecast=False for it; the live
+        # scan just never got the same guard. Measured on the 2026-08-28
+        # 05:24 UTC cron run: 8 cities x 6 dates, ~72s of the scan, every
+        # result thrown away.
+        _log.debug(
+            "enrich_with_forecast[%s]: skipping forecast fetch — target %s is "
+            "already past in %s's local timezone, and analyze_trade's past_date "
+            "gate would discard the result",
+            ticker,
+            target_date,
+            city,
+        )
 
     # Wire Pirate Weather uncertainty signals into _forecast_uncertain.
     # If the forecast came from Pirate Weather and includes a severe alert or
@@ -8333,6 +8519,12 @@ def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
         "_hour": hour,
         "_forecast": forecast,
         "_forecast_uncertain": _forecast_uncertain,
+        # Distinguishes "we chose not to fetch, because the target date is
+        # already past locally" from "the fetch was tried and produced
+        # nothing". analyze_trade's `no_forecast` gate reads it so those
+        # markets keep landing on `past_date` instead -- see that gate for
+        # why conflating the two blinds a monitoring signal.
+        "_forecast_skipped_past_date": _past_local,
         "data_fetched_at": _data_fetched_at,
     }
 
@@ -11954,6 +12146,14 @@ def _model_prob_and_mean(
                 "daily": [var_field],
                 "temperature_unit": "fahrenheit",
                 "models": model_name,
+                # This is the only ENSEMBLE_BASE site that scopes by date
+                # range; every sibling uses forecast_days=16. Do NOT
+                # "harmonise" it by copying a neighbour's forecast_days in --
+                # Open-Meteo rejects forecast_days alongside start_date /
+                # end_date with a permanent HTTP 400, and this function is on
+                # the live pricing path. That exact pairing sat in
+                # _fetch_hrrr_temp from 2026-06-28 to 2026-08-28 and cost
+                # that model every observation it should have recorded.
                 "start_date": target_date.isoformat(),
                 "end_date": target_date.isoformat(),
             }
@@ -16093,6 +16293,19 @@ def analyze_trade(
         and not _is_storm_order
         and not _is_tornado_count
         and not forecast
+        # A forecast DELIBERATELY skipped for a past-local target date is not
+        # a missing forecast, and must not be counted or logged as one. This
+        # gate is stage="inputs" and WARNs; `past_date` (~150 lines below) is
+        # stage="timing" and DEBUGs. Without this clause every past-local
+        # market stops here instead of there -- measured on the 2026-08-28
+        # 05:26 UTC scan, that is all 96 of them: 96 new WARNING lines per
+        # cycle at the level cron prints, the operator gate summary flipping
+        # from past_date:96 to no_forecast:96, and -- worst -- `no_forecast`
+        # going from a reliable zero to a permanent 96, so a real Open-Meteo
+        # /NBM/Pirate outage could no longer be distinguished from routine
+        # skips. That is the same defect class this batch fixed for HRRR (a
+        # real signal lost in the noise), inverted.
+        and not enriched.get("_forecast_skipped_past_date")
     ):
         _log.warning(
             "analyze_trade[%s]: gate=no_forecast city=%s date=%s",
@@ -17216,19 +17429,24 @@ def analyze_trade(
         # (days_out == 0) only — ncep_hrrr_conus has a hard ~2-day horizon
         # and same-day is the only regime the go/no-go validation covered.
         #
-        # ensemble_member_scores held ZERO ncep_hrrr_conus rows as of
-        # 2026-08-28, and that is EXPECTED, not a broken writer -- checked
-        # rather than assumed. This key was wired on 2026-08-24 (cd0f486d);
-        # since then 15 trades entered, 4 settled, 1 carried the key. The
-        # endpoint is healthy (direct request, breaker bypassed: 5/5 cities,
-        # 24 usable hours each) and the metar-lock does not preempt this path
-        # (48% of same-day rows are non-lockout, and 115 same-day cells are
-        # scored). So the count is a start-date artefact.
+        # ensemble_member_scores held ZERO ncep_hrrr_conus rows from
+        # 2026-06-28 until 2026-08-28, and it WAS a broken writer.
+        # _fetch_hrrr_temp sent Open-Meteo start_date/end_date AND
+        # forecast_days=1, which that API rejects outright (HTTP 400,
+        # "mutually exclusive"), so every call raised, spent a breaker
+        # failure, and returned None. Rows accrue only from 2026-08-28
+        # forward; treat any earlier absence as the bug, not as history.
         #
-        # WHAT WOULD MAKE IT A DEFECT: still zero once a few dozen trades have
-        # settled from entries after 2026-08-24. Check the denominator before
-        # concluding, the way this note did -- "zero rows" alone proves
-        # nothing about the writer.
+        # An earlier version of this comment claimed the opposite -- "that is
+        # EXPECTED, not a broken writer ... the endpoint is healthy (direct
+        # request, breaker bypassed: 5/5 cities, 24 usable hours each)". That
+        # probe was hand-built and omitted forecast_days, so it exercised a
+        # request shape this code does not send and passed while production
+        # 400'd. Two checks that would each have caught it alone: git-blame
+        # the params block (the contradictory pair predated the 2026-08-24
+        # wiring it blamed by two months), and read the count against its
+        # peers rather than alone (seven other models sat at 49-116 while
+        # this one sat at exactly zero).
         # Like gem/ukmo, does NOT participate in model_consensus or the
         # forecast_temp blend — see _fetch_hrrr_temp's own module comment.
         hrrr_forecast_mean: float | None = None
