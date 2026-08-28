@@ -1536,7 +1536,9 @@ class TestAnalyzeHurricaneNextEventTrade:
         return result, captured
 
     @pytest.mark.allow_network
-    def test_climatology_fallback_would_not_have_been_a_fail_safe(self):
+    def test_climatology_fallback_would_not_have_been_a_fail_safe(
+        self, tmp_path, monkeypatch
+    ):
         """The evidence behind returning no signal at all (opus review HIGH 1).
 
         The unconditional climatology this branch used to fall through to
@@ -1559,6 +1561,28 @@ class TestAnalyzeHurricaneNextEventTrade:
         # turned a real assertion into a permanent silent skip on CI
         # (opus-review-caught). On a dev machine the on-disk cache means no
         # fetch actually happens.
+        #
+        # What the above did NOT account for: fetch_hurdat2_raw CACHES what it
+        # fetches, writing data/hurdat2_ATL.txt -- so on CI, where the fetch is
+        # the whole point, the prod-data guard blocked the write and failed the
+        # test. Allowing the network is not the same as allowing a production
+        # write.
+        #
+        # Redirecting DATA_DIR alone would fix the write and break the rest:
+        # a cold tmp_path means a dev machine loses its cache hit and starts
+        # fetching on every run. That is precisely the regression
+        # conftest.isolate_climatology_data_dir's docstring records for the
+        # climatology archives. So seed tmp_path from the real cache when one
+        # exists -- reads of data/ are permitted by the guard, only writes are
+        # not. Both documented properties then survive: cache hit and zero
+        # network on a dev machine, fetch-and-cache-to-tmp on CI.
+        _real_cache = hc.DATA_DIR / "hurdat2_ATL.txt"
+        if _real_cache.exists():
+            (tmp_path / "hurdat2_ATL.txt").write_text(
+                _real_cache.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+
         storms = hc.load_basin_storms("ATL")
         if not storms:
             pytest.skip("HURDAT2 unavailable (no cache and no network)")

@@ -2269,3 +2269,73 @@ class TestSignalGraduationRegistry:
 
         entry = next(e for e in wm.SIGNAL_REGISTRY if e.key == "ecmwf_consensus_gap")
         assert entry.count_fn() == 0
+
+
+class TestFeatureActivationIsolation:
+    """Positive controls for conftest's autouse isolate_feature_activations.
+
+    An isolation fixture that silently stopped redirecting would leave every
+    test in this file writing the operator's real
+    data/feature_activations.json again, and nothing would fail -- the tests
+    above assert blend weights, not file locations. These two assert the
+    redirect itself, so the fixture cannot rot unnoticed.
+    """
+
+    def test_notify_writes_to_the_redirected_path_not_the_real_one(self, tmp_path):
+        """The write MUST still happen -- the fixture redirects it, it does
+        not suppress it. Without this the isolation could 'pass' by breaking
+        _notify_feature_activation entirely.
+        """
+        import json
+
+        import weather_markets as wm
+        from paths import FEATURE_ACTIVATIONS_PATH as real_path
+
+        redirected = wm._FEATURE_ACTIVATIONS_PATH
+        assert redirected != real_path, "autouse isolation did not redirect"
+        assert not redirected.exists(), "fixture path should start empty"
+
+        wm._notify_feature_activation("t_probe", "probe message", {"n_settled": 31})
+
+        # POSITIVE CONTROL: the code path really ran and really wrote.
+        assert redirected.exists(), (
+            "_notify_feature_activation wrote nothing -- this test would then "
+            "prove nothing about WHERE it writes"
+        )
+        assert json.loads(redirected.read_text())["t_probe"]["n_settled"] == 31
+
+    def test_regime_blend_activation_does_not_touch_the_real_file(self, monkeypatch):
+        """The exact CI failure: forcing the settled count over its threshold
+        makes _regime_blend_active() call _notify_feature_activation, which on
+        a fresh checkout (no key present) writes. Locally the real file
+        usually already holds the key, so the early return hid this.
+        """
+        import weather_markets as wm
+        from paths import FEATURE_ACTIVATIONS_PATH as real_path
+
+        # Asserted FIRST and separately. "the real file did not change" is
+        # satisfied for the wrong reason when the fixture is broken: the
+        # operator's real file already contains a9_regime_blend (it activated
+        # 2026-08-27), so _notify_feature_activation early-returns and writes
+        # nothing at all. An earlier version of this test checked only that
+        # the real bytes were unchanged plus that "the path exists" -- with
+        # the fixture disabled BOTH still held, because the path was the real
+        # file and it does exist. Mutation testing caught it.
+        redirected = wm._FEATURE_ACTIVATIONS_PATH
+        assert redirected != real_path, "autouse isolation did not redirect"
+        assert not redirected.exists(), "fixture path should start empty"
+
+        before = real_path.read_bytes() if real_path.exists() else None
+
+        monkeypatch.setattr(wm, "_regime_blend_settled_count", lambda: 35)
+        wm._regime_blend_state["active"] = None
+        assert wm._regime_blend_active() is True
+
+        # POSITIVE CONTROL: the notify path ran and CREATED the redirected
+        # file during this test, so the unchanged-real-file check below is
+        # about routing rather than about nothing having happened.
+        assert redirected.exists(), (
+            "_regime_blend_active() did not reach _notify_feature_activation"
+        )
+        after = real_path.read_bytes() if real_path.exists() else None
+        assert after == before, "a test mutated the real feature_activations.json"

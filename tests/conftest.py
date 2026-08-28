@@ -1343,6 +1343,49 @@ def isolate_climatology_mem_cache(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_feature_activations(tmp_path, monkeypatch):
+    """Redirect weather_markets._FEATURE_ACTIVATIONS_PATH to a per-test file.
+
+    _notify_feature_activation() reads the file, returns early if the key is
+    already present, and otherwise WRITES it. On a developer machine the real
+    data/feature_activations.json usually already holds the key, so the early
+    return fires and nothing is written -- which is exactly why this went
+    unnoticed. On a fresh CI checkout (data/ is gitignored) the key is absent,
+    the write happens, and the prod-data guard blocks it: three of the four
+    guard failures on the 2026-08-27 CI run came through here, from
+    test_forecasting.py's TestRegimeBlend forcing _regime_blend_settled_count
+    above its 30-row threshold.
+
+    Note the local pass was itself fragile rather than safe: before the regime
+    blend actually activated in production on 2026-08-27, these same tests
+    would have WRITTEN a fabricated activation record into the operator's real
+    file.
+
+    AUTOUSE on purpose, following isolate_metar_calibration_path's reasoning:
+    a per-test opt-in already existed (test_batch81_signal_floors.py's
+    `fa_path` fixture, and an inline monkeypatch in test_forecasting.py) and
+    TestRegimeBlend simply did not use it. A structural guard does not depend
+    on the next test author remembering. Those existing per-test patches stay
+    correct -- setting the same attribute twice to two different tmp_path
+    values is idempotent from each test's own perspective.
+
+    Patched on weather_markets, not on paths: weather_markets binds the
+    constant at import (`_FEATURE_ACTIVATIONS_PATH = FEATURE_ACTIVATIONS_PATH`),
+    so patching paths.FEATURE_ACTIVATIONS_PATH would not reach it. web_app's
+    reader does a call-time `from weather_markets import
+    _FEATURE_ACTIVATIONS_PATH`, which resolves against this patched attribute,
+    so it is covered too.
+    """
+    import weather_markets
+
+    monkeypatch.setattr(
+        weather_markets,
+        "_FEATURE_ACTIVATIONS_PATH",
+        tmp_path / "feature_activations.json",
+    )
+
+
+@pytest.fixture(autouse=True)
 def isolate_climatology_data_dir(tmp_path, monkeypatch):
     """Redirect climatology.DATA_DIR (used by _cache_path() to build each
     city's climate_{city}.json path) to a per-test temp dir, and default

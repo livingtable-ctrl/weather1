@@ -1,6 +1,138 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-08-27 by batch-92 -- never filed as OPEN; the user pasted a
+  red CI run and these four were one coherent cause]
+  FOUR TESTS WROTE INTO THE REAL data/ ON CI AND ONLY ON CI, BECAUSE A
+  POPULATED LOCAL data/ MADE THEM SHORT-CIRCUIT BEFORE THE WRITE
+Priority: was Medium -- no product defect, but four permanently-red CI
+  tests train everyone to ignore CI, and each one was a test that COULD
+  have mutated the operator's real data.
+Files: tests/conftest.py (new isolate_feature_activations),
+  tests/test_forecasting.py (TestRegimeBlend + new
+  TestFeatureActivationIsolation), tests/test_hurricane_markets.py
+  (test_climatology_fallback_would_not_have_been_a_fail_safe),
+  tests/test_infrastructure.py (test_atomic_write_falls_back_to_tmp_on_
+  oserror + new test_emergency_copy_honours_patched_project_root).
+
+Problem:
+  The prod-data guard blocked four writes on ubuntu-latest / Python 3.12.
+  All four pass locally, and the reason is the same in each case: some
+  local state makes the code return before it writes.
+
+  (1)+(2) tests/test_forecasting.py TestRegimeBlend forces
+  _regime_blend_settled_count above its 30-row threshold, so
+  _regime_blend_active() calls _notify_feature_activation(), which reads
+  data/feature_activations.json, returns early if the key is present, and
+  otherwise WRITES. The operator's real file has held a9_regime_blend since
+  the regime blend actually activated on 2026-08-27; data/ is gitignored, so
+  a fresh CI checkout has no such file and the write fires.
+  NOTE the local pass was luck, not safety: before that activation these
+  tests would have written a fabricated record into the real file.
+
+  (3) tests/test_hurricane_markets.py's HURDAT2 test is the one test in the
+  repo carrying @pytest.mark.allow_network, deliberately, because it is
+  pinned against the REAL HURDAT2 distribution and data/ is gitignored. Its
+  comment reasons carefully about the FETCH and says nothing about the
+  CACHE: fetch_hurdat2_raw writes what it fetches to data/hurdat2_ATL.txt.
+  Allowing the network is not the same as allowing a production write.
+
+  (4) tests/test_infrastructure.py's test_atomic_write_falls_back_to_tmp_on_
+  oserror triggers the emergency-copy fallback with chmod(0o444) -- which
+  Windows ignores. Its own docstring says so ("On Windows ... success is
+  also acceptable"). So on the developer's machine the fallback is NEVER
+  REACHED and its isolation was never exercised; on Linux it fires and
+  writes project_root()/data/.emergency/. The sibling test twenty lines
+  below it already carried exactly the missing monkeypatch, with a comment
+  explaining why.
+
+RESOLVED 2026-08-27 (batch-92).
+
+  (1)+(2) New AUTOUSE conftest fixture isolate_feature_activations redirects
+  weather_markets._FEATURE_ACTIVATIONS_PATH. Autouse rather than per-test on
+  isolate_metar_calibration_path's stated reasoning: a per-test opt-in
+  already existed (test_batch81_signal_floors' `fa_path`, plus an inline
+  patch in test_forecasting) and TestRegimeBlend simply did not use it. A
+  structural guard does not depend on the next author remembering. Patched
+  on weather_markets, not paths -- the constant is bound at import, and
+  web_app's call-time `from weather_markets import _FEATURE_ACTIVATIONS_PATH`
+  resolves against the patched attribute, so it is covered too.
+
+  (3) The test now seeds tmp_path from the real cache when one exists and
+  then redirects hurricane_climatology.DATA_DIR. Redirecting DATA_DIR alone
+  would have fixed the write and broken the rest -- a cold tmp_path means a
+  dev machine loses its cache hit and starts fetching every run, which is
+  the exact regression isolate_climatology_data_dir's docstring records for
+  the climatology archives. Seeding keeps both documented properties: cache
+  hit and zero network locally, fetch-and-cache-to-tmp on CI. Reads of data/
+  are permitted by the guard; only writes are not.
+
+  (4) Added the monkeypatch its sibling already had. Also added
+  test_emergency_copy_honours_patched_project_root, which triggers the same
+  fallback with a PLATFORM-INDEPENDENT failure (the target path is a
+  directory, so the final os.replace cannot succeed) -- so the isolation is
+  now verified on the platform it is developed on, not only on the one that
+  reports it. Mutation-tested: removing the patch fails the assertion AND
+  trips the prod-data guard, reproducing the CI failure locally.
+
+  Two positive-control tests added for the autouse fixture
+  (TestFeatureActivationIsolation), because an isolation fixture that
+  silently stopped redirecting would leave every test in that file writing
+  the real file again while nothing failed -- the tests there assert blend
+  weights, not file locations.
+
+  ONE OF THOSE POSITIVE CONTROLS WAS ITSELF VACUOUS on first write, caught
+  by mutation testing: it asserted "the real file is unchanged" plus "the
+  path exists", and with the fixture disabled BOTH still held -- the path
+  was the real file, it does exist, and the early return meant nothing was
+  written. Rewritten to assert the redirect explicitly and that the file was
+  CREATED during the test. See
+  [[feedback_mutation_survivor_can_mean_the_test_is_vacuous]].
+
+  Incidental, and NOT a defect: running the mutation created an empty real
+  data/.emergency/ directory. The guard leaves mkdir alone on purpose --
+  its own docstring explains that an empty directory holds no data and that
+  two modules mkdir cache subdirs at import time. Removed the empty
+  directory; nothing to fix.
+
+[OPEN 2026-08-27 -- the other half of the same red CI run; separate causes,
+  so filed separately rather than bundled into batch-92]
+  TWO MORE CI-ONLY TEST FAILURES: AN ESCAPING INJECTED OSError, AND A TEST
+  THAT CALLS A pathlib API THAT DOES NOT EXIST ON CI'S PYTHON
+Priority: Medium -- CI stays red until both are dealt with, and a
+  permanently-red CI is how a genuine regression gets waved through.
+Files: tests/test_ml_bias.py (TestAnalysisCalLoaderStates::
+  test_stat_failure_returns_the_last_good_table), tests/test_prod_data_guard.py
+  (TestMovesOutOfDataAreBlocked::test_pathlib_move_out_of_data_is_blocked),
+  .github/workflows/ci.yml (python-version: "3.12").
+
+Problem:
+  A. test_stat_failure_returns_the_last_good_table fails with a bare
+  `OSError: transient` on CI. The test injects that error expecting the
+  loader to catch it and fall back to the last good table; on CI it escapes.
+  Not reproduced locally -- needs its own investigation of why the catch
+  differs by platform or by filesystem behaviour.
+
+  B. test_pathlib_move_out_of_data_is_blocked calls Path.move, which was
+  added in Python 3.14. CI pins 3.12 (.github/workflows/ci.yml), and this
+  development machine runs 3.14 -- so the test passes here and CAN NEVER
+  pass there. It is not flaky; it is testing an API that does not exist in
+  the target runtime.
+
+  B is the second instance of this shape in the open backlog: the
+  test_atomic_write_text_concurrent_writers_never_expose_torn_file entry
+  records a Windows-only flake that CI structurally cannot see. Two tests
+  that only run correctly on the machine that wrote them is a pattern, not a
+  coincidence.
+
+What it would look like:
+  A needs a real diagnosis, not a broader except.
+  B is a DECISION, not a fix: either the repo targets 3.14 and CI should say
+  so, or it targets 3.12 and the test must guard on
+  hasattr(Path, "move") / sys.version_info. Picking per-test keeps producing
+  tests that are green in exactly one place. Worth settling the target
+  version once and auditing both entries against it.
+
 [RESOLVED 2026-08-27 by batch-91 -- resolution block at the end of this
   entry. Originally found by batch-90's scoped regression run and PROVEN
   PRE-EXISTING against unmodified HEAD in a throwaway worktree; not fixed

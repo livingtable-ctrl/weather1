@@ -352,6 +352,19 @@ def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
     import safe_io
     from safe_io import AtomicWriteError
 
+    # Same isolation test_atomic_write_raises_on_double_failure below already
+    # carries, and for the same reason: the emergency-copy fallback's first
+    # candidate is project_root()/"data"/".emergency", so a primary-write
+    # failure writes into the REAL repo's data/ directory.
+    #
+    # It went unnoticed here because the failure is platform-split, exactly as
+    # this test's own docstring says: on Windows chmod(0o444) does not block
+    # directory writes, so the primary write SUCCEEDS and the emergency path
+    # is never reached. On Linux -- which is what CI runs -- chmod bites, the
+    # fallback fires, and the prod-data guard blocks it. So the test passed on
+    # the machine it was written on and could only ever fail on CI.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
     bad_dir = tmp_path / "readonly"
     bad_dir.mkdir()
     bad_dir.chmod(0o444)
@@ -362,6 +375,47 @@ def test_atomic_write_falls_back_to_tmp_on_oserror(tmp_path, monkeypatch):
         # Windows: chmod doesn't restrict directory writes — success is acceptable
     except (AtomicWriteError, RuntimeError, OSError):
         pass  # Linux/macOS: readonly dir correctly raises
+
+
+def test_emergency_copy_honours_patched_project_root(tmp_path, monkeypatch):
+    """The emergency fallback must land under the patched root, on every OS.
+
+    test_atomic_write_falls_back_to_tmp_on_oserror above triggers the failure
+    with chmod(0o444), which Windows ignores -- so on a developer machine the
+    fallback there is never reached and its isolation is never exercised. That
+    is why it wrote into the real repo's data/.emergency/ on CI and nowhere
+    else, and why nobody saw it. This test uses a trigger that fails
+    identically on both platforms (the target path is a DIRECTORY, so the
+    final os.replace cannot succeed), so the isolation is actually verified
+    where it is developed.
+
+    project_root() is called at emergency time, not bound at import, which is
+    what makes monkeypatching safe_io.project_root effective.
+    """
+    import safe_io
+    from safe_io import AtomicWriteError
+
+    fake_root = tmp_path / "root"
+    fake_root.mkdir()
+    monkeypatch.setattr(safe_io, "project_root", lambda: fake_root)
+
+    target = tmp_path / "data.json"
+    target.mkdir()  # cannot be replaced by a file
+
+    with pytest.raises((AtomicWriteError, RuntimeError, OSError)):
+        safe_io.atomic_write_json({"x": 1}, target, retries=1)
+
+    # POSITIVE CONTROL: the fallback actually ran. Without this the
+    # "not in the real repo" assertion below would pass just as well if
+    # atomic_write_json had failed before ever reaching the emergency step.
+    emergency = fake_root / "data" / ".emergency"
+    assert emergency.exists(), "emergency copy never fired — trigger no longer works"
+    assert [p.name for p in emergency.iterdir()] == ["data.json"]
+
+    # ...and it did NOT land in the real repo, which is the CI failure.
+    from paths import DATA_DIR as real_data_dir
+
+    assert not (real_data_dir / ".emergency" / "data.json").exists()
 
 
 def test_atomic_write_raises_on_double_failure(tmp_path, monkeypatch):
