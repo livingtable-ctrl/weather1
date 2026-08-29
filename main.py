@@ -9900,9 +9900,9 @@ def cmd_repair_metar_lockout_rows(dry_run: bool = False) -> None:
     running daily extreme at lock time into forecast_temp_f -- a hard BOUND on
     the day, not a forecast of it. That value reached live money:
     paper._score_ensemble_members logged it to ensemble_member_scores as
-    model='blended', and get_dynamic_station_bias() PREFERS those rows and
-    feeds the live forecast bias correction. 69 of the 151 joinable blended
-    rows were
+    model='blended', and get_dynamic_station_bias() reads those rows -- ONLY
+    those, since batch-99 removed its icon+gfs fallback -- and feeds the live
+    forecast bias correction. 69 of the 151 joinable blended rows were
     contaminated at +/-8-10F with opposite signs by var.
 
     The writer is fixed; this cleans what it already wrote. Two corrections in
@@ -10037,8 +10037,13 @@ def cmd_backfill_member_actual_temp() -> None:
     outcomes but nothing re-derived the rows already copied out of it —
     measured 2026-08-25, 228 of 507 rows still disagreed with the official
     figure, and those rows feed get_dynamic_station_bias() → the live
-    forecast bias correction. Safe to re-run: only rows that actually differ
-    are touched, so a second pass reports 0 updated.
+    forecast bias correction. (Since batch-99 they are its ONLY input -- the
+    icon+gfs fallback is gone -- so the correction is inert for every city
+    until some (city, var) reaches 10 blended rows. Repairing them still
+    matters: it decides what the correction does once it wakes up.)
+
+    Safe to re-run: only rows that actually differ are touched, so a second
+    pass reports 0 updated.
 
     Run `backfill-ensemble-var` FIRST: rows with a NULL var cannot be matched
     by this pass at all, and it reports how many are in that state."""

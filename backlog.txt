@@ -30,6 +30,12 @@ figure in this entry decays daily and one day's drift already moves max from
 -0.130 to -0.139. Re-derive them, never diff against what is written here.
 All t-statistics use ddof=0 throughout.
 
+SUPERSEDED IN PART BY batch-99 (same day): the min column's "table deleted"
+figure is now what SHIPS -- _STATION_BIAS_LOW was removed, so min carries no
+static term at all. Read the min row as before-and-after, not as
+current-and-hypothetical. The max row is unchanged: _STATION_BIAS_HIGH is
+still live and still applied.
+
                           shipped bias (t)      table deleted (t)
   FULL PERIOD  max  n=90   -0.579 (t=-1.64)      +0.454 (t=+1.36)
                min  n=92   -1.560 (t=-6.65)      -1.163 (t=-5.10)
@@ -44,43 +50,103 @@ window it makes max significantly WORSE (-0.139 -> +0.861, t=+2.38). The two
 vars need opposite-signed corrections, so neither deletion nor any single
 global term is the answer.
 
-The dynamic half's PREFERRED branch has never fired -- but its fallback has,
-and the difference matters for the check below.
+batch-99 acted on exactly the half that survives that split: it deleted the MIN
+table (wrong-signed, paired |err| -0.227 t=-5.41 on min rows alone) and kept
+the MAX one (right-signed, and deleting it over-corrects). What it did NOT do
+is add anything -- min now has no correction rather than a better one, and is
+still -1.163 (t=-5.10) cold. Closing that is this entry's job, not batch-99's.
 
-get_dynamic_station_bias() prefers model='blended' rows and needs 10 per
+THE DYNAMIC HALF IS NOW INERT, and batch-99 made it so deliberately.
+
+get_dynamic_station_bias() uses model='blended' rows and needs 10 per
 (city, var); the largest such sample is 6, because paper.py:1507 is that table's
 sole writer and only runs when a paper trade SETTLES. July had zero paper trades
 and therefore zero model-score rows while the scan still wrote 70 predictions
-rows -- that branch is starved by construction whenever trading pauses.
+rows -- it is starved by construction whenever trading pauses. So the dynamic
+term is 0.0 for every city today and _get_combined_station_bias returns its
+static table (max) or 0.0 (min), nothing else.
 
-It then FALLS BACK to icon_seamless + gfs_seamless, and that branch does fire:
-10 (city, var) pairs clear its 10-sample floor today, so _get_combined_station_
-bias returns static-blended-with-dynamic, not the static table.
+It USED TO fall back to icon_seamless + gfs_seamless, and that branch did fire
+-- 10 (city, var) pairs had cleared its 10-sample floor. batch-99 removed it.
+The reason is worth keeping because it constrains the corrector this entry is
+about: the fallback averaged TWO MEMBERS' errors and subtracted them from a
+blend of seven sources that averages those same errors down. Across the 10
+cells it correlated r=+0.836 (t=+4.31) with the blend's own measured error --
+right direction -- but regressing blend error on it gives a slope of
+0.463 +/- 0.107, five sigma below 1.0. Leave-one-out slopes span 0.422-0.498,
+all below 1.0, and dropping the largest cell (Washington/min, dyn -4.65)
+LOWERS the slope to 0.422, so this is the central tendency and not an outlier.
 
-Per-city sizes below are the DYNAMIC TERM's own weighted size, dyn x weight --
-NOT how far the returned value moves off the static table, which is
-(dyn - static) x weight and is what the +0.045 / -0.043 figures further down
-measure. The two differ by a lot on one city and the labels used to be the
-same word: NYC/max is +0.507 on the first basis and +0.307 on the second.
+That 0.463 is itself ATTENUATED and the true figure is a little higher: y was
+computed as forecast_temp_f + the static table, but forecast_temp_f already
+had static*(1-w) + dyn*w subtracted, so y carries -w*(dyn - static) and is
+negatively correlated with x by construction -- the same feedback loop this
+entry warns about under WHY ONLY THAT. Refitting on y = forecast_temp_f +
+the ACTUALLY APPLIED value gives slope 0.516 +/- 0.105 (r=+0.866), still 4.6
+sigma below 1.0. Quote the range 0.46-0.52, not the point estimate.
 
-dyn x weight, largest first: NYC/max +0.507F (dyn +2.536, n=18, weight 0.20);
-Washington/min -0.233 (dyn -4.65, weight 0.05); Atlanta/min -0.075;
-Minneapolis/max +0.069; Seattle/min +0.043; SanFrancisco/max -0.019 and
-Dallas/min +0.019; and Houston/max, Denver/max and Boston/max at exactly 0.000
--- they sit ON the floor at n=10, where the weight is 0. The weight is linear
-in sample count to 1.0 at n=50, so all of these grow over exactly the month
-this entry asks you to wait, including the three currently pinned at zero.
+WHAT THE DELETION ACTUALLY COST, because an earlier draft of this entry said
+the fallback "over-corrects by 2.2x" and an opus review was right to reject
+that: _get_combined_station_bias never applied it in full. It multiplies by
+(count - 10) / 40, and the largest live cell was NYC/max at n=18, weight 0.20
+-- BELOW the ~0.46-0.52 that would have been MSE-optimal. Every live cell was
+under-applying. Measured on the 182 settled rows, four policies for the
+dynamic term, paired mean |err| against batch-99's "none":
 
-CONSEQUENCE FOR THE CHECK, stated because it bit an earlier draft: step 1's
-query measures forecast_temp_f + station_bias_applied_f (static AND dynamic),
-while step 2's targets below were computed as forecast_temp_f + the static table
-alone. Measured on the 182 settled rows the two differ by +0.045 (max) and
--0.043 (min) today -- small against the kill condition, but growing. Treat the
-step-2 numbers as STATIC-TABLE PRIORS, not as predictions of what the query
-returns, and re-derive them from the query itself when you run the check.
+                      min (n=92)              max (n=90)
+  none (batch-99)   MAE 1.9737   --        MAE 2.5487   --
+  dyn x 0.463       MAE 1.9621  -0.0116    MAE 2.5527  +0.0040
+  dyn x 0.516       MAE 1.9608  -0.0129    MAE 2.5534  +0.0046
+  dyn x 1.0         MAE 1.9487  -0.0250    MAE 2.5644  +0.0157
+                    (t=-2.64 for all three)  (t=+0.42..+0.78, n.s.)
 
-This is also the strongest argument FOR station_bias_applied_f: the applied
-value already drifts from the static table and cannot be reconstructed from it.
+So on min, keeping it was better -- monotonically, best UNSHRUNK -- and
+deletion is the worst of the four. Two things make that acceptable and both
+must survive into the corrector's design: (a) ~46% of those rows share a
+city/var/date with a member-score row, so this is substantially in-sample;
+(b) 0.01-0.03F is far below anything that moves a probability.
+
+THE REAL REASON FOR DELETING, stated correctly on the second attempt: an
+uncalibrated estimator was on an UNGATED RAMP. The weight climbs to 1.0 on
+sample count ALONE, with no env flag anywhere in the path -- exactly what this
+entry's own GRADUATION section says must never happen.
+
+DO NOT re-add the arithmetic version of that argument. A draft said the ramp
+"passes optimal at n=29 and turns harmful at n=48"; a second opus review
+rejected it on three grounds, all of which check out:
+  * it uses beta=0.463, the estimate this same entry calls attenuated. At the
+    honest upper end 0.516 the MSE breakeven 2*beta = 1.03 EXCEEDS the weight
+    cap of 1.0, so the ramp never reaches harm at any n.
+  * with SE 0.107 the threshold is "n=39 or never" at +/-1 sigma. A specific
+    integer implies a precision the fit does not carry.
+  * under MSE itself -- the loss the threshold is derived from -- min improves
+    MONOTONICALLY on these rows: 6.3384 / 6.2533 / 6.2438 / 6.1593 across
+    k = 0 / 0.463 / 0.516 / 1.0. Full application was the BEST of the four.
+
+So the trade was 0.02-0.03F of measured, in-sample benefit for removing an
+ungated ramp. GATING the term would have satisfied the GRADUATION rule just as
+well; deletion was chosen because that benefit does not justify the machinery.
+A corrector that wants the member signal back should gate it, not assume the
+deletion settled that it is worthless -- on min it measurably was not.
+
+LESSON FOR THE CORRECTOR: a member-derived estimate needs shrinking before it
+is subtracted from a blend, and ~0.46 is the measured size of that shrinkage
+today. It was NOT applied as a constant, because a fit on 10 cells across one
+warm season with no winter data anywhere in this repo is the same kind of
+object as the hand-coded table batch-99 deleted. If the corrector ends up
+reading member rows rather than blended ones, it must fit that slope on the
+held-out data, not inherit 0.46 from here.
+
+CONSEQUENCE FOR THE CHECK: step 1's query measures forecast_temp_f +
+station_bias_applied_f, and with the dynamic half inert that now equals
+forecast_temp_f + the static table exactly -- the +0.045 (max) / -0.043 (min)
+gap an earlier draft warned about is currently zero. Do NOT rely on that: it
+reopens the moment any (city, var) accumulates 10 blended rows, which is the
+same month this entry asks you to wait. Re-derive the step-2 numbers from the
+query itself rather than assuming the two still agree.
+
+This remains the argument FOR station_bias_applied_f: the applied value can
+drift from the static table and cannot be reconstructed from it afterwards.
 
 WHAT SHIPPED (this batch, log-only, moves no probability):
   * predictions.forecast_temp_raw_f (migration v83) -- the blend BEFORE any
@@ -93,12 +159,12 @@ WHAT SHIPPED (this batch, log-only, moves no probability):
 
   WHY TWO COLUMNS. analyze_trade modifies forecast_temp TWICE MORE after the
   station-bias subtraction -- _dew_point_temp_correction (weather_markets.py
-  :17220, 0 to -5.0F for the four _DEW_POINT_SENSITIVE_CITIES: -3.0
+  :17253, 0 to -5.0F for the four _DEW_POINT_SENSITIVE_CITIES: -3.0
   is the linear term at saturation, and -5.0 is a clamp needing a dew point
   13.3F ABOVE the forecast -- rare, but the bound is -5.0, not -3.0) and
-  apply_pdo_pna_correction (:17239, dormant but permanently-on once its gate
+  apply_pdo_pna_correction (:17272, dormant but permanently-on once its gate
   flips) -- and on an hourly-in-daily path replaces it outright
-  (:17260, guarded at :17259). So on
+  (:17293, guarded at :17292). So on
   the daily path forecast_temp_f = raw - station_bias + dew_point + pdo_pna, and
   raw alone cannot isolate the station-bias term. UP TO 26 of the 182 settled
   above/below rows are affected: 26 are IN dew-point-sensitive cities (Seattle
@@ -212,7 +278,7 @@ THE CHECK TO RUN IN ~1 MONTH (from 2026-09-28), before proposing the corrector:
   also a carried-forward finding below -- if the corrector relaxes any of them,
   relax it HERE TOO or the check and the fit stop measuring the same thing:
     -- hourly rows are excluded because KXTEMPxxxH settles into settled_value /
-    --   settled_var, never settled_temp_f (tracker.py:8872), so they can never
+    --   settled_var, never settled_temp_f (tracker.py:8873), so they can never
     --   join anyway; the explicit filter makes that intentional rather than
     --   accidental, and stops the KXLOW% CASE mislabelling them if that ever
     --   changes.
@@ -266,7 +332,7 @@ the reverted attempt, all still applicable):
     and with a pooled cache key the blast radius is every city for the full TTL.
   * ~12 stale comments claim get_dynamic_station_bias feeds the live corrector,
     including a red() operator alert at main.py:10024 and the served
-    analytics definition at tracker.py:12478. Fix at least the
+    analytics definition at tracker.py:12539. Fix at least the
     operator-facing ones when
     the corrector lands.
 
@@ -274,6 +340,133 @@ ALSO NOTED, not this batch: utils.py's CITY_MIN_PROB_EDGE comment names
 _STATION_BIAS_HIGH["Miami"]=3.0 as the suspected root cause of Miami's residual
 and its own re-tune trigger. That constant is still live -- nothing was retired
 this batch -- so the comment stands as written.
+
+[RESOLVED 2026-08-28 -- batch-99. Two deletions on the live pricing path. The
+  problem this entry's parent describes is NOT solved: min is still 5 sigma
+  cold. This removed the two terms that were making it worse.]
+  THE MIN-SIDE STATIC PRIOR AND THE MEMBER-DERIVED DYNAMIC ESTIMATOR ARE BOTH
+  GONE -- ONE WRONG-SIGNED, ONE UNCALIBRATED AND UNGATED
+Files: weather_markets.py (_STATION_BIAS_LOW deleted, _get_combined_station_bias
+  selector, city_registry_report's station_bias flag), tracker.py
+  (get_dynamic_station_bias's icon+gfs fallback deleted, and a note on
+  get_regional_recent_bias's maturity gate).
+Tests: tests/test_batch99_station_bias_low_removal.py (11, new). Also MODIFIED:
+  tests/test_batch98_station_bias_provenance.py (_seed_member_scores rewritten
+  to seed model='blended'; one _STATION_BIAS_LOW assertion replaced) and
+  tests/test_station_bias.py (two _STATION_BIAS_LOW assertions dropped with the
+  table). Both had to change to survive the deletion -- see the note below.
+  Two more were edited for accuracy rather than to pass:
+  tests/test_batch75_metar_lock_contamination.py (two frozen copies of a
+  "get_dynamic_station_bias PREFERS" comment whose source this batch corrected)
+  and tests/test_dead_code_scan.py (get_regional_recent_bias's allowlist entry,
+  whose stated unblocking condition this batch moved much further out).
+
+1. _STATION_BIAS_LOW DELETED. A mean +0.429F WARM prior on the daily LOW, on
+   the same "GFS/ICON run warm" premise as its max sibling. The min blend does
+   not run warm: over 92 settled above/below rows (2026-05..08) it runs 1.04 to
+   1.16F COLD, so its 13 non-zero entries pushed the wrong way in AGGREGATE
+   (see the breakdown below -- NOT on every row).
+
+     min side          shipped              LOW removed
+     full  n=92   -1.560 (t=-6.65)     -1.163 (t=-5.10)
+     60d   n=64   -1.436 (t=-5.60)     -1.038 (t=-4.11)
+     paired mean |err| improves 0.227F, t=-5.41 (full period)
+
+   BASIS: the "LOW removed" column is `err + static[city]`, the static term
+   added back IN FULL -- NOT the hold-the-dynamic-constant counterfactual,
+   which is `err + static*(1-w)` and gives -1.169 (t=-5.12) rather than
+   -1.163. A draft described it as the latter; nothing flips either way, but
+   say which one the numbers are. With deletion (2) netted out too the real
+   post-change min figure is -1.206 (t=-5.24). So deletion (1) ALONE closes
+   ~25% of the min gap and the two together close ~23% -- both correct, for
+   different questions, and neither is a contaminated basis.
+
+   NOT a universal, and an earlier draft wrongly said "every entry pushed the
+   wrong way on every row": 8 of the 21 entries were 0.0, so 25 of the 92 min
+   rows were never pushed at all; of the 67 that were, removal helps 53 and
+   HURTS 14 (23 min rows carried a WARM shipped error, where a cold push was
+   helping). The aggregate paired statistic is what carries this.
+
+   The rest needs a fit and is the parent entry's.
+   _STATION_BIAS_HIGH was KEPT: on max the premise checks out (shipped -0.579,
+   t=-1.64 not significant; deleting it gives +0.861, t=+2.38 significant), so
+   the two vars genuinely need opposite treatment and "delete both tables" --
+   which an earlier draft proposed -- would have over-corrected max.
+
+2. get_dynamic_station_bias's icon+gfs FALLBACK DELETED. It averaged two
+   members' errors and subtracted them from a seven-source blend. Direction was
+   right (r=+0.836, t=+4.31 across the 10 cells over the floor); magnitude was
+   not (OLS slope of blend error on it: 0.463 +/- 0.107, or 0.516 +/- 0.105
+   refit on a de-biased y; 4.6-5.0 sigma below 1.0; leave-one-out 0.422-0.498,
+   all < 1.0).
+
+   IT WAS NOT OVER-CORRECTING WHEN IT WAS DELETED. An earlier draft of this
+   entry said it "over-corrects by 2.2x"; an opus review rejected that and was
+   right. _get_combined_station_bias multiplies it by (count - 10) / 40, and
+   the largest live cell was NYC/max at n=18, weight 0.20 -- below the ~0.46
+   MSE-optimal shrinkage, i.e. every live cell UNDER-applied. Deleting COSTS
+   0.025F of mean |err| on min (t=-2.64) and saves 0.016F on max (t=+0.78,
+   n.s.); see the parent entry's four-policy table. The reason to delete is
+   that the weight ramps to 1.0 on sample count ALONE with no env flag -- the
+   GRADUATION rule applied to a path that already existed. The arithmetic
+   version of that argument ("harmful at n=48") was rejected by a second
+   review and must not come back; see the parent entry for why. 0.02-0.03F
+   does not move a probability, and GATING would have worked too.
+
+   Nothing was rescaled by 0.46 -- that is a fit on 10 cells in one warm season
+   with no winter data, the same kind of object as the table deleted in (1).
+   Deleting needs no constant; shrinking would have introduced one. If a future
+   corrector wants that term back, it needs the shrinkage fitted on held-out
+   data AND a gate, not a sample-count ramp.
+
+WHY THESE TWO AND NOTHING ELSE. Both are DELETIONS, which is the only move the
+current data licenses without a fit. Every alternative that improves min more
+requires estimating a magnitude, and the estimate would come from a single warm
+season -- see the parent entry's step 3 on seasonality, and its MEASURED AND
+REJECTED list for four alternatives already ruled out.
+
+STATE AFTER THIS CHANGE, so the next reader does not have to derive it. These
+net out BOTH deletions on the 182 settled rows, so they do NOT equal the
+per-deletion columns above, which each hold the other term constant:
+  * max: static _STATION_BIAS_HIGH only. Bias -0.534 (t=-1.51), not significant.
+  * min: NO correction of any kind. Bias -1.206 (t=-5.24), significantly cold.
+  * the dynamic half is inert for every city (largest model='blended' sample is
+    6 against a floor of 10) and will stay so until paper trades settle.
+
+DOWNSTREAM, traced rather than assumed:
+  * get_regional_recent_bias gates source cities on that same count >= 10, so
+    the gate is now False for every city and the function returns nothing. It
+    has NO live caller -- allowlisted dead code in tests/test_dead_code_scan.py
+    after being briefly wired into _get_combined_station_bias on 2026-08-22 and
+    reverted (its own validation collapsed to r=0.08, n=35, sign agreement 51%).
+    Anyone re-wiring it must give that gate its own count source first.
+  * city_registry_report's "station_bias" flag was `in HIGH and in LOW`; it is
+    now `in HIGH` and means "has a static MAX correction". Every city still
+    reports True.
+  * main.py's operator alerts about contaminated model='blended' rows reaching
+    the live corrector remain accurate -- that branch is the one that survived.
+  * GRAPHIFY REFRESH DELIBERATELY SKIPPED (workflow step 29), re-verified for
+    this change rather than inherited. Two blockers, both measured 2026-08-28
+    against the committed graphify-out/graph.json (14132 nodes / 22371 links):
+    paper.py carries 13 nodes with _origin='semantic', which an AST-only
+    extract() cannot reproduce and a merge would delete; and committed nodes
+    carry five derived fields a raw extract() never produces (_callable,
+    _callable_class, community, community_name, norm_label), so a hand-splice
+    injects malformed nodes. This is a non-LOW-tier change, where the scoped
+    manual-extract technique is not a substitute for the full pipeline. A
+    proper refresh belongs in its own session.
+  * The icon+gfs fallback DID have direct test coverage, and this batch had to
+    rewrite it -- an earlier draft of this entry claimed the opposite. At
+    HEAD:tests/test_batch98_station_bias_provenance.py the _seed_member_scores
+    helper seeded ONLY icon_seamless + gfs_seamless, and
+    test_the_correction_is_unchanged_including_its_dynamic_branch asserted
+    get_dynamic_station_bias(...) == (2.0, 30) and (2.0, 60) off those rows --
+    with zero blended rows those values could only come from the fallback.
+    That helper now seeds model='blended' and multiplies its `pairs` argument
+    by 2 to preserve the original 6/30/60 sample counts; the multiplication is
+    a compensating hack and its comment must be revisited by anyone changing
+    the seeding again.
+
 
 [OPEN 2026-08-28 -- found by the opus review of batch-98, in the one line that
   batch changed on the hourly path. Pre-existing; batch-98 preserved the value
@@ -286,10 +479,10 @@ Files: weather_markets.py _analyze_hourly_trade (the `bias_correction` key),
   tracker.py log_prediction (raw_prob), tracker.get_metar_lockout_calibration_data.
 
 _analyze_hourly_trade publishes `"bias_correction": station_bias_applied` -- the
-station-bias delta, in DEGREES FAHRENHEIT. tracker.py:1527, inside
+station-bias delta, in DEGREES FAHRENHEIT. tracker.py:1528, inside
 log_prediction, then does
 
-    raw_prob = round(forecast_prob + bias, 6)   # `bias` bound at :1525
+    raw_prob = round(forecast_prob + bias, 6)   # `bias` bound at :1526
 
 documented (correctly, for the path it was written for) as "the amount SUBTRACTED
 from the blended prob". On the daily and metar_locked paths bias_correction IS a
@@ -300,8 +493,8 @@ KXTEMPNYCH-26JUL2406-T65.99, reads our_prob 0.334 / raw_prob 0.834: in range,
 and wrong by exactly the 0.5F bias.
 
 Blast radius is nil TODAY only by luck. raw_prob has exactly one reader --
-get_metar_lockout_calibration_data (the SELECT at tracker.py:4677) -- and it
-filters `p.method = 'metar_lockout'` at :4683, so hourly rows never reach it. That filter exists
+get_metar_lockout_calibration_data (the SELECT at tracker.py:4678) -- and it
+filters `p.method = 'metar_lockout'` at :4684, so hourly rows never reach it. That filter exists
 for an unrelated reason (the metar lock is the only calibrated path), so nothing
 stops a future caller from selecting COALESCE(raw_prob, our_prob) across methods
 and training a calibrator on a 3.08 "probability".

@@ -319,7 +319,13 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "51% (coin flip) -- no real signal left to justify wiring in right "
         "now. Reverted the _get_combined_station_bias wiring; this function "
         "stays log-only/ad-hoc until more correlated cities' dynamic bias "
-        "matures and the validation can be re-run on denser, clean data"
+        "matures and the validation can be re-run on denser, clean data. "
+        "batch-99 moved that bar a long way out: this function's maturity "
+        "gate reads get_dynamic_station_bias's sample count, which is now "
+        "model='blended' rows ONLY (largest sample 6, floor 10) rather than "
+        "icon+gfs rows (10 cells were already over the floor). The gate now "
+        "returns False for every city, so re-wiring this without giving it "
+        "its own count source yields silence, not a signal."
     ),
 }
 

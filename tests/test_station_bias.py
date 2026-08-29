@@ -59,16 +59,19 @@ class TestStationBiasTables:
 
     def test_las_vegas_bias_matches_phoenix(self):
         """Las Vegas has no settled-observation history yet — uses Phoenix's
-        desert-climate bias as an interim value (same GFS/ICON warm-bias artifact)."""
-        from weather_markets import _STATION_BIAS_HIGH, _STATION_BIAS_LOW
+        desert-climate bias as an interim value (same GFS/ICON warm-bias artifact).
+
+        The matching _STATION_BIAS_LOW assertion was dropped in batch-99 with
+        the table itself, not because it stopped mattering — see
+        tests/test_batch99_station_bias_low_removal.py, which pins the absence.
+        """
+        from weather_markets import _STATION_BIAS_HIGH
 
         assert _STATION_BIAS_HIGH["LasVegas"] == _STATION_BIAS_HIGH["Phoenix"]
-        assert _STATION_BIAS_LOW["LasVegas"] == _STATION_BIAS_LOW["Phoenix"]
 
     def test_new_orleans_bias_matches_houston(self):
         """New Orleans has no settled-observation history yet — uses Houston's
         Gulf humid-subtropical bias as an interim value."""
-        from weather_markets import _STATION_BIAS_HIGH, _STATION_BIAS_LOW
+        from weather_markets import _STATION_BIAS_HIGH
 
         assert _STATION_BIAS_HIGH["NewOrleans"] == _STATION_BIAS_HIGH["Houston"]
-        assert _STATION_BIAS_LOW["NewOrleans"] == _STATION_BIAS_LOW["Houston"]

@@ -64,8 +64,9 @@ _db_initialized = False
 NON_MODEL_SCORE_KEYS = frozenset(
     {
         # The bias-corrected blended forecast_temp used at trade entry.
-        # get_dynamic_station_bias() deliberately PREFERS these rows; every
-        # per-model query below must exclude them.
+        # get_dynamic_station_bias() reads ONLY these rows (it PREFERRED them
+        # over an icon+gfs fallback until batch-99 deleted that fallback);
+        # every per-model query below must exclude them.
         "blended",
         # batch-75: the METAR running daily extreme at lock time -- the value
         # that actually decided the lock. Kept as an audit trail of what the
@@ -940,13 +941,13 @@ _MIGRATIONS = [
     # This, not forecast_temp_raw_f, is what a future corrector must read.
     # forecast_temp_raw_f is captured before the station-bias subtraction, but
     # analyze_trade then applies TWO more corrections to the same variable --
-    # _dew_point_temp_correction (weather_markets.py:17220, 0 to -5.0F for the
+    # _dew_point_temp_correction (weather_markets.py:17253, 0 to -5.0F for the
     # four _DEW_POINT_SENSITIVE_CITIES: -3.0 is the linear term at saturation
     # and -5.0 is a clamp that needs a dew point 13.3F ABOVE the forecast --
-    # rare, but the bound is -5.0, not -3.0) and apply_pdo_pna_correction (:17239,
+    # rare, but the bound is -5.0, not -3.0) and apply_pdo_pna_correction (:17272,
     # dormant but permanently-on once its gate flips) -- and on an hourly-in-
-    # daily path replaces it outright (:17260, guarded at
-    # :17259). So on the daily path
+    # daily path replaces it outright (:17293, guarded at
+    # :17292). So on the daily path
     #     forecast_temp_f = raw - station_bias + dew_point + pdo_pna
     # and `forecast_temp_f + static_table` does NOT recover the pre-correction
     # value. Up to 26 of the 182 settled above/below rows are affected: 26 are
@@ -957,7 +958,7 @@ _MIGRATIONS = [
     #
     # Storing the applied delta sidesteps all of it: forecast_temp_f + this is
     # the station-bias-free forecast EXACTLY, on every path -- including the
-    # hourly-in-daily branch at weather_markets.py:17260, which REPLACES
+    # hourly-in-daily branch at weather_markets.py:17293, which REPLACES
     # forecast_temp and therefore nulls this pair alongside it rather than
     # leaving them claiming a correction no longer present. Whatever else ran
     # downstream -- because everything else stays in forecast_temp_f where it
@@ -10701,7 +10702,14 @@ def backfill_member_actual_temp(
 
     Why it matters: actual_temp is the `actual` half of
     get_dynamic_station_bias(), which _get_combined_station_bias() blends
-    into the live forecast before any probability is computed. All eight
+    into the live forecast before any probability is computed.
+
+    POST-batch-99 the rest of this paragraph is history, not the present: with
+    the icon+gfs fallback deleted, NO (city, var) cell is above the floor (the
+    largest model='blended' sample is 6 against a floor of 10), so there is no
+    live distortion to cap today. It still decides what the correction does the
+    day some cell reaches 10 blended rows. As measured BEFORE that deletion:
+    all eight
     city/var cells above that function's min_samples=10 floor were wrong at
     audit time, the worst by 14.3°F WITH THE SIGN FLIPPED (OklahomaCity max
     read +7.27 where the official data says -7.06). Today's live distortion
@@ -10960,9 +10968,11 @@ def repair_metar_lockout_rows(dry_run: bool = False) -> dict:
 
     2. `ensemble_member_scores`: re-key model='blended' rows that trace back
        to a lockout trade to model='metar_lock_extreme'. This is the half
-       that matters for live money: get_dynamic_station_bias() PREFERS
-       model='blended' rows and feeds weather_markets._DYNAMIC_BIAS_CACHE,
-       which is subtracted from live forecasts. 69 of the 151 JOINABLE
+       that matters for live money: get_dynamic_station_bias() reads ONLY
+       model='blended' rows since batch-99 (it merely preferred them
+       before) and feeds weather_markets._DYNAMIC_BIAS_CACHE, which is
+       subtracted from live forecasts -- so these rows are now its whole
+       input, not its first choice. 69 of the 151 JOINABLE
        blended rows are
        contaminated at +/-8-10F with OPPOSITE SIGNS BY VAR (max -8.213,
        min +9.706 at audit time) -- and the per-var query the corrector
@@ -11000,8 +11010,10 @@ def repair_metar_lockout_rows(dry_run: bool = False) -> dict:
     get_dynamic_station_bias go inert for a city. On the live DB,
     OklahomaCity/max is the only (city, var) above the 10-sample floor, and 6
     of its 10 blended rows are contaminated -- so after the repair it drops to
-    n=4, falls through to the icon+gfs branch (n=8, also below the floor) and
-    returns (0.0, 8). The dynamic correction reverts to the static table, a
+    n=4 and returns (0.0, 4). (Before batch-99 it fell through to an icon+gfs
+    branch and returned (0.0, 8); that branch is gone, so the count is now the
+    blended-row count. The outcome is the same either way -- both are below the
+    floor.) The dynamic correction reverts to the static table, a
     7.06F change in a value SUBTRACTED from live forecasts on the next scan.
     That is the contamination being removed rather than a regression, but it
     is a large, immediate change to live forecast inputs and should be a
@@ -11981,21 +11993,84 @@ def get_dynamic_station_bias(
     temperature); negative means models run cold (they under-predict).  The caller
     should subtract this from the raw forecast temperature before computing probability.
 
-    Prioritises rows where model = 'blended' (the exact blended forecast_temp used
-    at trade entry) when available; falls back to icon_seamless + gfs_seamless
-    averages when no blended rows exist yet.
+    Uses ONLY rows where model = 'blended' -- the exact blended forecast_temp
+    used at trade entry, which is the quantity being corrected.
+
+    batch-99 REMOVED the icon_seamless + gfs_seamless fallback this used when no
+    blended rows existed yet. It measured the wrong population: those are two
+    individual members' errors, while the value is subtracted from a blend of
+    seven sources that averages those errors down. The direction was fine --
+    across the 10 (city, var) cells that had cleared the floor, the fallback
+    correlated r=+0.836 (t=+4.31) with the blend's own measured error -- but the
+    MAGNITUDE was not. Regressing blend error on it gives a slope of
+    0.463 +/- 0.107 (0.516 +/- 0.105 refitting on a de-biased y, which is the
+    honest upper end), i.e. 4.6 to 5.0 sigma below 1.0. Leave-one-out slopes
+    span 0.422-0.498, all below 1.0, and dropping the largest cell BY |dyn|
+    (Washington/min, -4.65) LOWERS it to 0.422 -- so it is the central
+    tendency, not an outlier. That is a different cell from the largest by
+    SAMPLE COUNT (NYC/max, n=18), dropping which RAISES it to 0.498; say which
+    you mean, because the two point opposite ways.
+
+    BE PRECISE ABOUT THE HARM, because an earlier draft of this docstring was
+    not and an opus review was right to reject it. _get_combined_station_bias
+    never applied this in full: it multiplies by (count - 10) / 40, and the
+    largest live cell was NYC/max at n=18, weight 0.20. Against an MSE-optimal
+    shrinkage of ~0.46, every live cell was UNDER-applying, not over-applying.
+    Measured on the 182 settled rows, deleting this term COSTS 0.025F of mean
+    |err| on min (t=-2.64) and saves 0.016F on max (t=+0.78, n.s.) -- and ~46%
+    of those rows share a city/var/date with a member-score row, so even that
+    is substantially in-sample.
+
+    The reason to delete is NOT that it over-corrects today, and NOT an
+    arithmetic threshold either. An earlier draft claimed it "passes optimal at
+    n=29 and turns harmful at n=48"; a second review rejected that and was
+    right. Those thresholds use beta=0.463, the estimate this docstring already
+    calls attenuated -- at the honest upper end 0.516 the MSE breakeven
+    2*beta = 1.03 EXCEEDS the weight cap of 1.0, so the ramp never reaches harm
+    at any n; with SE 0.107 the threshold is "n=39 or never" at +/-1 sigma.
+    And under MSE itself -- the loss that threshold is derived from -- min
+    improves MONOTONICALLY on these rows: 6.3384 / 6.2533 / 6.2438 / 6.1593
+    across k = 0 / 0.463 / 0.516 / 1.0. Full application was the best of the
+    four, not the harmful one.
+
+    The reason that survives is governance, not accuracy: an uncalibrated
+    estimator was wired to a weight that ramps to 1.0 on sample count ALONE,
+    with no env flag anywhere in the path, and this repo's rule (backlog.txt
+    GRADUATION) is that a live pricing correction gets an explicit flag AND a
+    sample floor, never a count. GATING it would satisfy that rule too --
+    deleting was chosen because 0.02-0.03F of in-sample benefit does not
+    justify the machinery, and a future corrector may reasonably prefer the
+    gate. Whichever way it goes, keeping the term was measurably BETTER on min
+    and that should not be forgotten by whoever revisits this.
+
+    Nothing was rescaled by 0.463 instead: that is a fit on 10 cells across a
+    single warm season with no winter data anywhere in this repo, which is the
+    same kind of object as the hand-coded table batch-99 deleted. Returning
+    nothing until the right rows exist needs no constant at all.
+
+    CONSEQUENCE, stated rather than discovered later: with the fallback gone,
+    every city is below the floor today (the largest model='blended' sample per
+    (city, var) is 6, against min_samples=10), so this returns (0.0, n) for all
+    of them and _get_combined_station_bias falls through to its static table.
+    That is the intended state, not a regression -- the correction should be
+    inert until it has data measuring the thing it corrects.
 
     Only rows tagged with the matching var ("max"/"min") are used — daily-high and
     daily-low forecast errors have different sign/magnitude and must not be pooled.
     Rows logged before the var column existed are NULL and are excluded.
 
-    Returns (mean_signed_error, sample_count).  Returns (0.0, 0) when the city has
-    fewer than min_samples observations — caller keeps the static bias table.
+    Returns (mean_signed_error, sample_count).  Returns (0.0, n_rows_seen) when
+    the city has fewer than min_samples observations — caller keeps the static
+    bias table. Note the count is now the count of BLENDED rows; it was the
+    count of icon+gfs rows on the fallback path, so any caller using it as a
+    maturity signal is reading a different (smaller) number than before.
     """
     init_db()
     try:
         with _conn() as con:
-            # Prefer 'blended' rows (exact forecast_temp recorded since Plan 3 was deployed)
+            # ONLY 'blended' rows since batch-99 (exact forecast_temp recorded
+            # since Plan 3 was deployed). There is no longer a fallback to
+            # prefer them OVER -- see the docstring for why.
             blended_rows = con.execute(
                 """
                 SELECT predicted_temp, actual_temp
@@ -12006,28 +12081,14 @@ def get_dynamic_station_bias(
                 (city, var),
             ).fetchall()
 
-            if len(blended_rows) >= min_samples:
-                errors = [r["predicted_temp"] - r["actual_temp"] for r in blended_rows]
-                return round(sum(errors) / len(errors), 4), len(errors)
+            if len(blended_rows) < min_samples:
+                # batch-99: NO icon+gfs fallback here. See the docstring -- it
+                # tracked the blend's error but its slope against that error is
+                # ~0.46, not 1.0, and the weight ramp climbs to 1.0 on sample
+                # count alone with no gate.
+                return 0.0, len(blended_rows)
 
-            # Fall back to icon_seamless + gfs_seamless only (matches docstring;
-            # 'blended' rows are derived from these and would otherwise be
-            # triple-counted alongside their own components).
-            all_rows = con.execute(
-                """
-                SELECT predicted_temp, actual_temp
-                FROM ensemble_member_scores
-                WHERE city = ? AND var = ?
-                  AND model IN ('icon_seamless', 'gfs_seamless')
-                  AND predicted_temp IS NOT NULL AND actual_temp IS NOT NULL
-                """,
-                (city, var),
-            ).fetchall()
-
-            if len(all_rows) < min_samples:
-                return 0.0, len(all_rows)
-
-            errors = [r["predicted_temp"] - r["actual_temp"] for r in all_rows]
+            errors = [r["predicted_temp"] - r["actual_temp"] for r in blended_rows]
             return round(sum(errors) / len(errors), 4), len(errors)
 
     except Exception as exc:
@@ -14769,6 +14830,20 @@ def get_regional_recent_bias(
     # once per get_regional_recent_bias() call, not once per row.
     _maturity_cache: dict[str, bool] = {}
 
+    # batch-99 CHANGED WHAT THIS GATE SEES, and the change is stated here
+    # rather than left to be discovered: get_dynamic_station_bias dropped its
+    # icon+gfs fallback, so `count` is now the number of model='blended' rows
+    # for that (city, var), not icon+gfs rows. The largest blended sample in
+    # the live DB is 6 against a floor of 10, so this gate returns False for
+    # EVERY city today and the loop below therefore uses no source cities at
+    # all.
+    #
+    # That is harmless right now only because this function has no live caller
+    # -- it is allowlisted dead code in tests/test_dead_code_scan.py after
+    # being briefly wired into _get_combined_station_bias on 2026-08-22 and
+    # reverted (the fix collapsed its own validation from r=0.38 to r=0.08 on
+    # n=35, sign agreement 51%). Anyone re-wiring it must give this gate its
+    # own count source first, or it will silently produce nothing.
     def _source_city_bias_is_mature(row_city: str) -> bool:
         if row_city not in _maturity_cache:
             try:

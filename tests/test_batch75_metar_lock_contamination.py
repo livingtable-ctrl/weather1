@@ -11,6 +11,10 @@ lockout rows: +8.63F on max markets, -10.42F on min.
 
 That value then reached live money: paper._score_ensemble_members wrote it to
 ensemble_member_scores as model='blended', and tracker.get_dynamic_station_bias
+-- which since batch-99 reads ONLY those rows, having lost its icon+gfs
+fallback --
+-- which since batch-99 reads ONLY those rows, having lost its icon+gfs
+fallback --
 PREFERS those rows, feeding weather_markets._DYNAMIC_BIAS_CACHE which is
 subtracted from live forecasts.
 
@@ -761,7 +765,8 @@ def test_a_failed_predictions_lookup_fails_closed_for_a_legacy_trade():
     through to the `else` branch and wrote trade["forecast_temp"] as a
     'blended' sample. On a legacy LOCKOUT trade that value IS the running
     extreme, so a swallowed error could re-inject the exact contamination
-    this batch removes -- into the table get_dynamic_station_bias prefers,
+    this batch removes -- into the table get_dynamic_station_bias reads
+    exclusively since batch-99,
     after the one-off repair has already run.
     """
     _seed_settled(

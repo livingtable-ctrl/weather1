@@ -764,38 +764,53 @@ _STATION_BIAS_HIGH: dict[str, float] = {
     # never reads this dict).
     "StPetersburg": 0.0,  # KSPG
 }
-_STATION_BIAS_LOW: dict[str, float] = {
-    # East Coast
-    "NYC": 0.5,  # Overnight lows: smaller warm bias than daytime highs
-    "Boston": 0.0,  # KBOS lows: no consistent bias
-    "Philadelphia": 0.5,  # Similar to NYC nights
-    "Washington": 0.5,  # KDCA nights: urban heat retained
-    # South/Gulf
-    "Miami": 1.5,  # KMIA overnight lows still warm-biased but less than highs
-    "Atlanta": 0.5,  # KATL nights
-    "Houston": 1.0,  # KHOU: Humid subtropical, nights stay warm
-    "NewOrleans": 1.0,  # KMSY nights: mirrors Houston
-    "Dallas": 0.0,  # KDFW lows: no consistent bias observed
-    "Austin": 0.5,  # KAUS nights
-    "SanAntonio": 0.5,  # KSAT nights
-    "OklahomaCity": 0.0,  # KOKC lows: no consistent bias
-    # Southwest
-    "Phoenix": 0.5,  # KPHX nights: desert cools rapidly, smaller bias than highs
-    "LasVegas": 0.5,  # KLAS nights: mirrors Phoenix
-    # Mountain
-    "Denver": 1.0,  # Denver nights: model still warm but less extreme
-    # Midwest
-    "Chicago": 0.0,  # KMDW lows: no consistent bias observed
-    "Minneapolis": 0.5,  # KMSP nights
-    # West Coast
-    "LA": 0.0,  # KLAX: No known systematic bias
-    "SanFrancisco": 0.0,  # KSFO: No correction
-    "Seattle": 0.0,  # KSEA nights: no consistent bias
-    # Rain-only cities — no LOW market exists to observe a real bias against;
-    # 0.0 placeholder only, functionally unused (_analyze_monthly_rain_trade
-    # never reads this dict).
-    "StPetersburg": 0.0,  # KSPG
-}
+# batch-99: _STATION_BIAS_LOW IS GONE. There is deliberately no static
+# min-side table, and re-adding one needs new evidence, not a hand-coded prior.
+#
+# It held a mean +0.429F warm prior on the daily LOW, on the same "GFS/ICON run
+# warm" premise as _STATION_BIAS_HIGH. Measured over the 92 settled min
+# above/below rows (2026-05..08; 182 rows pooled across both vars), the min
+# blend does not run warm -- it runs 1.04-1.16F COLD on the two-column basis
+# below, or 1.21F once the dynamic deletion is netted in as well. Two ranges
+# for one statistic is how a reader ends up unable to reproduce either:
+# the table is the first, the STATE AFTER figure further down is the second:
+#
+#     min side          shipped              LOW removed
+#     full  n=92   -1.560 (t=-6.65)     -1.163 (t=-5.10)
+#     60d   n=64   -1.436 (t=-5.60)     -1.038 (t=-4.11)
+#     paired mean |err| improves 0.227F, t=-5.41 (full period)
+#
+# BASIS, stated exactly because a review caught an earlier draft describing it
+# wrongly: the "LOW removed" column is `err + static[city]` -- the static term
+# added back IN FULL. It is NOT the hold-the-dynamic-constant counterfactual,
+# which would be `err + static*(1-w)` and gives -1.169 (t=-5.12) rather than
+# -1.163. Nothing flips either way, but say which one the numbers are.
+#
+# Netting out the icon+gfs deletion too (see tracker.get_dynamic_station_bias)
+# the real post-change figure is -1.206 (t=-5.24) on min and -0.534 (t=-1.51)
+# on max. So this deletion ALONE closes ~25% of the min gap and the two
+# together close ~23% -- both correct, for different questions.
+#
+# NOT a universal: 8 of the 21 entries were 0.0, so 25 of the 92 min rows were
+# never pushed at all, and of the 67 that were, removal helps 53 and HURTS 14
+# (23 min rows had a warm shipped error, where a cold push was helping). The
+# aggregate is what carries this, not a claim about every row.
+#
+# Removing it is a DELETION, which is why it could ship on this evidence: it
+# needs no fit, no seasonal term and no new constant. min is still 5 sigma
+# cold afterwards -- the rest is the job of a fitted corrector reading
+# predictions.forecast_temp_raw_f / station_bias_applied_f (batch-98), which
+# cannot be built until those columns exist and fill (the live DB is still at
+# schema v82; the migrations run on the next init_db). See backlog.txt "THE
+# PER-CITY STATIC STATION-BIAS TABLES ARE THE COLD BIAS THEY WERE MEANT TO
+# CORRECT".
+#
+# _STATION_BIAS_HIGH is KEPT: on max the same premise checks out. Shipped max
+# bias is -0.579 (t=-1.64, not significant) and deleting HIGH pushes it to
+# +0.454 full period / +0.861 (t=+2.38, significant) in the recent window --
+# i.e. HIGH is roughly right-signed and roughly right-sized, and removing it
+# would over-correct. The two vars genuinely need opposite treatment.
+
 # Legacy alias — used by any callers that don't pass var
 _STATION_BIAS = _STATION_BIAS_HIGH
 
@@ -811,10 +826,19 @@ def _get_combined_station_bias(city: str, var: str = "max") -> float:
 
     This means the static table is the reliable fallback for new cities while the
     dynamic correction gradually dominates once the data is trustworthy.
+
+    ASYMMETRIC BY VAR since batch-99, and that is the point rather than an
+    oversight: there is a static table for max and none for min. The min table
+    was measured to push the wrong way IN AGGREGATE (not on every row -- see
+    the breakdown there) and was deleted -- see the
+    block comment where _STATION_BIAS_LOW used to be. So on min this function
+    returns 0.0 until the dynamic half has real samples, which today it does
+    not have for any city.
     """
-    static_bias = (_STATION_BIAS_LOW if var == "min" else _STATION_BIAS_HIGH).get(
-        city, 0.0
-    )
+    # `var == "min"` exactly, matching the only value the callers pass for a
+    # daily-LOW market; anything else (including None) takes the max table, as
+    # it did when this was a ternary over two dicts.
+    static_bias = 0.0 if var == "min" else _STATION_BIAS_HIGH.get(city, 0.0)
 
     cached = _DYNAMIC_BIAS_CACHE.get((city, var))
     if cached is not None:
@@ -7977,7 +8001,13 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
         invariant -- that check is keyed off its own fixed short-code map,
         not CITY_COORDS, so it is unaffected by this generalization.
       - metar_station: city in metar.MARKET_STATION_MAP.
-      - station_bias: city in both _STATION_BIAS_HIGH and _STATION_BIAS_LOW.
+      - station_bias: city in _STATION_BIAS_HIGH. Was "in BOTH _HIGH and
+        _LOW" until batch-99 deleted the min-side table, which pushed the wrong
+        way in aggregate across the settled min rows (not on every one of
+        them). This flag therefore now means "has a static
+        MAX correction" -- there is no min-side coverage to report for any
+        city, by design, so a per-city flag would be uniformly False and tell
+        a reader nothing.
       - historical_sigma: city in _HISTORICAL_SIGMA (the static fallback
         tier -- False here does NOT mean the city trades with no sigma at
         all, since get_historical_sigma() prefers a dynamic per-city
@@ -8019,7 +8049,7 @@ def city_registry_report() -> dict[str, dict[str, bool]]:
         report[city] = {
             "series_ticker": has_series_ticker,
             "metar_station": city in _metar.MARKET_STATION_MAP,
-            "station_bias": city in _STATION_BIAS_HIGH and city in _STATION_BIAS_LOW,
+            "station_bias": city in _STATION_BIAS_HIGH,
             "historical_sigma": city in _HISTORICAL_SIGMA,
             "climate_indices": city in _ci.AO_SENS,
             "correlation_group": any(
@@ -15373,12 +15403,12 @@ def _analyze_hourly_trade(
         #
         # PRE-EXISTING and deliberately NOT changed here: this is a degF
         # temperature, and log_prediction adds it to a PROBABILITY --
-        # tracker.py:1527 does `raw_prob = round(forecast_prob + bias, 6)`
+        # tracker.py:1528 does `raw_prob = round(forecast_prob + bias, 6)`
         # where `bias` is the local bound one line above from this very key.
         # 1 of the 5 stored hourly rows already has raw_prob = 3.08. Harmless
         # only because the sole raw_prob reader (the SELECT at
-        # tracker.py:4677, inside get_metar_lockout_calibration_data)
-        # filters method='metar_lockout' at :4683. Reusing the local
+        # tracker.py:4678, inside get_metar_lockout_calibration_data)
+        # filters method='metar_lockout' at :4684. Reusing the local
         # preserves the value exactly rather than papering over it. Tracked in
         # backlog.txt ("HOURLY bias_correction PUBLISHES A degF TEMPERATURE
         # INTO A PROBABILITY FIELD").
@@ -17190,9 +17220,12 @@ def analyze_trade(
                 return None
 
         # Apply per-city bias correction before probability calculation (B4: pass var).
-        # _get_combined_station_bias() blends the static hand-coded table with a
-        # dynamic correction learned from real METAR observations — the dynamic weight
-        # grows as sample count increases (10 samples: 20%, 50+ samples: 100%).
+        # _get_combined_station_bias() blends the static hand-coded table (max only
+        # since batch-99; min has no static term) with a dynamic correction derived
+        # from the official Kalshi settlement temperature -- NOT from a live METAR
+        # read, which this comment claimed until batch-99 while the function's own
+        # docstring said the opposite. The dynamic weight is (count - 10) / 40,
+        # i.e. 0% at 10 samples and 100% at 50+, not 20% at 10.
         forecast_temp_raw = forecast_temp
         # batch-98: capture the applied delta and subtract from
         # forecast_temp_raw, not from forecast_temp. The two are equal on this

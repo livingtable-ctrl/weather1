@@ -1600,7 +1600,8 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # sample. On a legacy lockout trade that value IS the running extreme, so
     # a transient sqlite lock during settlement could re-inject the exact
     # contamination this batch removes, straight into the table
-    # get_dynamic_station_bias prefers, after the one-off repair pass has
+    # get_dynamic_station_bias now reads exclusively (batch-99), after the
+    # one-off repair pass has
     # already run and will not be run again.
     method_resolved = False
     try:
@@ -1633,8 +1634,8 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # model analyze_trade() puts in trade["model_forecast_means"] gets scored
     # here automatically, no code change needed here to add a future source
     # (GEM, UKMO, ...). "blended" (the exact bias-corrected forecast_temp used
-    # for probability calculation, preferred by get_dynamic_station_bias()
-    # over the per-model means) is not a competing model, so it's merged in
+    # for probability calculation, and since batch-99 the ONLY input to
+    # get_dynamic_station_bias()) is not a competing model, so it's merged in
     # separately rather than living in model_forecast_means itself.
     # Not a fully clean pipeline split, worth noting: tracker.get_model_weights()
     # softmaxes every logged model together before _dynamic_model_weights()
@@ -1648,8 +1649,9 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # batch-75: this line used to be unconditional, and on a metar_lockout
     # trade trade["forecast_temp"] is not a forecast -- it was the METAR
     # running daily extreme at lock time, a hard bound on the day rather than
-    # an estimate of it. get_dynamic_station_bias() PREFERS model='blended'
-    # rows and its output is subtracted from live forecasts, so 69 of 151
+    # an estimate of it. get_dynamic_station_bias() reads model='blended'
+    # rows and nothing else since batch-99, and its output is subtracted from
+    # live forecasts, so 69 of 151
     # blended rows (46%) were poisoning the live corrector at +/-8-10F with
     # opposite signs by var. Measured live: OklahomaCity/max moved 14.33F
     # across batch-68's repair of the OTHER half of the same table.

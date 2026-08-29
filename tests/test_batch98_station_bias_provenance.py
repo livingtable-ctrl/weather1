@@ -746,7 +746,14 @@ def test_the_dew_point_bounds_this_change_quotes_are_the_real_ones():
 
 
 def _seed_member_scores(city: str, pairs: int, var: str = "max") -> None:
-    """`pairs` distinct dates x icon+gfs = 2*pairs rows for (city, var).
+    """2*`pairs` model='blended' rows on distinct dates for (city, var).
+
+    `model='blended'` and not icon+gfs since batch-99 removed the icon+gfs
+    fallback from get_dynamic_station_bias — seeding those now produces a
+    sample count of zero and every regime below collapses into the first one.
+    The parameter is still named `pairs` and still multiplied by two so the
+    three call sites keep their original sample counts (6 / 30 / 60) and the
+    hand-computed blend expectations below stay valid.
 
     Distinct dates matter: log_member_score is INSERT OR IGNORE against a unique
     index on (city, model, target_date, var), so recycling a short date range
@@ -754,17 +761,16 @@ def _seed_member_scores(city: str, pairs: int, var: str = "max") -> None:
     """
     from datetime import date, timedelta
 
-    for i in range(pairs):
+    for i in range(pairs * 2):
         day = date(2026, 1, 1) + timedelta(days=i)
-        for model in ("icon_seamless", "gfs_seamless"):
-            tracker.log_member_score(
-                city=city,
-                model=model,
-                predicted_temp=82.0,
-                actual_temp=80.0,  # a clean +2.0F warm bias
-                target_date_str=day.isoformat(),
-                var=var,
-            )
+        tracker.log_member_score(
+            city=city,
+            model="blended",
+            predicted_temp=82.0,
+            actual_temp=80.0,  # a clean +2.0F warm bias
+            target_date_str=day.isoformat(),
+            var=var,
+        )
 
 
 def test_the_correction_is_unchanged_including_its_dynamic_branch():
@@ -775,8 +781,11 @@ def test_the_correction_is_unchanged_including_its_dynamic_branch():
     not just the saturated endpoint. At 50+ samples `dynamic_weight` is pinned
     at 1.0, so an endpoint-only test passes just as happily against
     `return dyn_bias` — the blend arithmetic is only observable in the middle.
-    Ten (city, var) pairs sit in that middle band today, at weights 0.00-0.20 and
-    climbing.
+    Ten (city, var) pairs sat in that middle band before batch-99, at weights
+    0.00-0.20 and climbing. They existed only via the icon+gfs fallback that
+    batch deleted, so the live count is zero today and the band reopens only
+    when some (city, var) reaches 10 model='blended' rows. The three regimes
+    below are still worth driving: they pin the arithmetic for that day.
 
     Each regime uses its own city so the sample counts cannot interact, and each
     asserts the observed count before the value — an INSERT OR IGNORE that
@@ -788,9 +797,14 @@ def test_the_correction_is_unchanged_including_its_dynamic_branch():
     assert wm._get_combined_station_bias("Miami", var="max") == pytest.approx(3.0)
     # Second control with a NEGATIVE literal: "LA" is in the table AS 0.0, so an
     # assertion on it cannot tell a real table hit from the .get(city, 0.0)
-    # default, and cannot tell HIGH from LOW either. Seattle can do both.
+    # default, and cannot tell max from min routing either. Seattle can do both:
+    # its HIGH entry is the only NEGATIVE value in the table, so a max lookup
+    # returning -0.5 cannot be the `.get(city, 0.0)` default, and a min lookup
+    # returning 0.0 proves min is NOT reading the max table. (Before batch-99
+    # the min half of this asserted _STATION_BIAS_LOW["Seattle"] == 0.0; that
+    # table is gone and min now has no static term at all, so the assertion
+    # below is the same control with a stronger meaning.)
     assert wm._STATION_BIAS_HIGH["Seattle"] == -0.5
-    assert wm._STATION_BIAS_LOW["Seattle"] == 0.0
     assert wm._get_combined_station_bias("Seattle", var="max") == pytest.approx(-0.5)
     assert wm._get_combined_station_bias("Seattle", var="min") == pytest.approx(0.0)
     # And the default itself, on a city that is in neither table.
