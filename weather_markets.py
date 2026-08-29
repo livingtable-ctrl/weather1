@@ -15238,7 +15238,13 @@ def _analyze_hourly_trade(
         _count_gate("hourly_thin_ensemble")
         return None
 
-    forecast_temp = statistics.mean(temps) - _get_combined_station_bias(city, var=var)
+    # batch-98: capture the blend BEFORE the station-bias subtraction, mirroring
+    # the daily path's own forecast_temp_raw. Note the two are NOT the same
+    # quantity -- this one is the raw ensemble-member mean, the daily one is the
+    # multi-source blend -- so anything pooling them must split on method.
+    forecast_temp_raw = statistics.mean(temps)
+    station_bias_applied = _get_combined_station_bias(city, var=var)
+    forecast_temp = forecast_temp_raw - station_bias_applied
     ens_stats = ensemble_stats(temps) if len(temps) >= 10 else None
     if ens_stats and ens_stats.get("degenerate"):
         _log.warning(
@@ -15346,6 +15352,13 @@ def _analyze_hourly_trade(
         "recommended_side": rec_side,
         "condition": condition,
         "forecast_temp": forecast_temp,
+        # batch-98: see the daily path's matching keys. This raw value is the
+        # ensemble-member mean, not the daily multi-source blend. On this path
+        # nothing modifies forecast_temp after the subtraction, so raw and
+        # (forecast_temp + station_bias_applied) are equivalent here -- unlike
+        # the daily path, where they are not.
+        "forecast_temp_raw": forecast_temp_raw,
+        "station_bias_applied": station_bias_applied,
         "ensemble_prob": ens_prob,
         "nws_prob": None,
         "clim_prob": None,
@@ -15353,7 +15366,23 @@ def _analyze_hourly_trade(
         "obs_prob": persistence_p,
         "live_obs": None,
         "index_adj": 0.0,
-        "bias_correction": _get_combined_station_bias(city, var=var),
+        # batch-98: reuse the value captured at the subtraction rather than
+        # calling again. _DYNAMIC_BIAS_CACHE has a 4h TTL, so a lapse between
+        # the two calls would put two disagreeing "the bias" numbers in the same
+        # dict -- and one redundant DB read per analysis. Same value, one call.
+        #
+        # PRE-EXISTING and deliberately NOT changed here: this is a degF
+        # temperature, and log_prediction adds it to a PROBABILITY --
+        # tracker.py:1527 does `raw_prob = round(forecast_prob + bias, 6)`
+        # where `bias` is the local bound one line above from this very key.
+        # 1 of the 5 stored hourly rows already has raw_prob = 3.08. Harmless
+        # only because the sole raw_prob reader (the SELECT at
+        # tracker.py:4677, inside get_metar_lockout_calibration_data)
+        # filters method='metar_lockout' at :4683. Reusing the local
+        # preserves the value exactly rather than papering over it. Tracked in
+        # backlog.txt ("HOURLY bias_correction PUBLISHES A degF TEMPERATURE
+        # INTO A PROBABILITY FIELD").
+        "bias_correction": station_bias_applied,
         "blend_sources": {
             "ensemble": 1.0 if persistence_p is None else 0.85,
             "persistence": 0.0 if persistence_p is None else 0.15,
@@ -17165,7 +17194,20 @@ def analyze_trade(
         # dynamic correction learned from real METAR observations — the dynamic weight
         # grows as sample count increases (10 samples: 20%, 50+ samples: 100%).
         forecast_temp_raw = forecast_temp
-        forecast_temp = forecast_temp - _get_combined_station_bias(city, var=var)
+        # batch-98: capture the applied delta and subtract from
+        # forecast_temp_raw, not from forecast_temp. The two are equal on this
+        # line so this is not a behaviour change; it makes the pair structural.
+        #
+        # station_bias_applied is the column a future corrector reads, NOT
+        # forecast_temp_raw: the two dew-point / PDO-PNA corrections immediately
+        # below also modify forecast_temp, so forecast_temp_f is
+        # `raw - station_bias + dew_point + pdo_pna` and the raw value alone
+        # cannot recover the station-bias term. forecast_temp_f + this can,
+        # exactly, whatever runs downstream. See tracker's v83->v84 migration.
+        # Annotated float | None because the metar-locked branch below binds it
+        # to None -- the same shape forecast_temp/forecast_temp_raw already have.
+        station_bias_applied: float | None = _get_combined_station_bias(city, var=var)
+        forecast_temp = forecast_temp_raw - station_bias_applied
 
         # A6: dew point coastal correction — on humid days airport stations read
         # cooler than model forecasts due to sea breeze / evaporative cooling.
@@ -17216,6 +17258,37 @@ def analyze_trade(
         # (daily high is misleading for e.g. "temp at 9am" markets)
         if hour is not None and len(temps) >= 5:
             forecast_temp = statistics.mean(temps)
+            # batch-98: this REPLACES forecast_temp rather than adjusting it, so
+            # the station-bias subtraction made above is discarded here. The
+            # provenance pair must not go on claiming a correction that is no
+            # longer in the value -- forecast_temp_f + station_bias_applied_f
+            # would otherwise ADD a bias that was never subtracted, and
+            # attribute a daily-extreme correction to an hourly figure. 3.0F
+            # bounds the STATIC table; the value here is the COMBINED one and
+            # the dynamic term is unbounded (Washington/min measures -4.65F
+            # today, currently at weight 0.05 and rising with sample count).
+            # Nulling both keeps "forecast_temp_f + station_bias_applied_f is
+            # the station-bias-free forecast" true on EVERY path rather than
+            # every path but one.
+            #
+            # Unreachable today, but not for the reason you might assume:
+            # `hour` is set by enrich_with_forecast's SERIES-AGNOSTIC regex
+            # (r"(\d{2})([A-Z]{3})(\d{2})(\d{2})") on any ticker outside the
+            # holiday and hurricane-next-event families -- NOT from
+            # _KXTEMP_HOURLY_CITY. What actually closes this branch is that
+            # every city IN _KXTEMP_HOURLY_CITY returns early into
+            # _analyze_hourly_trade, and no other live ticker family carries
+            # two digits straight after the day. It becomes reachable the day
+            # Kalshi lists an hourly series for a city absent from that dict
+            # -- which test_the_hourly_in_daily_branch_nulls_the_pair_at_
+            # runtime simulates by setting `_hour` on a daily ticker.
+            # The `elif` below needs no nulling for a different reason: it
+            # returns None, so nothing from it ever reaches log_prediction.
+            # Do not read it as licence for a NON-returning hourly branch to
+            # keep a daily-extreme forecast_temp next to a live
+            # station_bias_applied -- that is this defect again.
+            forecast_temp_raw = None
+            station_bias_applied = None
         elif hour is not None:
             # Degraded ensemble (circuit open / partial response) for an hourly
             # market: forecast_temp is still the DAILY extreme from the earlier
@@ -17246,6 +17319,16 @@ def analyze_trade(
         # forecast_temp_raw (NWS daily high) and ens_stats["mean"] (ensemble daily high) are
         # the same quantity; hourly markets compare NWS daily high vs hourly ensemble mean,
         # which structurally differ by 15-20°F and would always fire the flag spuriously.
+        #
+        # batch-98 gave `hour is None` a SECOND job: it is now the only thing
+        # keeping this read away from a None. The hourly-in-daily branch above
+        # nulls forecast_temp_raw, and that branch is inside this same
+        # `if not metar_locked:` block -- so dropping the guard (or reviving
+        # the flag for hourly markets on the semantic grounds above) makes
+        # this `abs(None - float)`, a TypeError analyze_trade's callers
+        # swallow into a silently skipped market. Null-check first if you
+        # ever widen it. Pinned by
+        # test_the_hourly_in_daily_branch_nulls_the_pair_at_runtime.
         if ens_stats is not None and hour is None:
             disagree_f = round(abs(forecast_temp_raw - ens_stats["mean"]), 1)
 
@@ -18188,11 +18271,17 @@ def analyze_trade(
         observed_extreme = _metar_ct
         model_forecast_temp = _fallback_temp
         forecast_temp = None
-        # No forecast means no raw forecast either. This is read only by
-        # cron.report_anomalies' console "raw=" suffix, which reads the key
-        # "forecast_temp_raw" that nothing in the repo has ever written --
-        # i.e. it is already dead. Set for internal consistency, not effect.
+        # No forecast means no raw forecast and no station-bias correction
+        # either. batch-98: BOTH of these are now load-bearing, not cosmetic --
+        # they are persisted to predictions.forecast_temp_raw_f and
+        # .station_bias_applied_f, and this branch is the only place they are
+        # bound on the locked path, so deleting either is an UnboundLocalError
+        # on every metar_lockout analysis. They must stay None rather than
+        # taking a value: a running daily extreme is not a forecast, and
+        # writing one into forecast_temp_raw_f would recreate exactly the
+        # contamination batch-75 removed from forecast_temp_f.
         forecast_temp_raw = None
+        station_bias_applied = None
         temps = []
         ens_prob = None
         ens_stats = None
@@ -18953,6 +19042,24 @@ def analyze_trade(
         "metar_side_override": metar_side_override,
         "condition": condition,
         "forecast_temp": forecast_temp,
+        # batch-98: the blend BEFORE any of the three corrections below it, and
+        # the station-bias delta that was actually subtracted. Persisted to
+        # predictions.forecast_temp_raw_f / .station_bias_applied_f, read by
+        # NOTHING on a pricing path.
+        #
+        # They answer different questions and both are kept: raw measures the
+        # BLEND's own error (before station bias, dew point and PDO/PNA), while
+        # forecast_temp + station_bias_applied isolates the station-bias term
+        # alone, which is the only one a corrector would replace. On the hourly
+        # path the two are equivalent; on this one they are not.
+        #
+        # NOTE: this does NOT feed cron.report_anomalies' "raw=" suffix, despite
+        # that function reading a key of the same name. cron.py:3064 rebuilds
+        # its input as an explicit {ticker, blended_prob, market_price}
+        # projection, so the key never reaches it and that suffix stays dead --
+        # see backlog "cron.report_anomalies READS A forecast_temp_raw KEY".
+        "forecast_temp_raw": forecast_temp_raw,
+        "station_bias_applied": station_bias_applied,
         # batch-75: mutually exclusive with forecast_temp above. On a
         # metar_lockout row forecast_temp is None and these carry the
         # observation and the shadow model forecast; on every other method

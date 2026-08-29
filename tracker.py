@@ -111,7 +111,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 82  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 84  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -909,6 +909,65 @@ _MIGRATIONS = [
     # v81 -> v82: the dedup index for the table above.
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_ersl_ticker_hour
         ON exit_rule_shadow_log(ticker, trade_id, strftime('%Y-%m-%dT%H', recorded_at))""",
+    # v82 -> v83: batch-98. The blended forecast BEFORE
+    # weather_markets._get_combined_station_bias() is subtracted from it.
+    #
+    # forecast_temp_f stores the value AFTER that subtraction, so the
+    # correction's own effect cannot be measured from it: any estimator fitted
+    # on forecast_temp_f and then subtracted from the uncorrected forecast is
+    # measuring its own output. With corrected = raw - b_old, the measurement
+    # is m = b_raw - b_old and `raw - m` leaves a residual of exactly +b_old --
+    # it converges to half the true bias rather than to zero. That is the same
+    # defect batch-75 found in ensemble_member_scores' model='blended' rows,
+    # arrived at from the other direction.
+    #
+    # Reconstructing the raw value instead (forecast_temp_f + the static table)
+    # was measured as accurate to 0.05F mean / 0.31F worst case and REJECTED
+    # anyway: the correction is refit continuously, so a timestamp-keyed
+    # "which regime applied" predicate is right only on the first transition.
+    # Store the invariant, not the regime marker.
+    #
+    # LOG-ONLY, read by NOTHING on any pricing path -- same discipline as
+    # model_forecast_temp_f above. It exists to start the accumulation clock so
+    # the correction question can be settled on observed data rather than on a
+    # reconstruction. Promoting it to a live corrector is a separate change and
+    # gets the gate every other new live path here has (an explicit env flag
+    # AND a settled-sample floor, per _below_gates_active and its nine
+    # siblings), not an automatic switchover on a sample count.
+    "ALTER TABLE predictions ADD COLUMN forecast_temp_raw_f REAL",
+    # v83 -> v84: the station-bias value actually SUBTRACTED on that row.
+    #
+    # This, not forecast_temp_raw_f, is what a future corrector must read.
+    # forecast_temp_raw_f is captured before the station-bias subtraction, but
+    # analyze_trade then applies TWO more corrections to the same variable --
+    # _dew_point_temp_correction (weather_markets.py:17220, 0 to -5.0F for the
+    # four _DEW_POINT_SENSITIVE_CITIES: -3.0 is the linear term at saturation
+    # and -5.0 is a clamp that needs a dew point 13.3F ABOVE the forecast --
+    # rare, but the bound is -5.0, not -3.0) and apply_pdo_pna_correction (:17239,
+    # dormant but permanently-on once its gate flips) -- and on an hourly-in-
+    # daily path replaces it outright (:17260, guarded at
+    # :17259). So on the daily path
+    #     forecast_temp_f = raw - station_bias + dew_point + pdo_pna
+    # and `forecast_temp_f + static_table` does NOT recover the pre-correction
+    # value. Up to 26 of the 182 settled above/below rows are affected: 26 are
+    # IN dew-point-sensitive cities, and a row only takes a non-zero delta if a
+    # fresh METAR dew point was there AND the depression was under 20F. The
+    # true count is not measurable from stored data -- the delta is not logged
+    # anywhere -- which is itself an argument for this column.
+    #
+    # Storing the applied delta sidesteps all of it: forecast_temp_f + this is
+    # the station-bias-free forecast EXACTLY, on every path -- including the
+    # hourly-in-daily branch at weather_markets.py:17260, which REPLACES
+    # forecast_temp and therefore nulls this pair alongside it rather than
+    # leaving them claiming a correction no longer present. Whatever else ran
+    # downstream -- because everything else stays in forecast_temp_f where it
+    # belongs. The corrector only ever replaces this one term. There is then no
+    # reconstruction to validate and no regime marker to date.
+    #
+    # LOG-ONLY, read by NOTHING on a pricing path -- same discipline as
+    # forecast_temp_raw_f and model_forecast_temp_f. NULL on a metar_lockout
+    # row, where no station bias is applied at all.
+    "ALTER TABLE predictions ADD COLUMN station_bias_applied_f REAL",
 ]
 
 
@@ -1515,8 +1574,9 @@ def log_prediction(
            ensemble_spread_f, model_disagreement_f, precip_sum_in,
            nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values,
            forecast_run_inits, blend_exclusions, observed_extreme_f,
-           model_forecast_temp_f)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           model_forecast_temp_f, forecast_temp_raw_f,
+           station_bias_applied_f)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -1598,7 +1658,9 @@ def log_prediction(
             -- must move together, so a later non-lockout scan of the same
             -- (ticker, predicted_date) clears them rather than stranding a
             -- lockout-only value on a row now labelled method='ensemble'.
-            model_forecast_temp_f = excluded.model_forecast_temp_f
+            model_forecast_temp_f = excluded.model_forecast_temp_f,
+            forecast_temp_raw_f = excluded.forecast_temp_raw_f,
+            station_bias_applied_f = excluded.station_bias_applied_f
         """
     params = (
         ticker,
@@ -1649,6 +1711,16 @@ def log_prediction(
         blend_exclusions_json,
         analysis.get("observed_extreme"),
         analysis.get("model_forecast_temp"),
+        # batch-98: the blend BEFORE _get_combined_station_bias is subtracted.
+        # None on a metar_lockout row, which sets forecast_temp_raw = None for
+        # the same reason forecast_temp is None there -- a running daily
+        # extreme is not a forecast, raw or corrected.
+        analysis.get("forecast_temp_raw"),
+        # batch-98: the station-bias delta actually subtracted on this row.
+        # forecast_temp_f + this == the station-bias-free forecast, exactly,
+        # on every path -- see the v83->v84 migration comment for why the raw
+        # column alone cannot give that on the daily path.
+        analysis.get("station_bias_applied"),
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).

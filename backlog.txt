@@ -1,6 +1,323 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-28 -- batch-98. The measurement is done and the invariant it needs
+  is now being logged; the correction itself is NOT shipped and is gated on the
+  1-month check below.]
+  THE PER-CITY STATIC STATION-BIAS TABLES ARE THE COLD BIAS THEY WERE MEANT TO
+  CORRECT -- BUT THE FIX CANNOT BE VALIDATED UNTIL forecast_temp_raw_f FILLS
+Priority: HIGH -- it moves every temperature probability on the live ensemble
+  path. Not urgent in the sense that live trading is off (LIVE_TRADING_ENABLED
+  unset, live_fills empty), so the cost today is paper P&L.
+Files: weather_markets.py _STATION_BIAS_HIGH/_LOW, _get_combined_station_bias,
+  tracker.get_dynamic_station_bias.
+
+PROBLEM. _get_combined_station_bias() subtracts _STATION_BIAS_HIGH/_LOW --
+hand-coded GFS/ICON warm-bias priors, mean +1.167F (HIGH) / +0.429F (LOW) --
+from a multi-model blend (ECMWF IFS + AIFS, GEM, UKMO, ICON, GFS, MOS/NBM,
+climatology) whose own mean is close to unbiased. Measured over 182 settled
+above/below predictions 2026-05..08, the blended forecast that feeds every
+probability runs 1.075F COLD (t=-5.02, the POOLED row below -- quoted to three
+places so the two cannot disagree at the rounding). A mean bias is exactly the
+shape that produces a one-sided probability error.
+
+Split by var, which is what matters and what a pooled figure hides. All of it
+measured on SQLite's date('now'), which is UTC and read 2026-08-29 while the
+local date -- the one in this entry's header -- was still 2026-08-28; every
+60-DAY row uses market_date >= 2026-06-30, which is what date('now','-60 days')
+returned that day. THAT WINDOW ROLLS: each 60-day
+figure in this entry decays daily and one day's drift already moves max from
+-0.130 to -0.139. Re-derive them, never diff against what is written here.
+All t-statistics use ddof=0 throughout.
+
+                          shipped bias (t)      table deleted (t)
+  FULL PERIOD  max  n=90   -0.579 (t=-1.64)      +0.454 (t=+1.36)
+               min  n=92   -1.560 (t=-6.65)      -1.163 (t=-5.10)
+               POOLED      -1.075 (t=-5.02)      -0.363 (t=-1.73)
+  60-DAY       max  n=60   -0.139 (t=-0.35)      +0.861 (t=+2.38)
+               min  n=64   -1.436 (t=-5.60)      -1.038 (t=-4.11)
+
+Deleting the tables is significantly better than shipping them on paired
+absolute error (mean |err| falls 0.199, t=+3.30 full period; 0.171, t=+2.35 on
+the 60-day window) -- but it does NOT fix min (still t=-5.10) and in the recent
+window it makes max significantly WORSE (-0.139 -> +0.861, t=+2.38). The two
+vars need opposite-signed corrections, so neither deletion nor any single
+global term is the answer.
+
+The dynamic half's PREFERRED branch has never fired -- but its fallback has,
+and the difference matters for the check below.
+
+get_dynamic_station_bias() prefers model='blended' rows and needs 10 per
+(city, var); the largest such sample is 6, because paper.py:1507 is that table's
+sole writer and only runs when a paper trade SETTLES. July had zero paper trades
+and therefore zero model-score rows while the scan still wrote 70 predictions
+rows -- that branch is starved by construction whenever trading pauses.
+
+It then FALLS BACK to icon_seamless + gfs_seamless, and that branch does fire:
+10 (city, var) pairs clear its 10-sample floor today, so _get_combined_station_
+bias returns static-blended-with-dynamic, not the static table.
+
+Per-city sizes below are the DYNAMIC TERM's own weighted size, dyn x weight --
+NOT how far the returned value moves off the static table, which is
+(dyn - static) x weight and is what the +0.045 / -0.043 figures further down
+measure. The two differ by a lot on one city and the labels used to be the
+same word: NYC/max is +0.507 on the first basis and +0.307 on the second.
+
+dyn x weight, largest first: NYC/max +0.507F (dyn +2.536, n=18, weight 0.20);
+Washington/min -0.233 (dyn -4.65, weight 0.05); Atlanta/min -0.075;
+Minneapolis/max +0.069; Seattle/min +0.043; SanFrancisco/max -0.019 and
+Dallas/min +0.019; and Houston/max, Denver/max and Boston/max at exactly 0.000
+-- they sit ON the floor at n=10, where the weight is 0. The weight is linear
+in sample count to 1.0 at n=50, so all of these grow over exactly the month
+this entry asks you to wait, including the three currently pinned at zero.
+
+CONSEQUENCE FOR THE CHECK, stated because it bit an earlier draft: step 1's
+query measures forecast_temp_f + station_bias_applied_f (static AND dynamic),
+while step 2's targets below were computed as forecast_temp_f + the static table
+alone. Measured on the 182 settled rows the two differ by +0.045 (max) and
+-0.043 (min) today -- small against the kill condition, but growing. Treat the
+step-2 numbers as STATIC-TABLE PRIORS, not as predictions of what the query
+returns, and re-derive them from the query itself when you run the check.
+
+This is also the strongest argument FOR station_bias_applied_f: the applied
+value already drifts from the static table and cannot be reconstructed from it.
+
+WHAT SHIPPED (this batch, log-only, moves no probability):
+  * predictions.forecast_temp_raw_f (migration v83) -- the blend BEFORE any
+    correction.
+  * predictions.station_bias_applied_f (migration v84) -- the station-bias delta
+    actually subtracted on that row. THIS is the one a future corrector reads.
+  * Both written from analyze_trade's and _analyze_hourly_trade's own locals,
+    NULL on a metar_lockout row. Read by NOTHING on a pricing path.
+  * Nothing else. _get_combined_station_bias is byte-identical to v82.
+
+  WHY TWO COLUMNS. analyze_trade modifies forecast_temp TWICE MORE after the
+  station-bias subtraction -- _dew_point_temp_correction (weather_markets.py
+  :17220, 0 to -5.0F for the four _DEW_POINT_SENSITIVE_CITIES: -3.0
+  is the linear term at saturation, and -5.0 is a clamp needing a dew point
+  13.3F ABOVE the forecast -- rare, but the bound is -5.0, not -3.0) and
+  apply_pdo_pna_correction (:17239, dormant but permanently-on once its gate
+  flips) -- and on an hourly-in-daily path replaces it outright
+  (:17260, guarded at :17259). So on
+  the daily path forecast_temp_f = raw - station_bias + dew_point + pdo_pna, and
+  raw alone cannot isolate the station-bias term. UP TO 26 of the 182 settled
+  above/below rows are affected: 26 are IN dew-point-sensitive cities (Seattle
+  9, SanFrancisco 9, Houston 7, Miami 1), and a row only takes a non-zero delta
+  if a fresh METAR dew point was available AND the depression was under 20F.
+  The true count cannot be recovered from stored data because the delta is
+  logged nowhere -- which is a second argument for the column, not a caveat
+  against it. forecast_temp_f +
+  station_bias_applied_f recovers the station-bias-free forecast exactly, on
+  every path, because the other deltas stay inside forecast_temp_f where they
+  belong. raw is kept because it measures the BLEND's own error, a different
+  question. On the hourly path the two are equivalent; on the daily path they
+  are not.
+
+  NOT a cron fix. An earlier draft of this entry claimed the raw key revives
+  cron.report_anomalies' "raw=" console suffix. It does not: cron.py:3064
+  rebuilds its input as an explicit {ticker, blended_prob, market_price}
+  projection, so the key never reaches report_anomalies and that suffix stays
+  dead.
+
+  BUT this batch does falsify that entry's stated DIAGNOSIS, and its title.
+  See the note added to it below; the defect there is now the cron projection
+  alone, not a missing writer.
+
+  CONVENTION DEVIATION, stated rather than silent: tracker.py's v58->v59
+  migration comment says a future log-only signal should use the generic
+  signal_values JSON column instead of paying "its own named migration +
+  log_prediction() kwarg + 4 SQL edits". These two take the dedicated-column
+  route anyway, because a corrector reading them runs a SQL aggregate over a
+  60-day window and json_extract on a live pricing path is worse than a typed
+  column -- and because they belong with their siblings forecast_temp_f,
+  model_forecast_temp_f, observed_extreme_f.
+
+WHY ONLY THAT. A first attempt shipped the corrector too and was reverted
+before commit after an independent opus review. Two reasons, both worth keeping:
+
+  1. FEEDBACK LOOP. forecast_temp_f stores the POST-correction value, so an
+     estimator fitted on it and subtracted from the uncorrected forecast
+     measures its own output: with corrected = raw - b_old the measurement is
+     m = b_raw - b_old, and (raw - m) leaves a residual of exactly +b_old. It
+     converges to TRUE/2, not to 0 -- simulated: min TRUE -1.038 settles at an
+     applied -0.519, max TRUE +0.854 at +0.427. Half the bias comes back over
+     ~2 months with nothing logged and no test failing. Same defect batch-75
+     found in ensemble_member_scores' model='blended' rows, from the other
+     direction. forecast_temp_raw_f exists precisely to break it:
+     mean(raw - actual) = TRUE regardless of what correction ran downstream.
+  2. A dated cutoff reconstructing "which correction applied" was measured
+     accurate to 0.05F mean / 0.31F worst case and rejected anyway -- the
+     correction is refit continuously, so a timestamp-keyed regime predicate is
+     right only on the first transition. Store the invariant, not the marker.
+
+MEASURED AND REJECTED -- do not re-propose without new data:
+  * Recentring the tables by their own mean (keeping per-city SHAPE, dropping
+    level -- the applied correction becomes static[city] - mean(table), so the
+    stored forecast becomes forecast_temp_f + mean): significantly WORSE than
+    deleting them. Paired mean |err|, RECENTRED MINUS DELETED, full period
+    n=182: +0.104, t=+2.70. Name the pairing when you re-quote this -- against
+    SHIPPED the same comparison is -0.095 (t=-1.58), better but not
+    significantly, and an earlier draft of this entry took the magnitude from
+    one pairing and the t from neither. Deleting beats both either way.
+    The shape is not signal -- table value vs each city's own measured blend
+    bias is r=+0.218 (t=+0.95, 20 cells n>=4).
+  * Lowering get_dynamic_station_bias's floor so its model='blended' branch
+    fires: INVERTS the sign, for the reason in (1). Scored, +0.92F WARM. Do not
+    lower that floor without fixing the wiring first.
+  * A global (not per-var) offset: the two vars differ by ~1.9F, opposite signs.
+  * Fitting the analysis-calibration layer instead (logit(true) = -0.742 +
+    1.371*logit(model), n=531): improves the model out-of-sample (Brier 0.1750
+    -> 0.1567) but applied to the LIVE TRADED set it makes the NO side markedly
+    WORSE (gap -0.250 -> -0.414, z -2.96 -> -5.71), because it pushes P(YES)
+    down globally and NO trades are selected where P(YES) is already low.
+
+THE CHECK TO RUN IN ~1 MONTH (from 2026-09-28), before proposing the corrector:
+
+  1. Measure the station-bias-free residual DIRECTLY -- there is no longer a
+     reconstruction to validate. Per var, over a 60-day window:
+         mean( (forecast_temp_f + station_bias_applied_f) - settled_temp_f )
+     That is exactly what a corrector would need to zero out. An earlier draft
+     of this entry asked instead whether forecast_temp_raw_f matched
+     forecast_temp_f + the static table; that check was WRONG and would have
+     reported a false FAIL on every dew-point-sensitive city, because of the two
+     later corrections described above. Do not reinstate it.
+     Cross-check available for free: on the HOURLY path nothing modifies
+     forecast_temp after the subtraction, so raw - applied == forecast_temp_f
+     there exactly; if that identity fails, the writer is broken.
+  2. Is the per-var split real when measured on raw rather than reconstructed?
+     Static-table priors (see the dynamic-half note above -- these are NOT what
+     the step-1 query returns, and the gap grows with sample count): max ~ +0.86,
+     min ~ -1.04, at n>=20 per var in a 60-day window.
+     KILL CONDITION: if min comes in above -0.5F or flips sign, drop the idea --
+     it was a warm-season artifact.
+  3. Seasonality. Refit in October and compare against the August numbers.
+     Movement means the offset must stay a rolling window and may need a
+     seasonal term. There is NO winter data in this repo at all; this is the
+     first evidence either way.
+  4. Does it reach the probabilities? Re-measure below-market calibration on
+     analysis_attempts. Snapshot 2026-08-28: model mean 0.461 vs actual 0.216,
+     z=-7.78, n=208, where z is Poisson-binomial -- (sum outcome - sum p) /
+     sqrt(sum p(1-p)). That is the convention used throughout this research;
+     the naive sqrt(pbar(1-pbar)/n) gives -7.07 on those same 208 rows. It
+     accumulates: 2026-08-29 reads n=216, 0.459 vs 0.213, z=-7.97 (naive
+     -7.25). Both numbers move, so quote the convention AND the row count
+     together or the next reader cannot tell drift from a changed formula --
+     an earlier draft paired the 208-row z with the 216-row naive value.
+     Re-derive rather than diffing against the stamp. If the temperature bias
+     drives it, the two should move together.
+     If below stays broken after a correct temperature fix, the cause is
+     elsewhere and this was never going to help.
+
+  Query for (1) and (2). Note the three deliberate filters, each of which is
+  also a carried-forward finding below -- if the corrector relaxes any of them,
+  relax it HERE TOO or the check and the fit stop measuring the same thing:
+    -- hourly rows are excluded because KXTEMPxxxH settles into settled_value /
+    --   settled_var, never settled_temp_f (tracker.py:8872), so they can never
+    --   join anyway; the explicit filter makes that intentional rather than
+    --   accidental, and stops the KXLOW% CASE mislabelling them if that ever
+    --   changes.
+    -- 'between' rows are excluded by condition_type. get_station_bias_by_lead
+    --   argues they should be KEPT for this same degF statistic; revisit
+    --   together with the corrector, not separately.
+    -- no dedup on (ticker, predicted_date): near-moot today (223 of 224
+    --   above/below tickers have exactly one row) but wrong at scale --
+    --   get_station_bias_by_lead uses ROW_NUMBER for exactly this.
+    SELECT CASE WHEN p.ticker LIKE 'KXLOW%' THEN 'min' ELSE 'max' END AS v,
+           COUNT(*),
+           AVG((p.forecast_temp_f + p.station_bias_applied_f) - o.settled_temp_f)
+      FROM predictions p JOIN outcomes_valid o ON p.ticker = o.ticker
+     WHERE p.condition_type IN ('above','below')
+       AND p.forecast_temp_f IS NOT NULL
+       AND p.station_bias_applied_f IS NOT NULL
+       AND o.settled_temp_f IS NOT NULL
+       AND (p.method IS NULL OR p.method != 'metar_lockout')
+       AND (p.method IS NULL OR p.method NOT LIKE 'hourly_%')
+       AND p.market_date >= date('now', '-60 days')
+     GROUP BY 1;
+
+GRADUATION. If the check passes, the corrector is its own change and gets the
+gate every other new live path here has -- an explicit env flag AND a
+settled-sample floor, mirroring _below_gates_active() and its nine siblings
+(HOURLY/RAIN/SNOW/BETWEEN_METAR/HURRICANE_COUNT/HURRICANE_NEXT_EVENT/
+STORM_ORDER/HOLIDAY_TEMP/TORNADO_COUNT -- nine functions, not the eight
+categories an earlier draft counted, because HURRICANE is two). A sample
+count must not switch live pricing over by itself.
+
+OPEN REVIEW FINDINGS carried forward to that change (from the opus review of
+the reverted attempt, all still applicable):
+  * Exclude method='metar_lockout' on TWO layers, not one. Those rows'
+    forecast_temp_f is NULL post-batch-75, but a writer regression would feed a
+    running daily extreme (+8.6F max / -10.4F min) into the live correction.
+  * Split by lead (predictions.days_out, table-deleted basis, same rolling
+    60-day window as above): on the 2026-06-30 cutoff max D+0 is +1.215 (n=40)
+    and D+1 is +0.152 (n=20), so a pooled max offset over-corrects D+1 by
+    ~1.06F and drifts with the scan's day-mix. This bullet was carried forward
+    from the earlier review as +1.188 / n=42, which was the same statistic one
+    day earlier -- it rolls, so re-derive it. Over the FULL period the split
+    is much smaller (+0.762 n=51 / +0.051 n=39), which is itself the point:
+    the lead effect is a recent-window phenomenon and may not survive.
+  * Dedup on (ticker, predicted_date) -- a re-scanned market contributes
+    multiple rows joining one outcome; get_station_bias_by_lead already uses
+    ROW_NUMBER for exactly this.
+  * 'between' rows are excluded by condition_type; get_station_bias_by_lead
+    argues at length they should be KEPT for this same degF statistic.
+  * init_db() and the float() coercions must sit inside the try, and the
+    below-floor return must log -- an inert correction is otherwise invisible,
+    and with a pooled cache key the blast radius is every city for the full TTL.
+  * ~12 stale comments claim get_dynamic_station_bias feeds the live corrector,
+    including a red() operator alert at main.py:10024 and the served
+    analytics definition at tracker.py:12478. Fix at least the
+    operator-facing ones when
+    the corrector lands.
+
+ALSO NOTED, not this batch: utils.py's CITY_MIN_PROB_EDGE comment names
+_STATION_BIAS_HIGH["Miami"]=3.0 as the suspected root cause of Miami's residual
+and its own re-tune trigger. That constant is still live -- nothing was retired
+this batch -- so the comment stands as written.
+
+[OPEN 2026-08-28 -- found by the opus review of batch-98, in the one line that
+  batch changed on the hourly path. Pre-existing; batch-98 preserved the value
+  exactly rather than papering over it.]
+  THE HOURLY PATH PUBLISHES A degF TEMPERATURE INTO bias_correction, AND
+  log_prediction ADDS IT TO A PROBABILITY
+Priority: LOW today, and only because of a filter that has no reason to hold.
+  Nothing reads the corrupted column on a pricing path right now.
+Files: weather_markets.py _analyze_hourly_trade (the `bias_correction` key),
+  tracker.py log_prediction (raw_prob), tracker.get_metar_lockout_calibration_data.
+
+_analyze_hourly_trade publishes `"bias_correction": station_bias_applied` -- the
+station-bias delta, in DEGREES FAHRENHEIT. tracker.py:1527, inside
+log_prediction, then does
+
+    raw_prob = round(forecast_prob + bias, 6)   # `bias` bound at :1525
+
+documented (correctly, for the path it was written for) as "the amount SUBTRACTED
+from the blended prob". On the daily and metar_locked paths bias_correction IS a
+probability delta; on the hourly path it is a temperature. Measured 2026-08-29:
+5 stored hourly rows carry a non-NULL raw_prob and 1 of them is 3.084827 --
+outside [0,1] by a factor the column's own name says is impossible. A second,
+KXTEMPNYCH-26JUL2406-T65.99, reads our_prob 0.334 / raw_prob 0.834: in range,
+and wrong by exactly the 0.5F bias.
+
+Blast radius is nil TODAY only by luck. raw_prob has exactly one reader --
+get_metar_lockout_calibration_data (the SELECT at tracker.py:4677) -- and it
+filters `p.method = 'metar_lockout'` at :4683, so hourly rows never reach it. That filter exists
+for an unrelated reason (the metar lock is the only calibrated path), so nothing
+stops a future caller from selecting COALESCE(raw_prob, our_prob) across methods
+and training a calibrator on a 3.08 "probability".
+
+FIX, when someone touches this: publish nothing rather than the wrong unit --
+either drop the key from the hourly dict (log_prediction defaults it to 0.0, so
+raw_prob becomes forecast_prob, which is the truth: no probability-space
+correction ran) or add a separate `station_bias_f` diagnostic key and let
+bias_correction mean one thing everywhere. Do NOT "fix" it by dividing by
+anything; there is no conversion, the hourly path simply has no probability-space
+bias to report. Whichever way it goes, the 5 existing rows need a backfill or an
+explicit exclusion, and batch-98's
+test_every_station_bias_call_site_is_accounted_for hard-codes the current wiring
+in its failure message -- update that message with the fix.
+
+
 [OPEN 2026-08-28 -- found by batch-97 while running the gfs_seamless entry's
   "one live call" diagnostic. Not a fix: changing the model id moves live
   pricing on the deterministic path and needs the same held-out discipline
@@ -42219,6 +42536,17 @@ RESOLUTION 2026-08-26:
   produced the rows (see the audit/reproductions/ entry). pytest itself is
   now measured hermetic -- 10,324-file snapshot across 205 cmd_cron tests,
   zero diffs, run twice.
+
+SUPERSEDED IN PART by batch-98 (2026-08-28). The title and the body's
+  central claim -- "a repo-wide grep for the QUOTED key returns exactly that
+  one read and no write" -- are no longer true: analyze_trade and
+  _analyze_hourly_trade now both put "forecast_temp_raw" in their returned
+  dicts, and the locked branch's `forecast_temp_raw = None` is load-bearing
+  rather than the dead store this entry calls it. What remains genuinely open
+  is narrower and unchanged by that batch: cron.py:3064 rebuilds
+  report_anomalies' input as an explicit {ticker, blended_prob, market_price}
+  projection, so the key still never reaches the reader and the "raw=" suffix
+  is still dead. Fix the projection, not the writer.
 
 [OPEN 2026-08-25 -- surfaced while answering "how do we get more data faster".
   Full reasoning and the measured tables live in audit/DATA_ACCRUAL_PLAN.md.]
