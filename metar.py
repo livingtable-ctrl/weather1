@@ -15,7 +15,7 @@ Reported win rate: 85-90%.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -350,6 +350,44 @@ _DAILY_OBS_CACHE: ForecastCache[list[float] | None] = ForecastCache(
     ttl_secs=_DAILY_OBS_CACHE_TTL
 )
 
+# Readings before this local-CLOCK hour, WHILE DAYLIGHT SAVING TIME IS IN
+# EFFECT, are excluded from the running daily extreme, because it is genuinely
+# unresolved which climate day they belong to. Outside DST the two candidate
+# definitions coincide and nothing is excluded -- see the call site's own note.
+#
+# Kalshi's own weather-market documentation states that the settling NWS Daily
+# Climate Report "use[s] local standard time when reporting daily high
+# temperatures. This means that during Daylight Saving Time, the high
+# temperature will be recorded between 1:00 AM and 12:59 AM local time the
+# following day". tracker._fetch_asos_observations carries the opposite claim --
+# a plain civil midnight-to-midnight day, "confirmed 2026-07-05 against real CLI
+# reports (Minneapolis: a 69F low at 6:16 AM ... Phoenix: same pattern at 5:16
+# AM)". Both of those examples sit inside 00:00-23:59 under EITHER convention,
+# so that verification cannot actually discriminate between them; the only hour
+# the two definitions disagree about is 00:00-00:59 local clock.
+#
+# Rather than rule on an unresolved empirical question from a live safety path,
+# this drops exactly that hour, which is correct under both readings:
+#   - under local standard time it belongs to the PREVIOUS climate day, so
+#     excluding it is simply right;
+#   - under a civil day it belongs to this one, so excluding it can only raise
+#     the running min and lower the running max -- i.e. make a monotone-safety
+#     lock fire LESS readily, never more.
+# Conservative in both directions is what a bound wants. The cost is real and
+# bounded: a genuine extreme set in that one hour is ignored, so a lock that
+# would otherwise fire may fire later or not at all.
+#
+# This is deliberately NOT the 14:00 _LOCK_IN_HOUR gate and must not be merged
+# with it. That gate is a diurnal-timing judgement (has the afternoon peak
+# happened yet) measured on local clock hours; this one is a settlement-window
+# boundary. They answer different questions and would move for different reasons.
+#
+# Discriminating test, if anyone wants to settle the question: recompute each
+# settled city-day's extreme from IEM ASOS under both window definitions and
+# compare against outcomes.settled_temp_f -- on the days where the two windows
+# disagree, only one will match what Kalshi settled on.
+_CONTESTED_HOUR_CUTOFF = 1
+
 
 def _extract_temp_f(obs: dict) -> float | None:
     """Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf
@@ -397,15 +435,23 @@ def _extract_obs_time(obs: dict) -> datetime | None:
 def _fetch_daily_temps_f(
     station: str, city_tz: str, target_date: date
 ) -> list[float] | None:
-    """Fetch every METAR temp_f reading for `station` that falls on the
-    LOCAL calendar date `target_date`, by requesting a wide (30-hour)
-    window of historical observations — enough to cover local midnight to
-    now for any continental-US timezone with buffer to spare — and
-    filtering+converting each reading's obsTime to `city_tz` locally.
+    """Fetch every METAR temp_f reading for `station` that falls on
+    `target_date`'s local day AND at or after `_CONTESTED_HOUR_CUTOFF`
+    (01:00) local clock time, by requesting a wide (30-hour) window of
+    historical observations — enough to cover local midnight to now for any
+    continental-US timezone with buffer to spare — and filtering+converting
+    each reading's obsTime to `city_tz` locally.
+
+    The 00:00-00:59 local-clock hour is deliberately EXCLUDED: it is the one
+    hour the civil-day and local-standard-time readings of the NWS climate
+    day disagree about, and dropping it is conservative under both. See
+    `_CONTESTED_HOUR_CUTOFF`'s own comment for the full reasoning — do not
+    remove that filter without reading it.
 
     Returns None on fetch failure (network error, unparseable response);
-    an empty list is a valid result (fetch succeeded, no reading fell on
-    target_date yet — e.g. right after local midnight).
+    an empty list is a valid result (fetch succeeded, no reading fell in
+    target_date's window yet — e.g. right after local midnight, when the
+    window has not opened at all).
     """
     key = f"{station.upper()}|{target_date.isoformat()}"
     cached, hit, _ = _DAILY_OBS_CACHE.get_with_ts(key)
@@ -450,7 +496,18 @@ def _fetch_daily_temps_f(
         obs_time = _extract_obs_time(obs)
         if obs_time is None:
             continue
-        if obs_time.astimezone(tz).date() != target_date:
+        obs_local = obs_time.astimezone(tz)
+        if obs_local.date() != target_date:
+            continue
+        # Scoped to observations actually in DST: the contested hour exists
+        # only because local standard time trails the local clock by one hour,
+        # so outside DST (and in a zone that never observes it -- Phoenix is a
+        # traded city) the two climate-day definitions agree and there is
+        # nothing to exclude. Dropping the hour there would discard a real,
+        # unambiguous reading for no reason.
+        if obs_local.hour < _CONTESTED_HOUR_CUTOFF and (
+            obs_local.dst() or timedelta(0)
+        ):
             continue
         temps.append(temp_f)
 
@@ -463,8 +520,13 @@ def fetch_metar_daily_extreme(
 ) -> float | None:
     """
     Compute the TRUE running daily extreme (max or min observed temp_f)
-    since LOCAL midnight of `target_date`, by fetching a window of
+    over `target_date`'s climate-day window, by fetching a window of
     historical METAR observations and taking the extreme LOCALLY.
+
+    That window starts at 01:00 local clock, not 00:00 — the 00:00-00:59
+    hour is the only hour the civil-day and local-standard-time readings of
+    the NWS climate day disagree about, and it is dropped so this value is a
+    valid monotone-safety bound under either. See `_CONTESTED_HOUR_CUTOFF`.
 
     Do NOT use fetch_metar()'s own max_temp_f/min_temp_f fields for any
     reasoning that depends on a full-day running extreme (e.g. "the running

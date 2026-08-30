@@ -1,5 +1,6 @@
 """Unit tests for key functions in weather_markets.py and utils.py."""
 
+import logging
 import sys
 from pathlib import Path
 
@@ -11694,3 +11695,164 @@ class TestEnrichSkipsPastLocalTargetDates:
             "only caller that pays the past-local-date fallback cost"
         )
         assert kwargs["skip_past_target_dates"].value is True
+
+
+def _daily_temp_market(**over) -> dict:
+    """A daily KXHIGH T-ticker market whose title and subtitle carry NO
+    direction keyword -- the shape that made _parse_market_condition fail
+    closed before the structured-field branch existed. Kalshi's own
+    yes_sub_title is sometimes just the city name (live-confirmed 2026-08-24
+    for the holiday-temp series), which is exactly this case."""
+    m = {
+        "ticker": "KXHIGHNY-26AUG28-T86",
+        "title": "Highest temperature in NYC on Aug 28?",
+        "subtitle": "",
+        "yes_sub_title": "New York",
+        "strike_type": "greater",
+        "floor_strike": 86,
+        "cap_strike": None,
+    }
+    m.update(over)
+    return m
+
+
+class TestDailyTempStructuredDirection:
+    """_parse_market_condition must read a daily T-ticker's above/below
+    direction from Kalshi's own strike_type/floor_strike/cap_strike, which the
+    API documents as the minimum/maximum expiration value that settles YES,
+    rather than only from title prose."""
+
+    def test_structured_greater_parses_a_market_text_alone_would_drop(self):
+        """The whole point of the change: no direction keyword anywhere in
+        title or subtitle, but strike_type says 'greater'.
+
+        Paired positive control below proves the text path really is blind to
+        this market -- otherwise this test would pass even if the structured
+        branch never ran."""
+        from weather_markets import _parse_market_condition
+
+        m = _daily_temp_market()
+        assert "above" not in (m["title"] + m["yes_sub_title"]).lower()
+        assert "below" not in (m["title"] + m["yes_sub_title"]).lower()
+        assert ">" not in m["title"] and "<" not in m["title"]
+
+        cond = _parse_market_condition(m)
+        assert cond == {"type": "above", "threshold": 86.0, "prob_threshold": 86.5}
+
+        # Positive control: strip the structured fields and the SAME market is
+        # dropped, which is what this branch exists to stop.
+        stripped = _daily_temp_market(strike_type=None, floor_strike=None)
+        assert _parse_market_condition(stripped) is None
+
+    def test_structured_less_maps_to_below_via_cap_strike(self):
+        from weather_markets import _parse_market_condition
+
+        cond = _parse_market_condition(
+            _daily_temp_market(strike_type="less", floor_strike=None, cap_strike=86)
+        )
+        assert cond == {"type": "below", "threshold": 86.0, "prob_threshold": 85.5}
+
+    def test_direction_only_the_ticker_still_owns_the_threshold(self):
+        """User decision 2026-08-29: structured fields set the DIRECTION only.
+        `threshold` feeds audit_settlement and the METAR monotone-safety vetoes,
+        so a disagreeing structured strike must not move it silently."""
+        from weather_markets import _parse_market_condition
+
+        cond = _parse_market_condition(_daily_temp_market(floor_strike=91))
+        assert cond["threshold"] == 86.0, (
+            "the ticker's own T86 must win -- 91 is what the structured field "
+            "said, and taking it would move a live safety threshold"
+        )
+        assert cond["prob_threshold"] == 86.5
+        assert cond["type"] == "above"
+
+    def test_disagreement_is_logged_not_swallowed(self, caplog):
+        from weather_markets import _parse_market_condition
+
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            _parse_market_condition(_daily_temp_market(floor_strike=91))
+        assert any(
+            "disagrees with the ticker" in r.getMessage() for r in caplog.records
+        ), "a structured strike that disagrees with the ticker must warn"
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="weather_markets"):
+            _parse_market_condition(_daily_temp_market(floor_strike=86))
+        assert not any(
+            "disagrees with the ticker" in r.getMessage() for r in caplog.records
+        ), "positive control: agreement must NOT warn, or the check is vacuous"
+
+    def test_text_direction_still_works_when_structured_fields_absent(self):
+        """No regression: the pre-existing title/subtitle path is unchanged for
+        every market that has no strike_type."""
+        from weather_markets import _parse_market_condition
+
+        assert _parse_market_condition(
+            _daily_temp_market(
+                strike_type=None,
+                floor_strike=None,
+                title="Will the high in NYC be above 86?",
+            )
+        ) == {"type": "above", "threshold": 86.0, "prob_threshold": 86.5}
+
+        assert _parse_market_condition(
+            _daily_temp_market(
+                strike_type=None,
+                floor_strike=None,
+                title="Will the high in NYC be below 86?",
+            )
+        ) == {"type": "below", "threshold": 86.0, "prob_threshold": 85.5}
+
+    def test_unrecognised_strike_type_falls_through_to_text(self):
+        """Only 'greater'/'less' are honoured. An '_or_equal' variant has a
+        boundary one degree off the 'greater than {val}' rules text the +/-0.5
+        prob_threshold convention was verified against, so it must NOT be
+        mapped to a direction here -- it falls through to the text path."""
+        from weather_markets import _parse_market_condition
+
+        # Falls through, and the text carries no keyword -> dropped, as before.
+        assert (
+            _parse_market_condition(_daily_temp_market(strike_type="greater_or_equal"))
+            is None
+        )
+        # Falls through, and the text DOES carry one -> text decides.
+        assert _parse_market_condition(
+            _daily_temp_market(
+                strike_type="greater_or_equal",
+                title="Will the high in NYC be below 86?",
+            )
+        ) == {"type": "below", "threshold": 86.0, "prob_threshold": 85.5}
+
+    def test_missing_or_non_numeric_strike_falls_through_rather_than_crashing(self):
+        from weather_markets import _parse_market_condition
+
+        # strike_type present, matching strike absent -> fall through to text.
+        assert _parse_market_condition(
+            _daily_temp_market(
+                floor_strike=None, title="Will the high in NYC be above 86?"
+            )
+        ) == {"type": "above", "threshold": 86.0, "prob_threshold": 86.5}
+
+        # Non-numeric strike -> fall through, no exception.
+        assert _parse_market_condition(
+            _daily_temp_market(
+                floor_strike="not-a-number",
+                title="Will the high in NYC be above 86?",
+            )
+        ) == {"type": "above", "threshold": 86.0, "prob_threshold": 86.5}
+
+    def test_between_tickers_are_untouched_by_this_branch(self):
+        """Scope check. B-tickers have no direction ambiguity, so the
+        structured branch must not reach them and their shape must be
+        byte-identical to before."""
+        from weather_markets import _parse_market_condition
+
+        cond = _parse_market_condition(
+            _daily_temp_market(
+                ticker="KXHIGHNY-26AUG28-B86.5",
+                strike_type="between",
+                floor_strike=85.5,
+                cap_strike=87.5,
+            )
+        )
+        assert cond == {"type": "between", "lower": 85.5, "upper": 87.5}

@@ -9047,6 +9047,95 @@ def _parse_market_condition(market: dict) -> dict | None:
         # higher, so the boundary that tiles with the adjacent between-bucket
         # (which ends at val+0.5) is val+0.5, not val. Symmetric below:
         # val-0.5. See utils.prob_threshold's docstring for the full reasoning.
+        #
+        # Structured fields FIRST, text only as the fallback. Kalshi's market
+        # object carries the direction explicitly -- its API documentation
+        # defines floor_strike as "Minimum expiration value that leads to a YES
+        # settlement" and cap_strike as "Maximum expiration value that leads to
+        # a YES settlement" -- so the direction is available without reading
+        # prose at all. This is the same read the monthly-rain, monthly-snow and
+        # holiday-temp branches above already do; the daily T branch was the
+        # only temperature path still deriving direction from title text, and it
+        # FAILS CLOSED when Kalshi rewords a title into something generic, which
+        # silently drops the market. (That is not hypothetical: the holiday-temp
+        # branch exists precisely because those markets' yes_sub_title is just
+        # the city name.)
+        #
+        # Deliberately direction-ONLY: `threshold` stays the ticker-derived
+        # `val`, because it is what audit_settlement, the METAR-lockout
+        # monotone-safety vetoes and the DB bookkeeping all compare against, and
+        # moving a live safety threshold as a side effect of a parsing change is
+        # not something to do silently. A structured strike that disagrees with
+        # the ticker is logged instead -- if that warning ever fires, the two
+        # sources have genuinely diverged and THAT is the thing to go look at.
+        #
+        # Only "greater"/"less" are honoured, the two shapes live-confirmed for
+        # this repo's temperature markets (see the holiday-temp branch's own
+        # note). Every other strike_type in Kalshi's enum -- including the
+        # "_or_equal" variants, whose boundary is one degree off the "greater
+        # than {val}" rules text the +/-0.5 prob_threshold convention was
+        # verified against on 2026-07-17 -- falls through to the text logic
+        # below rather than being mapped to a direction whose numeric convention
+        # was never checked for it.
+        _strike_type = market.get("strike_type")
+        _structured_dir: str | None = None
+        _structured_strike = None
+        if _strike_type == "greater":
+            _structured_dir, _structured_strike = "above", market.get("floor_strike")
+        elif _strike_type == "less":
+            _structured_dir, _structured_strike = "below", market.get("cap_strike")
+        elif _strike_type is not None:
+            _log.debug(
+                "_parse_market_condition[%s]: strike_type=%r not in "
+                "('greater', 'less') — falling back to title/subtitle text",
+                ticker,
+                _strike_type,
+            )
+        if _structured_dir is not None:
+            if _structured_strike is None:
+                _log.warning(
+                    "_parse_market_condition[%s]: strike_type=%r but the "
+                    "matching %s_strike is missing — falling back to "
+                    "title/subtitle text",
+                    ticker,
+                    _strike_type,
+                    "floor" if _structured_dir == "above" else "cap",
+                )
+            else:
+                try:
+                    _structured_val = float(_structured_strike)
+                except (TypeError, ValueError):
+                    _log.warning(
+                        "_parse_market_condition[%s]: non-numeric structured "
+                        "strike=%r for strike_type=%r — falling back to "
+                        "title/subtitle text",
+                        ticker,
+                        _structured_strike,
+                        _strike_type,
+                    )
+                else:
+                    if _structured_val != val:
+                        _log.warning(
+                            "_parse_market_condition[%s]: structured "
+                            "%s_strike=%s disagrees with the ticker's own "
+                            "threshold %s — keeping the ticker value (it is "
+                            "what audit_settlement and the METAR vetoes "
+                            "compare against) and using the structured "
+                            "direction %r",
+                            ticker,
+                            "floor" if _structured_dir == "above" else "cap",
+                            _structured_val,
+                            val,
+                            _structured_dir,
+                        )
+                    return {
+                        "type": _structured_dir,
+                        "threshold": val,
+                        "prob_threshold": (
+                            val + 0.5 if _structured_dir == "above" else val - 0.5
+                        ),
+                    }
+
         if ">" in title or "above" in title or " be >" in title:
             return {"type": "above", "threshold": val, "prob_threshold": val + 0.5}
         elif "<" in title or "below" in title or " be <" in title:

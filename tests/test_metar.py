@@ -1109,3 +1109,165 @@ class TestDewPointCorrection:
         assert result is not None
         assert "dew_point_f" in result
         assert result["dew_point_f"] == pytest.approx(65.0, abs=0.1)
+
+
+class TestContestedMidnightHour:
+    """The 00:00-00:59 local-clock hour is the only hour the civil-day and
+    local-standard-time readings of the NWS climate day disagree about, so
+    metar._CONTESTED_HOUR_CUTOFF drops it from the running daily extreme.
+
+    All temperatures here are hand-picked so the contested reading would
+    CHANGE the answer if it were included -- a test where it made no
+    difference would pass whether or not the filter exists.
+    """
+
+    @staticmethod
+    def _obs(utc_hhmm: str, tmpf: float) -> dict:
+        return {"icaoId": "KNYC", "obsTime": f"2026-06-15 {utc_hhmm}:00", "tmpf": tmpf}
+
+    def test_contested_hour_reading_is_excluded_but_the_rest_survive(self):
+        """A 00:30 EDT reading is dropped; the 06:00 and 15:00 EDT readings on
+        the same local date are kept.
+
+        The second half is the positive control required for the absence
+        assertion: without it, a change that made _fetch_daily_temps_f drop
+        EVERYTHING (a broken tz, an empty parse) would satisfy "58.0 not in
+        temps" vacuously.
+        """
+        import metar
+
+        # 2026-06-15 is EDT (UTC-4): 04:30Z = 00:30 local (contested),
+        # 10:00Z = 06:00 local, 19:00Z = 15:00 local.
+        response = [
+            self._obs("04:30", 58.0),
+            self._obs("10:00", 63.0),
+            self._obs("19:00", 80.0),
+        ]
+        metar._DAILY_OBS_CACHE.clear()
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            temps = metar._fetch_daily_temps_f(
+                "KNYC", "America/New_York", datetime(2026, 6, 15).date()
+            )
+
+        assert temps is not None
+        assert 58.0 not in temps, (
+            "the 00:30 local reading is inside the contested hour and must not "
+            "reach the running extreme -- it is the one hour the civil-day and "
+            "local-standard-time climate days disagree about"
+        )
+        assert temps == [63.0, 80.0], (
+            "positive control: the 06:00 and 15:00 local readings on the same "
+            "date must still be kept, so the assertion above is about the "
+            "contested hour specifically and not about the fetch failing"
+        )
+
+    def test_the_excluded_reading_would_have_changed_the_running_min(self):
+        """The consequence the filter exists for, stated as a safety outcome.
+
+        A LOW market at threshold 62 locks only when the running min has
+        already fallen to <= 62 - 3 = 59. With the 00:30 reading of 58.0
+        included that test passes and the lock fires; with it excluded the
+        running min is 63.0 and it does not. Hand-computed, both branches.
+        """
+        import metar
+
+        response = [
+            self._obs("04:30", 58.0),  # 00:30 EDT -- contested
+            self._obs("10:00", 63.0),  # 06:00 EDT
+            self._obs("19:00", 80.0),  # 15:00 EDT
+        ]
+        metar._DAILY_OBS_CACHE.clear()
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            running_min = metar.fetch_metar_daily_extreme(
+                "KNYC", "America/New_York", datetime(2026, 6, 15).date(), "min"
+            )
+
+        assert running_min == 63.0
+        assert running_min > 62.0 - 3.0, (
+            "with the contested reading excluded, a threshold-62 LOW market's "
+            "monotone-safety veto must still reject: the running min has not "
+            "been confirmed below threshold-margin"
+        )
+        assert 58.0 <= 62.0 - 3.0, (
+            "control on the arithmetic itself: the excluded 58.0 WOULD have "
+            "cleared the same veto, so this test is about the filter and not "
+            "about the margin"
+        )
+
+    def test_0100_local_is_inside_the_window(self):
+        """Boundary: the cutoff is `hour < 1`, so 01:00 local is kept and
+        00:59 is not. Both sides asserted -- a one-sided boundary test passes
+        for a cutoff of 0, 1 or 2."""
+        import metar
+
+        response = [
+            self._obs("04:59", 40.0),  # 00:59 EDT -- last excluded minute
+            self._obs("05:00", 41.0),  # 01:00 EDT -- first included minute
+        ]
+        metar._DAILY_OBS_CACHE.clear()
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            temps = metar._fetch_daily_temps_f(
+                "KNYC", "America/New_York", datetime(2026, 6, 15).date()
+            )
+
+        assert temps == [41.0], (
+            "00:59 local must be excluded and 01:00 local included -- exactly "
+            f"the {metar._CONTESTED_HOUR_CUTOFF}h cutoff, no wider and no narrower"
+        )
+
+    def test_no_dst_zone_keeps_its_midnight_hour(self):
+        """Phoenix never observes DST, so local standard time IS the local
+        clock there and the two climate-day definitions coincide — nothing is
+        contested and nothing may be dropped.
+
+        This is the negative half of the guard: without the `dst()` scoping the
+        filter would silently discard a real, unambiguous Phoenix reading."""
+        import metar
+
+        # America/Phoenix is UTC-7 year-round: 07:30Z = 00:30 local, no DST.
+        response = [
+            {"icaoId": "KPHX", "obsTime": "2026-06-15 07:30:00", "tmpf": 88.0},
+            {"icaoId": "KPHX", "obsTime": "2026-06-15 22:00:00", "tmpf": 110.0},
+        ]
+        metar._DAILY_OBS_CACHE.clear()
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            temps = metar._fetch_daily_temps_f(
+                "KPHX", "America/Phoenix", datetime(2026, 6, 15).date()
+            )
+
+        assert temps == [88.0, 110.0], (
+            "a 00:30 reading in a non-DST zone is unambiguous and must be kept "
+            "-- the contested hour only exists while local standard time "
+            "trails the local clock"
+        )
+
+        # Positive control: the identical clock hour in a DST zone IS dropped,
+        # so this test is about the dst() scoping and not about the filter
+        # having quietly stopped working altogether.
+        metar._DAILY_OBS_CACHE.clear()
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = [
+                {"icaoId": "KNYC", "obsTime": "2026-06-15 04:30:00", "tmpf": 58.0},
+                {"icaoId": "KNYC", "obsTime": "2026-06-15 19:00:00", "tmpf": 80.0},
+            ]
+            mock.get.return_value.raise_for_status.return_value = None
+            edt = metar._fetch_daily_temps_f(
+                "KNYC", "America/New_York", datetime(2026, 6, 15).date()
+            )
+        assert edt == [80.0]
+
+    def test_cutoff_constant_is_one_hour(self):
+        """The whole design argument (conservative under BOTH climate-day
+        conventions) holds only for a one-hour exclusion. A wider cutoff would
+        start discarding uncontested readings and quietly suppress real locks."""
+        import metar
+
+        assert metar._CONTESTED_HOUR_CUTOFF == 1
