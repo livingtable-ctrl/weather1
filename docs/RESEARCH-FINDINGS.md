@@ -3,6 +3,14 @@
 **Last updated:** 2026-04-16 (Phase F WebSocket complete)  
 **Purpose:** Compiled research from similar Kalshi trading bots, weather forecasting APIs, academic papers, and prediction market strategies. Use this as a reference for future development.
 
+> **STALENESS WARNING — added 2026-08-29.** Parts of this document are now known
+> to be FALSE, not merely dated. Kalshi changed the settlement authority for daily
+> temperature markets on **2026-08-14**, and one strategy below rests on a premise
+> that has since been refuted. The two affected passages are marked inline with
+> `CORRECTED 2026-08-29`. Everything else here has NOT been re-verified against
+> that change — treat any settlement-dependent claim as unconfirmed until checked.
+> See [`docs/calibration-and-edge-research-2026-08-29.md`](calibration-and-edge-research-2026-08-29.md) §1 and §5.
+
 ---
 
 ## Part 1 — Similar Open-Source Systems Found
@@ -109,8 +117,14 @@
 
 #### Cross-Platform Prices (Polymarket)
 - Same weather events sometimes trade on both Kalshi and Polymarket at different prices
-- Buying YES on one + NO on the other below $1.00 combined = risk-free arb (when settlement definitions match)
-- Weather markets lower settlement risk than political markets (both reference NWS data)
+- ~~Buying YES on one + NO on the other below $1.00 combined = risk-free arb (when settlement definitions match)~~
+- ~~Weather markets lower settlement risk than political markets (both reference NWS data)~~
+- **CORRECTED 2026-08-29:** the settlement definitions do NOT match, and the two
+  venues do NOT both reference NWS data. Kalshi settles NYC daily high on Central
+  Park (CLINYC) via The Weather Company; Polymarket settles on LaGuardia (KLGA) via
+  Wunderground. The parenthetical caveat above is the load-bearing clause and it
+  fails. See Strategy S7 below and
+  [the 2026-08-29 research doc](calibration-and-edge-research-2026-08-29.md) §5.
 
 #### minuteTemp.com
 - Purpose-built for Kalshi/Polymarket weather traders
@@ -136,7 +150,15 @@
 
 ### Settlement Timing Details
 - Kalshi resolves contracts **6–9 AM ET** the morning after the observation day
-- Settlement source is **exclusively the NWS Daily Climatological Report (CLI)**, not real-time METAR or weather apps
+- ~~Settlement source is **exclusively the NWS Daily Climatological Report (CLI)**, not real-time METAR or weather apps~~
+  **CORRECTED 2026-08-29 — THIS IS NOW FALSE.** Since 2026-08-14 daily temperature
+  markets settle on **The Weather Company** (`weather.com/kalshi`), verified live
+  against the Kalshi API across six series. The station label is unchanged (CLINYC
+  is still Central Park) and TWC uses NWS as its underlying source, but the final
+  authority is a commercial vendor whose preliminary values Kalshi warns may differ
+  from final. The CLI direct-access URLs below are therefore no longer the
+  settlement authority, and the DST/LST note is documented against a superseded
+  process. See [the 2026-08-29 research doc](calibration-and-edge-research-2026-08-29.md) §1.
 - CLI uses 1-minute raw ASOS sensor data; NWS reviews for faulty sensors
 - During DST: reporting period is Local Standard Time (midnight to midnight), so the "day" effectively runs 1 AM to 12:59 AM the next day — matters for overnight temperature drops
 
@@ -185,13 +207,36 @@ Instead of a single edge threshold, use tiers:
 - Spread-skill ratio (CRPS decomposition) formalizes this as a calibration metric
 
 ### S5. Settlement Lag Exploitation
-The window between when METAR/DSM preliminary readings confirm the outcome and when the official CLI report publishes. Market prices may not have fully updated. A monitoring loop that checks METAR every few minutes after 5 PM local time can catch this.
+~~The window between when METAR/DSM preliminary readings confirm the outcome and when the official CLI report publishes. Market prices may not have fully updated. A monitoring loop that checks METAR every few minutes after 5 PM local time can catch this.~~
+
+**CORRECTED 2026-08-29 — the timing premise is superseded.** Daily temperature
+markets no longer wait on the NWS CLI report; since 2026-08-14 they settle on The
+Weather Company. The lag window this strategy exploits is defined against a
+publication event that no longer determines settlement, and TWC's own release and
+revision behaviour is unverified — nobody has read `weather.com/kalshi`. Separately
+and confirmed 3-0: METAR was never the settlement source under either regime, so a
+METAR-based confirmation is a PROXY, and Kalshi documented two divergence modes
+explicitly. Re-derive the window before relying on it. See
+[the 2026-08-29 research doc](calibration-and-edge-research-2026-08-29.md) §1.
 
 ### S6. Statistical Arbitrage — Correlated City Pairs
 Chicago + Milwaukee, NYC + Boston, Dallas + Houston temperature markets are correlated by regional weather patterns. When one city's market is mispriced relative to the other (given the same weather system), there may be a relative value trade.
 
 ### S7. Cross-Platform Arbitrage (Kalshi ↔ Polymarket)
-When the same weather event trades on both platforms, buying YES on one and NO on the other below $1.00 combined locks in risk-free profit. Requires monitoring both order books simultaneously.
+~~When the same weather event trades on both platforms, buying YES on one and NO on the other below $1.00 combined locks in risk-free profit. Requires monitoring both order books simultaneously.~~
+
+**CORRECTED 2026-08-29 — THE "RISK-FREE" PREMISE IS REFUTED (3-0).** Kalshi and
+Polymarket do not settle "the same" weather event. Kalshi resolves NYC daily high
+on Central Park (CLINYC) as reported by The Weather Company; Polymarket resolves
+"the highest temperature recorded at the LaGuardia Airport Station" using
+Wunderground data for KLGA. **Different station AND different vendor**, so a price
+gap is partly or wholly a real difference in the underlying random variable, not a
+mispricing. This matters because ladder buckets are 1-3 degF wide and Central
+Park's vegetation damps summer afternoon highs relative to the airports. The
+station basis is unmeasured anywhere and would have to be derived from historical
+records before any gap could be interpreted. Same correction applies to Part 2's
+"Cross-Platform Prices (Polymarket)" entry, which repeats the "both reference NWS
+data" premise. See [the 2026-08-29 research doc](calibration-and-edge-research-2026-08-29.md) §5.
 
 ### S8. Gaussian Distribution Method
 Instead of raw ensemble fraction counting, model P(T > threshold) using a Gaussian:

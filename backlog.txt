@@ -47258,3 +47258,139 @@ WHEN TO REVISIT: at ~60 days of exit_rule_shadow_log rows (from 2026-08-27),
   re-analyse the 195-trade set again -- ~20 variants have already been tried
   on it and anything further found there is forking paths. Re-enable
   stop-loss only if that forward test contradicts the table above.
+
+
+[OPEN -- filed 2026-08-29 by the calibration/edge research session. Verified live
+  against the Kalshi API during that session, not taken from the research agents
+  that surfaced it.] KALSHI MOVED DAILY TEMPERATURE SETTLEMENT TO THE WEATHER
+  COMPANY ON 2026-08-14, AND tracker.py STILL ASSERTS THE NWS CLI REPORT IS "THE
+  SOURCE KALSHI ACTUALLY SETTLES ON"
+Priority: Medium-High. NOT a correctness risk to any measurement taken so far --
+  see "WHAT IS NOT AFFECTED" below, which is the first thing to read and the
+  reason this is not filed as High. It is a mis-reference of the same class as
+  the hourly entry "The other 5 hourly cities settle on THE WEATHER COMPANY",
+  now confirmed for the DAILY families that are the bot's actual book.
+Files: tracker.py (~12 comment/docstring sites asserting CLI settlement, incl.
+  :8399 and the backfill_daily_temp_settlement / backfill_member_actual_temp
+  scoring path), main.py (CLI-report settlement fetch references), metar.py
+  (the lock's proxy target), docs/RESEARCH-FINDINGS.md (corrected 2026-08-29).
+  No code changed by this entry -- measurement/design question only.
+
+Problem:
+  Effective 2026-08-14, Kalshi daily temperature markets settle on The Weather
+  Company, not the final NWS Daily Climatological Report. Verified 2026-08-29
+  against api.elections.kalshi.com. Series metadata:
+
+    settlement_sources: [{"name": "The Weather Company",
+                          "url": "https://weather.com/kalshi"}]
+
+  Live rules text, KXHIGHNY-26AUG29-T86:
+
+    "If the maximum temperature recorded at New York City (CLINYC) for Aug 29,
+    2026, is greater than 86 degrees fahrenheit according to The Weather
+    Company, then the market resolves to Yes."
+
+  Six series checked, all The Weather Company: KXHIGHNY, KXHIGHCHI, KXHIGHDEN,
+  KXHIGHAUS, KXHIGHPHIL, KXLOWTCHI. (KXLOWTNY had zero open markets at the time
+  of checking and listed no sources -- seasonal listing, not a counter-example.
+  Re-check it when low-temp markets relist.)
+
+  The station LABEL is unchanged -- CLINYC is still Central Park -- and TWC
+  ingests NWS as its underlying source. What changed is the final authority,
+  which is now a commercial vendor whose preliminary values Kalshi's own
+  rules_secondary warns "may be subject to rounding and conversion differences
+  from the final reported value."
+
+WHAT IS NOT AFFECTED, and this bounds the whole entry:
+  Recorded outcomes are NOT contaminated. tracker.sync_outcomes derives
+  settled_yes from Kalshi's own `result` field (tracker.py:10095, verified this
+  session), not from a locally fetched CLI temperature. Whatever authority
+  Kalshi uses, the bot records Kalshi's verdict. So every Brier number, every
+  calibration fit, the b=1.487 price-recalibration finding, and the horizon
+  slope table in docs/calibration-and-edge-research-2026-08-29.md are scored
+  against the right truth. Do NOT re-open any of those on account of this entry.
+  This mirrors the hourly entry's own UPDATE 2026-08-25, where the
+  settlement-RECORDING half was already fixed by reading expiration_value and
+  only the MODELLING half stayed open. Same split here.
+
+WHAT IS AFFECTED:
+  1. Prose that is now factually false. tracker.py:8399 describes the NWS Daily
+     Climatological Reports as "the source Kalshi actually settles on". Roughly
+     a dozen further sites in tracker.py and main.py reason about "Kalshi's real
+     CLI-report settlement". A reader or agent grepping for settlement truth
+     gets a wrong answer with no warning. (Line citations verified 2026-08-29;
+     re-derive before editing, they drift.)
+  2. The METAR lock's proxy target. Confirmed 3-0 by the research pass that
+     Kalshi daily markets NEVER settled on METAR/ASOS under either regime --
+     Kalshi documented two divergence modes explicitly (a high inconsistent with
+     6-hr/24-hr METAR highs, and a final CLI value lower than the preliminary),
+     and would have no reason to write a METAR-inconsistency clause if the
+     numbers agreed. The NWS corroborates the mechanism: ASOS records
+     continuously even when not transmitting, so a one-minute spike can set the
+     daily extreme without appearing in any disseminated METAR. The lock now
+     proxies a commercial vendor's value instead of NWS's. This is a correction
+     to an already-built component, not a new build.
+  3. THE ONE WORTH MEASURING: member scoring and sigma. Whatever temperature
+     source backfill_daily_temp_settlement / backfill_member_actual_temp score
+     ensemble members against -- if it is NWS/ACIS while the market settles on
+     TWC, then member skill, station bias and data-driven sigma are all measured
+     against a DIFFERENT truth than the one that pays out. Unmeasured. This is
+     the daily analogue of the divergence experiment the hourly entry asks for
+     and has the same shape.
+  4. Documentation. docs/RESEARCH-FINDINGS.md Part 3 asserted settlement was
+     "exclusively the NWS Daily Climatological Report (CLI)" and its Strategy S7
+     called cross-venue arb "risk-free" because "both reference NWS data" --
+     both marked CORRECTED 2026-08-29, along with Part 2's cross-platform entry
+     and S5's settlement-lag timing premise. See that file's staleness banner.
+
+WHAT IS NOW UNVERIFIED RATHER THAN FALSE:
+  Kalshi's help-centre weather article was last updated 2026-07-22 and still
+  describes the NWS process. Three settlement mechanics documented against it
+  are therefore documented against a superseded regime and their status under
+  TWC is simply unknown:
+    - the LST climate-day window (1:00 AM to 12:59 AM local clock during DST)
+    - the METAR-inconsistency clause
+    - the preliminary-lower-than-final clause
+  On the LST window specifically, two corrections to the usual framing, both
+  confirmed 3-0 and worth preserving whatever TWC turns out to do: it is a
+  ONE-HOUR boundary offset, not a wrong 24 hours (the windows overlap 23 of 24
+  hours, and on most days it is a no-op since maxima occur mid-afternoon); and
+  it must be applied PER CITY, because Phoenix never observes DST and is in the
+  KXHIGH set, so a blanket +1h rule would introduce the error it is meant to
+  fix. Exposure is worst for a LOCK, which is treated as certainty. KXLOWT is
+  more exposed than KXHIGH since minima sit nearer the boundary hours.
+
+Next step (cheap, and it is a read before it is a measurement):
+  1. READ weather.com/kalshi. Nobody has -- not this session, not either
+     research pass, and it is named in Kalshi's own metadata as the methodology
+     source. Establish whether TWC preserves the LST climate-day window,
+     CLI-style quality control and next-morning finalisation, or changes the
+     measurement window, rounding convention, or revision behaviour. This is the
+     single highest-value unresolved item and it gates items 2 and 3 above.
+  2. Then run the hourly entry's divergence experiment shape against the daily
+     book: TWC's published value vs the NWS/ACIS value the repo scores members
+     against, for a few cities, at settle-adjacent timestamps. Gate on the same
+     >=1F bar batch-52 used. Daily strikes sit at whole/half degrees rather than
+     hourly's .99, so a sub-1F difference flips fewer sides than it does hourly
+     -- but "plausibly small" is exactly the assumption batch-52 disproved for
+     Miami, and this entry should not repeat it.
+  3. Only then decide whether anything in the modelling path changes. Do NOT
+     swap in a TWC feed blind; that is the mistake this project keeps
+     re-learning.
+
+Relationship to the hourly entry ("The other 5 hourly cities settle on THE
+  WEATHER COMPANY, not METAR"): same defect class, disjoint scope. That entry
+  covers the six HOURLY series (KXTEMP*), five on TWC and Miami on the Synoptic
+  Kalshi Weather Index. This one covers the DAILY high/low ladders (KXHIGH*,
+  KXLOWT*), which are the families the bot actually trades and which that entry
+  explicitly treats as the contrast case. Neither supersedes the other. If both
+  are picked up together the weather.com/kalshi read in step 1 serves both.
+
+Full write-up, including the research passes that surfaced it and everything
+  that did NOT survive verification:
+  docs/calibration-and-edge-research-2026-08-29.md, sections 1 and 5.
+
+When to revisit:
+  Immediately on any live-trading proposal touching daily temperature markets,
+  and before any batch that touches the METAR lock, station bias, or
+  data-driven sigma.
