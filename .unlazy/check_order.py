@@ -49,14 +49,22 @@ from _fork import FORK_SHA  # noqa: E402
 # SHA-256 of the protocol entry's bytes at HEAD. Update ONLY alongside an entry
 # in PROTOCOL_CHANGES -- the hash is the binding, the list is the reason.
 EXPECTED_ENTRY_SHA256 = (
-    "d590f6f9ce2a53dff88fe85c390219a4f9728cad16cd7ee54180d7c5ffdca891"
+    "4ebe969fd5b53821b1af1ea38c0053f6e900ad71007eaf20e031bb0f62b80fc2"
 )
 
-# Every deliberate change to the protocol text, newest last. The first four were
-# made BEFORE the first pick was logged; the entry caps that argument and it is
-# now spent. Anything after the first logged row is a re-registration under a
-# new protocol_version, not an edit -- with ONE terminal exception, the last
-# item below, which ends the registration rather than continuing it.
+# Every deliberate change to the protocol text, newest last. All four were made
+# BEFORE the first pick was logged; the entry caps that argument and it is now
+# spent. Anything after the first logged row is a re-registration under a new
+# protocol_version, not an edit.
+#
+# 2026-08-30: a TERMINAL abandonment marker was briefly added here and then
+# removed the same day. The sunset it recorded was decided on a false premise
+# -- that the METAR lock's paper profit came from a bug the June guard fixed.
+# Splitting the 89 lock trades by that guard's own window showed the reverse:
+# the bug window lost $72.40 and the surviving hours made $191.76. The entry
+# is back to its sealed text, byte-identical, and this note is left in place
+# because a hash that silently returned to a prior value would be the one
+# thing this gate exists to make impossible to do quietly.
 PROTOCOL_CHANGES = [
     "3563cd31 YES-branch addendum -- a measured consequence of the frozen "
     "coefficients, disclosed, additive, changes no commitment.",
@@ -67,13 +75,6 @@ PROTOCOL_CHANGES = [
     "e5b2d33e round-3 review, THE LAST PRE-CLOCK EDIT. Floor 1,700 -> 2,200 on "
     "a MEASURED 1.5c half-spread; pick price pinned to the first firing row; "
     "design-effect column defined and its negative in-sample ICC disclosed.",
-    "2026-08-30 TERMINAL. The registration is ABANDONED at 3 of 2,200 picks "
-    "and the project sunset. This is the one post-clock change that is NOT a "
-    "re-registration: the header status is changed and a terminal block is "
-    "APPENDED. The protocol body -- coefficients, floor, haircut, stopping "
-    "rule, clustering -- is byte-identical to the sealed 2026-08-29 text, "
-    "which is the property the sealing existed to protect. Verified by "
-    "diffing the body separately from the entry before this hash was updated.",
 ]
 
 
