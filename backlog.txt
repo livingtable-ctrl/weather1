@@ -1,6 +1,110 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-30 -- diagnosed while answering "why did the METAR lock stop
+  firing". The lock is not broken and was not narrowed by a regression. It is
+  STARVED, and the thing that starves it is a scheduling gap left behind by an
+  entry that is marked RESOLVED.]
+  `cron --sameday-only` SHIPPED 2026-08-22 AND NOTHING SCHEDULES IT -- THE ONLY
+  PROFITABLE SIGNAL THIS BOT HAS RUNS ~5 TIMES A MONTH IN ITS USABLE WINDOW
+Priority: HIGH, and it is the highest expected-value item in this file. The
+  METAR lock is the only mechanism this project has ever made money on (see
+  "EVERY DOLLAR THIS BOT HAS EVER MADE CAME FROM THE METAR LOCK"). It converts
+  at 4 of 5 when it gets an input. It gets 5 inputs a month. The fix is a
+  scheduled task, not a model change.
+Files: main.py cmd_schedule (~12586, the only schtasks registration),
+  cron.py (--sameday-only wiring, already built), backlog ~L19135
+  [RESOLVED 2026-08-22] CITY-LOCAL AFTERNOON SAME-DAY SWEEP (the parent).
+
+WHAT IS ACTUALLY WRONG. The CITY-LOCAL AFTERNOON SAME-DAY SWEEP entry built
+the capability and closed. It shipped `cron --sameday-only` threaded through
+four call hops with wiring tests and an opus review. All of that is real and
+none of it is disputed. But the entry's own stated purpose was a scan "cheap
+enough to run at each city's local afternoon window" -- and NOTHING REGISTERS
+IT. main.py's cmd_schedule creates exactly one weather task:
+
+    schtasks /Create /F /SC HOURLY /MO 3 /TN "<name>" /TR "<full cron>"
+
+A 3-hourly FULL cron. There is no --sameday-only task, at local afternoon or
+at any other time. Grep for a scheduler registration mentioning sameday
+returns nothing. So the mode exists and only ever runs when an operator types
+it. THE CAPABILITY SHIPPED; THE SCHEDULE DID NOT. That is the whole defect.
+
+THE MEASUREMENT, 2026-08-30 against data/predictions.db.
+The lock can only fire when a SAME-DAY market is scanned at a local hour late
+enough that the day's extreme has already been observed. In UTC that is
+roughly 20:00-22:00 for eastern cities. Same-day temperature scan volume, and
+what the lock did with it:
+
+    month   same-day temp scans   metar_lockout rows
+    2026-06        116                   89
+    2026-07         49                   13
+    2026-08         39                    4
+
+  AUGUST, RESTRICTED TO THE 20-22h UTC WINDOW WHERE A LOCK IS POSSIBLE:
+    5 same-day scans -> 4 locks.
+
+The conversion rate inside the usable window is 4 of 5. The lock is not
+failing to fire when asked; it is almost never asked. n=5 is far too small to
+call that an 80% rate with any precision -- the point is the DENOMINATOR, not
+the ratio.
+
+WHY THIS IS NOT THE SAME BUG AS THE JUNE CLIFF, which was investigated first
+and is a genuinely different cause. Commit e395392b (2026-06-25 21:31) added a
+guard requiring the METAR observation's local date to equal target_date.
+Before it, 62 of 88 locks (70%) came from scans at 00-02h UTC; after it, that
+window produces exactly zero. 00-02h UTC is 20:00-22:00 the PREVIOUS local
+evening, so the target climate day had not started and the observation could
+not legitimately settle anything. That guard was correct and should not be
+touched. On settled outcomes the window it removed was the worse half:
+
+    window                        n    correct        Brier
+    00-02h UTC (now rejected)    62   37 (59.7%)     0.2974
+    other hours (still fires)    26   21 (80.8%)     0.1562
+
+A lock asserting near-certainty while scoring 0.2974 is worse than answering
+0.5 to everything. DO NOT "FIX" THE LOCK BY RELAXING THE GUARD. The June
+volume was mostly the bug, and the commit names the trades it cost (OKC and
+SATX B91.5). The cliff was a fix; the floor is this entry.
+
+FIX. Register a second scheduled task running `cron --sameday-only`, timed to
+the local afternoon of the cities actually traded rather than to a single
+clock. Two bands cover the current map: ~14:00-16:00 ET and ~14:00-16:00 PT.
+Because the mode was built to be cheap, running it several times across that
+span is affordable, and more samples in the window is the entire point.
+  DO NOT simply increase the FULL cron's frequency. That re-runs the
+  multi-day scan and batch prewarm for no benefit, and the 3-hourly full task
+  is already fine for what it does.
+  MIND THE STALENESS DETECTOR ALREADY BUILT FOR THIS. cron.py ~2061-2091
+  deliberately does NOT let a --sameday-only run advance the "last FULL run"
+  timestamp, precisely so frequent sameday runs cannot mask a dead full-scan
+  task. Adding a scheduled sameday task makes that path live for the first
+  time; verify the warning still fires by letting the full task lapse.
+
+WHAT TO VERIFY AFTER, because volume is the whole claim: same-day temperature
+scans in the 20-22h UTC window per month, and metar_lockout rows per month.
+If scans in the window rise and locks do not rise roughly with them, the
+premise of this entry is wrong and the lock has a second constraint that was
+not found here.
+
+WHAT THIS ENTRY DOES NOT CLAIM. It does not claim the lock is PROFITABLE at
+volume. The accuracy split above is over all settled lock PREDICTIONS, not the
+traded subset, and profitability depends on entry price against a measured
+1.5c median half-spread plus the Kalshi taker fee, not on accuracy alone.
+It also does not re-derive "every dollar came from the METAR lock" -- that is
+carried from the no-edge entry and was not independently checked here. What is
+established is narrow and sufficient to act on: the input volume collapsed,
+the cause is a missing scheduled task, and the task is cheap.
+
+CROSS-REFERENCE. If MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM lands
+first, `watch --auto` at 5-minute cadence covers every city's local afternoon
+for free and this entry closes as superseded -- which is exactly what the
+parent entry predicted in its 2026-07-20 update. Check that before building.
+The parent was resolved on the reasoning that the VM move had NOT landed; that
+is still true, so this is still the right fix, but it has a real expiry
+condition and should not be built twice.
+
+
 [OPEN 2026-08-30 -- the daily-ladder refit the research doc names as "the
   decisive test, not yet run" (section 3), run WITHOUT the paper's 36GB dataset.
   THIS ENTRY HAS NOW BEEN REFUTED TWICE BEFORE LANDING IN ITS CURRENT FORM.
