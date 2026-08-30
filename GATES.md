@@ -17,14 +17,24 @@ FINDINGS.md. Nineteen of them were defects in THESE GATES rather than in the
 code the gates certify, which is the single most useful thing this exercise
 produced.
 
-- [x] G1: The protocol is committed to backlog.txt in a commit that lands
-      strictly before the first commit touching tracker.py or cron.py, so the
-      pre-commitment is provable from git history rather than asserted.
+- [x] G1: The protocol was committed before any implementation, AND its text
+      has not moved since. Two properties: ordering, proved from a FROZEN fork
+      point; and immutability, proved by hashing the entry's own bytes.
   CHECK: python .unlazy/check_order.py
   EXPECT: GATE_G1_PASS
-  EVIDENCE: exit 0, matched. protocol commit 425fd7bd, first implementation
-      commit 3563cd31, ancestry confirmed; the protocol commit touches neither
-      tracker.py nor cron.py.
+  EVIDENCE: exit 0, matched. Protocol commit 425fd7bd; zero implementation
+      commits between the frozen fork 6c8c7e3b and it; first implementation
+      commit 3563cd31; the protocol commit touches neither tracker.py nor
+      cron.py. Entry is 53,534 bytes hashing to 4ebe969f..., with all four
+      deliberate changes listed.
+      TWO DEFECTS FIXED AFTER THE MERGE, both found by review. Re-anchoring on
+      the protocol commit had REMOVED THE GATE'S TEETH -- that range excludes
+      everything reachable from it, so an implementation written first and
+      back-dated behind a later pre-registration became invisible and the
+      ordering check could never fail. And tracking "every commit touching
+      backlog.txt" went red the moment an unrelated entry was filed, while
+      never looking at the protocol text at all. Content-hashing binds what the
+      gate claims to protect; the frozen fork restores what it claims to prove.
 
 - [x] G2: The protocol entry states all four things the brief demands — the
       per-pick log contents and decision rule, the multiple-testing haircut with
@@ -60,8 +70,8 @@ produced.
       _SCHEMA_VERSION matches len(_MIGRATIONS).
   CHECK: python .unlazy/check_migration.py
   EXPECT: GATE_G4_PASS
-  EVIDENCE: exit 0, matched. 84 statements on master are a byte-identical AST
-      prefix of the 86 now; the 2 appended are the table and its unique index;
+  EVIDENCE: exit 0, matched. 84 statements at the frozen fork are a
+      byte-identical AST prefix of the 86 now; the 2 appended are the table and its unique index;
       _SCHEMA_VERSION 86 == len(_MIGRATIONS).
 
 - [x] G5: The writer is shadow-only by construction: it performs no network I/O

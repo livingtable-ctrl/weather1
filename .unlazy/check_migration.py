@@ -33,12 +33,14 @@ need(
 )
 
 # The list as it stands on master must be a strict PREFIX of the list now.
-base = subprocess.run(
-    ["git", "merge-base", "HEAD", "master"],
-    cwd=ROOT,
-    capture_output=True,
-    text=True,
-).stdout.strip()
+# The FROZEN fork, not a computed merge-base. Once this work lands,
+# merge-base(HEAD, master) == HEAD and master already CONTAINS the appended
+# migrations, so the "appended" set comes back empty and the gate reports the
+# table missing -- the same post-merge collapse that hit G1 and G9.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _fork import FORK_SHA  # noqa: E402
+
+base = FORK_SHA
 old_src = subprocess.run(
     ["git", "show", f"{base}:tracker.py"],
     cwd=ROOT,

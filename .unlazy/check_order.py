@@ -1,21 +1,72 @@
-"""G1: the protocol commit must land strictly before any implementation commit.
+"""G1: the protocol was committed before any implementation, and has not moved.
 
-Proves the pre-commitment from git history rather than from an assertion in the
-text. Walks the first-parent history of HEAD, finds the commit that introduced
-the pre-registration entry into backlog.txt, and finds the earliest commit that
-touched tracker.py or cron.py at or after the fork point from master. The former
-must be an ancestor of the latter.
+Two independent properties, proved separately:
+
+  ORDERING -- the commit that introduced the pre-registration into backlog.txt
+  precedes the first commit touching tracker.py or cron.py, and does not itself
+  carry implementation changes.
+
+  IMMUTABILITY -- the protocol entry's BYTES at HEAD hash to a value recorded
+  here. Every deliberate change to them is listed with its reason.
+
+WHY IMMUTABILITY IS CONTENT-HASHED, NOT COMMIT-TRACKED. An earlier version
+listed every commit touching backlog.txt and required each to be declared. That
+was wrong twice. It fails on any UNRELATED backlog entry -- the file holds
+hundreds, and prepending one has nothing to do with the protocol -- so it went
+red the moment a note about a circuit breaker was filed. And it never looked at
+the protocol text at all, so a commit could declare itself "typo fix" while
+rewriting N_KILL. Hashing the entry's own bytes binds the thing the gate claims
+to protect and ignores everything else in a 3.2 MB file.
+
+WHY THE FORK POINT IS FROZEN. An earlier version searched `merge-base(HEAD,
+master)..HEAD` for implementation commits, which broke after merge -- the range
+goes empty. Re-anchoring on `proto_sha..HEAD` fixed that and REMOVED THE GATE'S
+TEETH: that range excludes everything reachable from the protocol commit, so an
+implementation written first and back-dated behind a later pre-registration
+becomes invisible and the ancestry check can never fail. That is the exact
+fraud this gate exists to detect. FORK_SHA is the pre-merge fork point, frozen;
+it is permanent, survives the merge, and restores the check.
 """
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
+import re
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MARKER = "FORWARD-VALIDATION PROTOCOL FOR THE PRICE-RECALIBRATION RULE"
 IMPL = ("tracker.py", "cron.py")
+
+# Frozen fork point, single-sourced in _fork.py -- three gates need it and a
+# retyped constant drifting apart is the defect this session spent three review
+# rounds removing.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _fork import FORK_SHA  # noqa: E402
+
+# SHA-256 of the protocol entry's bytes at HEAD. Update ONLY alongside an entry
+# in PROTOCOL_CHANGES -- the hash is the binding, the list is the reason.
+EXPECTED_ENTRY_SHA256 = (
+    "4ebe969fd5b53821b1af1ea38c0053f6e900ad71007eaf20e031bb0f62b80fc2"
+)
+
+# Every deliberate change to the protocol text, newest last. All three were made
+# BEFORE the first pick was logged; the entry caps that argument and it is now
+# spent. Anything after the first logged row is a re-registration under a new
+# protocol_version, not an edit.
+PROTOCOL_CHANGES = [
+    "3563cd31 YES-branch addendum -- a measured consequence of the frozen "
+    "coefficients, disclosed, additive, changes no commitment.",
+    "3ecf7b16 round-1 review. N_KILL 1,340 -> 1,700, look 1 670 -> 850, "
+    "M 10 -> 12, primary cluster (city,target_date) -> target_date.",
+    "26f5f93c round-2 review. Floor re-DENOMINATED in distinct picks rather "
+    "than logged rows; cluster justified by mechanism rather than by the z.",
+    "e5b2d33e round-3 review, THE LAST PRE-CLOCK EDIT. Floor 1,700 -> 2,200 on "
+    "a MEASURED 1.5c half-spread; pick price pinned to the first firing row; "
+    "design-effect column defined and its negative in-sample ICC disclosed.",
+]
 
 
 def git(*args: str) -> str:
@@ -32,10 +83,7 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
-base = git("merge-base", "HEAD", "master")
-rng = f"{base}..HEAD"
-
-# The commit that added the marker line to backlog.txt.
+# ---------------------------------------------------------------- ORDERING
 proto = git("log", "--format=%H", "-S", MARKER, "--", "backlog.txt")
 proto_commits = [c for c in proto.splitlines() if c]
 if not proto_commits:
@@ -43,28 +91,31 @@ if not proto_commits:
 proto_sha = proto_commits[-1]  # oldest introducing commit
 print(f"protocol commit: {proto_sha[:12]}")
 
-# Every commit on this branch that touches an implementation file.
-impl_log = git("log", "--format=%H", "--reverse", rng, "--", *IMPL)
+# THE TEETH: nothing may have implemented this before the protocol landed.
+# Searched from the FROZEN fork, so a back-dated pre-registration is visible.
+before = [
+    c
+    for c in git(
+        "log", "--format=%H", f"{FORK_SHA}..{proto_sha}", "--", *IMPL
+    ).splitlines()
+    if c
+]
+if before:
+    fail(
+        "implementation commit(s) land BEFORE the pre-registration -- the "
+        "protocol was not pre-committed: " + ", ".join(c[:8] for c in before)
+    )
+print(f"no implementation between {FORK_SHA} and the protocol commit")
+
+impl_log = git("log", "--format=%H", "--reverse", f"{proto_sha}..HEAD", "--", *IMPL)
 impl_commits = [c for c in impl_log.splitlines() if c]
 if not impl_commits:
     fail(
-        "no implementation commit touches tracker.py or cron.py on this branch; "
-        "G1 cannot pass vacuously -- the ordering is only meaningful once the "
-        "implementation exists"
+        "no implementation commit touches tracker.py or cron.py after the "
+        "protocol commit; G1 cannot pass vacuously -- the ordering is only "
+        "meaningful once the implementation exists"
     )
-first_impl = impl_commits[0]
-print(f"first implementation commit: {first_impl[:12]}")
-
-if proto_sha == first_impl:
-    fail("the protocol and the implementation are in the SAME commit")
-
-anc = subprocess.run(
-    ["git", "merge-base", "--is-ancestor", proto_sha, first_impl],
-    cwd=ROOT,
-    capture_output=True,
-)
-if anc.returncode != 0:
-    fail("the protocol commit is not an ancestor of the first implementation commit")
+print(f"first implementation commit: {impl_commits[0][:12]}")
 
 # The protocol commit must not itself carry implementation changes.
 # `-z` + NUL split, not .split(): a filename containing a space would silently
@@ -75,67 +126,27 @@ bad = sorted(set(touched) & set(IMPL))
 if bad:
     fail(f"the protocol commit also changes implementation files: {bad}")
 
-# THE CONVERSE, which the first version never checked. G1's English says the
-# pre-commitment is provable from git history; that is only true if the
-# protocol text has not moved since. `3563cd31` -- the first implementation
-# commit -- added 28 lines to backlog.txt, and this gate printed PASS anyway,
-# because only the introduction of the title line was tracked. A later commit
-# could rewrite the threshold, N_KILL or the frozen coefficients and nothing
-# here would notice.
-#
-# Post-protocol edits to backlog.txt are ALLOWED but must be declared, so an
-# honest addendum is possible and a silent rewrite is not.
-DECLARED_EDITS = {
-    # sha prefix -> what it added, and why it does not change a commitment
-    "3563cd31": "YES-branch addendum: a measured consequence of the frozen "
-    "coefficients, disclosed, additive, changes no commitment",
-    "3ecf7b16": "round-1 review corrections. DOES change pre-committed numbers "
-    "(N_KILL 1,340 -> 1,700, look 1 670 -> 850, M 10 -> 12, primary "
-    "cluster (city,target_date) -> target_date). Legitimate ONLY "
-    "because the clock had not started: at that commit the live DB "
-    "was at user_version 84, price_recal_shadow_log did not exist "
-    "and zero picks were logged, so section 6's no-amendment rule "
-    "had not yet begun to bind. The entry carries the correction "
-    "notice and names every superseded figure. Any edit after the "
-    "FIRST LOGGED PICK is a re-registration, not a correction, and "
-    "must be recorded as one.",
-    "26f5f93c": "round-2 review corrections. Changes the DENOMINATION of the "
-    "floor (1,700 distinct picks, not logged rows -- the cluster-robust z is "
-    "exactly invariant to the multi-day duplication the unique index permits), "
-    "leads the cluster choice with the mechanism rather than the z comparison, "
-    "and recomputes four figures round 1 had itself written on superseded "
-    "inputs. Same pre-clock justification as 3ecf7b16, and the entry now caps "
-    "that argument at ONE further use -- this is that use. A third correction "
-    "is a re-registration under a new protocol_version whatever the pick "
-    "count says.",
-    "e5b2d33e": "round-3 review corrections, and THE LAST EDIT PERMITTED BEFORE "
-    "THE CLOCK. Resizes the floor 1,700 -> 2,200 on a MEASURED half-spread "
-    "(median 0.0150 across 1,769 in-band orderbook snapshots) after round 3 "
-    "found the 1c figure was not unverified but refutable from data already in "
-    "this repo; pre-commits which row supplies a pick's price; and defines the "
-    "design-effect column, disclosing that the in-sample ICC is NEGATIVE and so "
-    "does not support the mechanism the cluster choice leans on. "
-    "THIS IS THE THIRD PRE-CLOCK CORRECTION AND THE ENTRY'S OWN CAP ALLOWED "
-    "TWO. Recorded as a deliberate override, not rationalised: sizing to an "
-    "assumption the data in hand already contradicts is the worse error. The "
-    "cap now holds absolutely -- any further edit is a re-registration under a "
-    "new protocol_version, whatever the pick count says.",
-}
-later = [
-    c
-    for c in git(
-        "log", "--format=%H", "--reverse", f"{proto_sha}..HEAD", "--", "backlog.txt"
-    ).splitlines()
-    if c
-]
-undeclared = [c for c in later if c[:8] not in DECLARED_EDITS]
-if undeclared:
+# ------------------------------------------------------------- IMMUTABILITY
+TEXT = (ROOT / "backlog.txt").read_text(encoding="utf-8")
+start = TEXT.find(MARKER)
+if start < 0:
+    fail("the pre-registration entry is no longer in backlog.txt")
+nxt = re.search(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[start:])
+entry = TEXT[start : start + (nxt.start() if nxt else len(TEXT) - start)]
+digest = hashlib.sha256(entry.encode("utf-8")).hexdigest()
+print(f"protocol entry: {len(entry.encode('utf-8')):,} bytes, sha256 {digest[:16]}...")
+if digest != EXPECTED_ENTRY_SHA256:
     fail(
-        "commit(s) after the pre-registration edit backlog.txt without being "
-        "declared in DECLARED_EDITS -- the protocol text is no longer the text "
-        "that was pre-committed: " + ", ".join(c[:8] for c in undeclared)
+        "THE PROTOCOL TEXT HAS CHANGED.\n"
+        f"       expected {EXPECTED_ENTRY_SHA256}\n"
+        f"       found    {digest}\n"
+        "       If deliberate, add it to PROTOCOL_CHANGES with a reason and "
+        "update EXPECTED_ENTRY_SHA256.\n"
+        "       If the clock has started (any row in price_recal_shadow_log) "
+        "it is NOT an edit -- it is a re-registration under a new "
+        "protocol_version, and the old registration is marked FAILED first."
     )
-for c in later:
-    print(f"declared post-protocol backlog edit: {c[:8]} -- {DECLARED_EDITS[c[:8]]}")
+for c in PROTOCOL_CHANGES:
+    print(f"  declared change: {c[:76]}")
 
 print("GATE_G1_PASS")

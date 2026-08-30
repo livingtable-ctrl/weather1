@@ -1,6 +1,145 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-30 -- observed on the first cron cycle after the option-5 shadow
+  log landed. Not caused by that change; surfaced by watching a full run.]
+  FLASH-CRASH BREAKER RE-TRIGGERS ON EVERY CHECK WHILE ALREADY IN COOLDOWN --
+  IT EXTENDS THE COOLDOWN, RE-LOGS, AND RE-WRITES DISK EACH TIME
+Priority: MEDIUM. The direction is safe (a cooldown only ever BLOCKS a trade,
+  never enables one), so this is not a live-money hazard. It is a real
+  behavioural defect plus a signal-to-noise failure on the one log line an
+  operator watches a run through.
+Files: circuit_breaker.py FlashCrashCB.check (~line 452-484), is_in_cooldown.
+
+OBSERVED. One cron cycle, 2026-08-30 07:50-07:52 UTC. KXLOWTBOS-26AUG30-T65
+alone produced roughly FIFTY "FLASH CRASH CB" warnings, and the percentages
+repeat: 38.5% five times, 44.6% three times, 23.1% three times, 29.2% twice,
+50.8% twice. Repeating values are the tell -- these are not fifty distinct
+moves, they are the same 300s window being re-measured over and over.
+KXRAINWKND-26AUG29-PHX and -DC did the same at lower volume.
+
+THE CAUSE, read from the code rather than inferred. check() does not consult
+is_in_cooldown() at all:
+
+    if abs(current_price - oldest_price) / oldest_price >= self.threshold_pct:
+        self._cooldowns[ticker] = now + self.cooldown_seconds
+        _log.warning("FLASH CRASH CB: ...")
+        self._save_cooldowns()
+        return True
+
+check() is called from BOTH the kalshi_ws background thread and the main scan
+thread's per-opportunity fallback (its own docstring says so). So while a big
+move sits inside the window, every subsequent call re-enters that branch.
+
+THREE CONSEQUENCES, in descending order of how much they matter:
+
+ 1. THE COOLDOWN IS EXTENDED, NOT HELD. `_cooldowns[ticker] = now + cooldown`
+    is an assignment, not a max() against the existing value, and it runs on
+    every re-trigger, so the block outlives the event that caused it. BOUNDED,
+    though -- not unbounded: _history is pruned to now - window_seconds, so
+    once the pre-move observations age out, `oldest` is itself a post-move
+    price and the branch stops firing however fast anything polls. The
+    over-extension is therefore about one window, i.e. the cooldown ends near
+    900s rather than the 600s the log claims. It runs past that only on
+    genuinely fresh >=20% moves, where re-arming is defensible. Polling rate
+    drives the line count and the disk writes, not the end time.
+ 2. _save_cooldowns() IS NOT THROTTLED. _save_history() deliberately is --
+    _HISTORY_SAVE_INTERVAL_SECS = 5.0, with a comment explaining why. The
+    cooldown write has no such guard, so one ticker in a volatile window drove
+    ~50 disk writes in ~110 seconds. Small ones -- atomic_write_json of a short
+    dict, no SQLite anywhere on this path -- so the cost is real but modest.
+    It is listed second because it is cheap to fix alongside the first, not
+    because it is expensive.
+ 3. THE WARNING STOPS BEING A SIGNAL. Fifty lines for one ticker buried the
+    rest of the cycle. An existing note in this file (the WS-bootstrap entry,
+    "A NOTE FOR WHOEVER WATCHES THE FIRST REAL CRON RUN") correctly says these
+    warnings are expected and should not be read as a new defect -- that note
+    is about the breaker FIRING at all, on 18 distinct tickers. It does not
+    cover one ticker firing fifty times, and this entry is the difference.
+
+FIX, smallest first. NOT a three-line change, and the obvious version
+DEADLOCKS:
+  * self._lock is threading.Lock(), NOT RLock (circuit_breaker.py:370), and
+    check() does all its work inside `with self._lock:` while is_in_cooldown()
+    acquires the same lock. "Return early from check() when
+    is_in_cooldown(ticker)" hangs the WS thread and the scan thread
+    permanently. It has to be an INLINE test inside the existing `with` --
+    `if now < self._cooldowns.get(ticker, 0): return False` -- or a
+    _is_in_cooldown_locked() helper. Record the price into _history either
+    way; only the re-log, re-arm and re-save are suppressed.
+  * If the cooldown should ever be extended by a NEW move, make it
+    max(existing, now + cooldown) and say so, rather than assigning.
+  * Throttle _save_cooldowns() the way _save_history() already is.
+
+TEST IT PROPERLY. A test that calls check() twice with a crash-sized move must
+assert the SECOND call logs nothing and does not move the stored cooldown
+deadline -- asserting only that it "returns True" would pass under the current
+code and under the fix, which is the vacuous shape this repo has shipped
+before. Drive the middle of the window, not its endpoints.
+
+When to revisit: cheap enough to do next time circuit_breaker.py is open.
+Nothing depends on it, and no trade is placed or blocked incorrectly today.
+
+
+[OPEN 2026-08-30 -- same cron cycle. Filed separately because the fix is a
+  one-line string and the reasoning is entirely different.]
+  THE CRON STARTUP BANNER SAYS "REAL MONEY TRADES ENABLED" WHEN NO LIVE
+  TRADING IS ARMED
+Priority: LOW as a defect, MEDIUM as an operator-safety issue -- a banner that
+  cries wolf is worse than no banner, because the one time it is true nobody
+  will read it differently.
+Files: cron.py:4996 (inside cron.cmd_cron, guarded by
+  `if os.getenv("KALSHI_ENV") == "prod"`), AND main.py ~13420, which prints a
+  SECOND banner. NOT main.py's cmd_cron at :293 -- that is a thin wrapper with
+  no banner, and a fixer following a "main.py cmd_cron" pointer finds nothing.
+
+OBSERVED. Every prod cron run opens with:
+
+    CRON RUNNING IN PRODUCTION MODE -- REAL MONEY TRADES ENABLED
+    KALSHI_ENV=prod | STARTING_BALANCE=$1000.00
+
+THE CODE FACT, which is what carries this entry -- the observed run only
+prompted the look. cron.py:4996 is guarded solely by KALSHI_ENV == "prod",
+which selects which API HOST is read. It has nothing to do with whether order
+placement is armed.
+
+TWO BANNERS, NOT ONE. main.py ~13420 prints "RUNNING IN PRODUCTION MODE --
+LIVE ORDERS ENABLED (this command can place a real live order)", keyed on
+_compute_live_orders_possible (main.py:718), which is purely COMMAND-based --
+it lists "cron"/"loop" unconditionally and never reads LIVE_TRADING_ENABLED
+either. On `python main.py cron` in prod BOTH banners print, so patching
+cron.py alone leaves the screen still saying LIVE ORDERS ENABLED.
+
+WHAT ACTUALLY GATES PLACEMENT: trading_gates.LiveTradingGate.
+_check_never_skippable (~40-72) -- TRADING_PAUSED unset, no kill switch,
+client.base_url == PROD_BASE, AND LIVE_TRADING_ENABLED == "true". Four
+conditions, none of which either banner consults.
+
+FIX. Key both banners on the thing that gates placement, route both through
+the same env helper so they cannot drift (cron.py uses raw
+os.getenv("KALSHI_ENV"), main.py uses _kalshi_env() with a "demo" default --
+identical today, which is exactly when drift is invisible), and state the two
+facts separately:
+
+    KALSHI_ENV=prod (reading the production API)
+    LIVE TRADING: DISABLED -- orders are paper only
+
+AND GET THE ENABLED WORDING RIGHT. "REAL MONEY ORDERS WILL BE PLACED" would be
+wrong in the other direction for cron: its live path is SELL-only, protective
+exits on already-open live positions. Honest wording is closer to
+"LIVE TRADING: ENABLED -- protective SELLs may be placed on open live
+positions". The loud line should be loud only when it is true, and true about
+what it actually does.
+
+TEST IT. Two cases, and the second is the one that matters: with the placement
+gate unsatisfied the banner must NOT contain "REAL MONEY"/"LIVE ORDERS", and
+with it satisfied it must. A test asserting only the disabled case passes
+trivially if the banner is deleted entirely.
+
+When to revisit: before live trading is ever armed, and ideally before the next
+person quotes the banner in an analysis.
+
+
 [OPEN 2026-08-29 -- PRE-REGISTRATION. This entry is written BEFORE the code that
   implements it, and the commit order is the point: the protocol has to be
   falsifiable on git history, not asserted afterwards. Nothing below may be

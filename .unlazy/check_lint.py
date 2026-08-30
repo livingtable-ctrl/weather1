@@ -12,6 +12,8 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _fork import FORK_SHA  # noqa: E402
 
 
 # DERIVED from the diff, not hand-listed. The hand-list omitted
@@ -19,13 +21,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # lint "the changed files" was false as measured -- and a hand-list drifts again
 # every time the change grows.
 def _changed_python_files() -> list[str]:
-    base = subprocess.run(
-        ["git", "merge-base", "HEAD", "master"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    ).stdout.strip()
+    # The FROZEN fork, not a computed merge-base -- see _fork.py. Post-merge a
+    # merge-base collapses to HEAD, the diff empties, and this gate would lint
+    # nothing while still having plenty to certify. It passes today only
+    # because uncommitted changes are also collected; committing them would
+    # have hidden the hole again.
+    base = FORK_SHA
     out = subprocess.run(
         ["git", "diff", "--name-only", "-z", f"{base}..HEAD"],
         cwd=ROOT,
