@@ -355,25 +355,33 @@ _DAILY_OBS_CACHE: ForecastCache[list[float] | None] = ForecastCache(
 # unresolved which climate day they belong to. Outside DST the two candidate
 # definitions coincide and nothing is excluded -- see the call site's own note.
 #
-# Kalshi's own weather-market documentation states that the settling NWS Daily
-# Climate Report "use[s] local standard time when reporting daily high
-# temperatures. This means that during Daylight Saving Time, the high
-# temperature will be recorded between 1:00 AM and 12:59 AM local time the
-# following day". tracker._fetch_asos_observations carries the opposite claim --
-# a plain civil midnight-to-midnight day, "confirmed 2026-07-05 against real CLI
-# reports (Minneapolis: a 69F low at 6:16 AM ... Phoenix: same pattern at 5:16
-# AM)". Both of those examples sit inside 00:00-23:59 under EITHER convention,
-# so that verification cannot actually discriminate between them; the only hour
-# the two definitions disagree about is 00:00-00:59 local clock.
+# THREE candidate day boundaries are in play and none of them is settled:
 #
-# Rather than rule on an unresolved empirical question from a live safety path,
-# this drops exactly that hour, which is correct under both readings:
-#   - under local standard time it belongs to the PREVIOUS climate day, so
-#     excluding it is simply right;
-#   - under a civil day it belongs to this one, so excluding it can only raise
-#     the running min and lower the running max -- i.e. make a monotone-safety
-#     lock fire LESS readily, never more.
-# Conservative in both directions is what a bound wants. The cost is real and
+#  1. The NWS climate day runs on Local Standard Time (confirmed 3-0 in
+#     docs/calibration-and-edge-research-2026-08-29.md), so during DST it runs
+#     01:00 to 00:59 the following local-clock day.
+#  2. tracker._fetch_asos_observations asserts the opposite -- a plain civil
+#     midnight-to-midnight day, "confirmed 2026-07-05 against real CLI reports
+#     (Minneapolis: a 69F low at 6:16 AM ... Phoenix: same pattern at 5:16 AM)".
+#     Both of those examples sit inside 00:00-23:59 under EITHER convention, so
+#     that verification cannot actually discriminate between them.
+#  3. Effective 2026-08-14 the daily temperature ladders no longer settle on the
+#     NWS CLI report at all -- they settle on The Weather Company (verified live
+#     against two Kalshi endpoints, six series, commit e853736c). Kalshi's own
+#     help-centre weather article was last updated 2026-07-22 and still
+#     describes the NWS process, so the LST window above is documented against a
+#     SUPERSEDED regime. Its status under TWC is unknown -- nobody has read
+#     weather.com/kalshi. Do not cite the help centre as current here.
+#
+# Every one of those disagrees with the others about exactly one hour, and only
+# that hour: 00:00-00:59 local clock. So rather than rule on an open empirical
+# question from a live safety path, drop precisely that hour. That is correct
+# under (1), where it belongs to the PREVIOUS climate day; and merely
+# conservative under (2), where it belongs to this one but excluding it can only
+# raise the running min and lower the running max -- i.e. make a monotone-safety
+# lock fire LESS readily, never more. Under (3) the boundary is simply unknown,
+# which is an argument for MORE caution at the ambiguous hour, not less.
+# Conservative under every candidate is what a bound wants. The cost is real and
 # bounded: a genuine extreme set in that one hour is ignored, so a lock that
 # would otherwise fire may fire later or not at all.
 #
@@ -385,7 +393,9 @@ _DAILY_OBS_CACHE: ForecastCache[list[float] | None] = ForecastCache(
 # Discriminating test, if anyone wants to settle the question: recompute each
 # settled city-day's extreme from IEM ASOS under both window definitions and
 # compare against outcomes.settled_temp_f -- on the days where the two windows
-# disagree, only one will match what Kalshi settled on.
+# disagree, only one will match what Kalshi settled on. Read weather.com/kalshi
+# first, though: under the post-2026-08-14 regime that is the document that
+# actually defines the boundary, and it has not been read by anyone yet.
 _CONTESTED_HOUR_CUTOFF = 1
 
 
