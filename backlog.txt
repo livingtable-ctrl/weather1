@@ -265,8 +265,8 @@ close_time discriminates. metar.py is right; tracker is wrong.
 
 AND IT IS LIVE UNDER THE CURRENT SETTLEMENT REGIME, which is the part that
 makes it worth acting on now. settlement_sources for KXHIGHNY reads exactly
-[{"name": "The Weather Company", "url": "https://weather.com/kalshi"}], and the
-live rules text still names station CLINYC. So the LST window is not a fact
+  [{"name": "The Weather Company", "url": "https://weather.com/kalshi"}], and
+the live rules text still names station CLINYC. So the LST window is not a fact
 about the superseded NWS process that might have lapsed on 2026-08-14.
   TWO LIMITS ON THAT SENTENCE, both of which cut against an earlier draft:
   * These close_times are LIVE under the current regime, which is not the same
