@@ -108,6 +108,18 @@ DECLARED_EDITS = {
     "that argument at ONE further use -- this is that use. A third correction "
     "is a re-registration under a new protocol_version whatever the pick "
     "count says.",
+    "e5b2d33e": "round-3 review corrections, and THE LAST EDIT PERMITTED BEFORE "
+    "THE CLOCK. Resizes the floor 1,700 -> 2,200 on a MEASURED half-spread "
+    "(median 0.0150 across 1,769 in-band orderbook snapshots) after round 3 "
+    "found the 1c figure was not unverified but refutable from data already in "
+    "this repo; pre-commits which row supplies a pick's price; and defines the "
+    "design-effect column, disclosing that the in-sample ICC is NEGATIVE and so "
+    "does not support the mechanism the cluster choice leans on. "
+    "THIS IS THE THIRD PRE-CLOCK CORRECTION AND THE ENTRY'S OWN CAP ALLOWED "
+    "TWO. Recorded as a deliberate override, not rationalised: sizing to an "
+    "assumption the data in hand already contradicts is the worse error. The "
+    "cap now holds absolutely -- any further edit is a re-registration under a "
+    "new protocol_version, whatever the pick count says.",
 }
 later = [
     c
