@@ -1,6 +1,388 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-29 -- PRE-REGISTRATION. This entry is written BEFORE the code that
+  implements it, and the commit order is the point: the protocol has to be
+  falsifiable on git history, not asserted afterwards. Nothing below may be
+  edited to fit a result. If the rule needs a different test, that is a new
+  entry with a new clock, and this one is marked FAILED first.]
+  FORWARD-VALIDATION PROTOCOL FOR THE PRICE-RECALIBRATION RULE (option 5 /
+  option I) -- PRE-COMMITTED DECISION RULE, HAIRCUT, SAMPLE FLOOR, STOPPING RULE
+Priority: HIGH -- it is the gate on the only positive result in the whole
+  analysis, and until it exists "log it for 60 days" is not a plan. See the two
+  entries "TWO WAYS OUT OF THE NO-EDGE RESULT..." (item I) and "PROJECT
+  DIRECTION AFTER THE NO-EDGE RESULT" (option 5).
+Files: tracker.py (_MIGRATIONS, price_recal_shadow_log), cron.py
+  (_log_price_recal_picks). SHADOW ONLY -- it places nothing, and live trading
+  stays dormant.
+
+THE RULE, restated so the pre-commitment is unambiguous. Model-free; it reads no
+weather forecast. Fit y ~ a + b*logit(market_prob) on settled markets. Where the
+recalibrated probability disagrees with the raw price by more than a threshold,
+buy the side recalibration favours. Discovery: b = 1.4871, z = +3.03 vs the null
+b = 1, with a held-out pick table at thresholds 0.05 (n=135, net +4.98%) and
+0.08 (n=42, net +10.46%). Those two thresholds, and the two others the entry
+records as tried, are the search that creates the problem this protocol exists
+to answer. No new threshold is invented here.
+
+------------------------------------------------------------------------------
+1. WHAT IS FROZEN, AND WHY FREEZING IT IS THE WHOLE PROTOCOL
+------------------------------------------------------------------------------
+
+FROZEN COEFFICIENTS. a = -0.12856, b = +1.33635. Fitted by MLE logistic
+regression of outcome on logit(market_prob) over the 642 core-temperature rows
+(condition type above/below/between) in analysis_attempts with outcome NOT NULL
+and both probabilities NOT NULL, as of 2026-08-29. SE(b) = 0.10118, z vs 1 =
++3.323.
+
+These do not get refitted. Refitting them nightly on the accumulating corpus is
+the single easiest way to destroy this test: the coefficients would be fitted on
+outcomes that the forward picks are then scored against, and the forward corpus
+would stop being out-of-sample the day it starts. The frozen pair is written
+onto every logged row so a later reader can prove which fit produced the pick
+rather than inferring it. Migrating to a refitted pair is a NEW pre-registration
+with a NEW clock.
+
+FROZEN THRESHOLD. thr = 0.05, the larger-n arm of the discovery table. Chosen
+before any forward data exists, and it is the ONLY arm that decides anything.
+thr = 0.08 picks are logged too -- they are a subset of the 0.05 picks and cost
+nothing extra to record -- but a 0.08 result may not be promoted to the decision
+if 0.05 fails. Promoting the surviving arm of a two-arm test is the fifth
+threshold, and this rule already died of the first four.
+
+FROZEN SIDE RULE. side = YES if recalibrated > mid, else NO. Recorded per row.
+
+------------------------------------------------------------------------------
+2. WHAT GETS LOGGED PER PICK
+------------------------------------------------------------------------------
+
+One immutable row per (ticker, target_date, pick date). Rows are INSERTed and
+never UPDATEd -- deliberately unlike analysis_attempts, which upserts, and whose
+upsert is the reason its d>=1 slice is selected roughly 3x on base rate (a row
+only survives at days_out >= 1 if the market stopped being scanned). An
+append-only log with days_out stamped at pick time removes that selection from
+the forward corpus entirely. That is the main reason this cannot reuse
+analysis_attempts, and the reason exit_rule_shadow_log is not a drop-in: it is
+positions-shaped (entry_price, cost, peak_profit_pct) and this needs to be
+picks-shaped.
+
+Per row:
+  ticker, city, target_date, days_out            identity and horizon at pick time
+  condition_type, condition_var                  above/below/between, max/min
+  market_mid                                     the mid, = analysis_attempts.market_prob
+  yes_bid, yes_ask                               the EXECUTABLE prices, both sides
+  recal_prob                                     sigmoid(a + b*logit(mid))
+  divergence                                     recal_prob - market_mid, signed
+  side                                           YES or NO
+  entry_price_mid                                mid for the chosen side
+  entry_price_exec                               yes_ask, or 1-yes_bid for a NO
+  fit_a, fit_b, threshold                        the frozen constants, on the row
+  protocol_version                               so a re-registration is separable
+  recorded_at                                    UTC
+  outcome                                        NULL until settlement, then 0/1
+
+WHY yes_bid AND yes_ask ARE NOT OPTIONAL. analysis_attempts.market_prob is the
+MID (weather_markets.parse_market_price: implied_prob = mid). Every number in
+the discovery table is therefore a mid-price number, and this repo has already
+been burned by exactly that: "a gap against the mid of a thin spread is not
+edge". Storing only a mid would re-run the discovery's own assumption and the
+forward log would be unable to answer the liquidity objection the discovery
+entry itself raises. The primary statistic below is defined on the executable
+price for that reason; the mid statistic is kept as a secondary, purely so the
+forward number is comparable with the discovery table.
+
+------------------------------------------------------------------------------
+3. THE PRE-COMMITTED STATISTIC
+------------------------------------------------------------------------------
+
+For each settled pick i:
+    a_i  = entry_price_exec                       what it would actually cost
+    f_i  = ceil(0.07 * C * a_i * (1-a_i) * 100)/100 / C     Kalshi fee, C = 25
+    c_i  = a_i + f_i                              all-in cost
+    y_i  = 1 if the picked side settled in the money else 0
+    e_i  = y_i - c_i                              per-contract edge
+
+    S    = sum_i e_i
+    z    = S / sqrt( sum_over_clusters ( sum_{i in cluster} e_i )^2 )
+
+CLUSTER = (city, target_date). One city-day's ladder rungs are one weather
+event, so they are one cluster, which is the answer to "settled count is not
+independent samples". The cluster-robust denominator is used rather than the
+Poisson-binomial sqrt(sum a_i(1-a_i)) because it stays valid whichever sign the
+within-event correlation takes.
+
+MEASURED, and it went the helpful way, which is why it is NOT being banked:
+across four cuts of the current corpus (thr 0.05 and 0.08, clustered by
+(city,date) and by date) the design effect came out 0.69, 0.75, 0.82, 0.88 and
+0.93 -- every one BELOW 1, i.e. rungs of the same ladder are NEGATIVELY
+correlated in the residual, which is what mutually-exclusive rungs should do.
+Sizing below nonetheless assumes design effect = 1.00. A nuisance parameter
+estimated in-sample on 151-185 clusters, all of whose estimates happen to
+flatter the test, is not something to take credit for in advance.
+
+C = 25 contracts is the reference order size: paper_trades.json's 267 records
+run 2 to 100 with mean 32.7. The fee's cent-rounding is per ORDER, so the rate
+is size-dependent -- $0.0112/contract at C=25 against $0.0200 at C=1, a 79%
+difference at the same price. Any net figure that does not name its C is
+undefined. Secondary reporting at C=1 as the worst case.
+
+------------------------------------------------------------------------------
+4. THE MULTIPLE-TESTING HAIRCUT
+------------------------------------------------------------------------------
+
+All three papers were located but never read by the two prior research passes.
+Read here, from primary sources.
+
+GELMAN & LOKEN, "The garden of forking paths" (14 Nov 2013, Columbia). Their
+framework separates four procedures; the relevant one is #3, "computing a single
+test based on the data, but in an environment where a different test would have
+been performed given different data", T(y; phi(y)) -- as against #4, fishing,
+T(y; phi_best(y)). Their central claim is that #3 alone is enough to void the
+p-value: "it is possible to have multiple potential comparisons ... without the
+researcher performing any conscious procedure of fishing or examining multiple
+p-values." Two consequences taken directly into this protocol:
+
+  * They do NOT prescribe a correction, because the path count is not
+    enumerable. "Once we recognize that analysis is contingent on data, the
+    p-value argument disappears." A Bonferroni over the tests you happen to
+    remember running is a floor on the penalty, never the true one.
+  * The remedy they do prescribe is exactly this log: "the first being
+    exploratory but still theory-based, and the second being purely confirmatory
+    with its own preregistered protocol." And: "without preregistration or the
+    equivalent, it is difficult to take p = 0.01 as evidence for much of
+    anything."
+  * THE WARNING THAT SETS THE SAMPLE FLOOR BELOW. They cite Nosek, Spies and
+    Motyl replicating their own significant finding under a preregistered
+    protocol: "the replication had over 99% power. Nonetheless, the attempted
+    replication was unsuccessful, with a p-value of .59." Powering a
+    confirmatory test off the discovery effect size is the trap, not the method.
+
+HARVEY & LIU (2014), "Backtesting", Duke. Read from the authors' own published
+MATLAB, Haircut_SR.m and Profit_Hurdle.m, which are the operative definitions.
+  Bonferroni adjusted p:   p_BON = min(M * p_val, 1)
+  haircut:                 hc = (SR - SR_adj) / SR, SR_adj recovered by
+                           inverting p_BON back through the t/normal quantile
+  Bonferroni t-cut:        norminv(1 - alpha/(2*NN))
+Their own default M is 315 (the Harvey-Liu-Zhu factor count); that is a
+community-wide count and is not the right one for one researcher's private
+search.
+
+M FOR THIS RULE = 10, counted from the record rather than guessed. The parent
+entry documents: hypothesis G (model on top of price), 1 test; hypothesis H
+(fade the model), 4 tests (2 thresholds x 2 directions, all four tabulated); and
+hypothesis I, the slope test plus 4 thresholds, of which 2 are tabulated. 1 + 4
++ 1 + 4 = 10, all on one dataset, in one sitting. Per Gelman & Loken this is a
+FLOOR: the horizon split, the condition-type split, the core-vs-all-families
+population choice and the precal-vs-post-cal probability column are all forks
+that were available and are not in the count.
+
+Applied to the statistic the THRESHOLD was actually selected on -- the held-out
+thr=0.05 arm, z = +1.98, two-sided p = 0.0477, edge vs the mid +0.0610:
+
+    M     haircut    edge vs mid    edge net of fee and a 1c half-spread
+    1       -            +0.0610          +0.0398
+    3      26.0%         +0.0451          +0.0239
+    4      33.9%         +0.0403          +0.0191
+    6      46.1%         +0.0329          +0.0117
+   10      64.1%         +0.0219          +0.0007      <-- the declared M
+   20      97.1%         +0.0018          -0.0194
+
+The Harvey-Liu Bonferroni t-cut at M=10, alpha=0.05 two-sided, is |z| >= 2.807.
+That is the decision threshold in section 5. It coincides with the Bonferroni
+figure the research doc quotes for its ten sub-cells; the agreement is
+arithmetic (0.05/10), not corroboration, and the cells are not ten independent
+votes -- 'above' is ~55% of the core population and shares every row with the
+d0/d1+ split. Do not cite the cell z-values as support for anything.
+
+BAILEY & LOPEZ DE PRADO (2014), "The Deflated Sharpe Ratio", read from
+davidhbailey.com; and Bailey, Borwein, Lopez de Prado & Zhu, "Pseudo-Mathematics
+and Financial Charlatanism", Notices of the AMS 61(5), for Theorem 2.
+
+  E[max of N noise trials] = sd * ( (1-g)*Z^-1[1-1/N] + g*Z^-1[1-1/(N*e)] ),
+  g = 0.5772 (Euler-Mascheroni), and for z-statistics sd = 1.
+
+  MinBTL ~ ( ((1-g)Z^-1[1-1/N] + gZ^-1[1-1/(Ne)]) / E[max_N] )^2 < 2 ln[N] / E[max_N]^2
+
+The noise floor is the number that should be hardest to unsee:
+
+    N trials      E[max z] with NO effect present
+        3            0.853
+        4            1.052
+        6            1.300
+       10            1.575
+       20            1.901
+    observed selection statistic:  1.98
+
+Ten pure-noise trials are expected to throw up a best-of z of 1.575, and twenty
+1.901, against the 1.98 that was actually found. The discovery statistic is
+inside the range the declared search size produces by construction with no
+effect present at all. This is not a claim that the rule is false. It is the
+reason the discovery number may not be used for anything except deciding what
+to measure next.
+
+DSR's other load-bearing paragraph is aimed squarely at what would otherwise
+happen to this forward log: "the holdout method cannot prevent backtest
+overfitting: Holdout assesses the generality of a model as if a single trial had
+taken place ... If we apply the holdout method enough times (say 20 times for a
+95% confidence level), false positives are no longer unlikely: They are
+expected." Every re-cut of the forward data is one more holdout trial. Section 6
+is that sentence turned into a rule.
+
+MinBTL is cited and deliberately NOT used as the sample floor: it answers how
+long an IN-SAMPLE window must be so that N trials of noise cannot manufacture a
+target statistic. The forward test is one pre-committed trial, so its floor is a
+power calculation, not a MinBTL. MinBTL binds section 6 instead, where re-cuts
+would reintroduce N > 1.
+
+------------------------------------------------------------------------------
+5. THE MINIMUM NUMBER OF INDEPENDENT FORWARD OBSERVATIONS, DERIVED
+------------------------------------------------------------------------------
+
+  n = ( (z_crit + z_power) * sd / delta )^2 * design_effect
+
+  z_crit  = 2.807   Harvey-Liu Bonferroni t-cut, M=10, alpha=0.05 two-sided.
+                    The direction is genuinely pre-specified now, so this is
+                    read one-tailed, i.e. one-sided alpha = 0.0025.
+  z_power = 0.842   80% power.
+  sd      = 0.3992  sqrt(a(1-a)) at the mean executable entry a = 0.8010
+                    (mean mid 0.791 plus a 1c half-spread).
+  design_effect = 1.00, per section 3.
+
+  delta   = the edge the test is powered against. THIS IS THE WHOLE QUESTION,
+            and per Gelman & Loken's Nosek citation it may not be the discovery
+            estimate.
+
+    delta = +0.0398  raw selection edge, net of fee and spread   n =  1,340
+    delta = +0.0191  M=4 haircut                                 n =  5,815
+    delta = +0.0007  M=10 haircut, the declared one              n =  4.2 million
+
+PRE-COMMITTED: N_KILL = 1,340 settled picks at thr = 0.05.
+
+  * At 1,340 picks the test has 80% power against the RAW, un-haircut edge. A
+    failure to clear z >= 2.807 there excludes the discovery effect at the size
+    it was discovered at. That is the outcome this log is affordable enough to
+    buy, and it is the primary purpose of building it.
+  * At the in-sample pick rate of 6.39/day (211 picks over 33 days) that is
+    ~210 days. At the held-out rate of 10.3/day it is ~130 days. THE HORIZON IS
+    A PICK COUNT, NOT A DAY COUNT -- the rate is a forecast and the log will
+    measure the real one. "60 days" was never a sample size.
+  * The minimum detectable edge at 1,340 picks is +0.0398. Read that plainly:
+    to clear its own bar, the forward data must reproduce essentially the FULL
+    un-haircut discovery edge. If the truth is the haircut edge, the rule will
+    correctly fail to be sizeable, and that is the protocol working, not the
+    protocol being too harsh.
+  * COROLLARY THAT MUST NOT BE MISREAD. A null at 1,340 picks excludes delta >=
+    +0.0398. It does NOT exclude a small real edge. Nobody may write "option 5
+    is dead" on the strength of it; the correct sentence is "option 5 is not
+    demonstrable at a sample size this project can afford".
+
+------------------------------------------------------------------------------
+6. THE STOPPING RULE AND THE NO-PEEKING DISCIPLINE
+------------------------------------------------------------------------------
+
+EXACTLY TWO LOOKS. There is no third.
+
+  LOOK 1, FUTILITY ONLY, at 670 settled picks (N_KILL/2).
+    Stop and mark the rule FAILED if z <= 0.
+    Continue otherwise. There is no early success exit at look 1 -- a
+    one-sided futility boundary can only reduce the type-I error, never
+    inflate it, which is why this look costs no alpha. Measured cost: power
+    0.800 -> 0.796 against the raw edge (E[z] at 670 picks is 2.580, so
+    P(stop | H1) = 0.005); P(stop | H0 true) = 0.500, so half of all dead rules
+    die at half the horizon for a power cost of four thousandths.
+
+  LOOK 2, THE DECISION, at 1,340 settled picks.
+    z >= 2.807  -> the rule MAY be sized. Sizing is a separate decision with its
+                   own entry; clearing this bar authorises nothing by itself
+                   except making that argument.
+    z <  2.807  -> FAILED. Mark it, and stop.
+
+WHAT KILLS IT, stated in advance so no result can be argued into survival:
+  * z <= 0 at look 1.
+  * z < 2.807 at look 2.
+  * Fewer than 1,340 settled picks accumulated by 2027-08-29 (one year). The
+    rule fails by non-accrual; a horizon that keeps extending is a horizon that
+    never judges.
+  * Any change to the frozen coefficients, threshold or side rule. That ends
+    this registration; it does not amend it.
+
+WHAT STOPS THE DATA BEING RE-CUT UNTIL IT PASSES:
+  * The subgroup list is empty. No per-city, per-horizon, per-condition-type,
+    per-price-band or per-month cut may decide anything. Descriptive breakdowns
+    may be produced at look 2 AFTER the primary z is computed and recorded, and
+    they are labelled exploratory and cannot rescue a failed primary.
+  * The statistic is fixed to the executable-price, net-of-fee, cluster-robust
+    form in section 3. The mid-price form is reported alongside for
+    comparability with the discovery table and is NOT the decision. Switching to
+    the mid because the executable form failed is the sixth threshold.
+  * thr = 0.08 cannot be promoted if 0.05 fails (section 1).
+  * No look may be taken between the two. Continuously watching a running z and
+    stopping when it looks good is the DSR paragraph above -- twenty such looks
+    make a false positive expected, not unlikely. The reporting query should
+    return the pick COUNT, and disclose the z only at 670 and 1,340.
+  * If a result at either look is genuinely ambiguous, the answer is FAILED. The
+    asymmetry is deliberate: the downside skew is severe (risking ~0.79 to win
+    ~0.21, so a few losses erase many wins) and the prior after a
+    ten-fork search is bad.
+
+------------------------------------------------------------------------------
+7. WHAT WAS VERIFIED WHILE WRITING THIS, AND WHAT WAS NOT
+------------------------------------------------------------------------------
+
+KALSHI'S FEE FORMULA: CONFIRMED, and it is no longer the "UNVERIFIED" item the
+research doc's section 8 lists. Primary source, Kalshi's own fee schedule as
+filed with the CFTC (cftc.gov .../rule091222kexdcm003.pdf), verbatim:
+
+    fees = round up(0.07 x C x P x (1-P))
+    P = the price of a contract in dollars (50 cents is 0.5)
+    C = the number of contracts being traded
+    round up = rounds to the next cent
+
+and, on the same page, "Trading fees are only charged for orders that are
+immediately matched ... not charged for orders placed that are not immediately
+matched and are instead left as resting orders". Two corroborations: utils.py's
+KALSHI_FEE_RATE block records the same 0.07 verified 2026-07-12 against the
+schedule effective 2026-07-07, with the maker rate M*0.0175 and M = 0 for
+KXHIGH*/KXLOW*/KXRAIN*; and the most recent Kalshi fee-schedule filing with the
+CFTC (2026-07-12) amends only KXMVE RFQ fees, leaving the general formula alone.
+kalshi.com could not be re-fetched today -- Vercel bot protection returns 429 --
+so the as-of date on the live page is 2026-07-12 via the repo, not today.
+
+THE ROUNDING IS PER ORDER, NOT PER CONTRACT, and the research doc's
+"~0.07*p*(1-p)" drops that. At the pick band it is worth naming:
+    P=0.79   unrounded $0.01161/contract
+             C=1   -> $0.02000/contract  (1.72x, 2.53% of cost)
+             C=25  -> $0.01200/contract  (1.03x, 1.52% of cost)
+So a net-of-fee figure quoted without its order size is between 1.0x and 1.7x
+wrong, always in the flattering direction at the sizes a shadow log invites.
+
+POPULATION AND SLOPES, re-derived 2026-08-29 against data/predictions.db, not
+taken from the doc: 670 rows in the unbiased population (up from the 646 the doc
+reports and the 538 the discovery used); core temperature n=642, b = +1.3363,
+SE 0.1012, z = +3.323; same-day n=435, b = +1.2436, z = +2.14; multi-day n=207,
+b = +1.4313, z = +1.76. 642 core rows resolve to 442 distinct (city, target_date)
+events and 571 distinct (city, target_date, var) events -- 1.45 rows per city-day.
+
+INDEPENDENTLY REPRODUCED, and this is the one piece of corroboration that is
+worth something: a temporal split of the current corpus (fit on the earlier 321
+core rows, pick on the later 321) gives thr=0.05 n=185, mean entry 0.7705, win
+rate 0.8270, edge +0.0565, z = +1.902. The discovery table's held-out arm gave
+edge +0.0610 and z = +1.98 on a different split of a smaller corpus. The
+magnitude replicates. It replicates at z ~ 1.9-2.0, which is the noise floor for
+the declared search, so it changes nothing about the protocol -- but it does
+rule out the possibility that the discovery table was an arithmetic error.
+
+NOT VERIFIED, and not blocking this protocol:
+  * Whether arXiv 2602.19520v2's Weather slope of 0.69-0.97 within 48h describes
+    these contracts. The refit on daily ladders only is the other half of the
+    plan and belongs in its own session. The conflict stays unresolved; it does
+    not change what to build now.
+  * The real bid/ask distribution on these books. The log starts measuring it on
+    day one, which is the point of storing both sides.
+  * The forward pick rate. In-sample 6.39/day, held-out 10.3/day; the log
+    measures it.
+
+
 [OPEN 2026-08-28 -- batch-98. The measurement is done and the invariant it needs
   is now being logged; the correction itself is NOT shipped and is gated on the
   1-month check below.]
@@ -46148,8 +46530,15 @@ OPEN -- I. The market itself is compressed. Model-free.
      against the mid of a thin spread is not edge" trap this repo has hit before.
    - One month, summer, scanner-visible markets only.
 
-  Correct next step: log the rule's picks in SHADOW for ~60 days and judge it
-  on data it was not found in. Do not size anything off this table.
+  Correct next step: log the rule's picks in SHADOW and judge it on data it was
+  not found in. Do not size anything off this table.
+  PRE-REGISTERED 2026-08-29 -- see "FORWARD-VALIDATION PROTOCOL FOR THE
+  PRICE-RECALIBRATION RULE" at the top of this file for the frozen coefficients,
+  the statistic, the Harvey-Liu haircut at the declared search size M=10, the
+  derived floor of 1,340 settled picks, and the two-look stopping rule. The
+  "~60 days" in the line above is withdrawn: it is a duration, not a sample
+  size, and at the observed pick rate it is roughly a third of what the test
+  needs.
 
 CLOSED -- J. Ladder-internal coherence arbitrage. ALREADY BUILT AND RUNNING;
   this entry described work that has been in production for months.
@@ -46299,8 +46688,16 @@ THE OPTIONS THAT REMAIN
       improvement itself is not significant (t=-0.94); every pick is a
       favourite at 0.74-0.86 with severe downside skew; liquidity untested;
       one month of summer.
-    Status: a hypothesis to validate FORWARD. Shadow-log its picks ~60 days and
-      judge on data it was not found in. Size nothing off the discovery table.
+    Status: a hypothesis to validate FORWARD. Size nothing off the discovery
+      table. SUPERSEDED 2026-08-29 by the pre-registration entry "FORWARD-
+      VALIDATION PROTOCOL FOR THE PRICE-RECALIBRATION RULE" at the top of this
+      file, which is the operative spec. Two things it corrects here: the
+      horizon is a PICK COUNT (1,340 settled picks at thr=0.05), not "~60 days"
+      -- 60 days is ~384 picks, whose minimum detectable edge is +0.074, larger
+      than the +0.061 the rule was discovered at, so a 60-day log could not have
+      confirmed the effect even if it were entirely real; and the decision is
+      made against the EXECUTABLE price net of the CFTC-filed fee, not the mid
+      the discovery table used.
 
  6. LADDER-INTERNAL COHERENCE ARBITRAGE.  (ALREADY BUILT -- see option J)
     Status corrected 2026-08-28: this is not an unstarted option. consistency.
