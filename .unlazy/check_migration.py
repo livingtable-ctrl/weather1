@@ -47,6 +47,7 @@ old_src = subprocess.run(
     errors="replace",
 ).stdout
 
+
 # Compare the list ELEMENTS as source text, not as evaluated values: the list
 # contains at least one call (sql_normalize_iso_column) that cannot be exec'd
 # in isolation, and the property under test is textual identity of the prefix
@@ -57,8 +58,7 @@ def elements(src: str) -> list[str]:
         if (
             isinstance(node, ast.Assign)
             and any(
-                isinstance(t, ast.Name) and t.id == "_MIGRATIONS"
-                for t in node.targets
+                isinstance(t, ast.Name) and t.id == "_MIGRATIONS" for t in node.targets
             )
             and isinstance(node.value, ast.List)
         ):
@@ -90,9 +90,7 @@ need(
     "the picks table is not among the appended statements",
 )
 need(
-    any(
-        "CREATE UNIQUE INDEX" in s and "price_recal_shadow_log" in s for s in added
-    ),
+    any("CREATE UNIQUE INDEX" in s and "price_recal_shadow_log" in s for s in added),
     "the dedup index is not among the appended statements",
 )
 need(

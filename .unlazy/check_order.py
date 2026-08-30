@@ -88,28 +88,31 @@ if bad:
 DECLARED_EDITS = {
     # sha prefix -> what it added, and why it does not change a commitment
     "3563cd31": "YES-branch addendum: a measured consequence of the frozen "
-                "coefficients, disclosed, additive, changes no commitment",
+    "coefficients, disclosed, additive, changes no commitment",
     "3ecf7b16": "round-1 review corrections. DOES change pre-committed numbers "
-                "(N_KILL 1,340 -> 1,700, look 1 670 -> 850, M 10 -> 12, primary "
-                "cluster (city,target_date) -> target_date). Legitimate ONLY "
-                "because the clock had not started: at that commit the live DB "
-                "was at user_version 84, price_recal_shadow_log did not exist "
-                "and zero picks were logged, so section 6's no-amendment rule "
-                "had not yet begun to bind. The entry carries the correction "
-                "notice and names every superseded figure. Any edit after the "
-                "FIRST LOGGED PICK is a re-registration, not a correction, and "
-                "must be recorded as one.",
+    "(N_KILL 1,340 -> 1,700, look 1 670 -> 850, M 10 -> 12, primary "
+    "cluster (city,target_date) -> target_date). Legitimate ONLY "
+    "because the clock had not started: at that commit the live DB "
+    "was at user_version 84, price_recal_shadow_log did not exist "
+    "and zero picks were logged, so section 6's no-amendment rule "
+    "had not yet begun to bind. The entry carries the correction "
+    "notice and names every superseded figure. Any edit after the "
+    "FIRST LOGGED PICK is a re-registration, not a correction, and "
+    "must be recorded as one.",
 }
-later = [c for c in git(
-    "log", "--format=%H", "--reverse", f"{proto_sha}..HEAD", "--", "backlog.txt"
-).splitlines() if c]
+later = [
+    c
+    for c in git(
+        "log", "--format=%H", "--reverse", f"{proto_sha}..HEAD", "--", "backlog.txt"
+    ).splitlines()
+    if c
+]
 undeclared = [c for c in later if c[:8] not in DECLARED_EDITS]
 if undeclared:
     fail(
         "commit(s) after the pre-registration edit backlog.txt without being "
         "declared in DECLARED_EDITS -- the protocol text is no longer the text "
-        "that was pre-committed: "
-        + ", ".join(c[:8] for c in undeclared)
+        "that was pre-committed: " + ", ".join(c[:8] for c in undeclared)
     )
 for c in later:
     print(f"declared post-protocol backlog edit: {c[:8]} -- {DECLARED_EDITS[c[:8]]}")

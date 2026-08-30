@@ -19,12 +19,21 @@ Every input now has an authority outside the text under test:
   * the look points come from tracker, which the test module also reads;
   * the haircut, noise floor, power and sample floor are arithmetic on those.
 
-The one input with no external authority is the 1c half-spread. It is not
-checked numerically -- it is asserted to be LABELLED an assumption in the entry,
-with a pre-committed trigger, rather than sitting silently among derived values.
+TWO inputs have no external authority, and both are named rather than buried:
 
-The haircut table is matched POSITIONALLY (whole row, one regex per row), not by
-substring, so the entry's rows cannot be permuted and still pass.
+  * the 1c half-spread -- not checked numerically, but asserted to be LABELLED
+    an assumption in the entry, with a pre-committed trigger;
+  * M_DECLARED = 12 -- retyped here, and it drives Z_CRIT and therefore the
+    whole N_KILL conclusion. `claims(Z_CRIT)` binds it to the entry, but entry
+    and checker were written by the same author, which is the definition of the
+    echo this file was rewritten to eliminate. Counting the parent entry's
+    tabulated tests programmatically is the real fix and is not done here.
+
+The haircut table is matched as a WHOLE ROW (one regex per row), not by loose
+substring. That prevents MISLABELLING -- M=10's values under an M=12 label --
+which is the risk that matters. It does not prevent reordering, since each row
+is an independent search over the entry; the earlier word "positionally"
+overstated it.
 """
 
 from __future__ import annotations
@@ -69,27 +78,54 @@ def claims(s: str, why: str) -> None:
 
 
 def ndtri(p: float) -> float:
-    a = [-3.969683028665376e01, 2.209460984245205e02, -2.759285104469687e02,
-         1.383577518672690e02, -3.066479806614716e01, 2.506628277459239e00]
-    b = [-5.447609879822406e01, 1.615858368580409e02, -1.556989798598866e02,
-         6.680131188771972e01, -1.328068155288572e01]
-    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e00,
-         -2.549732539343734e00, 4.374664141464968e00, 2.938163982698783e00]
-    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e00,
-         3.754408661907416e00]
+    a = [
+        -3.969683028665376e01,
+        2.209460984245205e02,
+        -2.759285104469687e02,
+        1.383577518672690e02,
+        -3.066479806614716e01,
+        2.506628277459239e00,
+    ]
+    b = [
+        -5.447609879822406e01,
+        1.615858368580409e02,
+        -1.556989798598866e02,
+        6.680131188771972e01,
+        -1.328068155288572e01,
+    ]
+    c = [
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e00,
+        -2.549732539343734e00,
+        4.374664141464968e00,
+        2.938163982698783e00,
+    ]
+    d = [
+        7.784695709041462e-03,
+        3.224671290700398e-01,
+        2.445134137142996e00,
+        3.754408661907416e00,
+    ]
     pl = 0.02425
     if p < pl:
         q = math.sqrt(-2 * math.log(p))
-        return ((((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])
-                / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
     if p > 1 - pl:
         q = math.sqrt(-2 * math.log(1 - p))
-        return -((((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])
-                 / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1))
+        return -(
+            (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5])
+            / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        )
     q = p - 0.5
     r = q * q
-    return ((((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q
-            / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1))
+    return (
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+        * q
+        / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+    )
 
 
 def ndtr(z: float) -> float:
@@ -106,22 +142,60 @@ def fee_pc(price: float, C: int = C_REF) -> float:
 
 
 # ================================ A. inputs PARSED from the PARENT entry
-parent = TEXT.find("TWO WAYS OUT OF THE NO-EDGE RESULT")
-need(parent > 0, "the parent discovery entry is missing from backlog.txt")
-row = re.search(
-    r"^\s*0\.05\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+\+([\d.]+)%\s+\+([\d.]+)\s",
-    TEXT[parent:] if parent > 0 else "", re.M,
-)
-if row is None:
-    print("FAIL: the parent entry's thr=0.05 discovery row did not parse -- "
-          "this checker's inputs have no external authority without it")
+# ROUND 2 FOUND THIS FALSE AS FIRST WRITTEN. `TEXT.find("TWO WAYS OUT OF THE
+# NO-EDGE RESULT")` matched at offset 803 -- inside the PROTOCOL ENTRY'S OWN
+# cross-reference line, not the parent entry, which starts at 3,149,904. The
+# slice was then unbounded, so the regex swept 98% of a 3.2 MB file and landed
+# on the real row 3.11 MB past the end of what the anchor claimed to select.
+# The values were right only because exactly one line in the file has that
+# column shape, and the "different entry this one does not control" property
+# the docstring claimed was never established.
+#
+# Now: locate the parent by its own [OPEN header, bound the slice to that
+# entry, require EXACTLY ONE matching row inside it, and assert the match lies
+# outside the protocol entry's own span so a self-match is structurally
+# impossible rather than accidentally absent.
+PARENT_TITLE = "TWO WAYS OUT OF THE NO-EDGE RESULT ARE NOW CLOSED"
+pt = TEXT.find(PARENT_TITLE)
+need(pt > 0, "the parent discovery entry is missing from backlog.txt")
+if pt <= 0:
+    print("FAIL: the parent discovery entry is missing from backlog.txt")
     sys.exit(1)
-DISC_PRICE = float(row.group(2))
-DISC_WIN = float(row.group(3))
-Z_SEL = float(row.group(5))
+# back up to that entry's own [OPEN header, then forward to the next one
+hstart = TEXT.rfind(chr(10) + "[OPEN ", 0, pt)
+hend = re.search(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[pt:])
+PARENT = TEXT[hstart : pt + (hend.start() if hend else 0)]
+need(
+    not (start <= hstart < start + len(ENTRY)),
+    "the parent entry's span overlaps the protocol entry under test -- the "
+    "input would not be external",
+)
+ROW_RE = re.compile(
+    r"^\s*0\.05\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+\+([\d.]+)%\s+\+([\d.]+)\s", re.M
+)
+hits = ROW_RE.findall(PARENT)
+need(
+    len(hits) == 1,
+    f"expected exactly one thr=0.05 discovery row inside the parent entry, "
+    f"found {len(hits)} -- an ambiguous parse is not an authority",
+)
+if len(hits) != 1:
+    for f in failures:
+        print(f"FAIL: {f}")
+    sys.exit(1)
+DISC_N, DISC_PRICE_S, DISC_WIN_S, _gross, Z_SEL_S = hits[0]
+DISC_PRICE = float(DISC_PRICE_S)
+DISC_WIN = float(DISC_WIN_S)
+Z_SEL = float(Z_SEL_S)
 D_MID = DISC_WIN - DISC_PRICE
-print(f"  parsed from the PARENT entry: n={row.group(1)} price={DISC_PRICE} "
-      f"win={DISC_WIN} z={Z_SEL}  ->  delta_mid={D_MID:+.4f}")
+print(
+    f"  parent entry bounded to {len(PARENT):,} chars at offset {hstart:,} "
+    f"(protocol entry spans {start:,}..{start + len(ENTRY):,})"
+)
+print(
+    f"  parsed from it: n={DISC_N} price={DISC_PRICE} win={DISC_WIN} "
+    f"z={Z_SEL}  ->  delta_mid={D_MID:+.4f}"
+)
 
 # ============================ B. the forward pick set, recomputed from the DB
 db = pathlib.Path(paths.DB_PATH)
@@ -157,37 +231,46 @@ for r in core:
     if abs(d) < THR:
         continue
     yes = d > 0
-    picks.append({"entry": m if yes else 1 - m, "date": r[2],
-                  "side": "YES" if yes else "NO"})
+    picks.append(
+        {"entry": m if yes else 1 - m, "date": r[2], "side": "YES" if yes else "NO"}
+    )
 
 n_pick = len(picks)
 mean_entry = sum(q["entry"] for q in picks) / n_pick
-sd = math.sqrt(sum((q["entry"] + HALF) * (1 - q["entry"] - HALF) for q in picks) / n_pick)
+sd = math.sqrt(
+    sum((q["entry"] + HALF) * (1 - q["entry"] - HALF) for q in picks) / n_pick
+)
 fee = sum(fee_pc(q["entry"] + HALF) for q in picks) / n_pick
 rate = n_pick / len(set(q["date"] for q in picks))
 inband = sum(1 for q in picks if 0.74 <= q["entry"] <= 0.86) / n_pick
-print(f"  recomputed forward pick set: n={n_pick} "
-      f"sides={sorted({q['side'] for q in picks})} mean_mid={mean_entry:.4f} "
-      f"a={mean_entry+HALF:.4f} sd={sd:.5f} fee={fee:.5f} rate={rate:.2f}/day "
-      f"inband={inband*100:.1f}%")
+print(
+    f"  recomputed forward pick set: n={n_pick} "
+    f"sides={sorted({q['side'] for q in picks})} mean_mid={mean_entry:.4f} "
+    f"a={mean_entry + HALF:.4f} sd={sd:.5f} fee={fee:.5f} rate={rate:.2f}/day "
+    f"inband={inband * 100:.1f}%"
+)
 
-need({q["side"] for q in picks} == {"NO"},
-     "the YES branch now fires -- the addendum's central disclosure is stale")
+need(
+    {q["side"] for q in picks} == {"NO"},
+    "the YES branch now fires -- the addendum's central disclosure is stale",
+)
 claims(f"{sd:.5f}", "recomputed sd")
 claims(f"{fee:.5f}", "recomputed fee at C=25")
 claims(f"{mean_entry:.4f}", "recomputed mean mid entry")
 claims(f"{mean_entry + HALF:.4f}", "recomputed mean executable entry")
 claims(f"{rate:.2f} picks/day", "recomputed pick rate")
-claims(f"{inband*100:.1f}%", "recomputed share inside the 0.74-0.86 band")
+claims(f"{inband * 100:.1f}%", "recomputed share inside the 0.74-0.86 band")
 
 # =================================================== C. fee formula (CFTC)
 claims("fees = round up(0.07 x C x P x (1-P))", "the filed fee formula verbatim")
-claims(f"${0.07*0.79*0.21:.5f}/contract", "unrounded fee at P=0.79")
+claims(f"${0.07 * 0.79 * 0.21:.5f}/contract", "unrounded fee at P=0.79")
 claims(f"${fee_pc(0.79, 1):.5f}/contract", "fee at P=0.79, C=1")
 claims(f"${fee_pc(0.79, 25):.5f}/contract", "fee at P=0.79, C=25")
 ratio = fee_pc(0.79, 1) / fee_pc(0.79, 25)
-need(abs(ratio - 1.667) < 0.005,
-     f"the C=1 vs C=25 ratio at P=0.79 recomputes to {ratio:.3f}, entry says 67%")
+need(
+    abs(ratio - 1.667) < 0.005,
+    f"the C=1 vs C=25 ratio at P=0.79 recomputes to {ratio:.3f}, entry says 67%",
+)
 
 # ================================================= D. haircut table (H&L)
 praw = p2(Z_SEL)
@@ -200,13 +283,15 @@ for M in (3, 4, 6, 10, 12, 20):
     hc = (Z_SEL - zh) / Z_SEL
     dm = D_MID * (1 - hc)
     dn = dm - fee - HALF
-    pat = (rf"^\s*{M}\s+{re.escape(f'{hc*100:.1f}')}%\s+"
-           rf"{re.escape(f'{dm:+.4f}')}\s+{re.escape(f'{dn:+.4f}')}\s*(<--.*)?$")
+    pat = (
+        rf"^\s*{M}\s+{re.escape(f'{hc * 100:.1f}')}%\s+"
+        rf"{re.escape(f'{dm:+.4f}')}\s+{re.escape(f'{dn:+.4f}')}\s*(<--.*)?$"
+    )
     if re.search(pat, ENTRY, re.M):
         matched += 1
     else:
         failures.append(
-            f"haircut row M={M} (haircut {hc*100:.1f}%, mid {dm:+.4f}, "
+            f"haircut row M={M} (haircut {hc * 100:.1f}%, mid {dm:+.4f}, "
             f"net {dn:+.4f}) does not appear as ONE row in the entry's table"
         )
 print(f"  haircut table: {matched}/6 rows recomputed and positionally matched")
@@ -230,21 +315,25 @@ N_KILL = tracker.PRICE_RECAL_LOOK_2
 N_LOOK1 = tracker.PRICE_RECAL_LOOK_1
 claims(f"{delta:+.5f}", "delta net of the recomputed fee and the 1c spread")
 claims(f"{n_req:,.0f}", "the derived floor")
-need(N_KILL >= n_req,
-     f"the pre-committed floor {N_KILL} is BELOW the derived {n_req:,.0f}")
+need(
+    N_KILL >= n_req,
+    f"the pre-committed floor {N_KILL} is BELOW the derived {n_req:,.0f}",
+)
 need(N_LOOK1 == N_KILL // 2, "look 1 is not half of look 2")
 claims(f"N_KILL = {N_KILL:,}", "the pre-committed floor")
 claims(f"{N_LOOK1} settled picks", "look 1")
 mde = (Z_CRIT + Z_POW) * sd / math.sqrt(N_KILL)
 power = ndtr(delta * math.sqrt(N_KILL) / sd - Z_CRIT)
 claims(f"{mde:+.4f}", "MDE at the floor")
-claims(f"{power*100:.1f}%", "power at the floor")
-claims(f"{N_KILL/rate:.0f} days", "accrual at the recomputed rate")
+claims(f"{power * 100:.1f}%", "power at the floor")
+claims(f"{N_KILL / rate:.0f} days", "accrual at the recomputed rate")
 d2 = D_MID - fee - 0.02
 claims(f"{d2:+.5f}", "delta at a 2c half-spread")
 claims(f"{((Z_CRIT + Z_POW) * sd / d2) ** 2:,.0f}", "floor at a 2c half-spread")
-print(f"  floor: derived {n_req:,.0f}, committed {N_KILL}, MDE {mde:+.4f}, "
-      f"power {power*100:.1f}%, {N_KILL/rate:.0f} days")
+print(
+    f"  floor: derived {n_req:,.0f}, committed {N_KILL}, MDE {mde:+.4f}, "
+    f"power {power * 100:.1f}%, {N_KILL / rate:.0f} days"
+)
 
 # ======================== G. the futility look, correctly correlated (A-F9)
 rho = math.sqrt(N_LOOK1 / N_KILL)
@@ -266,28 +355,41 @@ def bvn_upper(h: float, k: float, r: float, steps: int = 120000) -> float:
 pw_uncond = ndtr(mu2 - Z_CRIT)
 pw_joint = bvn_upper(-mu1, Z_CRIT - mu2, rho)
 a_joint = bvn_upper(0.0, Z_CRIT, rho)
-need(a_joint <= (1 - ndtr(Z_CRIT)) + 1e-6,
-     f"the futility look INFLATES alpha: {a_joint:.6f} vs {1-ndtr(Z_CRIT):.6f}")
+need(
+    a_joint <= (1 - ndtr(Z_CRIT)) + 1e-6,
+    f"the futility look INFLATES alpha: {a_joint:.6f} vs {1 - ndtr(Z_CRIT):.6f}",
+)
 claims(f"{pw_uncond:.5f}", "unconditional power")
 claims(f"{pw_joint:.5f}", "joint power across both looks")
 claims(f"{a_joint:.6f}", "type-I error across both looks")
-need(f"{pw_uncond - pw_joint:.5f}" in ENTRY,
-     f"the futility look's power cost recomputes to {pw_uncond-pw_joint:.5f}; "
-     f"the entry must state that value, not a product of the two marginals")
-print(f"  futility: rho={rho:.4f} power {pw_uncond:.5f} -> {pw_joint:.5f} "
-      f"(cost {pw_uncond-pw_joint:.5f}), alpha {a_joint:.6f}")
+need(
+    f"{pw_uncond - pw_joint:.5f}" in ENTRY,
+    f"the futility look's power cost recomputes to {pw_uncond - pw_joint:.5f}; "
+    f"the entry must state that value, not a product of the two marginals",
+)
+print(
+    f"  futility: rho={rho:.4f} power {pw_uncond:.5f} -> {pw_joint:.5f} "
+    f"(cost {pw_uncond - pw_joint:.5f}), alpha {a_joint:.6f}"
+)
 
 # ============================================ H. the unverified assumption
-need("THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT" in ENTRY,
-     "the 1c half-spread has no external authority and must be labelled an "
-     "assumption, not left among derived quantities")
-need("PRE-COMMITTED TRIGGER" in ENTRY,
-     "no pre-committed rule for what happens if the spread measures wider")
+need(
+    "THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT" in ENTRY,
+    "the 1c half-spread has no external authority and must be labelled an "
+    "assumption, not left among derived quantities",
+)
+need(
+    "PRE-COMMITTED TRIGGER" in ENTRY,
+    "no pre-committed rule for what happens if the spread measures wider",
+)
+
 
 # ========================================= I. frozen coefficients vs the DB
 def fit(sample):
-    xs = [math.log(min(max(r[3], 1e-6), 1-1e-6) / (1 - min(max(r[3], 1e-6), 1-1e-6)))
-          for r in sample]
+    xs = [
+        math.log(min(max(r[3], 1e-6), 1 - 1e-6) / (1 - min(max(r[3], 1e-6), 1 - 1e-6)))
+        for r in sample
+    ]
     ys = [float(r[4]) for r in sample]
     a, b = 0.0, 1.0
     for _ in range(300):
@@ -311,20 +413,26 @@ def fit(sample):
 
 
 a_f, b_f = fit(core)
-print(f"  population: {len(rows)} rows, core {len(core)}; refit a={a_f:+.5f} "
-      f"b={b_f:+.5f} (frozen {FIT_A:+.5f}/{FIT_B:+.5f}, drift {abs(b_f-FIT_B):.5f})")
-need(abs(b_f - FIT_B) <= 0.01 and abs(a_f - FIT_A) <= 0.01,
-     f"the frozen coefficients no longer reproduce from the entry's own stated "
-     f"population definition (refit a={a_f:+.5f} b={b_f:+.5f})")
+print(
+    f"  population: {len(rows)} rows, core {len(core)}; refit a={a_f:+.5f} "
+    f"b={b_f:+.5f} (frozen {FIT_A:+.5f}/{FIT_B:+.5f}, drift {abs(b_f - FIT_B):.5f})"
+)
+need(
+    abs(b_f - FIT_B) <= 0.01 and abs(a_f - FIT_A) <= 0.01,
+    f"the frozen coefficients no longer reproduce from the entry's own stated "
+    f"population definition (refit a={a_f:+.5f} b={b_f:+.5f})",
+)
 claims(f"a = {FIT_A:.5f}", "frozen intercept")
 claims(f"b = +{FIT_B:.5f}", "frozen slope")
 
 need(cron._PRICE_RECAL_FIT_A == FIT_A, "cron's intercept differs from the entry's")
 need(cron._PRICE_RECAL_FIT_B == FIT_B, "cron's slope differs from the entry's")
 need(cron._PRICE_RECAL_THRESHOLD == THR, "cron's threshold differs from the entry's")
-need(f'"{cron._PRICE_RECAL_PROTOCOL_VERSION}"' in ENTRY,
-     f"the protocol version {cron._PRICE_RECAL_PROTOCOL_VERSION!r} stamped on every "
-     f"row does not appear in the entry, so the stamp has no external authority")
+need(
+    f'"{cron._PRICE_RECAL_PROTOCOL_VERSION}"' in ENTRY,
+    f"the protocol version {cron._PRICE_RECAL_PROTOCOL_VERSION!r} stamped on every "
+    f"row does not appear in the entry, so the stamp has no external authority",
+)
 
 if failures:
     for f in failures:

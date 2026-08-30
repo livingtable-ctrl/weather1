@@ -20,7 +20,10 @@ CORRECTED 2026-08-30, BEFORE THE FIRST PICK WAS EVER LOGGED. Three parallel
   DISCOVERY pick set's mean price (0.791 + 1c), produced by b = 1.4871. The
   FROZEN coefficients produce a different pick set entirely: mean mid 0.7387,
   executable 0.7487, sd 0.42024, fee 0.01258. N_KILL was 1,340; it is 1,700.
-  Power at 1,340 was not 0.80, it was 0.705.
+  Power at 1,340 was not 0.80: it was 0.705 at the superseded M=10 cut of 2.807,
+  or 0.685 at the corrected M=12 cut of 2.8653. Both are stated because a
+  notice about mixing inputs should not itself leave which inputs it used
+  ambiguous.
 
   This is the failure this project already has a name for -- numbers quoted
   together that come from different fits. The coefficients were frozen from the
@@ -38,6 +41,24 @@ CORRECTED 2026-08-30, BEFORE THE FIRST PICK WAS EVER LOGGED. Three parallel
 
   Everything below is the corrected text. The superseded figures are named
   explicitly wherever they were wrong rather than quietly replaced.
+
+  THREE BOUNDS ON THIS ARGUMENT, because "the clock had not started" is
+  otherwise a renewable licence:
+   1. AT MOST ONE pre-clock correction. This is it. A second one is a
+      re-registration under a new protocol_version with its own clock, whatever
+      the pick count says.
+   2. "Zero picks logged" is NOT "no data seen", and the weaker claim is the
+      true one: no observation from the FORWARD corpus exists. The correction
+      was made from the same 642 in-sample rows the original was written from,
+      and the cluster decision in section 3 was informed by statistics computed
+      on outcome data. Those remain forks in Gelman & Loken's sense, which is
+      why section 3 now leads with the mechanism rather than the z comparison.
+   3. The clock's start is bound to something that does not depend on cron's
+      timing. "The table did not exist" was true only because no cycle had yet
+      run against the live DB -- had one fired between the schema commit and
+      this correction, the clock would have started by accident. From here the
+      start is the FIRST ROW in price_recal_shadow_log, which is checkable, and
+      the protocol_version stamped on it is what a later reader dates it by.
 Files: tracker.py (_MIGRATIONS, price_recal_shadow_log), cron.py
   (_log_price_recal_picks). SHADOW ONLY -- it places nothing, and live trading
   stays dormant.
@@ -59,7 +80,11 @@ FROZEN COEFFICIENTS. a = -0.12856, b = +1.33635. Fitted by MLE logistic
 regression of outcome on logit(market_prob) over the 642 core-temperature rows
 (condition type above/below/between) in analysis_attempts with outcome NOT NULL
 and both probabilities NOT NULL, as of 2026-08-29. SE(b) = 0.10118, z vs 1 =
-+3.323.
++3.323. The MLE on those rows converges to b = 1.336269; 1.33635 is the value
+as COMMITTED and is what every logged row is stamped with. The 0.00008 gap is
+below any threshold that changes a pick (the pick set is 211 either way) but it
+is stated because this entry withdrew another figure for failing to reproduce
+at five decimals, and the same standard has to apply here.
 
 THE POPULATION IS DEFINED BY CONDITION TYPE, NOT BY TICKER FAMILY, and the
 forward gate uses the identical rule -- that identity is the only property that
@@ -222,6 +247,41 @@ cluster choice is very nearly the whole decision, which is exactly why it may
 not be chosen after seeing the data. target_date is pre-committed here as the
 primary, and (city, target_date) is reported alongside as secondary.
 
+THE JUSTIFICATION IS THE MECHANISM, NOT THE NUMBER. An earlier draft argued
+from the z comparison, which is a data-dependent basis for a choice this entry
+elsewhere forbids making from data. The a-priori ground stands on its own and
+predates any of this: cross-city temperature correlation in this project's own
+market set is already measured independently (the _CITY_PAIR_CORR work, 2,280
+pairs), synoptic weather patterns are shared across cities on a given day, and
+every forward pick is a NO on a directional temperature market -- so they lose
+together. The z comparison is a consistency check on that mechanism, not its
+reason.
+
+AND THE MECHANISM DOES NOT STOP AT MIDNIGHT. Disclosed because it is the honest
+consequence of leading with the principle:
+
+  cluster            clusters      z
+  city                     20   +3.1893
+  (city, target_date)     185   +2.9991
+  target_date              33   +2.8068
+  2-day block              18   +2.7885
+  3-day block              12   +2.4146
+  ISO week                  6   +2.1233
+
+z declines monotonically past target_date. If the dependence were confined to a
+calendar day, coarsening further would leave z roughly flat; instead date to
+3-day costs another 0.39, twice what city-day to date costs. Weather regimes
+persist for days, and a nationally hot WEEK is as real as a nationally hot day.
+
+target_date is nonetheless what is pre-committed, and the reason is that a
+calendar day is the coarsest unit with a clean a-priori definition and enough
+clusters to support the normal approximation (33 now, ~133 at look 1, ~266 at
+look 2; a 3-day block gives 12 now and ~44 at look 1, at or under the bootstrap
+floor). Committing to a block cluster would trade a known bias for an unknown
+one. What must NOT happen is choosing between them later: the multi-day numbers
+are recorded here, in advance, precisely so that reaching for one after seeing
+the result is visibly the seventh threshold rather than a discovery.
+
 THE DEFF FIGURES, correctly labelled. An earlier draft said "across FOUR cuts
 ... 0.69, 0.75, 0.82, 0.88 and 0.93" -- five numbers for four cuts, mixing
 held-out cuts with in-sample ones, and claiming "151-185 clusters" for all of
@@ -247,14 +307,28 @@ $0.01200 at C=25, a 67% difference. NAME THE PRICE WHEN QUOTING THAT RATIO: an
 earlier draft gave both 79% (which is the figure at P = 0.801) and 67% (at
 P = 0.79) for what read as the same quantity.
 
-And the size-dependence is narrower than "any net figure without its C is
-undefined" implies. The whole effect lives between C = 1 and about C = 4; from
-C = 5 to C = 25 the penalty over the unrounded rate is 0.4%. C = 1 is reported
-as the secondary worst case and is the genuinely informative one.
+The size-dependence is narrower than "any net figure without its C is
+undefined" implies, but not as narrow as an earlier draft claimed. Measured on
+the frozen-coefficient pick set against the unrounded rate of 0.012362:
+
+    C      fee      penalty   derived floor
+    1    0.017014    37.6%       2,101
+    4    0.013626    10.2%       1,737
+    5    0.013393     8.3%       1,716
+   25    0.012580     1.8%       1,644
+  100    0.012420     0.5%       1,630
+
+So "the whole effect lives between C = 1 and about C = 4" is false -- C = 5
+still carries an 8% rounding penalty, and its derived floor of 1,716 is ABOVE
+the pre-committed 1,700. The choice of C = 25 is part of what keeps the
+committed floor sufficient, which is a dependency worth naming rather than
+glossing. C = 1 is reported as the secondary worst case.
 
 TWO HONEST WEAKNESSES IN C = 25. Averaged over the observed size distribution
-rather than at its mean, the fee is 0.011572 against 0.01120 at C = 25 -- so
-C = 25 is about 3% OPTIMISTIC, not conservative. And paper_trades.json is the
+rather than at its mean, the fee is 0.012759 against 0.012580 at C = 25 --
+so C = 25 is about 1.4% OPTIMISTIC, not conservative. (An earlier draft put
+this at 3% against 0.01120, which is the DISCOVERY pick set's fee -- the very
+number the correction notice at the head of this entry retires.) And paper_trades.json is the
 ENSEMBLE strategy's sizing on different markets; this rule's future size is an
 open decision. Freezing a constant from an unrelated strategy's history is
 arbitrary, and is tolerable only because the fee barely moves the floor between
@@ -344,7 +418,19 @@ M = 12, alpha = 0.05 two-sided, applied one-tailed.
   one-tailed is a deliberate extra tightening to a one-sided alpha of 0.00208 --
   chosen because the prior after a twelve-fork search is bad and the payoff is
   skewed against us, not because it follows from anything. It costs sample: at
-  2.6383 the floor would be about 1,440 picks rather than 1,700.
+  2.6383 the floor would be about 1,449 picks rather than 1,700.
+
+  AND THE M=12 MULTIPLICITY IS APPLIED TWICE, which should be said plainly.
+  Once to shrink the discovery estimate (the haircut, to -0.0052) and again to
+  set the FORWARD critical value. Harvey & Liu's Bonferroni t-cut is a hurdle
+  for judging an already-run backtest; it is not a confirmatory-test alpha, and
+  calling 2.8653 "the Harvey-Liu Bonferroni t-cut" borrows an authority the
+  source does not extend to a forward test. It is defensible as a deliberately
+  bad prior -- which is what this entry claims it is -- but the cost was priced
+  only against the one-sided variant. Against no multiplicity at all: a
+  two-sided 1.96 gives a floor of 939 picks (147 days) and a one-sided 1.645
+  gives 740. That is the real price of the double count, and it is paid on
+  purpose rather than by oversight.
 
 The old M=10 cut of 2.807 coincided with the Bonferroni figure the research doc
 quotes for its ten sub-cells. That agreement was arithmetic (0.05/10), never
@@ -359,7 +445,15 @@ and Financial Charlatanism", Notices of the AMS 61(5), for Theorem 2.
   E[max of N noise trials] = sd * ( (1-g)*Z^-1[1-1/N] + g*Z^-1[1-1/(N*e)] ),
   g = 0.5772 (Euler-Mascheroni), and for z-statistics sd = 1.
 
-  MinBTL ~ ( ((1-g)Z^-1[1-1/N] + gZ^-1[1-1/(Ne)]) / E[max_N] )^2 < 2 ln[N] / E[max_N]^2
+  MinBTL ~ ( ((1-g)Z^-1[1-1/N] + gZ^-1[1-1/(Ne)]) / SR_target )^2 < 2 ln[N] / SR_target^2
+
+  (SR_target is the TARGET annualised Sharpe, not E[max_N]. Writing E[max_N]
+  in the denominator -- as an earlier draft did, copying the paper's own
+  Theorem 2 layout without its surrounding definition -- makes the first
+  expression identically 1, since the bracketed numerator IS E[max_N] at
+  sd = 1. Nothing turns on it because MinBTL is cited and deliberately not
+  used, but this section's claim to authority is that the primaries were
+  read rather than paraphrased.)
 
 The noise floor is the number that should be hardest to unsee. Two columns,
 because the mean and the tail answer different questions and an earlier draft
@@ -378,8 +472,11 @@ Twelve pure-noise trials produce a best-of z at or above the observed 1.98
 FORTY-FOUR PERCENT of the time. That is the number to keep: the earlier phrasing
 ("the statistic is inside the range the search produces") was loose, because
 E[max] is a mean and 1.98 exceeds it at every N tabulated. The tail probability
-is the honest form, it is far more damning than the mean was, and it lands close
-to the Bonferroni p_BON of 0.573 at M=12 by an independent route.
+is the honest form, it is far more damning than the mean was, and the Bonferroni
+p_BON of 0.573 at M=12 agrees with it BY CONSTRUCTION, not
+independently -- Bonferroni is the union bound on exactly this event under
+exactly this independence assumption, so the 29% gap between them is just the
+second-order term. Their agreement checks the arithmetic and nothing else.
 
   ONE CAVEAT ON BOTH COLUMNS, which the source states and this entry owes: the
   formula assumes the N trials are INDEPENDENT, and the paper says so --
@@ -437,15 +534,61 @@ would reintroduce N > 1.
     mean executable      0.7487      (superseded draft assumed 0.8010)
     sd                   0.42024     (superseded draft assumed 0.3992)
     fee at C=25          0.01258     (superseded draft assumed 0.01120)
-    entry price range    0.560 - 0.910, median 0.745, p25 0.640
+    entry price range    0.560 - 0.910, median 0.745, p25 0.640  (MID basis)
+    same, executable     0.570 - 0.920, median 0.755, p25 0.650  (+1c)
 
     delta = +0.0610  raw selection edge, net of the CORRECTED fee and a 1c
                      half-spread = +0.03842      n = 1,644
     delta = +0.0177  M=4 haircut, net                        n = 7,700
     delta = -0.0052  M=12 haircut, the declared one          NO finite n
 
+  DELTA IS STILL A HYBRID, and this entry should not imply otherwise. The COSTS
+  now come from the pick set the rule actually fires on. The EFFECT does not:
+  +0.0610 is the discovery's held-out edge, realised on 135 picks at mean mid
+  0.791 under b = 1.4871. Carrying a level across a different slope and a
+  different price distribution is an assumption, not a measurement, and calling
+  it "the raw selection edge" reads as though it had been measured here.
+
+  The rule's own model says what gross edge to expect, because for a NO buy at
+  mid m the per-contract edge IS |recal(m) - m|. Measured: the discovery
+  coefficients imply a mean |divergence| of 0.07608 over their 396 picks; the
+  frozen ones imply 0.07000 over 211. The discovery REALISED 0.0610 of an
+  implied 0.0761 -- a realisation ratio of 0.80. Three defensible transfers:
+
+    transfer                                gross   delta net   floor
+    carry the level (what this entry does)  0.0610    0.03842   1,644
+    carry the model-implied edge            0.0700    0.04742   1,079
+    carry the ratio (0.80 x 0.0700)         0.0561    0.03352   2,161
+
+  The committed choice sits in the middle of a 2x range rather than at an
+  extreme, which is why 1,700 is not resized again for it. But 1,700 is a FLOOR
+  and not a bound: the ratio transfer and the double-counted multiplicity both
+  push the same way, so the true requirement is more likely above it than below.
+
 PRE-COMMITTED: N_KILL = 1,700 settled picks at thr = 0.05, rounded up from the
 derived 1,644. Look 1 at 850.
+
+  A "PICK" IS A DISTINCT (ticker, target_date), NOT A LOGGED ROW, and the
+  difference is not cosmetic. The table's unique index is
+  (ticker, target_date, date(recorded_at)) -- deliberately one row per market
+  PER DAY -- so a market that sits in the firing band for three days writes
+  three rows carrying the SAME settlement.
+
+  Those extra rows buy nothing at all. The decision statistic is
+  z = S / sqrt(sum_clusters (sum_i e_i)^2), and duplicating every pick k times
+  multiplies the numerator by k and every cluster sum by k, so z is EXACTLY
+  invariant. Counting rows would have let 1,700 rows at multiplicity 2 stand in
+  for 1,700 observations while delivering the power of 850 -- 0.42 against the
+  0.82 this section commits to. The floor is right; only its denomination was
+  wrong, and it is fixed here rather than discovered at look 2.
+  tracker.get_price_recal_progress() counts DISTINCT picks for exactly this
+  reason and reports the raw row count separately, so the realised multiplicity
+  stays visible instead of implied.
+
+  ACCRUAL IN DAYS IS UNAFFECTED IN THE CONSERVATIVE DIRECTION: 6.39 picks/day is
+  measured on analysis_attempts, which is one row per (ticker, target_date), so
+  it is already a DISTINCT-pick rate. Rows will accrue k times faster than
+  picks; the 266-day estimate stands.
 
   * At 1,700 picks the test has 81.7% power against the RAW, un-haircut edge. A
     failure to clear z >= 2.8653 there means the discovery effect, at the size
@@ -466,21 +609,30 @@ derived 1,644. Look 1 at 850.
     the YES branch halves the rate. There is no optimistic case; 266 days is
     the central estimate and the only one.
   * THE COROLLARY, restated because the earlier wording was wrong. It said a
-    null at the floor "EXCLUDES delta >= +0.0398". It does not. 80% power means
-    a real effect of that size dies here one time in five, and at a marginal
-    null (z just under the bar) the 95% upper bound on delta is about +0.052 --
-    the powered-against effect sits INSIDE the interval. A null is a power
-    statement, not an exclusion: if delta were +0.0384 we would have seen it
-    82% of the time. Nobody may write "option 5 is dead" on the strength of it.
+    null at the floor "EXCLUDES delta >= +0.0398". It does not. 82% power means
+    a real effect of that size dies here nearly one time in five, and at a
+    marginal null (z just under the bar) the 95% upper bound on delta is about
+    +0.0492 -- the powered-against effect sits INSIDE the interval. A null is a
+    power statement, not an exclusion: if delta were +0.0384 we would have seen
+    it 82% of the time. (The +0.052 an earlier draft gave here was itself
+    computed on the SUPERSEDED z_crit, sd and N, in the same commit that
+    retired them -- the correction's own text repeating the correction's own
+    error.) Nobody may write "option 5 is dead" on the strength of it.
     The correct sentence remains "option 5 is not demonstrable at a sample size
     this project can afford".
 
 THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT, and it sits inside the
 one number section 6 forbids changing. Section 7 lists the real bid/ask
 distribution as unverified; this is that gap, made load-bearing. At a 2c
-half-spread delta_net falls to +0.02842 and the floor rises to 3,004 picks
-(+83%). The picks land at 0.09-0.44 on the YES side, which is the thin end of
-these books, so 1c is optimistic if anything.
+half-spread the executable price moves to mid + 0.02, which moves the sd and
+the fee as well -- recomputed on the same 211 picks: mean exec 0.75870, sd
+0.41416, fee 0.01222, delta +0.02878, floor 2,846 (+73%). (An earlier draft
+held sd and the fee at their 1c values and moved only the spread, giving
++0.02842 and 3,004 -- the same mixing of one pick set's costs with another's
+that the correction notice at the head of this entry condemns, committed in the
+paragraph that introduces the re-registration trigger.) The picks land at
+0.09-0.44 on the YES side, which is the thin end of these books, so 1c is
+optimistic if anything.
 
   PRE-COMMITTED TRIGGER, so this is decided now rather than after seeing it:
   when the log reaches 100 settled picks, compute the median realised half-
@@ -557,7 +709,7 @@ WHAT STOPS THE DATA BEING RE-CUT UNTIL IT PASSES:
   * If a result at either look is genuinely ambiguous, the answer is FAILED. The
     asymmetry is deliberate: the downside skew is severe (risking ~0.79 to win
     ~0.21, so a few losses erase many wins) and the prior after a
-    ten-fork search is bad.
+    twelve-fork search is bad.
 
 ------------------------------------------------------------------------------
 7. WHAT WAS VERIFIED WHILE WRITING THIS, AND WHAT WAS NOT
@@ -628,8 +780,9 @@ NOT VERIFIED, and not blocking this protocol:
     not change what to build now.
   * The real bid/ask distribution on these books. The log starts measuring it on
     day one, which is the point of storing both sides.
-  * The forward pick rate. In-sample 6.39/day, held-out 10.3/day; the log
-    measures it.
+  * The forward pick rate. In-sample 6.39/day at the frozen coefficients; the
+    log measures the real one. (The 10.3/day an earlier draft also quoted here
+    belongs to the DISCOVERY coefficients and cannot occur -- see section 5.)
 
 
 [OPEN 2026-08-28 -- batch-98. The measurement is done and the invariant it needs

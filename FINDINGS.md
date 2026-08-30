@@ -1,4 +1,4 @@
-# Round 1 findings ledger — 37 findings, 37 resolved
+# Findings ledger — round 1 (37) + round 2 (28), all 65 resolved
 
 Three parallel opus reviewers, non-overlapping scopes: **A** protocol statistics
 (15), **B** implementation (6), **C** tests and gate checkers (16).
@@ -8,7 +8,9 @@ and a deliberate no-op is a legitimate resolution only when it is explicit and
 reasoned per finding. Step 18: the only deferral bar is genuinely massively out
 of scope, and hitting it must be stated rather than left to disappear.
 
-**Measured status: 36 FIXED, 1 NO-OP with reason, 0 deferred, 0 open.**
+**Round 1 status: 36 FIXED, 1 NO-OP with reason, 0 deferred, 0 open.**
+**Round 2 status: 28 FIXED, 0 no-op, 0 deferred, 0 open. See the round-2
+section below — six of its findings were created by round 1s own fixes.**
 
 ---
 
@@ -58,7 +60,8 @@ are checkable rather than asserted.
       cluster counts stated per level, and a wild cluster bootstrap-t
       pre-committed for any look arriving with under 40 date clusters.
 - [x] **A-F4 MAJOR** — "excludes delta ≥ +0.0398". **FIXED**: rewritten as a
-      power statement with the ~+0.052 upper bound at a marginal null.
+      power statement with the upper bound at a marginal null. (Round 2 found
+      that bound was computed on superseded inputs; corrected to +0.0492.)
 - [x] **A-F5 MAJOR** — the 0.74-0.86 band. **FIXED**: the addendum now separates
       the SIDE (reconciles) from the BAND (does not) — 0.560-0.910, median
       0.745, only 33.2% inside.
@@ -76,7 +79,8 @@ are checkable rather than asserted.
       0.004 the draft got by multiplying marginals. G3 now computes it the same
       correct way, which is the point — the old checker shared the error.
 - [x] **A-F10 MODERATE** — the 1c spread frozen into an unamendable number.
-      **FIXED**: labelled an assumption, 2c sensitivity stated (3,004 picks), and
+      **FIXED**: labelled an assumption, 2c sensitivity stated (round 2
+      recomputed it properly as 2,846), and
       a trigger pre-committed at 100 picks if the measured median exceeds 1.5c.
 - [x] **A-F11 MINOR** — two fee ratios, neither naming its price. **FIXED**:
       both name it (67% at P=0.79); size-dependence scoped to C=1..4; C=25's 3%
@@ -214,3 +218,111 @@ my own list of what I thought I had touched (B-F1, C-F13).
 A self-written oracle inherits its author's blind spots. That is the argument
 for the review, and it is why the fixes move the checkers' inputs to sources the
 checkers do not control.
+
+---
+
+# ROUND 2 — 28 findings, all resolved
+
+Two parallel opus reviewers on the CORRECTIONS, not the original. The round
+exists because a fix reliably introduces new defects in code a prior round just
+called clean, and it did: **A2-F1, A2-F3, A2-F4, A2-F5, A2-F6 and B2-F1 were all
+created by round 1's own fixes.**
+
+**Measured: 28 fixed, 0 no-op, 0 deferred, 0 open.**
+
+## The headline
+
+**A2-F1 CRITICAL — the floor counted the wrong unit.** The table's unique index
+is `(ticker, target_date, date(recorded_at))` — one row per market **per day** —
+so a market in the firing band for three days writes three rows carrying the
+same settlement. The sizing treated each row as an independent observation. The
+decision statistic does not: duplicating every pick k times scales `S` and every
+cluster sum by k, so `z` is **exactly invariant** (verified numerically at
+k = 1, 2, 3, 5 — all give z = 1.725459). 1,700 rows at multiplicity 2 would have
+delivered the power of 850: 0.42 against the committed 0.82.
+
+The floor was right; its **denomination** was wrong. `get_price_recal_progress`
+now counts DISTINCT `(ticker, target_date)` picks and reports `settled_rows`
+separately so the multiplicity stays visible. Fixed before the first pick, with
+a test and a mutant.
+
+## Scope A — statistics (17/17)
+
+- [x] **A2-F1 CRITICAL** — pick unit. **FIXED**, above.
+- [x] **A2-F2 MAJOR** — the cluster justification was the z comparison, a
+      data-dependent basis for a choice section 6 forbids making from data.
+      **FIXED**: section 3 now leads with the mechanism (measured cross-city
+      correlation, shared synoptic patterns, an all-NO directional book) and
+      demotes the z to a consistency check. The multi-day table (2-day +2.7885,
+      3-day +2.4146, week +2.1233) is disclosed **in advance**, so reaching for
+      a coarser cluster after seeing the result is visibly the seventh threshold.
+- [x] **A2-F3 MAJOR** — the "+0.052 upper bound", *added by round 1's fix*, was
+      computed on the superseded z_crit, sd and N. **FIXED**: +0.0492.
+- [x] **A2-F4 MODERATE** — the 2c sensitivity, *added by the fix*, held sd and
+      fee at their 1c values. **FIXED**: recomputed properly — 2,846 (+73%).
+- [x] **A2-F5 MODERATE** — "3% optimistic against 0.01120", *added by the fix*,
+      quoted the discovery fee. **FIXED**: 1.4% against 0.012580.
+- [x] **A2-F6 MODERATE** — "C=5 to C=25 penalty is 0.4%" false. **FIXED**: table
+      added; C=5 carries 8.3% and its derived floor of 1,716 **exceeds** the
+      committed 1,700, now named as a dependency rather than glossed.
+- [x] **A2-F7 MODERATE** — delta is still a hybrid. **FIXED**: disclosed, with
+      all three defensible transfers priced (1,079 / 1,644 / 2,161) and 1,700
+      stated as a floor rather than a bound.
+- [x] **A2-F8 MODERATE** — "by an independent route" false; Bonferroni is the
+      union bound on that same event. **FIXED**, and the double-counted M is now
+      priced: with no multiplicity the floor is 939.
+- [x] **A2-F9** ten-fork → twelve-fork. **A2-F10** surviving 10.3/day.
+      **A2-F11** stale 670/1,340 in two docstrings — which also makes round 1's
+      A-F15 no-op false, corrected here. **A2-F12** b = 1.336269 against the
+      committed 1.33635, disclosed under the entry's own five-decimal standard.
+      **A2-F13** 1,440 → 1,449. **A2-F14** surviving 0.79. **A2-F15** mid and
+      executable prices mixed in one block. **A2-F16** the MinBTL denominator is
+      SR_target, not E[max], which made the printed form degenerate.
+      **A2-F17** the 0.705 was itself a mixed-input figure; both values now
+      given. All **FIXED**.
+- [x] **Attack 6 — the correction's legitimacy.** Sound in kind, under-bounded.
+      **FIXED**: three bounds added — at most ONE pre-clock correction; "zero
+      picks" narrowed to "no FORWARD observation", with the in-sample forks
+      acknowledged; and the clock's start bound to the first logged row rather
+      than to cron's scheduling accident.
+
+## Scope B — code and gates (11/11)
+
+- [x] **B2-F1 HIGH** — the production readout logged the **demoted** cluster,
+      and a round-1 mutant *actively enforced* the demotion. 900 picks over
+      3 cities × 4 dates read as 12 events where the primary cluster gives 4.
+      **FIXED**: both counts returned and named, primary logged first, mutant
+      inverted.
+- [x] **B2-F2 HIGH** — G3's "parsed from the PARENT entry" was **false**. The
+      anchor matched at offset 803, inside the protocol entry's own
+      cross-reference; the slice was unbounded and the row it found sat 3.11 MB
+      past the anchored entry's end. **FIXED**: located by its own `[OPEN`
+      header, bounded to 6,456 chars, exactly-one-match required, and asserted
+      to lie outside the entry under test.
+- [x] **B2-F3 HIGH/MED** — G5's `get` allowlist and dropped dynamic dispatch let
+      four more forms through. **FIXED**: `.get(` allowed only on known
+      mappings, dynamic dispatch fails closed, FOLLOW made deterministic, both
+      extra production entry points walked. **11 controls, all caught** — it was
+      1 originally and 6 after round 1.
+- [x] **B2-F4** stale docstrings. **B2-F5** the skip-rate alarm had ~12 points of
+      headroom over a routine 78% and measured the wrong thing — replaced with a
+      `last_at` staleness alarm, and the INFO line no longer hides while
+      unsettled. **B2-F6** `init_db()` initialised `tracker.DB_PATH` while the
+      writer wrote its own parameter — now bound to the actual target, with the
+      table's own two migrations applied for a foreign path. **B2-F7** the
+      normaliser missed the space separator and never validated — now splits
+      T/t/space and **canonicalises** through `fromisoformat().isoformat()`, so
+      ISO basic form cannot open a second key space. **B2-F8** the vacuous
+      `assert second in (0, 1)` deleted. **B2-F9** G9's file list derived from
+      the diff (it had omitted `test_sameday_only.py`) with a `try/finally`
+      restore. **B2-F10** G1's declaration control documented honestly as
+      provable-then-attested. **B2-F11** M disclosed as a second input without
+      external authority; "positionally" corrected to whole-row matching.
+      All **FIXED**.
+
+## What the round-2 fixes themselves caught
+
+Deriving G9's file list from the diff pulled the `.unlazy/` checkers into lint
+for the first time, which immediately found a real mypy type error and a ruff
+violation in `check_shadow_only.py`. The gate that was widened to stop lying
+about its scope found bugs the moment its scope became honest.

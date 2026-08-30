@@ -51,7 +51,10 @@ def _market(ticker=CORE_TICKER, bid=0.24, ask=0.26, city="NYC"):
     return {
         "ticker": ticker,
         "_city": city,
-        "_target_date": "2026-08-29",
+        # `_date` is the key enrich_with_forecast sets and the writer reads.
+        # An earlier fixture set `_target_date`, which no production code
+        # writes, so the fallback it appeared to cover was never exercised.
+        "_date": "2026-08-29",
         "yes_bid": int(round(bid * 100)),
         "yes_ask": int(round(ask * 100)),
     }
@@ -276,11 +279,18 @@ class TestDecisionRule:
         assert (wrote, skipped) == (0, 1)
 
     def test_a_pick_with_no_target_date_is_skipped_not_stored(self, db):
+        """Both sources of a target date must be absent for this to test
+        anything. An earlier version cleared `_target_date`, a key production
+        never sets, leaving `_date` at its fixture default -- so the row was
+        written and the test passed for a reason unrelated to what it set.
+        """
+        m = dict(_market())
+        m["_date"] = None
         cand, wrote, skipped, _ = cron._log_price_recal_picks(
-            _pairs((dict(_market(), _target_date=None), _analysis(target_date=None))),
-            db,
+            _pairs((m, _analysis(target_date=None))), db
         )
         assert (wrote, skipped) == (0, 1)
+        assert _rows(db) == []
 
     @pytest.mark.parametrize(
         "value,expected",
@@ -289,6 +299,23 @@ class TestDecisionRule:
             (__import__("datetime").date(2026, 8, 29), "2026-08-29"),
             (__import__("datetime").datetime(2026, 8, 29, 14, 30), "2026-08-29"),
             ("2026-08-29T14:30:00", "2026-08-29"),
+            # the SPACE separator -- what str(datetime), isoformat(sep=" ") and
+            # SQLite's datetime() all emit, and the form an earlier version
+            # stored intact as its own dedup key and its own cluster
+            ("2026-08-29 14:30:00", "2026-08-29"),
+            ("2026-08-29t14:00:00", "2026-08-29"),
+            # a bare date with a trailing Z is not a real emission and is not
+            # parseable; rejecting it is correct. A datetime with a Z splits at
+            # the T first and is handled above.
+            ("2026-08-29Z", None),
+            # unparseable input must be REJECTED, not stored verbatim
+            ("tomorrow", None),
+            ("08/29/2026", None),
+            ("2026-13-45", None),
+            # ISO basic form parses, and is CANONICALISED rather than stored
+            # verbatim -- returning "20260829" would key the same day twice.
+            (20260829, "2026-08-29"),
+            ("20260829", "2026-08-29"),
             (None, None),
             ("", None),
         ],
@@ -337,7 +364,6 @@ class TestDecisionRule:
         import datetime as _dt
 
         m = dict(_market())
-        m.pop("_target_date", None)
         m["_date"] = _dt.date(2026, 8, 29)
         a = _analysis()
         a.pop("target_date")
@@ -547,21 +573,16 @@ class TestCronPathAndDedup:
         assert len(rows) == 2
         assert len({r["recorded_at"][:10] for r in rows}) == 2
 
-    def test_two_rows_within_one_utc_day_are_still_deduped(self, db):
-        """The positive control for the test above: without it, that test
-        would also pass under an index keyed on the full timestamp."""
-        pairs = _pairs((_market(), _analysis()))
-        cron._log_price_recal_picks(pairs, db)
-        with sqlite3.connect(db) as con:
-            con.execute(
-                "UPDATE price_recal_shadow_log SET recorded_at = ?",
-                ("2026-08-29T00:00:01.000000+00:00",),
-            )
-        # same UTC day as the writer's own `now`, different hour
-        _, second, _, _ = cron._log_price_recal_picks(pairs, db)
-        assert second in (0, 1)  # depends on today's UTC date vs the fixture
-        with sqlite3.connect(db) as con:
-            con.execute("DELETE FROM price_recal_shadow_log")
+    def test_three_hours_of_one_utc_day_are_one_pick(self, db):
+        """The positive control for the test above: without it, that test would
+        also pass under an index keyed on the full timestamp.
+
+        An earlier version opened with `assert second in (0, 1)`, which asserts
+        nothing -- and its own comment conceded why ("depends on today's UTC
+        date vs the fixture"), making it nondeterministic as well as vacuous, in
+        a module whose stated purpose is non-vacuity. Deleted; what remains is
+        the part that actually discriminates.
+        """
         base = "2026-08-29T"
         for hh in ("01", "13", "23"):
             with sqlite3.connect(db) as con:
@@ -827,8 +848,55 @@ class TestSettlement:
         progress = tracker.get_price_recal_progress()
         assert progress["logged"] == 4
         assert progress["settled"] == 2
-        # 4 distinct (city, date) pairs exist; only 2 are settled.
-        assert progress["settled_events"] == 2
+        # 4 distinct (city, date) pairs exist; only 2 are settled. Both cluster
+        # levels must respect the settled filter.
+        assert progress["settled_events_city_date"] == 2
+        assert progress["settled_events_date"] == 2
+
+    def test_the_same_market_logged_on_three_days_counts_as_ONE_pick(
+        self, tmp_path, monkeypatch
+    ):
+        """The unit the look points are denominated in.
+
+        The unique index allows one row per market PER DAY, so a market that
+        sits in the firing band for three days writes three rows carrying the
+        same settlement. Counting rows would let 1,700 rows at multiplicity 3
+        stand in for 1,700 observations while delivering the power of 567 --
+        the cluster-robust z is exactly invariant to that duplication, because
+        duplicating every pick k times scales its numerator and denominator by
+        the same k.
+        """
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        with sqlite3.connect(path) as con:
+            for day in ("27", "28", "29"):
+                con.execute(
+                    "INSERT INTO price_recal_shadow_log (ticker, target_date, "
+                    " city, market_mid, recal_prob, divergence, side, "
+                    " entry_price_mid, entry_price_exec, fit_a, fit_b, "
+                    " threshold, protocol_version, recorded_at, outcome) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+                    (
+                        CORE_TICKER,
+                        "2026-08-30",
+                        "NYC",
+                        0.25,
+                        0.21,
+                        -0.08,
+                        "NO",
+                        0.75,
+                        0.76,
+                        cron._PRICE_RECAL_FIT_A,
+                        cron._PRICE_RECAL_FIT_B,
+                        cron._PRICE_RECAL_THRESHOLD,
+                        cron._PRICE_RECAL_PROTOCOL_VERSION,
+                        f"2026-08-{day}T12:00:00+00:00",
+                    ),
+                )
+        progress = tracker.get_price_recal_progress()
+        assert progress["logged"] == 3
+        assert progress["settled_rows"] == 3
+        assert progress["settled"] == 1, "three days of one market is ONE pick"
+        assert progress["picks_to_next_look"] == tracker.PRICE_RECAL_LOOK_1 - 1
 
     def test_the_terminal_state_reports_no_further_look(self, tmp_path, monkeypatch):
         tracker, path = _tracker_db(tmp_path, monkeypatch)
@@ -890,7 +958,10 @@ class TestSettlement:
                         "2026-08-29T00:00:00+00:00",
                     ),
                 )
-        assert tracker.get_price_recal_progress()["settled_events"] == 2
+        prog = tracker.get_price_recal_progress()
+        assert prog["settled_events_city_date"] == 2
+        # both NULL-city rows share one date, so the primary cluster is 1
+        assert prog["settled_events_date"] == 1
 
     def test_one_ticker_under_two_target_dates_writes_two_rows(self, db):
         cron._log_price_recal_picks(
@@ -960,7 +1031,9 @@ class TestNoPeeking:
         assert set(progress) == {
             "logged",
             "settled",
-            "settled_events",
+            "settled_rows",
+            "settled_events_date",
+            "settled_events_city_date",
             "first_at",
             "last_at",
             "next_look",
@@ -1006,8 +1079,17 @@ class TestNoPeeking:
         # and the settled filter could every one have been replaced by
         # `return 1` and this assertion still passed -- vacuous on the single
         # figure that separates a pick count from an independent-sample count.
-        # 3 cities x 4 dates = 12 events out of 900 picks, and that 12 is
-        # reachable only if BOTH columns are in the DISTINCT and the settled
-        # filter is applied.
-        assert progress["settled_events"] == 12
-        assert progress["settled_events"] != progress["settled"]
+        # 3 cities x 4 dates = 12 events out of 900 picks, reachable only if
+        # BOTH columns are in the DISTINCT (i % 3 and i % 4 are coprime, so all
+        # 12 combinations occur). The SETTLED filter is not exercised here --
+        # every row in this fixture is settled -- it is covered by
+        # test_settled_events_counts_only_settled_picks, which seeds a mix.
+        # BOTH cluster levels, and they must DIFFER -- 3 cities x 4 dates is
+        # 4 independent events under the protocol's PRIMARY cluster and 12
+        # under the demoted secondary. An earlier version reported only the 12,
+        # which is a three-fold overstatement of independence in the direction
+        # section 3 calls flattering.
+        assert progress["settled_events_date"] == 4
+        assert progress["settled_events_city_date"] == 12
+        assert progress["settled_events_date"] < progress["settled_events_city_date"]
+        assert progress["settled_events_date"] != progress["settled"]

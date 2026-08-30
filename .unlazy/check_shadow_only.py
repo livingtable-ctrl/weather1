@@ -19,7 +19,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENTRY_MODULE = "cron"
-ENTRY_FUNC = "_log_price_recal_picks"
+# Round 1 added a second production entry point (the progress readout) that the
+# walk did not cover. Both are walked now.
+ENTRY_FUNCS = ("_log_price_recal_picks",)
+ENTRY_FUNC = ENTRY_FUNCS[0]
+EXTRA_ENTRIES = (
+    ("tracker", "settle_price_recal_picks"),
+    ("tracker", "get_price_recal_progress"),
+)
 
 # Names that mean "this touched the network or placed an order". Matched on the
 # attribute/function NAME, so cron.foo(), client.foo() and a bare foo() all hit.
@@ -49,15 +56,40 @@ FORBIDDEN = {
 # name-only match on it flags every well-behaved function in the repo. Network
 # transport is caught two ways instead -- by the specific client method names
 # above, and by any attribute call on one of these receivers.
-NET_RECEIVERS = {"requests", "httpx", "urllib", "urllib3", "session", "client",
-                 "http", "conn", "socket", "subprocess", "aiohttp", "urlopen",
-                 "api", "transport"}
+NET_RECEIVERS = {
+    "requests",
+    "httpx",
+    "urllib",
+    "urllib3",
+    "session",
+    "client",
+    "http",
+    "conn",
+    "socket",
+    "subprocess",
+    "aiohttp",
+    "urlopen",
+    "api",
+    "transport",
+}
 NET_VERBS = {"get", "post", "put", "patch", "delete", "head", "request", "send"}
 
 # Modules whose functions are followed. Anything outside this set is a leaf: it
 # is reported as UNRESOLVED rather than silently assumed safe.
-FOLLOW = {"cron", "weather_markets", "utils", "positions", "tracker",
-          "order_executor", "kalshi_client", "paper"}
+# A TUPLE, not a set: `next((m for m in FOLLOW if callee in fns[m]), None)`
+# iterates it, and set iteration order varies with string-hash randomisation
+# between runs -- so which definition of a same-named function got walked was
+# nondeterministic.
+FOLLOW = (
+    "cron",
+    "weather_markets",
+    "utils",
+    "positions",
+    "tracker",
+    "order_executor",
+    "kalshi_client",
+    "paper",
+)
 
 # Every call the walk cannot resolve to a followed module must appear here.
 # An earlier version merely PRINTED the unresolved set and passed regardless,
@@ -67,18 +99,95 @@ FOLLOW = {"cron", "weather_markets", "utils", "positions", "tracker",
 # `from order_executor import submit_trade`, a raw socket and a subprocess curl.
 # Failing closed on anything unrecognised is the only way a negative assertion
 # means what its gate title says.
+# `get` is deliberately NOT in ALLOWED_LEAVES. Round 2 drove
+# `from requests import get; get(url)` at this checker and it passed, because
+# the comment below correctly kept bare `get` out of FORBIDDEN (dict.get is
+# everywhere) and then put it in the allowlist -- blinding the fail-closed path
+# to the single likeliest network verb for a writer that "just refreshes a
+# quote". `post`, `put` and `request` were all caught as unknown leaves; only
+# `get` walked through. It is now allowed ONLY as an attribute call on a
+# receiver the writer really uses.
+DICT_GET_RECEIVERS = {
+    "analysis",
+    "enriched",
+    "quote",
+    "condition",
+    "market",
+    "a",
+    "row",
+    "r",
+    "_prsl_prog",
+    "progress",
+    "kw",
+    "opts",
+    "d",
+    "cfg",
+    "os",
+    "environ",
+}
 ALLOWED_LEAVES = {
     # builtins
-    "abs", "all", "any", "bool", "callable", "dict", "enumerate", "float",
-    "getattr", "hasattr", "int", "isinstance", "len", "list", "max", "min",
-    "print", "range", "round", "set", "sorted", "str", "sum", "tuple", "zip",
+    "abs",
+    "all",
+    "any",
+    "bool",
+    "callable",
+    "dict",
+    "enumerate",
+    "float",
+    "getattr",
+    "hasattr",
+    "int",
+    "isinstance",
+    "len",
+    "list",
+    "max",
+    "min",
+    "print",
+    "range",
+    "round",
+    "set",
+    "sorted",
+    "str",
+    "sum",
+    "tuple",
+    "zip",
     # stdlib used by the writer
-    "append", "ceil", "close", "commit", "connect", "cursor", "date",
-    "debug", "error", "exception", "execute", "executemany", "exp", "erf",
-    "executescript", "fetchall", "fetchone", "fromisoformat", "get",
-    "info", "isoformat", "items", "keys", "log", "mkdir",
-    "lower", "now", "replace", "rowcount", "split", "sqrt", "strip", "values",
+    "append",
+    "ceil",
+    "close",
+    "commit",
+    "connect",
+    "cursor",
+    "date",
+    "debug",
+    "error",
+    "exception",
+    "execute",
+    "executemany",
+    "exp",
+    "erf",
+    "executescript",
+    "fetchall",
+    "fetchone",
+    "fromisoformat",
+    "info",
+    "isoformat",
+    "items",
+    "keys",
+    "log",
+    "mkdir",
+    "lower",
+    "now",
+    "replace",
+    "rowcount",
+    "split",
+    "sqrt",
+    "strip",
+    "values",
     "warning",
+    "Path",
+    "total_seconds",
 }
 
 
@@ -92,7 +201,7 @@ def load(mod: str) -> ast.Module | None:
 def functions(tree: ast.Module) -> dict[str, ast.AST]:
     out: dict[str, ast.AST] = {}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             out.setdefault(node.name, node)
     return out
 
@@ -135,7 +244,19 @@ def called_names(node: ast.AST) -> tuple[set[str], set[tuple[str, str]]]:
             if isinstance(f, ast.Name):
                 names.add(f.id)
             elif isinstance(f, ast.Attribute):
-                names.add(f.attr)
+                if f.attr == "get":
+                    # `.get(` is allowed ONLY on a receiver that is plainly a
+                    # local mapping. Anything else -- including a bare imported
+                    # `get` -- reaches the fail-closed path below.
+                    if (
+                        isinstance(f.value, ast.Name)
+                        and f.value.id.lower().lstrip("_") in DICT_GET_RECEIVERS
+                    ):
+                        pass  # a dict lookup, not a request
+                    else:
+                        names.add("<unqualified-get>")
+                else:
+                    names.add(f.attr)
                 if isinstance(f.value, ast.Name):
                     pairs.add((f.value.id, f.attr))
                 elif isinstance(f.value, ast.Attribute):
@@ -152,6 +273,13 @@ def called_names(node: ast.AST) -> tuple[set[str], set[tuple[str, str]]]:
                     )
                     if head:
                         pairs.add((head, f.attr))
+            else:
+                # getattr(m, "place_order")(), H["k"](), L[0](), (lambda…)()  --
+                # an entire node class that produced NO entry at all before, so
+                # it was neither a violation nor an unresolved leaf. A gate whose
+                # stated property is "fails closed on anything unrecognised" may
+                # not silently exempt a whole dispatch form.
+                names.add("<dynamic-dispatch>")
     return names, pairs
 
 
@@ -175,7 +303,7 @@ def analyse(inject: str | None = None) -> tuple[list[str], list[str]]:
     violations: list[str] = []
     unresolved: set[str] = set()
     seen: set[tuple[str, str]] = set()
-    stack = [(ENTRY_MODULE, ENTRY_FUNC)]
+    stack = [(ENTRY_MODULE, ENTRY_FUNC), *EXTRA_ENTRIES]
     while stack:
         mod, name = stack.pop()
         if (mod, name) in seen:
@@ -226,9 +354,11 @@ print(f"unresolved leaf calls ({len(unresolved)}): {unresolved}")
 unknown = sorted(set(unresolved) - ALLOWED_LEAVES)
 if unknown:
     for u in unknown:
-        print(f"FAIL: unresolved call {u!r} is neither followed nor allowlisted "
-              f"-- this gate fails closed, add it to ALLOWED_LEAVES only after "
-              f"confirming it cannot reach the network or an order")
+        print(
+            f"FAIL: unresolved call {u!r} is neither followed nor allowlisted "
+            f"-- this gate fails closed, add it to ALLOWED_LEAVES only after "
+            f"confirming it cannot reach the network or an order"
+        )
     sys.exit(1)
 
 # The control has to run in the same invocation the gate passes on, or the gate
@@ -239,24 +369,32 @@ if unknown:
 CONTROLS = [
     ("hardcoded order name", "_KalshiClient().place_order(1)"),
     ("aliased import", "import requests as rq; rq.get('https://x')"),
-    ("aliased order fn",
-     "from order_executor import place_paper_order as _p; _p(1, 2, 3, 4)"),
+    (
+        "aliased order fn",
+        "from order_executor import place_paper_order as _p; _p(1, 2, 3, 4)",
+    ),
     ("call receiver", "import httpx; httpx.Client().get('https://x')"),
     ("attribute receiver", "self._session.get('https://x')"),
     ("raw socket", "import socket; socket.create_connection(('h', 80))"),
     ("subprocess", "import subprocess; subprocess.run(['curl', 'https://x'])"),
+    ("bare imported get", "from requests import get; get('https://x')"),
+    ("getattr dispatch", 'getattr(_m, "place_order")(1)'),
+    ("dict dispatch", '_H = {"o": None}; _H["o"](1)'),
+    ("list dispatch", "_L[0](1)"),
 ]
 for label, snippet in CONTROLS:
     cviol, cunres = analyse(inject=snippet)
     caught = bool(cviol) or bool(sorted(set(cunres) - ALLOWED_LEAVES))
     print(f"  control {label:<22} {'CAUGHT' if caught else 'MISSED'}: {snippet}")
     if not caught:
-        print(f"FAIL: positive control {label!r} did NOT trip -- this checker "
-              f"cannot detect that form of call")
+        print(
+            f"FAIL: positive control {label!r} did NOT trip -- this checker "
+            f"cannot detect that form of call"
+        )
         sys.exit(1)
 
 if violations:
-    for v in violations:
-        print(f"FAIL: shadow writer reaches a forbidden path: {v}")
+    for _v in violations:
+        print(f"FAIL: shadow writer reaches a forbidden path: {_v}")
     sys.exit(1)
 print("GATE_G5_PASS")

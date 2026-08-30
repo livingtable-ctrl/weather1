@@ -1319,7 +1319,7 @@ _PRICE_RECAL_PROTOCOL_VERSION = "2026-08-29.v1"
 _PRICE_RECAL_CORE_TYPES = frozenset({"above", "below", "between"})
 
 
-def _price_recal_target_day(target_date) -> str | None:
+def _price_recal_target_day(target_date) -> str | None:  # noqa: C901
     """Normalise a target date to a bare `YYYY-MM-DD` string, or None.
 
     THE CALENDAR DAY, never a timestamp. `datetime` subclasses `date`, so a
@@ -1334,6 +1334,8 @@ def _price_recal_target_day(target_date) -> str | None:
     Strings are truncated at the `T` for the same reason -- an analyser that
     starts emitting an ISO timestamp must not silently open a second key space.
     """
+    from datetime import date as _date_cls
+
     if target_date is None:
         return None
     # datetime has .date(); date does not. Checked before .isoformat() because
@@ -1345,7 +1347,27 @@ def _price_recal_target_day(target_date) -> str | None:
     text = str(target_date).strip()
     if not text or text.lower() == "none":
         return None
-    return text.split("T", 1)[0]
+    # Split on T, t OR A SPACE. `str(datetime)`, `datetime.isoformat(sep=" ")`
+    # and SQLite's own datetime() all emit the space form -- the likeliest
+    # accidental emission, and the one an earlier version let through intact.
+    for sep in ("T", "t", " "):
+        if sep in text:
+            text = text.split(sep, 1)[0]
+            break
+    # VALIDATE. An unparseable string used to be stored verbatim: target_date
+    # is TEXT NOT NULL and the unique index keys on date(recorded_at), not on
+    # date(target_date), so "tomorrow" became its own dedup key AND its own
+    # cluster -- inflating the independent-event count, which is the exact
+    # direction that flatters the result. Returning None routes the row into
+    # `skipped`, where it is counted and visible.
+    # CANONICALISE, not merely validate: return the parsed date's own
+    # isoformat. Python accepts the ISO basic form, so "20260829" parses --
+    # and returning it verbatim would put the same day under two different
+    # keys, which is the second key space this function exists to prevent.
+    try:
+        return _date_cls.fromisoformat(text).isoformat()
+    except (ValueError, TypeError):
+        return None
 
 
 def _price_recal_recalibrated(mid: float) -> float:
@@ -1379,7 +1401,7 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
       1. condition type in {above, below, between}. The fit is core-temperature
          only.
       2. a real target_date. The protocol's statistic clusters on
-         (city, target_date); a pick with no date cannot join a cluster, and
+         target_date; a pick with no date cannot join a cluster, and
          the dedup index would not constrain it either (SQLite treats NULLs in
          a unique index as distinct).
       3. a real two-sided quote, 0 < mid < 1. logit is undefined at the
@@ -1397,22 +1419,48 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
     Nothing is scored here. `outcome` is left NULL for
     tracker.settle_price_recal_picks to fill from `outcomes`, and no win flag,
     edge or P&L is computed at write time -- the protocol's statistic is
-    computed twice, at 670 and at 1,340 settled picks, and a column that
+    computed twice, at tracker.PRICE_RECAL_LOOK_1 and _LOOK_2 settled
+    picks (850 and 1,700 as pre-registered), and a column that
     quietly accumulated it would be a third look.
     """
+    import pathlib
     import sqlite3
     from datetime import UTC, datetime
-
-    from tracker import init_db as _prsl_init_db
-    from weather_markets import parse_market_price
 
     # The table has to exist before the first INSERT, and nothing upstream
     # guarantees it: batch_log_analysis_attempts returns BEFORE its own
     # init_db() when the batch is empty, so it is not a reliable guarantor.
     # Without this, a first cycle on a pre-migration DB raises `no such table`,
     # gets swallowed by the caller's except, and logs "skipped this cycle"
-    # forever. init_db short-circuits on a module flag, so this is free.
-    _prsl_init_db()
+    # forever.
+    #
+    # BOUND TO db_path, not assumed. init_db() initialises tracker.DB_PATH; this
+    # function writes to its own parameter. Those coincide in production but the
+    # parameter exists precisely so they need not, and an earlier version
+    # initialised the wrong database while the INSERT -- which sits outside the
+    # per-row try -- raised `no such table` into the caller's except. That is
+    # verbatim the failure this guard was added to prevent.
+    import tracker as _prsl_tracker
+    from tracker import init_db as _prsl_init_db
+    from weather_markets import parse_market_price
+
+    if pathlib.Path(db_path) == pathlib.Path(_prsl_tracker.DB_PATH):
+        _prsl_init_db()
+    else:
+        # Only the two statements that create THIS table, not the whole
+        # migration list: the rest ALTERs tables a caller-supplied database is
+        # not required to have, and _run_migrations would fail on the first of
+        # them. Both are CREATE ... IF NOT EXISTS, so this is idempotent, and
+        # they are taken from _MIGRATIONS itself rather than restated, so a
+        # schema change cannot leave the two copies disagreeing.
+        _mig = sqlite3.connect(db_path)
+        try:
+            for _stmt in _prsl_tracker._MIGRATIONS:
+                if "price_recal_shadow_log" in _stmt:
+                    _mig.execute(_stmt)
+            _mig.commit()
+        finally:
+            _mig.close()
 
     now_iso = datetime.now(UTC).isoformat()
     rows = []
@@ -3324,19 +3372,16 @@ def _cmd_cron_body(
                 _prsl_cand,
                 _prsl_skipped,
             )
-        # A high skip RATE is the shape a field-rename or an API shape change
-        # takes here, and it is indistinguishable from "no market qualified"
-        # unless it is said out loud. Rate, not count: a big scan legitimately
-        # skips a lot.
-        if _prsl_cand and _prsl_skipped >= max(10, 0.9 * _prsl_cand):
-            _log.warning(
-                "price_recal_shadow_log: skipped %d of %d analysed market(s) "
-                "(%.0f%%) -- if this persists the log has stopped accruing and "
-                "the protocol's pick clock has stalled",
-                _prsl_skipped,
-                _prsl_cand,
-                100.0 * _prsl_skipped / _prsl_cand,
-            )
+        # NOT a skip-rate alarm. An earlier version warned at >=90% skipped,
+        # which has almost no headroom: the most recent live scan already skips
+        # 78% from the non-core condition gate alone, so a modest shift in the
+        # scanned market mix would have fired it every cycle. And a skip rate is
+        # only loosely coupled to the failure -- a 90%-skip cycle can still write
+        # plenty of picks and a 50%-skip cycle can write none.
+        #
+        # The quantity that actually measures a stalled clock is how long it has
+        # been since anything was written, and get_price_recal_progress()
+        # already returns it.
         # Fill outcomes for previously-logged picks from `outcomes`. Zero API
         # calls; see settle_price_recal_picks. Separate try so a settlement
         # failure cannot lose this cycle's writes, which already committed.
@@ -3352,16 +3397,46 @@ def _cmd_cron_body(
             # unlikely). Without this the counters had no caller at all and the
             # pick clock could only be read from a Python REPL.
             _prsl_prog = _prsl_progress()
-            if _prsl_prog.get("settled"):
+            if _prsl_prog.get("logged"):
                 _log.info(
                     "price_recal_shadow_log: %d logged, %d settled across %d "
-                    "event(s); %d to the next pre-registered look (%s)",
+                    "independent event(s) [%d city-days]; %d to the next "
+                    "pre-registered look (%s)",
                     _prsl_prog["logged"],
                     _prsl_prog["settled"],
-                    _prsl_prog["settled_events"],
+                    # PRIMARY cluster first -- section 3 demoted city-day, and
+                    # printing the demoted count overstates independence.
+                    _prsl_prog["settled_events_date"],
+                    _prsl_prog["settled_events_city_date"],
                     _prsl_prog["picks_to_next_look"],
                     _prsl_prog["next_look"],
                 )
+                # THE STALL ALARM. Directly measures the thing that matters --
+                # the protocol's horizon is a pick count, so a log that has
+                # silently stopped writing stops the clock invisibly, and that
+                # is indistinguishable from a quiet market unless it is said.
+                _prsl_last = _prsl_prog.get("last_at")
+                if _prsl_last:
+                    try:
+                        _prsl_age = (
+                            datetime.now(UTC) - datetime.fromisoformat(_prsl_last)
+                        ).total_seconds() / 3600.0
+                        if _prsl_age > 48:
+                            _log.warning(
+                                "price_recal_shadow_log: nothing written for "
+                                "%.1f hours (last %s) -- the rule has either "
+                                "stopped firing or the writer has stopped "
+                                "working, and the protocol's pick clock is "
+                                "stalled either way",
+                                _prsl_age,
+                                _prsl_last,
+                            )
+                    except (ValueError, TypeError) as _prsl_terr:
+                        _log.warning(
+                            "price_recal_shadow_log: unparseable last_at %r: %s",
+                            _prsl_last,
+                            _prsl_terr,
+                        )
         except Exception as _prsl_serr:
             _log.warning(
                 "price_recal_shadow_log: settlement sweep skipped: %s", _prsl_serr

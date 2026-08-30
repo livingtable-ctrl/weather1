@@ -9,7 +9,6 @@ covering the callers it broke.
 from __future__ import annotations
 
 import pathlib
-import re
 import subprocess
 import sys
 
@@ -30,11 +29,11 @@ TOUCHED = (
     # a RED repo-wide guard that this change broke, while the ledger reported
     # 2189 passing. A derivation seeded from the author's own recollection
     # inherits the author's blind spots.
-    "outcomes_valid",          # the guard that was red
+    "outcomes_valid",  # the guard that was red
     "_RAW_OUTCOMES_ALLOWLIST",  # its allowlist, same module
-    "cmd_cron",                 # the wiring's actual host
-    "sameday_only",             # the flag the new block changes behaviour for
-    "all_results",              # the data source the writer reads
+    "cmd_cron",  # the wiring's actual host
+    "sameday_only",  # the flag the new block changes behaviour for
+    "all_results",  # the data source the writer reads
 )
 
 modules = {NEW}
@@ -51,8 +50,10 @@ for t in targets:
 total = len(list((ROOT / "tests").glob("test_*.py")))
 print(f"(the full suite is {total} modules; this run is {len(targets)})")
 if len(targets) > total * 0.5:
-    print("FAIL: the 'scoped' set is more than half the suite -- that is the "
-          "full suite by another name; narrow TOUCHED")
+    print(
+        "FAIL: the 'scoped' set is more than half the suite -- that is the "
+        "full suite by another name; narrow TOUCHED"
+    )
     sys.exit(1)
 
 r = subprocess.run(

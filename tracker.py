@@ -14391,27 +14391,67 @@ def get_price_recal_progress() -> dict:
         row = con.execute(
             """
             SELECT COUNT(*)                                       AS logged,
-                   SUM(CASE WHEN outcome IS NOT NULL THEN 1 END)  AS settled,
+                   SUM(CASE WHEN outcome IS NOT NULL THEN 1 END)  AS settled_rows,
                    MIN(recorded_at)                               AS first_at,
                    MAX(recorded_at)                               AS last_at
             FROM   price_recal_shadow_log
             """
         ).fetchone()
-        # COALESCE before DISTINCT: SQLite treats NULLs as EQUAL for DISTINCT,
-        # so every NULL-city pick sharing a target_date would collapse into one
-        # cluster and UNDERSTATE the event count. Keyed on the ticker in that
-        # case, which is the most conservative reading available -- an unknown
-        # city cannot be assumed to share an event with another unknown city.
-        events = con.execute(
+        # THE PROTOCOL'S UNIT IS A DISTINCT PICK, NOT A ROW, and the two are
+        # not the same thing here. The unique index is
+        # (ticker, target_date, date(recorded_at)) -- deliberately one row per
+        # market PER DAY -- so a market that sits in the firing band for three
+        # days contributes three rows carrying the SAME settlement.
+        #
+        # That duplication buys nothing. The decision statistic is
+        # z = S / sqrt(sum_clusters (sum_i e_i)^2), and duplicating every pick
+        # k times scales the numerator and the denominator by exactly k: z is
+        # invariant. Counting rows would have let 1,700 rows at multiplicity 2
+        # stand in for 1,700 observations while delivering the power of 850.
+        settled = con.execute(
+            "SELECT COUNT(*) AS n FROM ("
+            "  SELECT DISTINCT ticker, target_date FROM price_recal_shadow_log"
+            "  WHERE outcome IS NOT NULL)"
+        ).fetchone()
+        # TWO event counts, and the PRIMARY one is by target_date alone.
+        #
+        # An earlier version returned only the (city, target_date) count -- the
+        # cluster the protocol DEMOTED. Section 3 moved the primary to
+        # target_date precisely because (city, target_date) is the less
+        # conservative of the two (z +2.9991 against +2.8068): on one date
+        # twenty cities share a synoptic pattern, and an all-NO directional book
+        # loses across them together. Reporting the demoted count made the one
+        # visible independent-sample figure the INFLATED one, in the direction
+        # the protocol calls flattering -- 900 picks over 3 cities x 4 dates
+        # reads as 12 events under the secondary and 4 under the primary.
+        #
+        # COALESCE on the secondary because SQLite treats NULLs as EQUAL for
+        # DISTINCT, so NULL-city picks sharing a date would collapse into one
+        # cluster and understate it. Keyed on the ticker in that case: an
+        # unknown city cannot be assumed to share an event with another unknown
+        # city. ticker is NOT NULL, so the concatenation cannot itself be NULL.
+        events_date = con.execute(
+            "SELECT COUNT(DISTINCT target_date) AS n FROM price_recal_shadow_log"
+            " WHERE outcome IS NOT NULL"
+        ).fetchone()
+        events_city_date = con.execute(
             "SELECT COUNT(*) AS n FROM ("
             "  SELECT DISTINCT COALESCE(city, '?' || ticker), target_date"
             "  FROM price_recal_shadow_log WHERE outcome IS NOT NULL)"
         ).fetchone()
-    settled = int(row["settled"] or 0)
+    settled_rows = int(row["settled_rows"] or 0)
+    settled = int(settled["n"] or 0)
     return {
         "logged": int(row["logged"] or 0),
+        # `settled` is DISTINCT (ticker, target_date) picks -- the unit the
+        # look points are denominated in. `settled_rows` is the raw row count,
+        # kept so the multiplicity (rows/picks) is visible rather than implied.
         "settled": settled,
-        "settled_events": int(events["n"] or 0),
+        "settled_rows": settled_rows,
+        # PRIMARY, per section 3. Named so a reader cannot mistake which
+        # cluster level the number belongs to.
+        "settled_events_date": int(events_date["n"] or 0),
+        "settled_events_city_date": int(events_city_date["n"] or 0),
         "first_at": row["first_at"],
         "last_at": row["last_at"],
         # Both look points from the pre-registration; see backlog.txt.

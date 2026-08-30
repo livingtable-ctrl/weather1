@@ -108,6 +108,13 @@ MUTANTS = [
     ),
     (
         "tracker.py",
+        "  SELECT DISTINCT ticker, target_date FROM price_recal_shadow_log",
+        "  SELECT ticker, target_date FROM price_recal_shadow_log",
+        "the look points count ROWS instead of distinct picks, so multi-day "
+        "duplication inflates progress toward the floor",
+    ),
+    (
+        "tracker.py",
         "PRICE_RECAL_LOOK_1 = 850",
         "PRICE_RECAL_LOOK_1 = 851",
         "look 1 drifts off half of look 2",
@@ -120,9 +127,15 @@ MUTANTS = [
     ),
     (
         "tracker.py",
-        "  SELECT DISTINCT COALESCE(city, '?' || ticker), target_date",
-        "  SELECT DISTINCT target_date",
-        "settled_events drops the city, collapsing distinct weather events",
+        '"SELECT COUNT(DISTINCT target_date) AS n FROM price_recal_shadow_log"',
+        '"SELECT COUNT(DISTINCT city) AS n FROM price_recal_shadow_log"',
+        "the PRIMARY event count stops clustering on the date",
+    ),
+    (
+        "tracker.py",
+        '        "settled_events_date": int(events_date["n"] or 0),',
+        '        "settled_events_date": int(events_city_date["n"] or 0),',
+        "the primary event count silently reports the DEMOTED city-day cluster",
     ),
     (
         "tracker.py",
@@ -138,15 +151,23 @@ MUTANTS = [
     ),
     (
         "cron.py",
-        "    if hasattr(target_date, \"date\") and callable(target_date.date):",
+        '    if hasattr(target_date, "date") and callable(target_date.date):',
         "    if False:",
         "a datetime target_date yields a timestamp key, defeating dedup",
     ),
     (
         "cron.py",
-        "    return text.split(\"T\", 1)[0]",
-        "    return text",
-        "an ISO-timestamp string opens a second key space",
+        'for sep in ("T", "t", " "):',
+        'for sep in ("T",):',
+        "the space separator stops being split, so str(datetime) opens a "
+        "second key space",
+    ),
+    (
+        "cron.py",
+        "        return _date_cls.fromisoformat(text).isoformat()",
+        "        return text",
+        "the normaliser stops canonicalising, so ISO basic form keys the same "
+        "day twice",
     ),
     (
         "cron.py",
@@ -156,7 +177,7 @@ MUTANTS = [
     ),
     (
         "cron.py",
-        "                        if analysis.get(\"days_out\") is not None",
+        '                        if analysis.get("days_out") is not None',
         "                        if True",
         "a missing days_out is recorded as a genuine same-day pick",
     ),
@@ -174,8 +195,17 @@ CONTENT_GATES = ("check_protocol.py", "check_numbers.py")
 def run_scoped() -> bool:
     """True when the scoped suite AND the content gates all pass."""
     r = subprocess.run(
-        [sys.executable, "-m", "pytest", SCOPED, "-q", "-x", "--no-header", "-p",
-         "no:cacheprovider"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            SCOPED,
+            "-q",
+            "-x",
+            "--no-header",
+            "-p",
+            "no:cacheprovider",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -187,8 +217,11 @@ def run_scoped() -> bool:
     for gate in CONTENT_GATES:
         g = subprocess.run(
             [sys.executable, str(ROOT / ".unlazy" / gate)],
-            cwd=ROOT, capture_output=True, text=True,
-            encoding="utf-8", errors="replace",
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if g.returncode != 0:
             return False
@@ -198,8 +231,10 @@ def run_scoped() -> bool:
 print("baseline: ", end="", flush=True)
 if not run_scoped():
     print("FAIL")
-    print("FAIL: the scoped suite does not pass unmutated; mutation results "
-          "would be meaningless")
+    print(
+        "FAIL: the scoped suite does not pass unmutated; mutation results "
+        "would be meaningless"
+    )
     sys.exit(1)
 print("passes")
 
@@ -213,8 +248,10 @@ for fname, needle, repl, what in MUTANTS:
         survivors.append(f"{what} (ANCHOR MISSING)")
         continue
     if text.count(needle) != 1:
-        print(f"FAIL: mutation anchor is not unique in {fname} "
-              f"({text.count(needle)} matches): {needle!r}")
+        print(
+            f"FAIL: mutation anchor is not unique in {fname} "
+            f"({text.count(needle)} matches): {needle!r}"
+        )
         survivors.append(f"{what} (ANCHOR AMBIGUOUS)")
         continue
     try:
