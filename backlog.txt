@@ -1,6 +1,364 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-30 -- the daily-ladder refit the research doc names as "the
+  decisive test, not yet run" (section 3), run WITHOUT the paper's 36GB dataset.
+  AN EARLIER DRAFT OF THIS ENTRY BLAMED THE PRICE SOURCE (mid versus executed)
+  AND WAS REFUTED BY REVIEW BEFORE IT WAS COMMITTED. The corrected finding is
+  larger and worse.]
+  THE MARKET'S CALIBRATION SLOPE IS A FUNCTION OF WHEN YOU SAMPLE IT, AND THE
+  TWO PRICE TABLES IN THIS DATABASE DISAGREE ABOUT THE SIGN OF THAT FUNCTION
+Priority: HIGH as a decision input on option 5. It bears directly on the frozen
+  coefficient b = +1.33635, and it raises -- without settling -- the question of
+  whether that coefficient is an artefact of how analysis_attempts records
+  prices. IT CANNOT CHANGE THE PRE-REGISTRATION, WHICH IS SEALED.
+Files: measurement only (price_history, analysis_attempts, outcomes_valid).
+
+FINDING 1 -- THE PRICE SOURCE IS NOT THE DRIVER. price_history carries
+yes_bid_close, yes_ask_close and price_close (last trade) on the SAME ROW at the
+SAME instant, so holding the moment fixed and varying only the source is a clean
+paired contrast. 340 settled core tickers:
+
+    H     n     bid       mid       ask     last trade
+    6h  244   +0.9553   +0.9607   +0.9205   +0.8874
+   12h  299   +0.7269   +0.8275   +0.7924   +0.7620
+   24h  287   +0.4814   +0.5488   +0.5934   +0.5444
+   36h  308   +0.2537   +0.3392   +0.3565   +0.2540
+
+All four sources cluster inside ~0.11 at every horizon. The MID is as
+compressed as the executed price. So "you cannot trade the mid" -- the thesis of
+the draft this replaces -- is not what is happening, and the spread is not the
+mechanism. The draft reached that conclusion by changing the price source AND
+the sampling moment at once and attributing the whole difference to the source.
+
+FINDING 2 -- THE MOMENT IS THE DRIVER, and on unselected data the slope falls
+monotonically as the horizon lengthens. price_history mid, 340 tickers:
+
+    1h +1.2811 | 2h +1.0402 | 4h +1.1187 | 6h +1.0043 | 9h +0.9579
+   12h +0.9100 | 18h +0.7497 | 24h +0.5956 (z -2.76) | 36h +0.3643 (z -4.96)
+
+It crosses 1 at about six hours. Far from resolution these markets are
+OVERCONFIDENT (b well below 1); very close to it they are mildly
+underconfident. Coherent, and strongly significant at the long end.
+
+FINDING 3 -- THE TWO TABLES DISAGREE ABOUT THE SIGN, and this is the part that
+matters. The same regression on analysis_attempts.market_prob, binned by the
+horizon of the RECORDED price (close time minus analyzed_at):
+
+    band       n         b     z vs 1        price_history mid at the same H
+    0-6h     104   +1.0447     +0.20                 ~ +1.00
+    6-12h    102   +1.0192     +0.09                 ~ +0.91 to +0.96
+    12-24h   249   +1.5896     +2.88                 ~ +0.60 to +0.75
+    24-48h   134   +1.8544     +2.05                 ~ +0.36
+
+They agree inside six hours and diverge violently beyond it -- one rising, the
+other falling. 383 of the 642 rows behind the frozen coefficient (60%) sit in
+the two bands where they disagree most.
+
+THE LIKELY CAUSE, STATED AS A HYPOTHESIS BECAUSE IT IS NOT YET VERIFIED.
+analysis_attempts UPSERTS on (ticker, target_date), so market_prob is the LAST
+scan's price and the computed horizon is "how long before close the market
+stopped being scanned". A row therefore only lands in the 12-48h bands if
+scanning STOPPED early -- which is the same selection the option-5
+pre-registration already documents ("a row only stays at days_out >= 1 if the
+market stopped being scanned ... selected roughly 3x on base rate"). If that
+selection is what produces b > 1 at long horizons, then the frozen b = 1.33635
+is substantially a selection artefact, and price_history -- a time series with
+no upsert and no such selection -- is the better estimate.
+
+WHAT WOULD SETTLE IT, and none of this was done here: restrict both tables to
+the SAME (ticker, target_date) set and the SAME horizon band and refit; check
+whether the analysis_attempts rows in the 12-48h bands are systematically
+markets that dropped out of the scan, and why they dropped out; and check
+whether price_history's own coverage is itself selected (it has 340 core
+settled tickers against analysis_attempts' 612, so it is not a superset).
+Until that is done this is a serious hypothesis, not a result.
+
+WHAT IT DOES NOT DO. It does not change the pre-registration. That is sealed --
+the clock started 2026-08-30 with the first three logged picks, and section 6
+binds from the first row. If this hypothesis is confirmed later, the correct
+response is to mark the registration FAILED and re-register under a new
+protocol_version, NOT to edit the frozen coefficient. Recorded here so that
+decision is made deliberately rather than discovered at look 1.
+
+WHY THE PAPER'S 36GB DOWNLOAD WAS SKIPPED. Two reasons, both measured first:
+  1. Running the paper's OWN classifier (jon-becker/prediction-market-analysis,
+     src/analysis/kalshi/util/categories.py, 509 four-tuples) over this
+     project's settled corpus puts 271 of 642 rows (42.2%) in its Weather
+     domain and excludes 57.8%. Every KXLOWT* family falls through to Other --
+     the taxonomy has no low-temperature category at all, and no pattern in it
+     can match a KXLOWT ticker -- as do the KXTEMP*H hourly families.
+     A SECOND MISROUTE THE RESEARCH DOC HAD NOT FOUND: get_hierarchy is an
+     unanchored first-match substring scan in literal table order, and
+     ("WTA", "Sports", "Tennis", "Other WTA") sits at line 106, far above the
+     Weather block at line 438. "LOWTATL" and "LOWTAUS" both contain "WTA", so
+     KXLOWTATL (24 rows) and KXLOWTAUS (11) are classified as TENNIS -- and
+     they are the only two Tennis-classified prefixes in the corpus. The doc
+     names only KXLOWTAUS. Verified that market_types.py feeds the classifier
+     regexp_extract(event_ticker,'^([A-Z0-9]+)',1), the ticker prefix, so this
+     is not a title-matching artefact.
+  2. The paper's data has no MIDS and no bid/ask -- its unit is an executed
+     trade. Finding 1 above required all four series on one row, which its
+     dataset structurally cannot provide.
+
+METHOD. price_history JOIN outcomes_valid on ticker, settled_yes IN (0,1),
+tickers LIKE KXHIGH% or KXLOWT%, one observation per ticker nearest each target
+horizon. Resolution time from the TICKER's own date (KXHIGHDEN-26JUL09 ->
+2026-07-10 00:00 UTC), NOT from outcomes.settled_at -- settled_at lags the real
+resolution by a median of about 73 hours because it is when this bot's cron
+swept the settlement, not when Kalshi resolved.
+  ONE GOTCHA THAT COST A RUN: outcomes.settled_at is stored NAIVE
+  ('2026-05-19 13:05:55') while created_time/analyzed_at carry a Z. Subtracting
+  them raises TypeError, and a bare except silently dropped every row -- the
+  run reported zero rows past the price filter and looked like a filter bug.
+
+ESTIMANDS THAT LOOK LIKE ANSWERS AND ARE NOT, recorded because the first is
+what a naive refit reports. Figures are approximate and were not re-derived
+after the rewrite; treat them as magnitudes, not measurements:
+  * PER-TRADE POOLING over ~102k trades gives b about +0.75 weighted / +0.60
+    unweighted. With SEs clustered by ticker (73 clusters) neither is
+    significant, which is the cleaner reason to set it aside than "dominated by
+    heavily-traded markets".
+  * VWAP OVER A MARKET'S LIFE gives b around +3.7 with z above 3. It is
+    look-ahead leakage: the average includes trades made as the price converges
+    to 0 or 1, information unavailable at any decision time.
+  * LAST TRADE BEFORE CLOSE separates the outcomes perfectly, so the fit
+    diverges and its b and SE are artefacts of solver tolerance. No number
+    should be quoted for it at all.
+
+WHAT THIS DOES NOT SETTLE. price_history covers 340 of the settled core tickers
+and analysis_attempts 612; neither is a superset of the other, and the overlap
+was not characterised. The trade tape is worse -- 109 tickers, 63 of them
+markets this bot itself paper-traded (it has never traded live: live_fills and
+audit_log are both empty, so there is market selection but no price
+contamination). No population-level claim here is safe until that is done.
+
+
+[OPEN 2026-08-30 -- research doc section 7 item 1, "re-check every settlement
+  assumption against The Weather Company". The doc says to read
+  weather.com/kalshi; that page is a DATA PORTAL, not methodology, so it cannot
+  answer the question. Kalshi's own market metadata can, and does.]
+  KALSHI'S OWN close_time PROVES THE CLIMATE DAY RUNS ON LOCAL STANDARD TIME --
+  AND tracker._fetch_asos_observations USES A CIVIL CLOCK DAY, WHICH IS WRONG
+  BY ONE HOUR FOR ~8 MONTHS A YEAR
+Priority: MEDIUM-HIGH. It is a live scoring path, not a research question, and
+  it resolves a contradiction the codebase currently documents as unresolved.
+  Exposure is modest (see MAGNITUDE) but the fix is small and the ambiguity
+  costs more than the bug.
+Files: tracker.py ~8496-8520 (_fetch_asos_observations, the wrong one),
+  metar.py ~360-372 (already correct, and already documents the contradiction).
+
+THE EVIDENCE, fetched live from api.elections.kalshi.com on 2026-08-30:
+
+    series        close UTC   local clock       local STANDARD   observes DST
+    KXHIGHNY      05:00       01:00 EDT         00:00            yes
+    KXHIGHMIA     05:00       01:00 EDT         00:00            yes
+    KXHIGHCHI     06:00       01:00 CDT         00:00            yes
+    KXHIGHDEN     07:00       01:00 MDT         00:00            yes
+    KXHIGHLAX     08:00       01:00 PDT         00:00            yes
+    KXHIGHTPHX    07:00       00:00 MST         00:00            NO
+
+Every market closes at midnight LOCAL STANDARD TIME. PHOENIX IS THE CONTROL:
+it never observes DST, and it closes at 00:00 under both conventions -- which
+is what rules out the alternative reading "they all close at 01:00 local
+clock". A single-city sample could not have separated those two.
+
+WHY THIS SETTLES SOMETHING. metar.py's own comment block records the
+contradiction and says the existing verification cannot resolve it:
+  1. metar.py assumes the NWS climate day runs on Local Standard Time, so
+     during DST it runs 01:00 to 00:59 the following local-clock day.
+  2. tracker._fetch_asos_observations asserts the opposite -- "a plain local
+     midnight-to-midnight civil day ... confirmed 2026-07-05 against real CLI
+     reports (Minneapolis: a 69F low at 6:16 AM ...; Phoenix: same pattern at
+     5:16 AM)".
+  3. metar.py then notes, correctly, that "both of those examples sit inside
+     00:00-23:59 under EITHER convention, so that verification cannot actually
+     discriminate between them."
+close_time discriminates. metar.py is right; tracker is wrong.
+
+AND IT SURVIVES THE SETTLEMENT MIGRATION, which is the part that makes it worth
+acting on now. These close_times are set by Kalshi under the CURRENT regime --
+settlement_sources for KXHIGHNY reads exactly [{"name": "The Weather Company",
+"url": "https://weather.com/kalshi"}], with no NWS anywhere, and the live rules
+text still names station CLINYC. So the LST window is not a fact about the
+superseded NWS process that might have lapsed on 2026-08-14; it is a fact about
+what Kalshi is doing today.
+
+THE DEFECT. tracker.py builds:
+    local_start = datetime(y, m, d,  0, 0, 0, tzinfo=tz)
+    local_end   = datetime(y, m, d, 23,59,59, tzinfo=tz)
+i.e. a civil CLOCK day. During DST the real climate day is 01:00 to 00:59 the
+next local-clock day, so this window:
+  * wrongly INCLUDES 00:00-00:59, which belongs to the PREVIOUS climate day;
+  * wrongly EXCLUDES 00:00-00:59 of the NEXT local-clock day, which belongs to
+    THIS one.
+Phoenix is unaffected year-round. Every other traded city is affected for
+roughly eight months a year.
+
+MAGNITUDE, stated honestly rather than inflated. Daily maxima occur
+mid-afternoon and daily minima near dawn, both far from the contested
+00:00-00:59 hour, so on most days the window error is a no-op. It bites only
+when the day's extreme falls in that hour -- a warm-advection night, or a
+frontal passage just after local midnight. KXLOWT is more exposed than KXHIGH
+because minima sit nearer the boundary. This is a correctness defect with a low
+hit rate, not a widespread mis-scoring.
+
+FIX. Build the window on local STANDARD time: take the zone's January UTC
+offset (its standard offset) and construct the day in that fixed offset rather
+than in the zone's DST-aware local time. Phoenix then falls out correctly with
+no special case. Do NOT hardcode a +1h shift -- that is the error the research
+doc's own B7 warns about, because it would break Phoenix and Honolulu.
+
+TEST IT WITH A DST/NON-DST PAIR, not one city. A test using only NYC passes
+under a blanket +1h rule, which is wrong; the pair NYC (DST) plus Phoenix
+(never DST) is what discriminates, exactly as the close_time table above did.
+Seed an observation at 00:30 local clock on a DST date and assert it is
+attributed to the PREVIOUS climate day in NYC and to the SAME day in Phoenix.
+
+When to revisit: next time tracker.py's settlement scoring is open. Nothing
+downstream is being reported wrongly at a rate that makes this urgent, but the
+codebase currently carries two contradicting assumptions and now has the
+evidence to collapse them to one.
+
+
+[OPEN 2026-08-30 -- research doc section 7 item 3, "measure whether the current
+  calibrated output is already calibrated". It is not. The doc framed a null
+  result as the useful outcome; the actual result is worse than a null.]
+  THE CALIBRATED FORECAST IS NOT CALIBRATED -- INTERCEPT -0.69, SLOPE +1.50,
+  AND THE MARKET BEATS IT ON BOTH PARAMETERS
+Priority: HIGH as a decision input on whether the ensemble is worth running at
+  all. It does not by itself say what to change.
+Files: measurement only (analysis_attempts).
+
+METHOD. Reliability regression y ~ a + b*logit(p) on the 642 settled
+core-temperature rows in analysis_attempts (condition type above/below/between,
+outcome NOT NULL). Perfect calibration is a = 0, b = 1. Note this population is
+NOT what the calibrators are fitted on -- those train on `predictions` -- so
+this is an out-of-sample-ish check, which makes the result harder to dismiss,
+not easier.
+
+    series                          n        a    SE(a)        b    SE(b)   z(b vs 1)
+    post-calibration forecast     642  -0.6863   0.1020  +1.5028   0.1301      +3.86
+    -- same-day (d=0)             435  -0.5120   0.1194  +1.2374   0.1431      +1.66
+    -- multi-day (d>=1)           207  -0.6383   0.2644  +2.6376   0.5033      +3.25
+    the MARKET price (benchmark)  642  -0.1286   0.1214  +1.3363   0.1012      +3.32
+    PRE-calibration forecast       40  -0.4147   0.4079  +1.7972   0.5880      +1.36
+
+TWO SEPARATE FAULTS, and they compound rather than cancel:
+  * INTERCEPT -0.6863. Where the model says 50% the truth is about 33%. That is
+    a large one-sided bias toward YES, not a calibration curvature issue, and
+    no slope correction removes it.
+  * SLOPE +1.5028, z = +3.86 against 1. On top of the bias, the probabilities
+    are COMPRESSED toward 0.5 -- the model is under-confident about how far
+    from even a market is.
+Multi-day is far worse on both (b = +2.64). Same-day's slope is not
+significantly off 1; its intercept still is.
+
+WHAT IT ANSWERS. The doc's question was "is another calibration stage worth
+adding?", with the ICML 2005 result that stacking a stage onto an
+already-calibrated model DEGRADES held-out squared error. That question is now
+moot in the useful direction: the output is not already calibrated, so the
+ICML contraindication does not apply. But the finding immediately raises a
+harder one -- a calibration layer IS already deployed, and this is its output.
+Adding another stage on top of a layer that is not working is not obviously the
+fix; understanding why the deployed one leaves a -0.69 intercept is.
+
+THE COMPARISON THAT MATTERS MOST. The market's own intercept is -0.1286
+against the model's -0.6863, and its slope 1.3363 against 1.5028. THE MARKET IS
+BETTER CALIBRATED THAN THE MODEL ON BOTH PARAMETERS. That is the same
+conclusion the no-edge entries reach by every other route, arrived at here on
+the calibration parameters directly.
+
+CAVEATS. forecast_prob_precal is populated on only 40 of 642 rows, so the
+pre-versus-post comparison is indicative at best -- the pre-cal slope of +1.80
+against post-cal +1.50 hints the calibrator helps a little and nowhere near
+enough, but n=40 with SE 0.59 cannot carry that claim. And the reliability
+regression assumes independent rows; ladder rungs of one city-day are not
+independent, so the SEs above are optimistic. The intercept is far enough from
+zero that clustering would not rescue it.
+
+
+[OPEN 2026-08-30 -- research doc section 7 item 4, "use Venn-Abers as a
+  diagnostic before considering it as a predictor". Done. The diagnosis is
+  do not fit per-city.]
+  VENN-ABERS DIAGNOSTIC: THE p0-p1 PAIR IS 10x WIDER AT PER-CITY CELL SIZES
+  THAN POOLED, WHICH IS THE PAPER'S OWN OVERFITTING SIGNAL
+Priority: LOW-MEDIUM. It closes a question rather than opening one -- and it
+  closes it against a technique the doc had listed as promising.
+Files: measurement only (analysis_attempts).
+
+METHOD. Inductive Venn-Abers per city cell: for each row, refit the isotonic
+regression with that row's label forced to 0 and then to 1; the two fitted
+values at its score are p0 and p1. The paper's stated diagnostic property is
+that the p0-p1 width indicates how flexible the scoring function is relative to
+the dataset size, and that the pair stays tight unless the underlying isotonic
+fit is overfitting grossly.
+
+    per-city cells (n = 11 to 49)   median width 0.143   mean 0.188
+    all 642 rows as ONE cell        median width 0.014   mean 0.024
+
+An order of magnitude. And it tracks cell size cleanly -- Boston (n=49) 0.077,
+Philadelphia (38) 0.121, Las Vegas (24) 0.267, Austin (15) 0.200, New Orleans
+(11) 0.190 -- with individual maxima reaching 1.000 (Miami), i.e. rows where
+the pair spans the entire probability range and the fit is being decided by a
+single point.
+
+WHAT IT MEANS. At per-city cell sizes an isotonic-family calibrator carries
+essentially no information: a median width of 0.14 says a typical row's
+probability is pinned only to a 14-point interval by the fit itself, before any
+sampling error in the underlying data. This is the empirical form of the ICML
+2005 contraindication the doc cites (isotonic reliably matches or beats Platt
+only above ~1000 calibration points) measured on this project's own data rather
+than transferred from a benchmark.
+
+SO: do not fit isotonic, Venn-Abers, or any isotonic-family calibrator PER
+CITY. Pooled, the pair is tight enough to be informative, which is consistent
+with the beta/Platt calibration already shipped operating on a pooled fit.
+Venn-Abers remains defensible as a DIAGNOSTIC -- that is what this entry is --
+and this run is evidence against promoting it to a predictor at the cell sizes
+this project has.
+
+CAVEAT. The widths above are computed on forecast_prob, the post-calibration
+output, so they describe how much room a FURTHER isotonic stage would have.
+They are not a statement about the calibrator already deployed.
+
+
+[OPEN 2026-08-30 -- research doc section 8, "what was never answered". These
+  four have no backlog entry at all and exist only inside a docs/ file, which
+  is how they get lost. Filed so they are visible in the backlog whether or not
+  anyone works them. No work implied by filing.]
+  FOUR RESEARCH QUESTIONS FROM THE 2026-08-29 RESEARCH DOC THAT WERE LOCATED
+  AND NEVER READ
+Priority: LOW individually. Listed together because they share a cause -- each
+  was reached for, run out of budget, and left with zero verified claims.
+Files: none (research record).
+
+ 1. THE BROADER FAVOURITE-LONGSHOT LITERATURE. Snowberg & Wolfers (NBER w15923)
+    and the datagolf dissent "The Favourite-Longshot Bias is not a bias" were
+    both located; nothing survived verification from either. The dissent was
+    "neither taken seriously nor dismissed -- it was never reached". THIS IS
+    THE AWKWARD ONE: this project has now pre-registered a forward test of a
+    favourite-longshot effect without ever reading the best-known argument that
+    the effect is not what it appears to be. If the dissent is right, it bears
+    directly on how a positive result at look 2 should be interpreted.
+ 2. HIERARCHICAL PARTIAL-POOLING ACROSS CITIES. Zero verified claims. Directly
+    relevant to the Venn-Abers entry above: per-city cells are too small to fit
+    anything, and partial pooling is the standard answer to exactly that.
+ 3. LADDER-MONOTONICITY UNDER CALIBRATION. Zero verified claims. consistency.py
+    enforces monotonicity on RAW prices; whether a calibration layer can break
+    it on the model's own output is unexamined.
+ 4. HDD/CDD WEATHER-DERIVATIVE PRACTICE. Not covered at all. The one place an
+    established industry has priced the same underlying for decades.
+
+WHY FILING THEM COSTS NOTHING AND HELPS. docs/calibration-and-edge-research-
+2026-08-29.md section 8 exists precisely so "a future pass does not assume
+these were covered". A docs file is not where anyone looks for open work. Two
+items from that same section -- the forward-validation protocol and the Kalshi
+fee mechanics -- have since been closed, so the section is already stale as a
+to-do list; this entry is the part that is still open, moved somewhere it will
+be seen.
+
+
 [OPEN 2026-08-30 -- observed on the first cron cycle after the option-5 shadow
   log landed. Not caused by that change; surfaced by watching a full run.]
   FLASH-CRASH BREAKER RE-TRIGGERS ON EVERY CHECK WHILE ALREADY IN COOLDOWN --
