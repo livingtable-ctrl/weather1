@@ -99,6 +99,15 @@ DECLARED_EDITS = {
     "notice and names every superseded figure. Any edit after the "
     "FIRST LOGGED PICK is a re-registration, not a correction, and "
     "must be recorded as one.",
+    "26f5f93c": "round-2 review corrections. Changes the DENOMINATION of the "
+    "floor (1,700 distinct picks, not logged rows -- the cluster-robust z is "
+    "exactly invariant to the multi-day duplication the unique index permits), "
+    "leads the cluster choice with the mechanism rather than the z comparison, "
+    "and recomputes four figures round 1 had itself written on superseded "
+    "inputs. Same pre-clock justification as 3ecf7b16, and the entry now caps "
+    "that argument at ONE further use -- this is that use. A third correction "
+    "is a re-registration under a new protocol_version whatever the pick "
+    "count says.",
 }
 later = [
     c
