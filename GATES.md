@@ -47,7 +47,7 @@ clock — a picks-shaped table written once per cron cycle, placing nothing.
       immutable pick-time snapshot, so the protocol's executable-price statistic
       is computable later. A mid-only row would silently re-run the discovery's
       own mid-price assumption.
-  CHECK: python -m pytest tests/test_price_recal_shadow_log.py -q -k "executable or snapshot"
+  CHECK: python .unlazy/run_selected.py "executable or snapshot or book" 7 GATE_G6_PASS
   EXPECT: GATE_G6_PASS
   EVIDENCE: pending
 
@@ -72,7 +72,7 @@ clock — a picks-shaped table written once per cron cycle, placing nothing.
 - [ ] G10: The cron path actually writes rows: a driven cron cycle against a
       temporary DB produces picks-table rows, and a second identical cycle adds
       none (the dedup index holds).
-  CHECK: python -m pytest tests/test_price_recal_shadow_log.py -q -k "cron or dedup"
+  CHECK: python .unlazy/run_selected.py "cron or dedup or migration_runner" 4 GATE_G10_PASS
   EXPECT: GATE_G10_PASS
   EVIDENCE: pending
 

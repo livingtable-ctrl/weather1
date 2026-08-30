@@ -52,6 +52,34 @@ threshold, and this rule already died of the first four.
 
 FROZEN SIDE RULE. side = YES if recalibrated > mid, else NO. Recorded per row.
 
+ADDENDUM 2026-08-29, same day, found while implementing and disclosed rather
+than fixed. AT THE FROZEN COEFFICIENTS THE YES BRANCH NEVER FIRES. The
+divergence recal(m) - m peaks at +0.04979 at m = 0.831 and never reaches the
+0.05 threshold, while on the other side it reaches -0.08156 at m = 0.251. So
+every forward pick will be a NO buy on a market whose YES price sits between
+0.09 and 0.44.
+
+Three things follow, and none of them is a reason to change anything:
+
+  * It does NOT contradict the discovery entry's "every pick is a favourite at
+    0.74-0.86". A NO buy on a market at 0.25 IS a favourite -- it costs
+    1 - 0.25 = 0.75. The pick band is a property of the ENTRY PRICE, which the
+    protocol defines as m for a YES and 1 - m for a NO, not of the side. The
+    in-sample simulation behind the 6.39 picks/day rate is already all-NO for
+    the same reason, so section 5's arithmetic is unaffected.
+  * IT IS A KNIFE EDGE, and should be read as one. The YES branch misses by
+    0.0002. It fires under the discovery's own slope (b = 1.4871 reaches
+    +0.07427 at m = 0.807) and would fire again on a slightly different
+    population. Nobody should conclude from the forward corpus that "the rule
+    only trades longshots" -- that is a fact about b = 1.33635 to five decimal
+    places, not about the market.
+  * THE OBVIOUS FIX IS THE TRAP. Switching to the discovery's b = 1.4871 to
+    "restore" the YES picks would be adopting a smaller-sample, staler fit
+    because the current one produces an unwelcome shape. That is the fifth
+    threshold wearing a different hat. The coefficients stay where section 1
+    froze them: the best estimate available on the day of pre-registration,
+    chosen before this consequence was known.
+
 ------------------------------------------------------------------------------
 2. WHAT GETS LOGGED PER PICK
 ------------------------------------------------------------------------------

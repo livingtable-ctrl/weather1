@@ -112,7 +112,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 84  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 86  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -969,6 +969,93 @@ _MIGRATIONS = [
     # forecast_temp_raw_f and model_forecast_temp_f. NULL on a metar_lockout
     # row, where no station bias is applied at all.
     "ALTER TABLE predictions ADD COLUMN station_bias_applied_f REAL",
+    # v84 -> v85: the picks-shaped shadow log for the price-recalibration rule
+    # (backlog.txt "FORWARD-VALIDATION PROTOCOL FOR THE PRICE-RECALIBRATION
+    # RULE", option 5 / option I). SHADOW ONLY -- cron._log_price_recal_picks
+    # writes it and nothing reads it on any pricing or placement path.
+    #
+    # APPENDED, never inserted -- see the analysis_attempts block above and
+    # _run_migrations' own comment for why _MIGRATIONS is append-only.
+    #
+    # WHY NOT REUSE analysis_attempts. It UPSERTs on (ticker, target_date), so
+    # market_prob and days_out are overwritten by every later scan of the same
+    # market. Two consequences that between them make it unusable as the
+    # forward corpus: the price it holds is the LAST one seen, not the price at
+    # the moment the rule would have bought, so a pick cannot be scored against
+    # what it would have paid; and a row only survives at days_out >= 1 if the
+    # market stopped being scanned, which selects that slice roughly 3x on base
+    # rate. Rows here are INSERTed and never UPDATEd (except the one-way
+    # outcome fill), with days_out stamped at pick time, so neither applies.
+    #
+    # WHY NOT REUSE exit_rule_shadow_log. That table is positions-shaped --
+    # entry_price, cost, quantity, peak_profit_pct -- and describes a position
+    # that already exists. This describes a pick that was never taken. Same
+    # discipline, different subject.
+    #
+    # BOTH SIDES OF THE BOOK ARE STORED, and that is the point of the table
+    # rather than an extra. analysis_attempts.market_prob is the MID
+    # (weather_markets.parse_market_price sets implied_prob = mid), so every
+    # number in the discovery table is a mid-price number and the liquidity
+    # objection the discovery entry raises against itself is unanswerable from
+    # it. entry_price_exec is what the pick would actually have cost;
+    # entry_price_mid is kept beside it purely so the forward figure stays
+    # comparable with the table that produced the hypothesis.
+    #
+    # fit_a / fit_b / threshold / protocol_version are written onto EVERY row
+    # rather than being implied by the code at read time. The protocol freezes
+    # the coefficients, and a frozen constant that lives only in a source file
+    # stops being checkable the moment someone edits the source file. Stamped
+    # per row, a later reader can prove which fit produced which pick, and a
+    # re-registration under new coefficients is separable by query rather than
+    # by git archaeology.
+    #
+    # `outcome` is the MARKET's settlement (did YES resolve true), not the
+    # pick's win. Whether the pick won is `outcome == 1` for a YES row and
+    # `outcome == 0` for a NO row -- derived at analysis time from `side`,
+    # which is stored. Storing the raw settlement rather than a win flag keeps
+    # the row scoreable if the side rule is ever re-examined, the same reason
+    # exit_rule_shadow_log stores state instead of a would-exit boolean.
+    """CREATE TABLE IF NOT EXISTS price_recal_shadow_log (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker            TEXT    NOT NULL,
+        city              TEXT,
+        target_date       TEXT    NOT NULL,
+        days_out          INTEGER,
+        condition_type    TEXT,
+        condition_var     TEXT,
+        market_mid        REAL    NOT NULL,
+        yes_bid           REAL,
+        yes_ask           REAL,
+        recal_prob        REAL    NOT NULL,
+        divergence        REAL    NOT NULL,
+        side              TEXT    NOT NULL,
+        entry_price_mid   REAL    NOT NULL,
+        entry_price_exec  REAL    NOT NULL,
+        fit_a             REAL    NOT NULL,
+        fit_b             REAL    NOT NULL,
+        threshold         REAL    NOT NULL,
+        protocol_version  TEXT    NOT NULL,
+        recorded_at       TEXT    NOT NULL,
+        outcome           INTEGER
+    )""",
+    # v85 -> v86: the dedup index for the table above.
+    #
+    # Keyed on the UTC DAY, not the hour that exit_rule_shadow_log uses. That
+    # table samples a position's state over time and wants every hour; this one
+    # records a DECISION, and cron running four times a day does not make four
+    # independent picks of the same market. INSERT OR IGNORE keeps the first,
+    # so the pick is the first scan of the day at which the rule fired -- which
+    # is also the only choice that cannot be influenced by seeing the rest of
+    # the day's price action.
+    #
+    # target_date is NOT NULL on the table above specifically so this index
+    # works: SQLite treats NULLs in a unique index as distinct, so a nullable
+    # target_date would let the same market be logged unboundedly. The writer
+    # skips a market with no target date rather than storing one, which is also
+    # correct on the protocol's terms -- its statistic clusters on
+    # (city, target_date) and a pick with no date cannot join a cluster.
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_prsl_ticker_target_day
+        ON price_recal_shadow_log(ticker, target_date, date(recorded_at))""",
 ]
 
 
@@ -14204,6 +14291,109 @@ def settle_orphaned_attempt_outcomes() -> int:
             len(rows),
         )
     return len(rows)
+
+
+def settle_price_recal_picks() -> int:
+    """Fill price_recal_shadow_log.outcome from `outcomes`. Zero API calls.
+
+    Deliberately shaped like settle_orphaned_attempt_outcomes above rather than
+    like settle_pending_attempt_tickers: it reads settlements that some other
+    path has ALREADY established and copies them across. The shadow log must
+    never be a reason to make a network call, and it must never be the thing
+    that decides a market has settled -- if it disagreed with `outcomes`, the
+    forward corpus would be scoring picks against its own opinion.
+
+    `outcome` here is the MARKET's settlement (settled_yes), not the pick's
+    win; see the table's migration comment for why the raw value is stored and
+    the win derived from `side` at analysis time.
+
+    One-way only: `outcome IS NULL` in the WHERE means a re-run cannot revise a
+    settled pick. That matters more here than it would elsewhere -- a table
+    whose outcomes can move is a table whose pre-committed statistic can be
+    re-cut without anyone editing the protocol.
+
+    Written as ONE statement rather than a SELECT followed by per-row UPDATEs.
+    The two-step version carried `outcome IS NULL` in both halves, and mutation
+    testing showed the second copy could be deleted without failing anything --
+    which is what a duplicated invariant looks like from the outside. With one
+    statement the one-way property lives in exactly one place and a test can
+    bind to it.
+
+    Returns the number of rows filled.
+    """
+    init_db()
+    with _conn() as con:
+        cur = con.execute(
+            """
+            UPDATE price_recal_shadow_log
+            SET    outcome = (
+                       SELECT o.settled_yes FROM outcomes o
+                       WHERE  o.ticker = price_recal_shadow_log.ticker
+                   )
+            WHERE  outcome IS NULL
+              AND  EXISTS (
+                       SELECT 1 FROM outcomes o
+                       WHERE  o.ticker = price_recal_shadow_log.ticker
+                         AND  o.settled_yes IN (0, 1)
+                   )
+            """
+        )
+        filled = cur.rowcount
+    if filled:
+        _log.info(
+            "settle_price_recal_picks: filled %d pick outcome(s), no API calls",
+            filled,
+        )
+    return filled
+
+
+def get_price_recal_progress() -> dict:
+    """Progress against the pre-registered protocol -- COUNTS ONLY, NO z.
+
+    Returning the test statistic from a routine reporting call is the exact
+    failure the protocol's section 6 forbids: "Continuously watching a running
+    z and stopping when it looks good ... twenty such looks make a false
+    positive expected, not unlikely" (Bailey & Lopez de Prado on the holdout
+    method). So this deliberately returns how many settled picks exist and
+    nothing that could be read as a result -- not the win rate, not the mean
+    edge, not the P&L. Computing the statistic is a separate, deliberate act
+    taken at 670 and at 1,340 settled picks and nowhere else.
+
+    Withholding it here is not security -- anyone can open the table. It is
+    there so that looking becomes a decision someone has to make on purpose,
+    rather than something a status line does to them.
+    """
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT COUNT(*)                                       AS logged,
+                   SUM(CASE WHEN outcome IS NOT NULL THEN 1 END)  AS settled,
+                   MIN(recorded_at)                               AS first_at,
+                   MAX(recorded_at)                               AS last_at
+            FROM   price_recal_shadow_log
+            """
+        ).fetchone()
+        events = con.execute(
+            "SELECT COUNT(*) AS n FROM ("
+            "  SELECT DISTINCT city, target_date FROM price_recal_shadow_log"
+            "  WHERE outcome IS NOT NULL)"
+        ).fetchone()
+    settled = int(row["settled"] or 0)
+    return {
+        "logged": int(row["logged"] or 0),
+        "settled": settled,
+        "settled_events": int(events["n"] or 0),
+        "first_at": row["first_at"],
+        "last_at": row["last_at"],
+        # Both look points from the pre-registration; see backlog.txt.
+        "next_look": 670 if settled < 670 else (1340 if settled < 1340 else None),
+        "picks_to_next_look": (
+            670 - settled
+            if settled < 670
+            else (1340 - settled if settled < 1340 else 0)
+        ),
+    }
 
 
 def get_unselected_bias(city: str, condition_type: str | None = None) -> float:

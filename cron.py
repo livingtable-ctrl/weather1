@@ -1270,6 +1270,230 @@ def _log_exit_rule_shadow(
     return len(rows), written, skipped, now_iso
 
 
+# ---------------------------------------------------------------------------
+# Option-5 price-recalibration shadow log. The frozen constants below ARE the
+# pre-registration -- see backlog.txt "FORWARD-VALIDATION PROTOCOL FOR THE
+# PRICE-RECALIBRATION RULE". Editing any of them ends that registration and
+# starts a new one; it does not amend the old one, and the FAILED mark goes on
+# the old entry first.
+#
+# Fitted by MLE logistic regression of outcome on logit(market_prob) over the
+# 642 core-temperature rows in analysis_attempts with outcome NOT NULL and both
+# probabilities NOT NULL, as of 2026-08-29. SE(b) = 0.10118, z vs the null b=1
+# is +3.323.
+#
+# They are NOT refitted on the accumulating corpus, and that is the single most
+# load-bearing line in this file. A nightly refit would fit the coefficients on
+# outcomes that the forward picks are then scored against, and the forward
+# corpus would stop being out-of-sample on the day it started.
+_PRICE_RECAL_FIT_A = -0.12856
+_PRICE_RECAL_FIT_B = 1.33635
+# The larger-n arm of the discovery table. The 0.08 arm's picks are a strict
+# subset of these and are recoverable by filtering on `divergence`, so they
+# cost nothing to keep -- but per the protocol they may not be promoted to the
+# decision if 0.05 fails. Promoting the surviving arm is the fifth threshold,
+# and this rule already died of the first four.
+#
+# CONSEQUENCE, MEASURED AND DISCLOSED (backlog addendum, same day): at the
+# frozen coefficients the YES branch never fires. recal(m) - m peaks at
+# +0.04979 at m=0.831 -- 0.0002 short -- while the other side reaches -0.08156
+# at m=0.251. Every forward pick is therefore a NO buy on a market whose YES
+# price sits between 0.09 and 0.44. That does not contradict the discovery
+# entry's "every pick is a favourite at 0.74-0.86": a NO buy at m=0.25 costs
+# 1-0.25 = 0.75. And it is a knife edge, not a property of the market -- the
+# discovery's own b=1.4871 reaches +0.07427. Restoring the YES picks by
+# adopting that older slope would be the fifth threshold, so the branch stays,
+# unfired, rather than being deleted as dead code.
+_PRICE_RECAL_THRESHOLD = 0.05
+_PRICE_RECAL_PROTOCOL_VERSION = "2026-08-29.v1"
+# The rule was fitted on core temperature only (KXHIGH*/KXLOW* above/below/
+# between). precip_month_total and hurricane_next_event rows exist in the same
+# table and were excluded from the fit, so they are excluded here; letting them
+# in would score the rule on a population it was never fitted on.
+_PRICE_RECAL_CORE_TYPES = frozenset({"above", "below", "between"})
+
+
+def _price_recal_recalibrated(mid: float) -> float:
+    """sigmoid(a + b*logit(mid)) under the frozen coefficients."""
+    import math
+
+    p = min(max(mid, 1e-6), 1 - 1e-6)
+    eta = _PRICE_RECAL_FIT_A + _PRICE_RECAL_FIT_B * math.log(p / (1 - p))
+    return 1.0 / (1.0 + math.exp(-max(min(eta, 40.0), -40.0)))
+
+
+def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, str]:
+    """Record the option-5 rule's picks for this cycle. SHADOW ONLY.
+
+    Returns (candidates, written, skipped, recorded_at).
+
+    OBSERVATION ONLY, and structurally so rather than by intention: this
+    function performs NO network I/O and reaches no order-placement path. It
+    reads `result.all_results` -- the (enriched_market, analysis) pairs
+    trade_cycle already built and that cron already walks to fill
+    analysis_attempts -- so it adds nothing to the scan. That is the same
+    constraint _log_exit_rule_shadow arrived at the hard way: every Kalshi read
+    goes through the shared, disk-persisted read circuit breaker, and
+    CircuitBreaker.is_open() is a MUTATOR, so a shadow fetch can consume the
+    probe slot a real exit check needs later in the same cycle.
+
+    THE DECISION RULE, in the order the guards apply. Each rejection is
+    deliberate and each is a place the forward corpus could otherwise be
+    quietly contaminated:
+
+      1. condition type in {above, below, between}. The fit is core-temperature
+         only.
+      2. a real target_date. The protocol's statistic clusters on
+         (city, target_date); a pick with no date cannot join a cluster, and
+         the dedup index would not constrain it either (SQLite treats NULLs in
+         a unique index as distinct).
+      3. a real two-sided quote, 0 < mid < 1. logit is undefined at the
+         endpoints.
+      4. |recalibrated - mid| >= 0.05.
+      5. side = YES if recalibrated > mid else NO.
+      6. THE EXECUTABLE PRICE MUST EXIST AND BE PAYABLE. For a YES pick that is
+         yes_ask; for a NO pick it is 1 - yes_bid. A zero ask is an empty book,
+         not a free contract, and a zero bid makes the NO side cost 1.00 --
+         both are unfillable and both would otherwise enter the corpus as
+         spectacular fake edges. parse_market_price's own `mid` hides this: it
+         falls back to yes_bid when yes_ask is 0, so a one-sided book still
+         produces a plausible-looking mid and passes guard 3.
+
+    Nothing is scored here. `outcome` is left NULL for
+    tracker.settle_price_recal_picks to fill from `outcomes`, and no win flag,
+    edge or P&L is computed at write time -- the protocol's statistic is
+    computed twice, at 670 and at 1,340 settled picks, and a column that
+    quietly accumulated it would be a third look.
+    """
+    import sqlite3
+    from datetime import UTC, datetime
+
+    from weather_markets import parse_market_price
+
+    now_iso = datetime.now(UTC).isoformat()
+    rows = []
+    candidates = 0
+    skipped = 0
+
+    for enriched, analysis in all_results:
+        candidates += 1
+        try:
+            condition = analysis.get("condition") or {}
+            if not isinstance(condition, dict):
+                skipped += 1
+                continue
+            ctype = condition.get("type")
+            if ctype not in _PRICE_RECAL_CORE_TYPES:
+                skipped += 1
+                continue
+
+            target_date = analysis.get("target_date") or enriched.get("_target_date")
+            target_str = (
+                target_date.isoformat()
+                if hasattr(target_date, "isoformat")
+                else (str(target_date) if target_date else None)
+            )
+            ticker = enriched.get("ticker") or ""
+            if not ticker or not target_str:
+                skipped += 1
+                continue
+
+            quote = parse_market_price(enriched)
+            # ONE gate, not two. parse_market_price sets has_quote = mid > 0,
+            # so a `has_quote` check in front of this is strictly implied by it
+            # and cannot fail independently -- mutation testing surfaced it as
+            # a surviving mutant, which is what a redundant guard looks like
+            # from the outside. The range check is the stronger of the pair (it
+            # also rejects mid >= 1, where logit diverges), so it is the one
+            # that stays.
+            mid = float(quote.get("mid") or 0.0)
+            if not (0.0 < mid < 1.0):
+                skipped += 1
+                continue
+
+            recal = _price_recal_recalibrated(mid)
+            divergence = recal - mid
+            if abs(divergence) < _PRICE_RECAL_THRESHOLD:
+                continue  # not a rejection: the rule simply does not fire here
+
+            yes_bid = float(quote.get("yes_bid") or 0.0)
+            yes_ask = float(quote.get("yes_ask") or 0.0)
+            if divergence > 0:
+                side = "YES"
+                entry_mid = mid
+                entry_exec = yes_ask
+            else:
+                side = "NO"
+                entry_mid = 1.0 - mid
+                entry_exec = 1.0 - yes_bid
+            if not (0.0 < entry_exec < 1.0):
+                # See guard 6 in the docstring. Counted as skipped rather than
+                # dropped silently: how often the rule fires on an unfillable
+                # book is itself a measurement the protocol wants.
+                skipped += 1
+                continue
+
+            rows.append(
+                (
+                    ticker,
+                    enriched.get("_city"),
+                    target_str,
+                    int(analysis.get("days_out") or 0),
+                    ctype,
+                    condition.get("var"),
+                    mid,
+                    yes_bid,
+                    yes_ask,
+                    recal,
+                    divergence,
+                    side,
+                    entry_mid,
+                    entry_exec,
+                    _PRICE_RECAL_FIT_A,
+                    _PRICE_RECAL_FIT_B,
+                    _PRICE_RECAL_THRESHOLD,
+                    _PRICE_RECAL_PROTOCOL_VERSION,
+                    now_iso,
+                )
+            )
+        except Exception as exc:
+            # One malformed analysis dict must cost its own row, never the
+            # cycle. Counted, so a systematic parse failure cannot look like
+            # "the rule did not fire".
+            skipped += 1
+            _log.debug(
+                "price_recal_shadow_log: skipped %s: %s",
+                enriched.get("ticker") if isinstance(enriched, dict) else "?",
+                exc,
+            )
+
+    if not rows:
+        return candidates, 0, skipped, now_iso
+
+    written = 0
+    con = sqlite3.connect(db_path)
+    try:
+        with con:
+            for r in rows:
+                cur = con.execute(
+                    "INSERT OR IGNORE INTO price_recal_shadow_log "
+                    "(ticker, city, target_date, days_out, condition_type, "
+                    " condition_var, market_mid, yes_bid, yes_ask, recal_prob, "
+                    " divergence, side, entry_price_mid, entry_price_exec, "
+                    " fit_a, fit_b, threshold, protocol_version, recorded_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    r,
+                )
+                written += cur.rowcount
+    finally:
+        # sqlite3.Connection.__exit__ commits/rolls back but does NOT close --
+        # same reason _log_exit_rule_shadow closes explicitly: cmd_cron runs
+        # inside main.cmd_loop's `while True`, so without this every cycle
+        # leaks a handle.
+        con.close()
+    return candidates, written, skipped, now_iso
+
+
 # The seven buckets below form a genuine PARTITION of `scanned`: every market
 # reaching trade_cycle's analysis loop increments exactly one of them and then
 # `continue`s. net_edge/prob_edge/passed look like three chances to be counted
@@ -3004,6 +3228,50 @@ def _cmd_cron_body(
         _batch_log(_analysis_batch)
     except Exception:
         pass
+
+    # Option-5 price-recalibration shadow log. SHADOW ONLY -- it places
+    # nothing, fetches nothing, and reads the same result.all_results the
+    # analysis batch above already walked.
+    #
+    # Runs on --sameday-only too, unlike the signals cache below. That cache is
+    # a wholesale-overwritten snapshot, so a narrow scan would truncate it; this
+    # is an append-only log where a narrow scan simply contributes fewer rows,
+    # and dropping the same-day picks would bias the forward corpus toward the
+    # multi-day horizon -- which is the exact selection defect
+    # analysis_attempts' upsert already has and this table exists to avoid.
+    try:
+        from tracker import DB_PATH as _PRSL_DB
+
+        (
+            _prsl_cand,
+            _prsl_wrote,
+            _prsl_skipped,
+            _prsl_stamp,
+        ) = _log_price_recal_picks(result.all_results if result else [], _PRSL_DB)
+        if _prsl_wrote:
+            _log.info(
+                "price_recal_shadow_log: logged %d pick(s) from %d analysed "
+                "market(s), %d skipped",
+                _prsl_wrote,
+                _prsl_cand,
+                _prsl_skipped,
+            )
+        # Fill outcomes for previously-logged picks from `outcomes`. Zero API
+        # calls; see settle_price_recal_picks. Separate try so a settlement
+        # failure cannot lose this cycle's writes, which already committed.
+        try:
+            from tracker import settle_price_recal_picks as _prsl_settle
+
+            _prsl_settle()
+        except Exception as _prsl_serr:
+            _log.warning(
+                "price_recal_shadow_log: settlement sweep skipped: %s", _prsl_serr
+            )
+    except Exception as _prsl_err:
+        # Never let the shadow log take down a scan. Warned rather than
+        # swallowed: a log that silently stops writing looks exactly like a
+        # rule that stopped firing, and the protocol's horizon is a pick count.
+        _log.warning("price_recal_shadow_log: skipped this cycle: %s", _prsl_err)
 
     # Write rich signals cache for the web dashboard. Skipped entirely for
     # --sameday-only (opus review, 2026-08-22): this file is a wholesale-
