@@ -6,12 +6,16 @@ Scope: pre-commit the forward-validation protocol for the price-recalibration
 rule into backlog.txt BEFORE any code, then build the shadow log that starts its
 clock — a picks-shaped table written once per cron cycle, placing nothing.
 
-Verified 2026-08-30 after round 1 of review, python 3.14, Git Bash on win32.
-Round 1 was three parallel opus reviewers on non-overlapping scopes and returned
-37 findings; all 37 are resolved in FINDINGS.md (36 fixed, 1 explicit no-op).
-Four of them were defects in THESE GATES, so the evidence below is rewritten
-rather than amended -- the earlier text asserted more than the checkers
-measured.
+Verified 2026-08-30 after THREE rounds of review, python 3.14, Git Bash on
+win32. Every figure below is from the run that produced this text, not carried
+forward -- round 3 found the evidence had gone stale on nine separate counts
+after round 2 changed six checkers, so it is now rewritten wholesale each round
+rather than amended.
+
+Rounds 1, 2 and 3 returned 37 + 28 + 26 findings; all are resolved in
+FINDINGS.md. Nineteen of them were defects in THESE GATES rather than in the
+code the gates certify, which is the single most useful thing this exercise
+produced.
 
 - [x] G1: The protocol is committed to backlog.txt in a commit that lands
       strictly before the first commit touching tracker.py or cron.py, so the
@@ -28,23 +32,25 @@ measured.
       independent-observation floor, and the stopping/no-peeking rule.
   CHECK: python .unlazy/check_protocol.py
   EXPECT: GATE_G2_PASS
-  EVIDENCE: exit 0, matched. 404-line entry; all 9 per-pick fields, the frozen
+  EVIDENCE: exit 0, matched. 778-line entry; all 9 per-pick fields, the frozen
       coefficients, all three papers each cited with a formula only a reader
       would have (T(y; phi(y)); p_BON = min(M*p_val,1); Z^-1[1-1/N]), N_KILL and
       its derivation, and all six no-peeking clauses present.
 
-- [x] G3: Every quantitative claim in the protocol re-derives from the live DB
-      and from the CFTC-filed fee formula, to the stated precision. The checker
-      recomputes each figure from source and compares against the text; it does
-      not read a number out of the text and echo it back.
+- [x] G3: Every quantitative claim in the protocol re-derives from source -- the
+      live DB, the CFTC-filed fee formula, orderbook_depth_snapshots, and the
+      PARENT backlog entry. It never reads a number out of the entry UNDER TEST
+      and echoes it back.
   CHECK: python .unlazy/check_numbers.py
   EXPECT: GATE_G3_PASS
-  EVIDENCE: exit 0, matched. Recomputed and matched: the 5-row haircut table,
-      5 noise-floor values, both sample floors, the MDE identity at N_KILL, the
-      futility power cost, the 60-day cross-reference, three fee figures, and
+  EVIDENCE: exit 0, matched. Recomputed and matched: the 6-row haircut table matched whole-row,
+      6 noise-floor rows in both columns, both sample floors, the MDE identity at N_KILL, the
+      futility power cost, the accrual estimate, three fee figures, the
+      measured half-spread sensitivity table, and
       the frozen coefficients against a refit of the entry's own population
       definition (drift in b = 0.00008 against a 0.01 tolerance; 670 rows, 642
-      core, 442 city-day events, 1.45 rows/city-day).
+      core). Inputs are PARSED from the parent entry, bounded to that entry's
+      own span, with exactly-one-match required.
       It caught two real errors in the entry before it passed — a retained
       power of 0.770 that recomputes to 0.796, and a 60-day MDE of +0.084 that
       recomputes to +0.074. Both were corrected in the text, not in the checker.
@@ -65,15 +71,16 @@ measured.
   EXPECT: GATE_G5_PASS
   EVIDENCE: exit 0, matched. Call graph walked across cron, weather_markets,
       utils, positions, tracker, order_executor, kalshi_client and paper, with
-      import aliases resolved at both module and function level. 27 unresolved
-      leaf calls, all builtins or sqlite3 -- and that is now an ASSERTION, not
+      import aliases resolved at both module and function level. 29 unresolved
+      leaf calls, all builtins, sqlite3 or logging -- and that is now an ASSERTION, not
       an observation: any unresolved name outside an explicit allowlist fails
       the gate closed.
-      SIX POSITIVE CONTROLS RUN IN THE SAME INVOCATION and all six trip:
+      ELEVEN POSITIVE CONTROLS RUN IN THE SAME INVOCATION and all eleven trip:
       hardcoded order name, aliased import, aliased order function, Call
       receiver (httpx.Client().get), Attribute receiver (self._session.get),
-      raw socket, subprocess. Round 1 drove ten call forms at the previous
-      version and SIX GOT THROUGH -- every one landed in an `unresolved` set
+      raw socket, subprocess, bare imported get, getattr dispatch, dict dispatch,
+      list dispatch. Round 1 drove ten forms at the original and SIX got
+      through; round 2 closed those and round 3 found FOUR MORE -- every one landed in an `unresolved` set
       that was printed and never failed anything. The single place_order control
       it did have proved only that the hardcoded-name path worked.
 
@@ -83,7 +90,7 @@ measured.
       own mid-price assumption.
   CHECK: python .unlazy/run_selected.py "executable or snapshot or book" 7 GATE_G6_PASS
   EXPECT: GATE_G6_PASS
-  EVIDENCE: exit 0, matched. 7 tests selected and passed, 29 deselected; the
+  EVIDENCE: exit 0, matched. 7 tests selected and passed, 62 deselected; the
       runner asserts the selection count so a -k expression that stops matching
       fails rather than passing on nothing.
 
@@ -92,7 +99,7 @@ measured.
   CHECK: python .unlazy/run_scoped_tests.py
   EXPECT: GATE_G7_PASS
   EVIDENCE: exit 0, matched. 57 modules derived (not hand-listed) out of 202;
-      3766 passed, 20 deselected, 10 subtests, 404s. The runner fails if the
+      3780 passed, 20 deselected, 10 subtests, 418s. The runner fails if the
       derived set exceeds half the suite.
       THE EARLIER DERIVATION WAS THE PROBLEM, not the runner: seeded from my own
       list of what I thought the change touched, it selected 23 modules and
@@ -110,7 +117,7 @@ measured.
       decision rule's guards" wording false as measured.
   CHECK: python .unlazy/check_mutations.py
   EXPECT: GATE_G8_PASS
-  EVIDENCE: exit 0, matched. 22/22 mutants killed (was 12), baseline verified
+  EVIDENCE: exit 0, matched. 28/28 mutants killed (12 after round 1, 25 after round 2), baseline verified
       before and the revert verified after. Reverts are from in-memory original
       bytes in a finally block, never `git checkout --`, which would destroy the
       uncommitted work in this worktree. The kill criterion now runs the scoped
@@ -127,8 +134,9 @@ measured.
   CHECK: python .unlazy/check_lint.py
   EXPECT: GATE_G9_PASS
   EVIDENCE: exit 0, matched. pre-commit 4.5.1 via `python -m pre_commit`;
-      ruff Passed, ruff-format Passed, mypy Passed on cron.py, tracker.py and
-      the new test module. The checker fails rather than falling back to a bare
+      ruff, ruff-format and mypy Passed on the 13 changed files the checker
+      DERIVES from the diff -- both test modules and all nine .unlazy checkers,
+      which a hand-written list had been omitting. The checker fails rather than falling back to a bare
       ruff/mypy if pre-commit is unavailable.
 
 - [x] G10: The cron path actually writes rows: a driven cycle against a DB built
@@ -136,7 +144,7 @@ measured.
       identical cycle adds none (the dedup index holds).
   CHECK: python .unlazy/run_selected.py "cron or dedup or migration_runner or utc_day" 6 GATE_G10_PASS
   EXPECT: GATE_G10_PASS
-  EVIDENCE: exit 0, matched. 6 tests selected and passed, 30 deselected,
+  EVIDENCE: exit 0, matched. 8 tests selected and passed, 61 deselected,
       including a cycle driven against a DB built by tracker.init_db() rather
       than by the hand-picked DDL subset the other tests use.
 

@@ -115,14 +115,14 @@ MUTANTS = [
     ),
     (
         "tracker.py",
-        "PRICE_RECAL_LOOK_1 = 850",
-        "PRICE_RECAL_LOOK_1 = 851",
+        "PRICE_RECAL_LOOK_1 = 1100",
+        "PRICE_RECAL_LOOK_1 = 1101",
         "look 1 drifts off half of look 2",
     ),
     (
         "tracker.py",
-        "PRICE_RECAL_LOOK_2 = 1700",
-        "PRICE_RECAL_LOOK_2 = 1699",
+        "PRICE_RECAL_LOOK_2 = 2200",
+        "PRICE_RECAL_LOOK_2 = 2099",
         "the pre-committed floor drifts below the derived one",
     ),
     (
@@ -164,6 +164,25 @@ MUTANTS = [
     ),
     (
         "cron.py",
+        "    if pathlib.Path(db_path) == pathlib.Path(_prsl_tracker.DB_PATH):",
+        "    if True:",
+        "the schema bootstrap initialises tracker.DB_PATH while the writer "
+        "writes its own parameter",
+    ),
+    (
+        "cron.py",
+        '                if "price_recal_shadow_log" in _stmt and (',
+        '                if "price_recal_shadow_log" not in _stmt and (',
+        "the bootstrap applies the wrong migrations for a foreign db_path",
+    ),
+    (
+        "cron.py",
+        "    text = str(target_date).strip()",
+        "    text = str(target_date)",
+        "a padded target_date string stops normalising",
+    ),
+    (
+        "cron.py",
         "        return _date_cls.fromisoformat(text).isoformat()",
         "        return text",
         "the normaliser stops canonicalising, so ISO basic form keys the same "
@@ -177,8 +196,18 @@ MUTANTS = [
     ),
     (
         "cron.py",
-        '                        if analysis.get("days_out") is not None',
-        "                        if True",
+        # Replaced with the ACTUAL regression -- `or 0` -- rather than `if
+        # True`, which made int(analysis["days_out"]) raise KeyError and be
+        # caught by the per-row except, killing the mutant by a crash instead of
+        # by the behaviour the guard exists for.
+        # The WHOLE conditional expression. Replacing only the true-branch
+        # left the `is not None` guard intact, so an absent days_out still
+        # produced None and the mutant was EQUIVALENT -- it survived because
+        # it changed nothing, which reads identically to a real test gap.
+        'int(analysis["days_out"])\n'
+        '                        if analysis.get("days_out") is not None\n'
+        "                        else None",
+        'int(analysis.get("days_out") or 0)',
         "a missing days_out is recorded as a genuine same-day pick",
     ),
 ]
@@ -243,6 +272,16 @@ for fname, needle, repl, what in MUTANTS:
     path = ROOT / fname
     original = path.read_bytes()
     text = original.decode("utf-8")
+    # CRLF-AWARE. read_bytes().decode() does NOT translate newlines, so on a
+    # CRLF-checked-out file (git does that here) a multi-line anchor written
+    # with a bare newline never matches -- and that failure looks exactly like
+    # a missing anchor, i.e. like a real coverage gap rather than a tooling
+    # bug. Translate the needle to the file own ending instead of requiring
+    # every anchor to guess it.
+    _CRLF = chr(13) + chr(10)
+    if _CRLF in text:
+        needle = needle.replace(chr(10), _CRLF)
+        repl = repl.replace(chr(10), _CRLF)
     if needle not in text:
         print(f"FAIL: mutation anchor not found in {fname}: {needle!r}")
         survivors.append(f"{what} (ANCHOR MISSING)")

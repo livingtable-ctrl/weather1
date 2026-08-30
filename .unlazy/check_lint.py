@@ -42,10 +42,33 @@ def _changed_python_files() -> list[str]:
         encoding="utf-8",
     ).stdout
     tracked += [f for f in dirty.split(chr(0)) if f.endswith(".py")]
+    # Untracked new .py files are invisible to `git diff` entirely.
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout
+    tracked += [f for f in untracked.split(chr(0)) if f.endswith(".py")]
+    # .exists() drops deleted files, which pre-commit cannot lint.
     return sorted({f for f in tracked if (ROOT / f).exists()})
 
 
 FILES = _changed_python_files()
+# AN EMPTY LIST IS A FAILURE, NOT A PASS. `pre-commit run --files` with no
+# files skips every hook and exits 0, so without this the gate prints
+# GATE_G9_PASS having linted nothing -- and the list goes empty in the ordinary
+# case: once this branch merges, merge-base(HEAD, master) == HEAD and the diff
+# is empty. A gate that certifies most loudly when it has least to say is worse
+# than no gate.
+if not FILES:
+    print(
+        "FAIL: no changed Python files resolved. Either nothing changed (in "
+        "which case this gate has nothing to certify and must not claim to) "
+        "or the derivation is broken."
+    )
+    sys.exit(1)
 
 
 def run(cmd: list[str]):

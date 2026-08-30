@@ -1,4 +1,4 @@
-# Findings ledger — round 1 (37) + round 2 (28), all 65 resolved
+# Findings ledger — round 1 (37) + round 2 (28) + round 3 (26), all 91 resolved
 
 Three parallel opus reviewers, non-overlapping scopes: **A** protocol statistics
 (15), **B** implementation (6), **C** tests and gate checkers (16).
@@ -9,8 +9,12 @@ reasoned per finding. Step 18: the only deferral bar is genuinely massively out
 of scope, and hitting it must be stated rather than left to disappear.
 
 **Round 1 status: 36 FIXED, 1 NO-OP with reason, 0 deferred, 0 open.**
-**Round 2 status: 28 FIXED, 0 no-op, 0 deferred, 0 open. See the round-2
-section below — six of its findings were created by round 1s own fixes.**
+**Round 2 status: 28 FIXED, 0 no-op, 0 deferred, 0 open — six of them created
+by round 1 own fixes.**
+**Round 3 status: 26 FIXED, 0 no-op, 0 deferred, 0 open. Verdict on the code:
+sound. Verdict on the design: no defect of kind. The findings are in the
+checkers, in stale gate evidence, and in one assumption refutable from data
+already in this repo.**
 
 ---
 
@@ -326,3 +330,139 @@ Deriving G9's file list from the diff pulled the `.unlazy/` checkers into lint
 for the first time, which immediately found a real mypy type error and a ruff
 violation in `check_shadow_only.py`. The gate that was widened to stop lying
 about its scope found bugs the moment its scope became honest.
+
+---
+
+# ROUND 3 — 26 findings, all resolved. FINAL ROUND.
+
+Two parallel opus reviewers on round 2's corrections. Scope B's verdict on the
+code was **"the round-2 code fixes are sound"**; scope A's on the design was
+**"I could not find a defect of kind in the inferential design."** The findings
+are concentrated in the checkers, in stale gate evidence, and in one assumption
+that turned out to be refutable from data already in this repo.
+
+**Measured: 26 fixed, 0 no-op, 0 deferred, 0 open.**
+
+## The headline
+
+**R3-A1 HIGH — the 1c half-spread was not unverified; it was refuted.** The entry
+listed the real bid/ask distribution under NOT VERIFIED and said the log would
+start measuring it on day one. Both were wrong: `orderbook_depth_snapshots`
+already holds 10,140 prod snapshots, **1,769 of them inside the 0.09–0.44 firing
+band across 324 tickers**. Measured:
+
+| | half-spread |
+|---|---|
+| median | **0.0150** |
+| mean | 0.0209 |
+| per-ticker median | **0.0200** |
+| share above 1.5c | 49.9% of snapshots, 54.3% of tickers |
+
+The decision statistic uses the **real** executable price while the sizing used
+mid + 1c, so the forward test would have measured the worse delta and been
+judged at a floor sized for the better one:
+
+| half-spread | sd | delta | floor | power at 1,700 |
+|---|---|---|---|---|
+| 0.010 (assumed) | 0.42024 | +0.03842 | 1,644 | 0.817 |
+| **0.015 (measured)** | **0.41724** | **+0.03360** | **2,118** | **0.676** |
+| 0.020 | 0.41416 | +0.02878 | 2,846 | 0.500 |
+
+**RESIZED: N_KILL 1,700 → 2,200, look 1 850 → 1,100, ~344 days.** This is the
+third and final pre-clock pass; the entry's own cap said the second was the
+last, and doing it anyway is recorded as a deliberate override rather than
+rationalised — shipping a floor sized on an assumption already contradicted by
+data in hand is the worse error.
+
+**Depth is the other half.** From the same snapshots, C = 25 is available at the
+best bid only **51.0%** of the time and under 5 is available 19.1% — and section
+3's table puts the derived floor *above* the commitment at C = 5. Adding
+`yes_bid_size` columns was considered and **rejected**: the scan carries no
+depth, so they would have been two permanently-NULL columns, which is the exact
+defect `exit_rule_shadow_log`'s schema comment warns about. The depth trigger
+reads `orderbook_depth_snapshots` instead.
+
+## Scope A — statistics (15/15)
+
+- [x] **R3-A1 HIGH** — the spread. **FIXED**, above.
+- [x] **R3-A2 HIGH** — round 2 redefined a pick as a distinct
+      `(ticker, target_date)` but left the statistic reading `entry_price_exec`,
+      a **per-row** column. Which row supplies a pick's price was undefined, and
+      entry prices span 0.560–0.910. **FIXED**: pre-committed to the FIRST row
+      at which the pick fired — the price a live implementation would have
+      transacted at. Left open it would have been the eighth threshold.
+- [x] **R3-A3 HIGH** — "EXACTLY invariant" is exact only for identical rows; real
+      duplicates share `y_i` but differ in `a_i` and `f_i`. **FIXED**: the claim
+      is narrowed to what it is (uninformative about the extra rows), and the
+      collapse rule in A2 is what actually makes it moot.
+- [x] **R3-A4 HIGH** — the "design effect" column was never defined, and under
+      the CONVENTIONAL definition the primary cluster is **1.1015, above 1**.
+      **FIXED**: column defined, both definitions given, and the finding that
+      matters recorded — the ANOVA ICC within `target_date` is **−0.0068**, so
+      the in-sample data show **no positive within-date dependence at all**,
+      which is the opposite of the synoptic mechanism round 2 promoted to
+      justify the cluster. It is retained as a prior, explicitly labelled as
+      one, and the sizing does not lean on it.
+- [x] **R3-A5 MEDIUM** — C = 25 load-bearing and unmeasurable from the row.
+      **FIXED**, above.
+- [x] **R3-A6 MEDIUM** — the sizing corpus (`analysis_attempts`, last-price
+      upsert) and the forward corpus (fires on ANY day in band) are selected
+      differently. **FIXED**: disclosed in section 5 as a known imprecision.
+- [x] **R3-A7 MEDIUM** — "EXACTLY TWO LOOKS" vs the 100-pick trigger. **FIXED**:
+      the trigger reads prices and sizes, never `y_i`, and section 6 now says so
+      rather than leaving a reader to reconcile the two claims.
+- [x] **R3-A8 MEDIUM** — the correction notice described one review round.
+      **FIXED**: all three, and round 2's own critical is named in the notice.
+- [x] **R3-A9..A15 MINOR** — the surviving 0.79 (FINDINGS had wrongly marked
+      A2-F14 fixed); the 2,161 floor that recomputes to 2,160; the 10.3/day
+      provenance sentence whose own numbers refuted it; the two cluster-count
+      pairs stated 15 lines apart with different values; the unstated multi-day
+      block alignment; the "roughly a third" cross-reference that is a sixth;
+      and the accrual denominator using pick-bearing dates rather than calendar
+      days (6.03/day, not 6.39). All **FIXED**.
+
+## Scope B — code and gates (11/11)
+
+- [x] **R3-B1 HIGH** — **G9 passed vacuously on an empty file list**, and the
+      list goes empty in the ordinary case: once this branch merges,
+      `merge-base(HEAD, master) == HEAD`. Verified — `pre-commit run --files`
+      with nothing skips every hook and exits 0. **FIXED**: empty is now a
+      failure, both git calls check their return code, and untracked files are
+      included.
+- [x] **R3-B2 HIGH** — G3's parent-entry back-bound searched only `[OPEN `,
+      while backlog.txt already holds **17 `[CLOSED ` headers**. The moment the
+      parent entry is groomed to CLOSED the search walks backwards past it and
+      the slice spans two entries again — the exact unboundedness round 2 closed.
+      **FIXED**: all three header kinds.
+- [x] **R3-B3 HIGH** — wrong fallback when the parent is the last entry
+      (`else 0` truncated the slice to its header). **FIXED**.
+- [x] **R3-B4..B6 MEDIUM** — the schema-bootstrap branch had no test on either
+      side and no mutant (two tests and two mutants added); the migration
+      substring filter could sweep in a future unrelated `ALTER` (narrowed to
+      CREATE TABLE / CREATE UNIQUE INDEX); the `days_out` mutant was killed by a
+      `KeyError` rather than by the `or 0` regression it names (widened to the
+      whole expression).
+- [x] **R3-B7 MEDIUM** — **GATES.md was stale on nine counts** after round 2
+      changed six checkers. **FIXED**: the evidence is now rewritten wholesale
+      from the run that produces it, and the ledger says so.
+- [x] **R3-B8 MEDIUM** — G5 still missed assignment-rebinding
+      (`log = requests.get; log(url)`). **PARTIALLY FIXED**: single-letter names
+      dropped from `DICT_GET_RECEIVERS`, the cron glue added to the walk, and
+      the residual limit STATED in GATES.md rather than papered over — closing
+      it needs local dataflow, and exploiting it needs adversarial code.
+- [x] **R3-B9..B11 LOW** — the object path was canonicalised like the string
+      path (a `date` subclass overriding `isoformat`, or a `datetime.time`,
+      would have been stored verbatim); `settled_rows` is now printed, since its
+      comment claimed the multiplicity was visible; the vacuous
+      `assert tracker_db is not None` removed.
+
+## Found while fixing, and worth its own line
+
+`check_mutations.py` reads bytes and decodes without newline translation, so
+**every multi-line anchor silently failed on a CRLF-checked-out file** — and the
+failure reads exactly like a missing anchor, i.e. like a real coverage gap. Two
+mutants were being reported as untested when the tooling simply could not find
+them. Now line-ending aware.
+
+Mutants 25 → **28, all killed**. Tests 69 in the module, **3,780 across 57
+modules**.

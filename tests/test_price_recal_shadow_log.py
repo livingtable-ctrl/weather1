@@ -316,6 +316,14 @@ class TestDecisionRule:
             # verbatim -- returning "20260829" would key the same day twice.
             (20260829, "2026-08-29"),
             ("20260829", "2026-08-29"),
+            # padding: gives .strip() its only behavioural anchor
+            ("  2026-08-29  ", "2026-08-29"),
+            # ISO week date, accepted by fromisoformat on 3.11+
+            ("2026-W35-6", "2026-08-29"),
+            # a time-only object has an isoformat() that yields "14:00:00",
+            # which would otherwise pass the not-empty check and be stored as a
+            # target_date
+            (__import__("datetime").time(14, 0), None),
             (None, None),
             ("", None),
         ],
@@ -622,6 +630,59 @@ class TestCronPathAndDedup:
         _, wrote, _, _ = cron._log_price_recal_picks(pairs, db)
         assert wrote == 2
 
+    def test_a_foreign_db_path_gets_the_table_bootstrapped(self, tmp_path, monkeypatch):
+        """The branch round 2 added, which no test reached on either side.
+
+        init_db() initialises tracker.DB_PATH; the writer writes its own
+        parameter. Every other test hands it a database where the table already
+        exists, so mutating the branch to `if True:` or `if False:` survived the
+        whole suite -- and `if True:` would have run init_db() against the real
+        production database during a test run.
+        """
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "elsewhere.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        foreign = tmp_path / "foreign.db"
+        sqlite3.connect(foreign).close()  # exists, but has no schema at all
+        _, wrote, skipped, _ = cron._log_price_recal_picks(
+            _pairs((_market(), _analysis())), foreign
+        )
+        assert (wrote, skipped) == (1, 0)
+        with sqlite3.connect(foreign) as con:
+            assert (
+                con.execute("SELECT COUNT(*) FROM price_recal_shadow_log").fetchone()[0]
+                == 1
+            )
+            # ONLY this table's own two statements ran -- the rest of
+            # _MIGRATIONS ALTERs tables a caller-supplied database need not have.
+            assert not con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='predictions'"
+            ).fetchone()
+        # and the unrelated database was left alone
+        assert not (tmp_path / "elsewhere.db").exists()
+
+    def test_the_tracker_db_path_is_initialised_through_init_db(
+        self, tmp_path, monkeypatch
+    ):
+        """The other side of that branch: when the target IS tracker.DB_PATH,
+        the full init_db() runs, so the writer works on a DB nothing has
+        touched yet."""
+        import tracker
+
+        path = tmp_path / "tracker.db"
+        monkeypatch.setattr(tracker, "DB_PATH", path)
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        _, wrote, _, _ = cron._log_price_recal_picks(
+            _pairs((_market(), _analysis())), path
+        )
+        assert wrote == 1
+        with sqlite3.connect(path) as con:
+            # init_db ran in full, so the sibling tables exist too
+            assert con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='predictions'"
+            ).fetchone()
+
     def test_the_cron_cycle_writes_through_the_real_migration_runner(
         self, tmp_path, monkeypatch
     ):
@@ -663,7 +724,7 @@ class TestMigrationOnAnExistingDatabase:
         path = tmp_path / "upgrade.db"
         # Build the DB, then wind the cursor back to before the two new
         # migrations, exactly as a production DB sits today (user_version 84).
-        tracker_db = _tracker_db_at(tmp_path, monkeypatch, path)
+        _tracker_db_at(tmp_path, monkeypatch, path)
         with sqlite3.connect(path) as con:
             con.execute("DROP TABLE IF EXISTS price_recal_shadow_log")
             con.execute(f"PRAGMA user_version={len(tracker._MIGRATIONS) - 2}")
@@ -694,7 +755,6 @@ class TestMigrationOnAnExistingDatabase:
             _pairs((_market(), _analysis())), path
         )
         assert wrote == 1
-        assert tracker_db is not None
 
 
 # ------------------------------------------------------------------- settlement
@@ -1043,7 +1103,7 @@ class TestNoPeeking:
     def test_the_look_points_match_the_pre_registration(self, tmp_path, monkeypatch):
         tracker, path = _tracker_db(tmp_path, monkeypatch)
         with sqlite3.connect(path) as con:
-            for i in range(900):
+            for i in range(1300):
                 con.execute(
                     "INSERT INTO price_recal_shadow_log (ticker, target_date, "
                     " city, market_mid, recal_prob, divergence, side, "
@@ -1068,11 +1128,11 @@ class TestNoPeeking:
                     ),
                 )
         progress = tracker.get_price_recal_progress()
-        assert progress["settled"] == 900
+        assert progress["settled"] == 1300
         # Past look 1, so the two fields must now DIFFER -- at settled == 0 they
         # are both LOOK_1 and swapping them passes.
         assert progress["next_look"] == tracker.PRICE_RECAL_LOOK_2
-        assert progress["picks_to_next_look"] == tracker.PRICE_RECAL_LOOK_2 - 900
+        assert progress["picks_to_next_look"] == tracker.PRICE_RECAL_LOOK_2 - 1300
         assert progress["next_look"] != progress["picks_to_next_look"]
         # THE FIXTURE VARIES BOTH KEYS ON PURPOSE. An earlier draft seeded 700
         # rows all at one city and one date, so the query, the clustering key

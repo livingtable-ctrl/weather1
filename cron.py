@@ -1343,7 +1343,15 @@ def _price_recal_target_day(target_date) -> str | None:  # noqa: C901
     if hasattr(target_date, "date") and callable(target_date.date):
         target_date = target_date.date()
     if hasattr(target_date, "isoformat"):
-        return target_date.isoformat()
+        # Routed through the same parse as the string path rather than trusted.
+        # A date SUBCLASS may override isoformat() (one returning "29/08/2026"
+        # would have been stored verbatim), and a datetime.time has an
+        # isoformat() that yields "14:00:00" -- a value that passes the
+        # `not target_str` check and becomes a target_date.
+        try:
+            return _date_cls.fromisoformat(target_date.isoformat()).isoformat()
+        except (ValueError, TypeError):
+            return None
     text = str(target_date).strip()
     if not text or text.lower() == "none":
         return None
@@ -1456,7 +1464,15 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
         _mig = sqlite3.connect(db_path)
         try:
             for _stmt in _prsl_tracker._MIGRATIONS:
-                if "price_recal_shadow_log" in _stmt:
+                # BOTH conditions. A bare substring test would also sweep in a
+                # future `ALTER TABLE analysis_attempts ADD COLUMN
+                # price_recal_shadow_log_id ...`, which would raise against a
+                # caller-supplied database that has no analysis_attempts -- out
+                # of this function, into the caller's except, and into "skipped
+                # this cycle" forever while picks silently stopped.
+                if "price_recal_shadow_log" in _stmt and (
+                    "CREATE TABLE" in _stmt or "CREATE UNIQUE INDEX" in _stmt
+                ):
                     _mig.execute(_stmt)
             _mig.commit()
         finally:
@@ -3399,10 +3415,13 @@ def _cmd_cron_body(
             _prsl_prog = _prsl_progress()
             if _prsl_prog.get("logged"):
                 _log.info(
-                    "price_recal_shadow_log: %d logged, %d settled across %d "
-                    "independent event(s) [%d city-days]; %d to the next "
-                    "pre-registered look (%s)",
+                    "price_recal_shadow_log: %d logged (%d settled rows), "
+                    "%d settled PICKS across %d independent event(s) "
+                    "[%d city-days]; %d to the next pre-registered look (%s)",
                     _prsl_prog["logged"],
+                    # printed, because tracker's comment claims the
+                    # rows-per-pick multiplicity is visible rather than implied
+                    _prsl_prog["settled_rows"],
                     _prsl_prog["settled"],
                     # PRIMARY cluster first -- section 3 demoted city-day, and
                     # printing the demoted count overstates independence.

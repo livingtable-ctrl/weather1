@@ -19,10 +19,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENTRY_MODULE = "cron"
-# Round 1 added a second production entry point (the progress readout) that the
-# walk did not cover. Both are walked now.
-ENTRY_FUNCS = ("_log_price_recal_picks",)
-ENTRY_FUNC = ENTRY_FUNCS[0]
+# Round 1 added production entry points the walk did not cover. All are walked.
+ENTRY_FUNC = "_log_price_recal_picks"
 EXTRA_ENTRIES = (
     ("tracker", "settle_price_recal_picks"),
     ("tracker", "get_price_recal_progress"),

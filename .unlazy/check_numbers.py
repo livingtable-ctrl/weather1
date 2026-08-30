@@ -16,13 +16,14 @@ Every input now has an authority outside the text under test:
   * the FORWARD pick distribution (sd, fee, mean entry, band, rate) is
     recomputed from data/predictions.db by applying the frozen rule;
   * the fee comes from the CFTC-filed formula;
+  * the HALF-SPREAD is measured from orderbook_depth_snapshots (median 0.0150
+    across 1,769 in-band snapshots) -- it was an unverified assumption until
+    round 3 found the data already existed and contradicted it;
   * the look points come from tracker, which the test module also reads;
   * the haircut, noise floor, power and sample floor are arithmetic on those.
 
-TWO inputs have no external authority, and both are named rather than buried:
+ONE input has no external authority, and it is named rather than buried:
 
-  * the 1c half-spread -- not checked numerically, but asserted to be LABELLED
-    an assumption in the entry, with a pre-committed trigger;
   * M_DECLARED = 12 -- retyped here, and it drives Z_CRIT and therefore the
     whole N_KILL conclusion. `claims(Z_CRIT)` binds it to the entry, but entry
     and checker were written by the same author, which is the definition of the
@@ -61,7 +62,10 @@ nxt = re.search(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[start:])
 ENTRY = TEXT[start : start + (nxt.start() if nxt else len(TEXT) - start)]
 
 GAMMA = 0.5772156649015328606
-HALF = 0.01
+# MEASURED, not assumed. Round 3 found 1c was contradicted by
+# orderbook_depth_snapshots: median half-spread in the firing band is 0.0150
+# across 1,769 in-band snapshots on 324 tickers.
+HALF = 0.015
 C_REF = 25
 M_DECLARED = 12
 FIT_A, FIT_B, THR = -0.12856, 1.33635, 0.05
@@ -161,17 +165,32 @@ need(pt > 0, "the parent discovery entry is missing from backlog.txt")
 if pt <= 0:
     print("FAIL: the parent discovery entry is missing from backlog.txt")
     sys.exit(1)
-# back up to that entry's own [OPEN header, then forward to the next one
-hstart = TEXT.rfind(chr(10) + "[OPEN ", 0, pt)
+# Back up to that entry's own header. ALL THREE header kinds, not just [OPEN:
+# backlog.txt already holds 17 [CLOSED headers, so the moment the parent entry
+# is marked CLOSED or DONE -- routine grooming -- an [OPEN-only search walks
+# backwards PAST it and the slice silently spans two entries again, which is
+# the exact unboundedness this block exists to close.
+_heads = list(re.finditer(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[:pt]))
+need(bool(_heads), "no entry header precedes the parent discovery entry")
+hstart = _heads[-1].start() if _heads else 0
 hend = re.search(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[pt:])
-PARENT = TEXT[hstart : pt + (hend.start() if hend else 0)]
+# len(TEXT) - pt when the parent is the LAST entry in the file, not 0 -- which
+# would truncate the slice to the header alone and then fail for a false reason
+# ("found 0 rows") rather than for the real one.
+PARENT = TEXT[hstart : pt + (hend.start() if hend else len(TEXT) - pt)]
+_pend = pt + (hend.start() if hend else len(TEXT) - pt)
 need(
-    not (start <= hstart < start + len(ENTRY)),
-    "the parent entry's span overlaps the protocol entry under test -- the "
-    "input would not be external",
+    _pend <= start or hstart >= start + len(ENTRY),
+    "the parent entry's SPAN overlaps the protocol entry under test -- the "
+    "input would not be external. Checked as a full span, not just a start "
+    "offset, which is what the claim actually requires.",
 )
 ROW_RE = re.compile(
-    r"^\s*0\.05\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+\+([\d.]+)%\s+\+([\d.]+)\s", re.M
+    # [^\S\n] not \s: \s matches newlines under re.M, so a "row" could span
+    # lines and match across two unrelated ones.
+    r"^[^\S\n]*0\.05[^\S\n]+(\d+)[^\S\n]+([\d.]+)[^\S\n]+([\d.]+)"
+    r"[^\S\n]+\+([\d.]+)%[^\S\n]+\+([\d.]+)[^\S\n]",
+    re.M,
 )
 hits = ROW_RE.findall(PARENT)
 need(
@@ -254,7 +273,7 @@ need(
     {q["side"] for q in picks} == {"NO"},
     "the YES branch now fires -- the addendum's central disclosure is stale",
 )
-claims(f"{sd:.5f}", "recomputed sd")
+claims(f"{sd:.5f}", "recomputed sd at the measured half-spread")
 claims(f"{fee:.5f}", "recomputed fee at C=25")
 claims(f"{mean_entry:.4f}", "recomputed mean mid entry")
 claims(f"{mean_entry + HALF:.4f}", "recomputed mean executable entry")
@@ -327,9 +346,16 @@ power = ndtr(delta * math.sqrt(N_KILL) / sd - Z_CRIT)
 claims(f"{mde:+.4f}", "MDE at the floor")
 claims(f"{power * 100:.1f}%", "power at the floor")
 claims(f"{N_KILL / rate:.0f} days", "accrual at the recomputed rate")
-d2 = D_MID - fee - 0.02
-claims(f"{d2:+.5f}", "delta at a 2c half-spread")
-claims(f"{((Z_CRIT + Z_POW) * sd / d2) ** 2:,.0f}", "floor at a 2c half-spread")
+# the sensitivity table: sd and fee MOVE with the spread, they are not held
+for hs in (0.010, 0.020, 0.025):
+    ex = [q["entry"] + hs for q in picks]
+    sd_h = math.sqrt(sum(a * (1 - a) for a in ex) / len(ex))
+    fee_h = sum(fee_pc(a) for a in ex) / len(ex)
+    d_h = D_MID - fee_h - hs
+    claims(f"{sd_h:.5f}", f"sd at a {hs} half-spread")
+    claims(f"{fee_h:.5f}", f"fee at a {hs} half-spread")
+    claims(f"{d_h:+.5f}", f"delta at a {hs} half-spread")
+    claims(f"{((Z_CRIT + Z_POW) * sd_h / d_h) ** 2:,.0f}", f"floor at {hs}")
 print(
     f"  floor: derived {n_req:,.0f}, committed {N_KILL}, MDE {mde:+.4f}, "
     f"power {power * 100:.1f}%, {N_KILL / rate:.0f} days"
@@ -372,11 +398,20 @@ print(
     f"(cost {pw_uncond - pw_joint:.5f}), alpha {a_joint:.6f}"
 )
 
-# ============================================ H. the unverified assumption
+# ======================================= H. the half-spread, now MEASURED
+# This assertion used to require the entry to LABEL 1c an assumption. Round 3
+# found the assumption was already contradicted by data in this repo
+# (orderbook_depth_snapshots: median half-spread 0.0150 across 1,769 in-band
+# snapshots), so the requirement changed from "admit it is unverified" to
+# "state the measurement and size the floor at it".
 need(
-    "THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT" in ENTRY,
-    "the 1c half-spread has no external authority and must be labelled an "
-    "assumption, not left among derived quantities",
+    "THE HALF-SPREAD IS NOW MEASURED, AND IT IS NOT 1c" in ENTRY,
+    "the entry must state that the half-spread is measured; an earlier version "
+    "listed it as unverified while the data already existed and contradicted it",
+)
+need(
+    "orderbook_depth_snapshots" in ENTRY,
+    "the entry must name the source the half-spread was measured from",
 )
 need(
     "PRE-COMMITTED TRIGGER" in ENTRY,

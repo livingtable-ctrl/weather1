@@ -19,7 +19,8 @@ CORRECTED 2026-08-30, BEFORE THE FIRST PICK WAS EVER LOGGED. Three parallel
   fee were taken from a mean executable price of 0.8010 -- which is the
   DISCOVERY pick set's mean price (0.791 + 1c), produced by b = 1.4871. The
   FROZEN coefficients produce a different pick set entirely: mean mid 0.7387,
-  executable 0.7487, sd 0.42024, fee 0.01258. N_KILL was 1,340; it is 1,700.
+  executable 0.7487, sd 0.42024, fee 0.01258. N_KILL was 1,340; it went to 1,700, and a
+  third pass then measured the half-spread and took it to 2,200.
   Power at 1,340 was not 0.80: it was 0.705 at the superseded M=10 cut of 2.807,
   or 0.685 at the corrected M=12 cut of 2.8653. Both are stated because a
   notice about mixing inputs should not itself leave which inputs it used
@@ -149,7 +150,8 @@ Three things follow, and none of them is a reason to change anything:
     arithmetic is unaffected." The RATE was unaffected -- 6.39/day is measured
     at these coefficients and stands. The sd and the fee were not: both were
     inherited from the discovery pick set's mean price of 0.791 and had to be
-    recomputed at 0.7387, which moved N_KILL from 1,340 to 1,700. That sentence
+    recomputed at 0.7387, which moved N_KILL from 1,340 to 1,700 (and later, on the measured
+    half-spread, to 2,200). That sentence
     was the load-bearing error in this entry and it is why the correction notice
     at the top exists.
   * IT ALSO HALVES THE ACCRUAL RATE, a fourth consequence the original addendum
@@ -216,8 +218,19 @@ forward number is comparable with the discovery table.
 3. THE PRE-COMMITTED STATISTIC
 ------------------------------------------------------------------------------
 
-For each settled pick i:
-    a_i  = entry_price_exec                       what it would actually cost
+For each settled pick i -- and a PICK is a distinct (ticker, target_date), not a
+logged row (section 5). A market in the firing band on several days writes
+several rows with several different executable prices, so the collapse rule has
+to be pre-committed or someone chooses it at look 2 after seeing the data, which
+is the eighth threshold. Entry prices span 0.560-0.910, so it is not a
+rounding-level choice.
+
+  THE PICK'S ROW IS THE FIRST ONE AT WHICH IT FIRED -- lowest recorded_at for
+  that (ticker, target_date). Chosen because it is the price a live
+  implementation would actually have transacted at: the rule fires, you buy,
+  you do not wait to see whether tomorrow's book is better.
+
+    a_i  = entry_price_exec of that first row     what it would actually cost
     f_i  = ceil(0.07 * C * a_i * (1-a_i) * 100)/100 / C     Kalshi fee, C = 25
     c_i  = a_i + f_i                              all-in cost
     y_i  = 1 if the picked side settled in the money else 0
@@ -275,12 +288,29 @@ persist for days, and a nationally hot WEEK is as real as a nationally hot day.
 
 target_date is nonetheless what is pre-committed, and the reason is that a
 calendar day is the coarsest unit with a clean a-priori definition and enough
-clusters to support the normal approximation (33 now, ~133 at look 1, ~266 at
-look 2; a 3-day block gives 12 now and ~44 at look 1, at or under the bootstrap
-floor). Committing to a block cluster would trade a known bias for an unknown
+clusters to support the normal approximation (33 now, ~172 at look 1, ~344 at look 2; a 3-day block gives 12 now and ~57 at look 1, above the bootstrap floor). Committing to a block cluster would trade a known bias for an unknown
 one. What must NOT happen is choosing between them later: the multi-day numbers
 are recorded here, in advance, precisely so that reaching for one after seeing
 the result is visibly the seventh threshold rather than a discovery.
+
+DEFINE THE COLUMN, because no reader could check it. "Design effect" above is
+V_cluster / (n * sd^2) -- the clustered variance over the variance the SIZING
+formula assumes. That is the ratio the floor cares about, but it is not the
+conventional definition, and under the conventional one (clustered variance over
+the independence variance on the SAME data, V / sum e_i^2) the primary cluster
+comes out at 1.1015, i.e. ABOVE 1. Round 1 recorded a reviewer's deff > 1 claim
+as unreproduced; under the standard definition it reproduces, and that is
+recorded here rather than left buried.
+
+Sizing still assumes design effect = 1.00, and two things justify that rather
+than one: the ANOVA ICC of e_i within target_date is -0.0068 (deff 0.954), and
+the implied within-date covariance is likewise negative. AND THAT CUTS AGAINST
+THE MECHANISM ARGUMENT ABOVE, which must be said: the in-sample data show no
+positive within-date dependence at all. The synoptic story is a prior about how
+these markets should behave, not something this corpus demonstrates. It is
+retained as the cluster's justification because a prior chosen before the
+forward data is exactly what a pre-registration is for -- but it is a prior, and
+the sizing does not lean on it.
 
 THE DEFF FIGURES, correctly labelled. An earlier draft said "across FOUR cuts
 ... 0.69, 0.75, 0.82, 0.88 and 0.93" -- five numbers for four cuts, mixing
@@ -294,8 +324,8 @@ ASSUMES DESIGN EFFECT = 1.00.
 A CONSEQUENCE THAT NEEDS PRE-COMMITTING NOW: at 33 date-clusters the
 cluster-robust normal approximation is not trustworthy -- the conventional floor
 is around 40 clusters and below it the SE is biased downward, i.e. toward
-falsely clearing the bar. At look 1 the corpus will have roughly 130 date
-clusters and at look 2 roughly 265, both comfortably above the floor, so the
+falsely clearing the bar. At look 1 the corpus will have roughly 172 date
+clusters and at look 2 roughly 344, both comfortably above the floor, so the
 plain statistic is used at both looks. If either look arrives with fewer than 40
 date clusters, the decision statistic is a wild cluster bootstrap-t (Rademacher
 weights, 9,999 replications) instead. Committed here rather than chosen later.
@@ -320,13 +350,13 @@ the frozen-coefficient pick set against the unrounded rate of 0.012362:
 
 So "the whole effect lives between C = 1 and about C = 4" is false -- C = 5
 still carries an 8% rounding penalty, and its derived floor of 1,716 is ABOVE
-the pre-committed 1,700. The choice of C = 25 is part of what keeps the
+the pre-committed floor. The choice of C = 25 is part of what keeps the
 committed floor sufficient, which is a dependency worth naming rather than
 glossing. C = 1 is reported as the secondary worst case.
 
 TWO HONEST WEAKNESSES IN C = 25. Averaged over the observed size distribution
-rather than at its mean, the fee is 0.012759 against 0.012580 at C = 25 --
-so C = 25 is about 1.4% OPTIMISTIC, not conservative. (An earlier draft put
+rather than at its mean, the fee is 0.012759 against 0.012400 at C = 25 --
+so C = 25 is about 2.9% OPTIMISTIC, not conservative. (An earlier draft put
 this at 3% against 0.01120, which is the DISCOVERY pick set's fee -- the very
 number the correction notice at the head of this entry retires.) And paper_trades.json is the
 ENSEMBLE strategy's sizing on different markets; this rule's future size is an
@@ -396,12 +426,12 @@ discovery set's, which is the same correction as section 5's:
 
     M     haircut    edge vs mid    edge net of fee and a 1c half-spread
     1       -            +0.0610          +0.0384
-    3      26.0%         +0.0451          +0.0225
-    4      33.9%         +0.0403          +0.0177
-    6      46.1%         +0.0329          +0.0103
-   10      64.1%         +0.0219          -0.0007
-   12      71.5%         +0.0174          -0.0052      <-- the declared M
-   20      97.1%         +0.0018          -0.0208
+    3      26.0%         +0.0451          +0.0177
+    4      33.9%         +0.0403          +0.0129
+    6      46.1%         +0.0329          +0.0055
+   10      64.1%         +0.0219          -0.0055
+   12      71.5%         +0.0174          -0.0100      <-- the declared M
+   20      97.1%         +0.0018          -0.0256
 
 At the declared M the haircut edge is NEGATIVE net of costs. That is the honest
 statement of what the search did to this result, and it is why section 5 powers
@@ -418,7 +448,8 @@ M = 12, alpha = 0.05 two-sided, applied one-tailed.
   one-tailed is a deliberate extra tightening to a one-sided alpha of 0.00208 --
   chosen because the prior after a twelve-fork search is bad and the payoff is
   skewed against us, not because it follows from anything. It costs sample: at
-  2.6383 the floor would be about 1,449 picks rather than 1,700.
+  2.6383 the floor would be about 1,449 picks rather than 1,644 -- both at the
+  superseded 1c spread; the ratio carries to the resized floor.
 
   AND THE M=12 MULTIPLICITY IS APPLIED TWICE, which should be said plainly.
   Once to shrink the discovery estimate (the haircut, to -0.0052) and again to
@@ -518,9 +549,8 @@ would reintroduce N > 1.
                     number is used one-tailed and why that is a choice rather
                     than a consequence.
   z_power = 0.8416  80% power.
-  sd      = 0.42024 CORRECTED. sqrt(mean a_i(1-a_i)) over the pick set the
-                    FROZEN coefficients actually generate. The superseded value
-                    was 0.3992, taken from a mean executable price of 0.8010 --
+  sd      = 0.41724 CORRECTED TWICE. sqrt(mean a_i(1-a_i)) over the pick set the
+                    FROZEN coefficients actually generate. The first value was 0.3992, taken from a mean executable price of 0.8010 --
                     which is the DISCOVERY pick set's price (0.791 + 1c) at
                     b = 1.4871, not this rule's.
   design_effect = 1.00, per section 3.
@@ -531,16 +561,17 @@ would reintroduce N > 1.
 
   THE PICK SET THE FROZEN COEFFICIENTS PRODUCE, measured, 211 in-sample picks:
     mean mid entry       0.7387      (superseded draft assumed 0.791)
-    mean executable      0.7487      (superseded draft assumed 0.8010)
+    mean executable      0.7537      (at the measured 1.5c; 0.7487 at 1c,
+                                     0.8010 in the first draft)
     sd                   0.42024     (superseded draft assumed 0.3992)
     fee at C=25          0.01258     (superseded draft assumed 0.01120)
     entry price range    0.560 - 0.910, median 0.745, p25 0.640  (MID basis)
     same, executable     0.570 - 0.920, median 0.755, p25 0.650  (+1c)
 
     delta = +0.0610  raw selection edge, net of the CORRECTED fee and a 1c
-                     half-spread = +0.03842      n = 1,644
-    delta = +0.0177  M=4 haircut, net                        n = 7,700
-    delta = -0.0052  M=12 haircut, the declared one          NO finite n
+                     half-spread = +0.03360      n = 2,118
+    delta = +0.0129  M=4 haircut, net                        n = 14,300
+    delta = -0.0100  M=12 haircut, the declared one          NO finite n
 
   DELTA IS STILL A HYBRID, and this entry should not imply otherwise. The COSTS
   now come from the pick set the rule actually fires on. The EFFECT does not:
@@ -558,15 +589,17 @@ would reintroduce N > 1.
     transfer                                gross   delta net   floor
     carry the level (what this entry does)  0.0610    0.03842   1,644
     carry the model-implied edge            0.0700    0.04742   1,079
-    carry the ratio (0.80 x 0.0700)         0.0561    0.03352   2,161
+    carry the ratio (0.8018 x 0.0700)       0.0561    0.03352   2,160
 
   The committed choice sits in the middle of a 2x range rather than at an
-  extreme, which is why 1,700 is not resized again for it. But 1,700 is a FLOOR
+  extreme, which is why the floor is not resized again for it. But it is a FLOOR
   and not a bound: the ratio transfer and the double-counted multiplicity both
   push the same way, so the true requirement is more likely above it than below.
 
-PRE-COMMITTED: N_KILL = 1,700 settled picks at thr = 0.05, rounded up from the
-derived 1,644. Look 1 at 850.
+PRE-COMMITTED: N_KILL = 2,200 settled picks at thr = 0.05, rounded up from the
+2,118 derived at the MEASURED 1.5c half-spread (see below). Look 1 at 1,100 settled picks.
+The 1,700 an earlier pass committed was derived at an assumed 1c and is
+superseded.
 
   A "PICK" IS A DISTINCT (ticker, target_date), NOT A LOGGED ROW, and the
   difference is not cosmetic. The table's unique index is
@@ -574,12 +607,18 @@ derived 1,644. Look 1 at 850.
   PER DAY -- so a market that sits in the firing band for three days writes
   three rows carrying the SAME settlement.
 
-  Those extra rows buy nothing at all. The decision statistic is
-  z = S / sqrt(sum_clusters (sum_i e_i)^2), and duplicating every pick k times
-  multiplies the numerator by k and every cluster sum by k, so z is EXACTLY
-  invariant. Counting rows would have let 1,700 rows at multiplicity 2 stand in
-  for 1,700 observations while delivering the power of 850 -- 0.42 against the
-  0.82 this section commits to. The floor is right; only its denomination was
+  Those extra rows buy nothing. The decision statistic is
+  z = S / sqrt(sum_clusters (sum_i e_i)^2), and duplicating a pick k times
+  multiplies the numerator and every cluster sum by k, leaving z unchanged.
+  BE PRECISE ABOUT THE SCOPE OF THAT: it is exact only for IDENTICAL rows. Real
+  duplicates share y_i but carry different a_i and f_i, so neither sum scales by
+  exactly k and z is not exactly invariant -- it is merely uninformative about
+  the extra rows, which is the property that matters. The k = 1,2,3,5 check
+  behind this paragraph duplicated identical rows, so it verified an algebraic
+  identity rather than a property of the table, and the collapse rule in
+  section 3 is what actually makes the point moot: one row per pick, chosen in
+  advance. Counting rows would have let 2,200 rows at multiplicity 2 stand in
+  for 2,200 observations while delivering the power of 1,100 -- roughly half the power this section commits to. The floor is right; only its denomination was
   wrong, and it is fixed here rather than discovered at look 2.
   tracker.get_price_recal_progress() counts DISTINCT picks for exactly this
   reason and reports the raw row count separately, so the realised multiplicity
@@ -590,11 +629,11 @@ derived 1,644. Look 1 at 850.
   it is already a DISTINCT-pick rate. Rows will accrue k times faster than
   picks; the 266-day estimate stands.
 
-  * At 1,700 picks the test has 81.7% power against the RAW, un-haircut edge. A
+  * At 2,200 picks the test has 81.9% power against the RAW, un-haircut edge. A
     failure to clear z >= 2.8653 there means the discovery effect, at the size
     it was discovered at, would have been detected 82% of the time and was not.
     That is the outcome this log is affordable enough to buy.
-  * The minimum detectable edge at 1,700 picks is +0.0378. To clear its own bar
+  * The minimum detectable edge at 2,200 picks is +0.0330. To clear its own bar
     the forward data must reproduce essentially the FULL un-haircut discovery
     edge. If the truth is the haircut edge, the rule will correctly fail to be
     sizeable -- and at M=12 the haircut edge is negative net of costs, so no
@@ -602,10 +641,11 @@ derived 1,644. Look 1 at 850.
   * THE HORIZON IS A PICK COUNT, NOT A DAY COUNT. The rate below is a forecast
     and the log will measure the real one; "60 days" was never a sample size.
   * ACCRUAL. At the frozen coefficients the in-sample rate is 6.39 picks/day
-    (211 picks over 33 target-days), so 1,700 picks is about 266 days. The
+    (211 picks over 33 target-days), so 2,200 picks is about 344 days. The
     superseded draft also quoted "10.3/day, ~130 days" as an optimistic case;
     THAT SCENARIO CANNOT OCCUR. 10.3/day belongs to the discovery coefficients,
-    which fire on both sides (396 picks, 244 NO / 152 YES, 11.31/day). Killing
+    which fire on both sides (396 picks, 244 NO / 152 YES, 11.31/day, of which 10.3/day was an earlier
+    mis-transcription). Killing
     the YES branch halves the rate. There is no optimistic case; 266 days is
     the central estimate and the only one.
   * THE COROLLARY, restated because the earlier wording was wrong. It said a
@@ -621,9 +661,52 @@ derived 1,644. Look 1 at 850.
     The correct sentence remains "option 5 is not demonstrable at a sample size
     this project can afford".
 
-THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT, and it sits inside the
-one number section 6 forbids changing. Section 7 lists the real bid/ask
-distribution as unverified; this is that gap, made load-bearing. At a 2c
+THE HALF-SPREAD IS NOW MEASURED, AND IT IS NOT 1c. CORRECTED 2026-08-30, third
+and final pre-clock pass. An earlier draft called this an unverified assumption
+and said the log would start measuring it on day one. That was wrong twice: the
+data already exists, and it contradicts the assumption.
+
+Measured on orderbook_depth_snapshots -- 10,140 prod snapshots, 6,135 on this
+contract family, 1,769 with the YES bid inside the 0.09-0.44 firing band, across
+324 tickers:
+
+    median half-spread                0.0150
+    mean                              0.0209
+    p75                               0.0300
+    per-ticker median of medians      0.0200
+    share above 1.5c                  49.9% of snapshots, 54.3% of tickers
+
+The decision statistic uses the REAL executable price (entry_price_exec =
+1 - yes_bid), so the forward test would have measured the worse delta while
+being judged at a floor sized for the better one:
+
+    half-spread   sd        fee       delta      floor    power at 1,700
+      0.010     0.42024   0.01258   +0.03842     1,644        0.817
+      0.015     0.41724   0.01240   +0.03360     2,118        0.676
+      0.020     0.41416   0.01222   +0.02878     2,846        0.500
+      0.025     0.41100   0.01202   +0.02398     4,037        0.323
+
+RESIZED AT THE MEASURED MEDIAN. N_KILL = 2,200 settled picks, look 1 at 1,100,
+rounded up from the derived 2,118 at a 1.5c half-spread. At the in-sample rate
+of 6.39 picks/day that is ~344 days.
+
+  CAVEAT ON THE MEASUREMENT, stated because it is not settled: the snapshots
+  span 2026-08-28..30 only, and just 7 tickers overlap the 211-pick sizing set.
+  It is indicative, not definitive. It is used anyway because it is the only
+  evidence that exists and it points the unfavourable way, and sizing to an
+  assumption already contradicted by the data in hand is not defensible.
+
+DEPTH IS THE OTHER HALF, AND C = 25 IS LOAD-BEARING. From the same snapshots,
+best-bid size in the band: median 26, but 25 or more is available only 51.0% of
+the time and under 5 is available 19.1% of the time. Section 3's own table puts
+the derived floor ABOVE the commitment at C = 5 (1,716) and far above at C = 1
+(2,101). So 2,200 is conditional on achievable fill size, and the logged row
+cannot check it -- depth needs a get_orderbook call the writer must not make.
+The depth trigger therefore reads orderbook_depth_snapshots, which a separate
+cron path already populates and which joins to these rows on ticker and time.
+
+THE 1c FIGURE IS RETAINED ABOVE ONLY where it is labelled as the superseded
+assumption. Section 7 no longer lists the bid/ask distribution as unverified. At a 2c
 half-spread the executable price moves to mid + 0.02, which moves the sd and
 the fee as well -- recomputed on the same 211 picks: mean exec 0.75870, sd
 0.41416, fee 0.01222, delta +0.02878, floor 2,846 (+73%). (An earlier draft
@@ -634,13 +717,20 @@ paragraph that introduces the re-registration trigger.) The picks land at
 0.09-0.44 on the YES side, which is the thin end of these books, so 1c is
 optimistic if anything.
 
-  PRE-COMMITTED TRIGGER, so this is decided now rather than after seeing it:
-  when the log reaches 100 settled picks, compute the median realised half-
-  spread from the stored yes_bid/yes_ask. If it exceeds 1.5c, N_KILL is
-  recomputed at the measured value and the new floor replaces 1,700 -- and
-  because that is a change to a pre-committed number, it is a re-registration
-  with a new clock, announced as such, not a quiet substitution. If it is at or
-  under 1.5c, 1,700 stands and no further spread check is taken.
+  PRE-COMMITTED TRIGGER, now on the FORWARD corpus rather than on a question
+  already answered: at 100 settled picks, compute the median realised half-
+  spread from the stored yes_bid/yes_ask, and the median best-bid size from
+  orderbook_depth_snapshots joined on ticker and day. If the half-spread exceeds
+  2.0c, or if C = 25 is achievable in under 40% of picks, the design is
+  RE-REGISTERED with a new protocol_version and a new clock -- not resized in
+  place. That is the difference between this pass, which happened before any
+  pick existed, and anything after the first row.
+
+  ONE LOOK, and it is not an outcome look: it reads prices and sizes, never
+  y_i, never the statistic. That is why it does not make this a three-look
+  design, and why "EXACTLY TWO LOOKS" in section 6 remains true of the
+  DECISION. Section 6 says so explicitly rather than leaving the two claims to
+  be reconciled by a reader.
 
 ------------------------------------------------------------------------------
 6. THE STOPPING RULE AND THE NO-PEEKING DISCIPLINE
@@ -648,7 +738,7 @@ optimistic if anything.
 
 EXACTLY TWO LOOKS. There is no third.
 
-  LOOK 1, FUTILITY ONLY, at 850 settled picks (N_KILL/2).
+  LOOK 1, FUTILITY ONLY, at 1100 settled picks (N_KILL/2).
     Stop and mark the rule FAILED if z <= 0.
     Continue otherwise. There is no early success exit at look 1 -- a
     one-sided futility boundary can only reduce the type-I error, never
@@ -659,15 +749,15 @@ EXACTLY TWO LOOKS. There is no third.
     THE POWER COST, CORRECTED. An earlier draft put it at 0.800 -> 0.796. That
     was computed as 0.80027 x (1 - P(stop|H1)), i.e. by MULTIPLYING the two
     probabilities as if the looks were independent. They are not: they share
-    the first 850 picks, so rho = sqrt(850/1700) = 0.7071, and a futility stop
+    the first 1,100 picks, so rho = sqrt(1100/2200) = 0.7071, and a futility stop
     happens almost entirely in worlds where look 2 would have failed anyway --
     which is the entire point of a futility boundary. Done properly on the
-    bivariate normal: unconditional power 0.81706, joint power 0.81687, so the
+    bivariate normal: unconditional power 0.81919, joint power 0.81900, so the
     cost is 0.00019, not 0.004. Twenty times smaller than the draft claimed.
     P(stop | H0 true) = 0.500, so half of all dead rules still die at half the
     horizon, now for a power cost of two ten-thousandths.
 
-  LOOK 2, THE DECISION, at 1,700 settled picks.
+  LOOK 2, THE DECISION, at 2,200 settled picks.
     z >= 2.8653 -> the rule MAY be sized. Sizing is a separate decision with its
                    own entry; clearing this bar authorises nothing by itself
                    except making that argument.
@@ -676,10 +766,11 @@ EXACTLY TWO LOOKS. There is no third.
 WHAT KILLS IT, stated in advance so no result can be argued into survival:
   * z <= 0 at look 1.
   * z < 2.8653 at look 2.
-  * Fewer than 1,700 settled picks accumulated by 2027-12-31. The rule fails by
+  * Fewer than 2,200 settled picks accumulated by 2028-06-30. The rule fails by
     non-accrual; a horizon that keeps extending is a horizon that never judges.
-    DERIVED, not picked: 1,700 picks at the measured 6.39/day is 266 days, and
-    the deadline is 488 days out -- 1.8x the central estimate, which is the
+    DERIVED, not picked: 2,200 picks at 6.03 picks per CALENDAR day (211 picks over the corpus's 35
+    calendar days, not its 33 pick-bearing dates) is 365 days, and the deadline
+    is 670 days out -- 1.8x the central estimate, which is the
     margin needed because the rate is an in-sample projection and could
     plausibly halve. The earlier one-year deadline was set against the
     superseded 1,340-pick floor and the unreachable 10.3/day rate, and would
@@ -701,13 +792,13 @@ WHAT STOPS THE DATA BEING RE-CUT UNTIL IT PASSES:
     stopping when it looks good is the DSR paragraph above -- twenty such looks
     make a false positive expected, not unlikely. tracker.get_price_recal_
     progress() returns the pick COUNT and structurally cannot return a
-    statistic; the z is computed only at 850 and 1,700.
+    statistic; the z is computed only at 1,100 and 2,200.
   * The primary cluster is target_date (section 3). Re-clustering on
     (city, target_date) because the date-level z came up short is the seventh
     threshold -- it is worth 0.19 in z on the current corpus, which is nearly
     the whole decision.
   * If a result at either look is genuinely ambiguous, the answer is FAILED. The
-    asymmetry is deliberate: the downside skew is severe (risking ~0.79 to win
+    asymmetry is deliberate: the downside skew is severe (risking ~0.75 to win
     ~0.21, so a few losses erase many wins) and the prior after a
     twelve-fork search is bad.
 
@@ -46940,7 +47031,7 @@ OPEN -- I. The market itself is compressed. Model-free.
   Harvey-Liu haircut at the declared search size M=12, the derived floor of
   1,700 settled picks, and the two-look stopping rule. The
   "~60 days" in the line above is withdrawn: it is a duration, not a sample
-  size, and at the observed pick rate it is roughly a third of what the test
+  size, and at the observed pick rate it is roughly a sixth of what the test
   needs.
 
 CLOSED -- J. Ladder-internal coherence arbitrage. ALREADY BUILT AND RUNNING;

@@ -1009,6 +1009,21 @@ _MIGRATIONS = [
     # re-registration under new coefficients is separable by query rather than
     # by git archaeology.
     #
+    # NO DEPTH COLUMN, and that is deliberate rather than an oversight. The
+    # protocol's floor depends on filling C = 25 contracts, and round 3 measured
+    # that 25 is available at the best bid only ~51% of the time -- so depth
+    # matters. But depth is not in the scan: it needs a separate get_orderbook
+    # call, and this writer performs no network I/O by construction. Adding
+    # yes_bid_size/yes_ask_size would have produced two columns the writer
+    # hardcodes to NULL forever, which is the exact defect the
+    # exit_rule_shadow_log schema comment warns about -- "a column an analyst
+    # could join on and silently get nothing".
+    #
+    # Depth is answerable, from orderbook_depth_snapshots, which a separate
+    # cron path already populates (10,140 rows, 6,135 on this contract family)
+    # and which joins to these rows on ticker and timestamp. The protocol's
+    # depth trigger reads that table; see backlog.txt section 5.
+    #
     # `outcome` is the MARKET's settlement (did YES resolve true), not the
     # pick's win. Whether the pick won is `outcome == 1` for a YES row and
     # `outcome == 0` for a NO row -- derived at analysis time from `side`,
@@ -14366,8 +14381,8 @@ def settle_price_recal_picks() -> int:
 # reverse). Derived in backlog.txt section 5: 1,700 picks for 80% power against
 # the raw selection edge at the frozen coefficients' own price distribution,
 # interim at half.
-PRICE_RECAL_LOOK_1 = 850
-PRICE_RECAL_LOOK_2 = 1700
+PRICE_RECAL_LOOK_1 = 1100
+PRICE_RECAL_LOOK_2 = 2200
 
 
 def get_price_recal_progress() -> dict:
