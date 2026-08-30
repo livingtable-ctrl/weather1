@@ -28,7 +28,13 @@ BACKLOG_PATH = Path(__file__).parent / "backlog.txt"
 OUTPUT_PATH = Path(__file__).parent / "BACKLOG_OPEN.md"
 
 # A finished decision either way -- excluded from the "still unfinished" index.
-_DONE_PREFIXES = ("RESOLVED", "CLOSED")
+# ABANDONED is terminal too: work that was deliberately stopped rather than
+# completed. It was added 2026-08-30 when the sunset marked the forward-
+# validation pre-registration abandoned and this index kept listing it as
+# "[OPEN]" -- the fall-through tag below defaults anything unrecognised to
+# OPEN, so an unknown terminal status does not merely go untagged, it is
+# actively mislabelled as live work.
+_DONE_PREFIXES = ("RESOLVED", "CLOSED", "ABANDONED")
 
 
 def parse_entries(text: str) -> list[dict]:

@@ -819,7 +819,7 @@ When to revisit: before live trading is ever armed, and ideally before the next
 person quotes the banner in an analysis.
 
 
-[OPEN 2026-08-29 -- PRE-REGISTRATION. This entry is written BEFORE the code that
+[ABANDONED 2026-08-30, sealed 2026-08-29 -- PRE-REGISTRATION. This entry is written BEFORE the code that
   implements it, and the commit order is the point: the protocol has to be
   falsifiable on git history, not asserted afterwards. Nothing below may be
   edited to fit a result. If the rule needs a different test, that is a new
@@ -1692,6 +1692,47 @@ NOT VERIFIED, and not blocking this protocol:
   * The forward pick rate. In-sample 6.39/day at the frozen coefficients; the
     log measures the real one. (The 10.3/day an earlier draft also quoted here
     belongs to the DISCOVERY coefficients and cannot occur -- see section 5.)
+
+ABANDONED 2026-08-30, BEFORE LOOK 1, WITH 3 OF 2,200 PICKS LOGGED. The whole
+project was sunset the same day; this registration is terminal and will never
+read out. Recorded here rather than deleted because a pre-registration that
+quietly disappears is worse than one that is marked dead.
+  NOTHING ABOVE THIS LINE WAS EDITED. The frozen coefficients, the floor, the
+  haircut, the stopping rule and the clustering are byte-identical to what was
+  sealed on 2026-08-29 -- the check_order.py gate hashes this entry and the
+  change that produced this block is declared in its PROTOCOL_CHANGES list.
+  This is a terminal status marker appended at the end, not a parameter edit,
+  which is the distinction the sealing was built to enforce.
+  WHY IT IS ABANDONED RATHER THAN FAILED. It did not fail its own decision
+  rule. It never reached look 1, so the rule never fired in either direction.
+  Marking it FAILED would assert an outcome that was not observed, and the
+  entry's own section 6 binds from the first row precisely so that the status
+  reflects what the data said. The data said nothing; it was stopped.
+  WHAT KILLED IT, and none of it is a verdict on the rule itself:
+    1. The bot's own P&L was re-derived on 2026-08-30 from the paper ledger
+       (260 settled trades): -$48.69 gross before fees. metar_lockout +$119.36
+       on 89, ensemble -$220.79 on 161, normal_dist -$18.57 on 2.
+    2. The lock -- the only positive line, and the one this project treated as
+       its working mechanism -- does not survive fees or scrutiny. Kalshi taker
+       fees on ENTRY alone are $90.02 against $119.36 gross, leaving +$29.34;
+       a round trip at taker rates is -$60.68. Mean +$1.34/trade against sd
+       $32.68, t = 0.39. Indistinguishable from zero.
+    3. DECISIVE: every one of those 89 lock trades ran 2026-06-03 to
+       2026-06-26. Commit e395392b landed 2026-06-25 with a local-date guard
+       that stopped the lock firing on the PREVIOUS local day's temperature.
+       So the lock's entire profitable record was earned by the version that
+       was subsequently proven wrong -- the 00-02h UTC window that scored
+       Brier 0.2974 and 59.7% correct against 0.1562 and 80.8% for the rest.
+       Post-fix the lock has essentially no traded record at all.
+  So the premise underneath option 5 -- "there is one mechanism here that
+  works, and this rule might be a second" -- did not survive its own audit. No
+  live money was ever at risk: live_fills and audit_log are both empty.
+  IF ANYONE RESUMES THIS. Do not restart this registration. Its clock started
+  2026-08-30 and a gap makes the sample non-exchangeable, which is the exact
+  failure the protocol was written to prevent. Start a new entry with a new
+  protocol_version and a new clock, and read section 5 first -- the sizing
+  work in it is still correct and still reusable, and it is the most useful
+  thing this entry leaves behind.
 
 
 [OPEN 2026-08-28 -- batch-98. The measurement is done and the invariant it needs
@@ -47890,7 +47931,7 @@ When to revisit:
   as a TRADING system should be argued from these two, not from the forecast.
 
 
-[OPEN 2026-08-26 -- the live decision list, consolidating the two measurement
+[CLOSED 2026-08-30 -- SUNSET. Was OPEN 2026-08-26, the live decision list, consolidating the two measurement
   entries above. Kept as one entry so the options and the evidence for each do
   not drift apart. Update this entry rather than re-deriving it.]
   PROJECT DIRECTION AFTER THE NO-EDGE RESULT -- THE REMAINING OPTIONS
@@ -48161,6 +48202,90 @@ list below have all LANDED, and d's answer narrows this entry's own caveat)
 When to revisit:
   Immediately on any live-trading proposal, and at the 60-day mark
   (~2026-10-25) when autumn data makes the seasonal caveat testable.
+
+DECISION TAKEN 2026-08-30: SUNSET. The project is stopped. This section is the
+closing record and supersedes the option list above -- the options are left
+in place because the reasoning for rejecting them is the useful part, but none
+of them is live.
+
+THE NUMBER THAT DECIDED IT, re-derived on 2026-08-30 from data/paper_trades.json
+joined to predictions.method, rather than carried from any earlier entry:
+
+    method that priced it     n      P&L      win rate   avg/trade
+    metar_lockout            89   +119.36      67.4%      +1.34
+    (no prediction row)       8    +71.30      62.5%      +8.91
+    normal_dist               2    -18.57       0.0%      -9.29
+    ensemble                161   -220.79      37.9%      -1.37
+    TOTAL                   260    -48.69      48.5%
+
+260 settled paper trades, -$48.69 GROSS, before any fee. No live money was ever
+at risk: live_fills and audit_log are both empty.
+
+THE PART THAT CHANGED THE DECISION, because until 2026-08-30 this file treated
+the METAR lock as the one working mechanism and every plan was built on it:
+  1. IT DOES NOT SURVIVE FEES. Kalshi taker fees on ENTRY ALONE are $90.02
+     against $119.36 gross, leaving +$29.34. A round trip at taker rates is
+     -$60.68. The fee formula is the CFTC-filed one already verified in this
+     backlog, applied per order with its round-up.
+  2. IT IS NOT DISTINGUISHABLE FROM ZERO. Mean +$1.34/trade, sd $32.68,
+     SE $3.46, t = 0.39. 89 trades is not a track record, it is noise with a
+     positive sign.
+  3. DECISIVE, AND IT WAS NOT KNOWN UNTIL TODAY: every one of those 89 lock
+     trades ran 2026-06-03 to 2026-06-26. Commit e395392b landed 2026-06-25
+     with a local-date guard that stopped the lock firing on the PREVIOUS
+     local day's temperature. So the lock's entire profitable record was
+     earned by the version that was later proven wrong. Scored separately,
+     the window that guard removed ran Brier 0.2974 and 59.7% correct against
+     0.1562 and 80.8% for everything else. The profit came from the bug.
+     Post-fix the lock has essentially no traded record at all.
+
+So the honest summary of the whole project is not "the forecast had no edge but
+the lock worked". It is: THE FORECAST HAD NEGATIVE EDGE AND THE LOCK'S APPARENT
+EDGE WAS AN ARTEFACT OF A DEFECT THAT HAS SINCE BEEN FIXED. There is no
+measured edge anywhere in this system.
+
+WHAT THIS DOES NOT CLAIM, because the distinction matters if anyone revisits:
+  * It does not prove the lock's UNDERLYING idea is worthless. Reading a
+    settled observation before the book reprices is a real mechanism, and the
+    post-guard sample (n=18, 9 correct) is far too small to judge either way.
+    What is established is that this project never demonstrated it, and that
+    the number it believed demonstrated it was measuring something else.
+  * Paper P&L is not live P&L, and it is optimistic in a known direction:
+    fills are assumed, and the measured median half-spread on these books is
+    1.5c. Real execution moves every line above downward, not upward.
+  * The 8 trades with no prediction row (+$71.30) were not chased. They are
+    2.6% of the ledger and cannot change the sign.
+
+STATUS OF THE THINGS THIS DECISION TERMINATES:
+  * The forward-validation pre-registration is ABANDONED at 3 of 2,200 picks
+    -- see that entry's own terminal block. Not FAILED: it never reached look
+    1, so its decision rule never fired and asserting an outcome would be
+    false. Its section 5 sizing work remains correct and reusable.
+  * Nothing is scheduled and nothing runs. Verified 2026-08-30: no Windows
+    scheduled task matching "Kalshi" exists, and no python process is live.
+    The bot only ever ran when an operator typed the command, which is also
+    why the METAR lock was starved -- see the sameday-only scheduling entry at
+    the top of this file. That entry is now moot and is retained only as the
+    diagnosis of why the lock's volume collapsed.
+  * The remaining ~85 open entries are not being worked. Most are correctness
+    bugs on a path that was never armed.
+
+WHY THE REPO IS KEPT RATHER THAN DELETED. The verification apparatus is the
+part with residual value: pre-registration with a hash-sealed protocol,
+adversarial review rounds that refuted this session's own findings twice
+before they landed, mutation testing, gates that fail honestly, and a backlog
+where negative results are written down instead of explained away. The trading
+thesis is dead; the method for establishing that a thesis is dead is not.
+
+A NOTE ON HOW THIS ENDED, worth keeping because it is the recurring failure
+mode of the whole project. On the final day the assistant twice asserted that
+the METAR lock "worked" -- once in a review summary and once in a direct
+recommendation -- on the strength of a backlog claim it had not re-derived.
+Both times it was the user asking "are you sure" that produced the check, and
+the check inverted the conclusion. Every significant correction in this file
+followed the same shape: a plausible number, carried forward unverified, until
+something forced a re-derivation. That is the lesson worth taking to whatever
+comes next, and it is worth more than the -$48.69 it cost to learn.
 
 
 [OPEN 2026-08-26 -- raised by the user against the blanket "do not improve the
