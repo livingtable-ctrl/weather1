@@ -256,8 +256,16 @@ Read that carefully, because it cuts both ways:
   the most likely way the finding died quietly.
 - It **confirms nothing.** This is an in-sample fit on the same rows the original
   b = 1.487 came from. It is a consistency check, not evidence.
-- **No individual cell is significant alone.** The pooled z is carried by n, and
-  the cells overlap, so this is not ten independent votes.
+- **Two cells do reach conventional significance alone**, and an earlier draft of
+  this section wrongly said none did. Corrected 2026-08-29 by re-measuring: at the
+  time of writing `above` reached z = +2.73 and same-day z = +2.08, both past 1.96,
+  and on a re-run hours later (the population grows daily) `above` reached +2.92,
+  which survives even a Bonferroni correction for ten cells (α = 0.005, |z| ≥ 2.81).
+  The honest caveat is not "nothing is significant" but **the cells are not
+  independent**: `above` is ~55% of the core population and shares every row with
+  the d0/d1+ split, so this is nowhere near ten independent votes, and counting
+  cells does not address the multiple-testing problem the rule already carries from
+  the way it was found. Do not quote the cell z-values as corroboration.
 
 What it establishes is that the contradiction is a real empirical disagreement
 between two populations, not an artifact of binning.
