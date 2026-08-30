@@ -3,83 +3,149 @@ BACKLOG — future improvements to implement when ready
 
 [OPEN 2026-08-30 -- the daily-ladder refit the research doc names as "the
   decisive test, not yet run" (section 3), run WITHOUT the paper's 36GB dataset.
-  AN EARLIER DRAFT OF THIS ENTRY BLAMED THE PRICE SOURCE (mid versus executed)
-  AND WAS REFUTED BY REVIEW BEFORE IT WAS COMMITTED. The corrected finding is
-  larger and worse.]
-  THE MARKET'S CALIBRATION SLOPE IS A FUNCTION OF WHEN YOU SAMPLE IT, AND THE
-  TWO PRICE TABLES IN THIS DATABASE DISAGREE ABOUT THE SIGN OF THAT FUNCTION
-Priority: HIGH as a decision input on option 5. It bears directly on the frozen
-  coefficient b = +1.33635, and it raises -- without settling -- the question of
-  whether that coefficient is an artefact of how analysis_attempts records
-  prices. IT CANNOT CHANGE THE PRE-REGISTRATION, WHICH IS SEALED.
+  THIS ENTRY HAS NOW BEEN REFUTED TWICE BEFORE LANDING IN ITS CURRENT FORM.
+  Draft 1 blamed the PRICE SOURCE and was refuted: it varied source and
+  sampling moment together. Draft 2 blamed a DISAGREEMENT BETWEEN TWO TABLES
+  and was refuted the same way: it varied the POPULATION. Both drafts also
+  dated every market ~5-8h too early. What survives is smaller than either.]
+  THE MARKET'S CALIBRATION SLOPE FALLS AS THE HORIZON LENGTHENS, AND THE
+  FROZEN COEFFICIENT b = +1.33635 POOLS ACROSS THAT GRADIENT
+Priority: MEDIUM as a decision input on option 5. It bears on how the frozen
+  coefficient should be READ, not on whether it is a table artefact -- that
+  accusation was made in draft 2 and is now withdrawn.
+  IT CANNOT CHANGE THE PRE-REGISTRATION, WHICH IS SEALED.
 Files: measurement only (price_history, analysis_attempts, outcomes_valid).
 
+A METHOD CORRECTION THAT CAME FIRST, because every number below changed.
+Both earlier drafts computed the horizon from the ticker's own date plus one
+day at 00:00 UTC. The TWC entry immediately below this one establishes, from
+live Kalshi metadata, that these markets close at midnight LOCAL STANDARD
+time -- 05:00Z eastern, 06:00Z central, 07:00Z mountain, 08:00Z pacific. Every
+horizon in the earlier drafts was therefore understated by a city-dependent
+5 to 8 hours, and one commit would have shipped two contradictory close-time
+conventions. Corrected here by mapping each ticker's city to its LST offset.
+The map is VERIFIED against the 8 close_times fetched live in that entry
+(NY/MIA/PHIL 05:00Z, CHI/AUS 06:00Z, DEN/PHX 07:00Z, LAX 08:00Z); all 8 match
+the timezone rule, so the remaining cities are inferred by a rule that went
+8 for 8 on the cities that could be checked.
+  THE CORRECTION PAID FOR ITSELF TWICE. Under the wrong close time, 53 of 642
+  analysis_attempts rows had a NEGATIVE horizon and were silently dropped, and
+  price_history's maximum horizon was 33h -- so draft 2's "36h" row was
+  observations at 30-33h relabelled. With the correct close time there are
+  ZERO negative-horizon rows and the range is 0.00h to 41.00h. Both anomalies
+  were the bug, not the data.
+
 FINDING 1 -- THE PRICE SOURCE IS NOT THE DRIVER. price_history carries
-yes_bid_close, yes_ask_close and price_close (last trade) on the SAME ROW at the
-SAME instant, so holding the moment fixed and varying only the source is a clean
-paired contrast. 340 settled core tickers:
+yes_bid_close, yes_ask_close and price_close (last trade) on the SAME ROW at
+the SAME instant, so holding the moment fixed and varying only the source is a
+clean paired contrast -- the one comparison in this entry that has survived
+both refutations unchanged in direction. 340 settled core tickers:
 
-    H     n     bid       mid       ask     last trade
-    6h  244   +0.9553   +0.9607   +0.9205   +0.8874
-   12h  299   +0.7269   +0.8275   +0.7924   +0.7620
-   24h  287   +0.4814   +0.5488   +0.5934   +0.5444
-   36h  308   +0.2537   +0.3392   +0.3565   +0.2540
+    H     n      bid       mid       ask      last trade
+    6h   74   +0.9918   +1.1399   +1.1829   +1.0733
+   12h  251   +0.9079   +0.9190   +0.8936   +0.8420
+   24h  292   +0.5812   +0.7258   +0.7587   +0.6040
+   36h  252   +0.4121   +0.4709   +0.4850   +0.4251
 
-All four sources cluster inside ~0.11 at every horizon. The MID is as
-compressed as the executed price. So "you cannot trade the mid" -- the thesis of
-the draft this replaces -- is not what is happening, and the spread is not the
-mechanism. The draft reached that conclusion by changing the price source AND
-the sampling moment at once and attributing the whole difference to the source.
+The four sources track each other at every horizon -- widest spread 0.18 at
+24h, and no source is systematically the outlier. The MID is not a special
+number. So "you cannot trade the mid", the thesis of draft 1, is not what is
+happening. UNDISCLOSED IN EARLIER DRAFTS, stated now: this table requires bid,
+ask AND last all non-null and strictly inside (0,1), which drops converged
+markets and is why n varies with H. The filter applies to all four columns
+equally, so the paired contrast holds; the LEVELS are not comparable to
+Finding 2, which does not require a last-trade price.
 
-FINDING 2 -- THE MOMENT IS THE DRIVER, and on unselected data the slope falls
-monotonically as the horizon lengthens. price_history mid, 340 tickers:
+FINDING 2 -- THE SLOPE FALLS AS THE HORIZON LENGTHENS. price_history mid, one
+observation per ticker nearest each target, a FIXED +/-6h tolerance at every
+horizon (earlier drafts used a tolerance that widened with H, which is not a
+defensible rule):
 
-    1h +1.2811 | 2h +1.0402 | 4h +1.1187 | 6h +1.0043 | 9h +0.9579
-   12h +0.9100 | 18h +0.7497 | 24h +0.5956 (z -2.76) | 36h +0.3643 (z -4.96)
+    H      n        b       SE     z vs 1
+    1h    43   +1.7799   0.6571    +1.19
+    2h    54   +1.6870   0.4958    +1.39
+    4h    62   +1.0271   0.2598    +0.10
+    6h    84   +1.1457   0.2486    +0.59
+    9h   200   +1.1226   0.1567    +0.78
+   12h   261   +0.9537   0.1370    -0.34
+   18h   303   +0.8384   0.1300    -1.24
+   24h   340   +0.8122   0.1513    -1.24
+   36h   340   +0.4408   0.1323    -4.23
 
-It crosses 1 at about six hours. Far from resolution these markets are
-OVERCONFIDENT (b well below 1); very close to it they are mildly
-underconfident. Coherent, and strongly significant at the long end.
+IT IS NOT MONOTONE -- 4h sits below 6h and 9h -- and draft 2's claim that it
+"falls monotonically" was false even of its own table. Only the 36h point is
+individually significant. What is defensible is the GRADIENT: near close the
+market is mildly under-confident, far out it is over-confident, and the two
+ends differ by more than a factor of three.
+  IT SURVIVES STRATIFICATION, which is what makes it worth keeping. Fitted
+  separately inside each month stratum, both decline across the same range:
+    May-Jun   6h +2.011 (n=40)   12h +1.450   24h +1.054   36h +0.671 (n=196)
+    Jul-Aug   6h +0.880 (n=44)   12h +0.636   24h +0.656   36h +0.319 (n=144)
+  The levels differ sharply between strata; the direction does not.
 
-FINDING 3 -- THE TWO TABLES DISAGREE ABOUT THE SIGN, and this is the part that
-matters. The same regression on analysis_attempts.market_prob, binned by the
-horizon of the RECORDED price (close time minus analyzed_at):
+FINDING 3 -- THE TWO TABLES AGREE. THIS REPLACES DRAFT 2'S CENTRAL CLAIM,
+WHICH WAS THAT THEY DISAGREED ABOUT THE SIGN. Restricting both tables to the
+same tickers and matching each analysis_attempts row to the price_history bar
+at the same instant (|dH| <= 1.5h), 93 overlapping tickers, 92 matched rows:
 
-    band       n         b     z vs 1        price_history mid at the same H
-    0-6h     104   +1.0447     +0.20                 ~ +1.00
-    6-12h    102   +1.0192     +0.09                 ~ +0.91 to +0.96
-    12-24h   249   +1.5896     +2.88                 ~ +0.60 to +0.75
-    24-48h   134   +1.8544     +2.05                 ~ +0.36
+    analysis_attempts market_prob   b = +1.7063   SE 0.3834   z = +1.84
+    price_history mid               b = +1.6931   SE 0.3820   z = +1.81
+    median |market_prob - mid| = 0.0125
 
-They agree inside six hours and diverge violently beyond it -- one rising, the
-other falling. 383 of the 642 rows behind the frozen coefficient (60%) sit in
-the two bands where they disagree most.
+At the row level these are the same number. There is no sign disagreement and
+nothing for a table-level mechanism to explain.
 
-THE LIKELY CAUSE, STATED AS A HYPOTHESIS BECAUSE IT IS NOT YET VERIFIED.
-analysis_attempts UPSERTS on (ticker, target_date), so market_prob is the LAST
-scan's price and the computed horizon is "how long before close the market
-stopped being scanned". A row therefore only lands in the 12-48h bands if
-scanning STOPPED early -- which is the same selection the option-5
-pre-registration already documents ("a row only stays at days_out >= 1 if the
-market stopped being scanned ... selected roughly 3x on base rate"). If that
-selection is what produces b > 1 at long horizons, then the frozen b = 1.33635
-is substantially a selection artefact, and price_history -- a time series with
-no upsert and no such selection -- is the better estimate.
+WHY DRAFT 2 SAW A DISAGREEMENT: THE TWO TABLES ARE NEARLY CALENDAR-DISJOINT,
+and it never checked. One query settles it:
 
-WHAT WOULD SETTLE IT, and none of this was done here: restrict both tables to
-the SAME (ticker, target_date) set and the SAME horizon band and refit; check
-whether the analysis_attempts rows in the 12-48h bands are systematically
-markets that dropped out of the scan, and why they dropped out; and check
-whether price_history's own coverage is itself selected (it has 340 core
-settled tickers against analysis_attempts' 612, so it is not a superset).
-Until that is done this is a serious hypothesis, not a result.
+    month      in price_history    in analysis_attempts
+    2026-05           48                    0
+    2026-06          148                    0
+    2026-07           68                   94
+    2026-08           76                  518
+
+196 of price_history's 340 tickers (58%) are May-June markets for which
+analysis_attempts has ZERO rows. Draft 2 placed a number from a
+May-June-dominated population next to a number from a July-August population
+under a shared "H" heading and read the difference as a property of the
+tables. That is draft 1's error -- change two things, attribute the result to
+one -- relocated from the price source to the population.
+
+THE UPSERT HYPOTHESIS IS WITHDRAWN. Draft 2 proposed that analysis_attempts
+UPSERTS on (ticker, target_date), so a row only reaches a long horizon if
+scanning stopped early, and that this selection manufactured b > 1 out at the
+long end. Under the corrected close times the mechanism does not fit the data:
+
+    band      n      b       z vs 1    days_out=0   days_out>=1
+    0-6h     45   +1.7667   +1.09          45            0
+    6-12h   108   +1.0099   +0.05         108            0
+    12-24h  197   +1.5443   +2.38         197            0
+    24-48h  262   +1.5079   +2.42          55          207
+
+The 12-24h band -- the larger of the two rising bands -- is ENTIRELY days_out
+= 0, so no days_out >= 1 selection can be producing it. In the 24-48h band the
+same-day rows are HIGHER than the multi-day ones (+1.7078 vs +1.4313), the
+opposite of what the hypothesis predicts. Recorded as withdrawn rather than
+deleted so the same idea is not re-proposed from scratch.
+  NOTE ON POPULATION: these bands are core-only and total 612, not the 642 the
+  frozen coefficient was fitted on. The difference is 30 KXTEMP*H hourly rows
+  whose city is not in the LST map. Draft 2 quoted 642-row band counts and
+  called them "the same regression"; they were a different filter.
+
+WHAT ACTUALLY BEARS ON OPTION 5, which is a smaller claim than either draft
+made. The frozen b = +1.33635 is a POOLED estimate over rows spanning roughly
+0 to 48 hours to close, and the slope is not constant across that span. It is
+not a table artefact and not a selection artefact -- both accusations were
+tested here and both failed. It is a weighted average of a gradient. Whether
+the forward log's picks land where the slope is above or below the pooled
+value is a property of when the bot scans, which this entry does not measure.
 
 WHAT IT DOES NOT DO. It does not change the pre-registration. That is sealed --
 the clock started 2026-08-30 with the first three logged picks, and section 6
-binds from the first row. If this hypothesis is confirmed later, the correct
-response is to mark the registration FAILED and re-register under a new
-protocol_version, NOT to edit the frozen coefficient. Recorded here so that
-decision is made deliberately rather than discovered at look 1.
+binds from the first row. If a horizon effect is later shown to drive the
+result, the correct response is to mark the registration FAILED and re-register
+under a new protocol_version, NOT to edit the frozen coefficient. Recorded here
+so that decision is made deliberately rather than discovered at look 1.
 
 WHY THE PAPER'S 36GB DOWNLOAD WAS SKIPPED. Two reasons, both measured first:
   1. Running the paper's OWN classifier (jon-becker/prediction-market-analysis,
@@ -101,50 +167,58 @@ WHY THE PAPER'S 36GB DOWNLOAD WAS SKIPPED. Two reasons, both measured first:
      trade. Finding 1 above required all four series on one row, which its
      dataset structurally cannot provide.
 
-METHOD. price_history JOIN outcomes_valid on ticker, settled_yes IN (0,1),
-tickers LIKE KXHIGH% or KXLOWT%, one observation per ticker nearest each target
-horizon. Resolution time from the TICKER's own date (KXHIGHDEN-26JUL09 ->
-2026-07-10 00:00 UTC), NOT from outcomes.settled_at -- settled_at lags the real
-resolution by a median of about 73 hours because it is when this bot's cron
-swept the settlement, not when Kalshi resolved.
+METHOD, so it is re-derivable. price_history JOIN outcomes_valid on ticker,
+settled_yes IN (0,1), tickers LIKE KXHIGH% or KXLOWT%, one observation per
+ticker nearest each target horizon, fixed +/-6h tolerance. Close time is
+midnight LST as described at the top. NOT outcomes.settled_at -- that lags the
+real resolution by a median of about 73 hours because it records when this
+bot's cron swept the settlement, not when Kalshi resolved.
   ONE GOTCHA THAT COST A RUN: outcomes.settled_at is stored NAIVE
   ('2026-05-19 13:05:55') while created_time/analyzed_at carry a Z. Subtracting
   them raises TypeError, and a bare except silently dropped every row -- the
   run reported zero rows past the price filter and looked like a filter bug.
 
-ESTIMANDS THAT LOOK LIKE ANSWERS AND ARE NOT, recorded because the first is
-what a naive refit reports. Figures are approximate and were not re-derived
-after the rewrite; treat them as magnitudes, not measurements:
-  * PER-TRADE POOLING over ~102k trades gives b about +0.75 weighted / +0.60
-    unweighted. With SEs clustered by ticker (73 clusters) neither is
-    significant, which is the cleaner reason to set it aside than "dominated by
-    heavily-traded markets".
-  * VWAP OVER A MARKET'S LIFE gives b around +3.7 with z above 3. It is
-    look-ahead leakage: the average includes trades made as the price converges
-    to 0 or 1, information unavailable at any decision time.
-  * LAST TRADE BEFORE CLOSE separates the outcomes perfectly, so the fit
-    diverges and its b and SE are artefacts of solver tolerance. No number
-    should be quoted for it at all.
+ESTIMANDS THAT LOOK LIKE ANSWERS AND ARE NOT. NO COEFFICIENTS ARE QUOTED FOR
+THESE. Earlier drafts gave numbers computed under the wrong close time; rather
+than hedge stale figures, the reason each estimand is wrong is structural and
+does not depend on its value:
+  * PER-TRADE POOLING over the settled core tape (114,155 trades on 109
+    tickers -- a count, verified, not an estimate) weights markets by how
+    heavily they traded, not by how much forecasting they required. With SEs
+    clustered by ticker the tape is 109 settlements, not 114,155 observations.
+  * VWAP OVER A MARKET'S LIFE is look-ahead leakage: the average includes
+    trades made as the price converges to 0 or 1, information unavailable at
+    any decision time.
+  * LAST TRADE BEFORE CLOSE separates the outcomes almost perfectly, so the
+    fit diverges and any b and SE are artefacts of solver tolerance.
 
-WHAT THIS DOES NOT SETTLE. price_history covers 340 of the settled core tickers
-and analysis_attempts 612; neither is a superset of the other, and the overlap
-was not characterised. The trade tape is worse -- 109 tickers, 63 of them
-markets this bot itself paper-traded (it has never traded live: live_fills and
-audit_log are both empty, so there is market selection but no price
-contamination). No population-level claim here is safe until that is done.
+WHAT THIS DOES NOT SETTLE. price_history covers 340 of 859 settled core
+tickers -- 39.6%, and non-randomly: 100% of May-June, a declining share
+through August. Draft 2 called Finding 2 a result "on unselected data"; that
+was false, and the month strata above are the mitigation, not a fix. The trade
+tape is worse -- 109 tickers, 63 of them markets this bot itself paper-traded
+(it has never traded live: live_fills and audit_log are both empty, so there
+is market selection but no price contamination).
 
 
 [OPEN 2026-08-30 -- research doc section 7 item 1, "re-check every settlement
   assumption against The Weather Company". The doc says to read
   weather.com/kalshi; that page is a DATA PORTAL, not methodology, so it cannot
   answer the question. Kalshi's own market metadata can, and does.]
-  KALSHI'S OWN close_time PROVES THE CLIMATE DAY RUNS ON LOCAL STANDARD TIME --
+  KALSHI'S OWN close_time PUTS MARKET CLOSE AT MIDNIGHT LOCAL STANDARD TIME --
   AND tracker._fetch_asos_observations USES A CIVIL CLOCK DAY, WHICH IS WRONG
   BY ONE HOUR FOR ~8 MONTHS A YEAR
 Priority: MEDIUM-HIGH. It is a live scoring path, not a research question, and
   it resolves a contradiction the codebase currently documents as unresolved.
-  Exposure is modest (see MAGNITUDE) but the fix is small and the ambiguity
-  costs more than the bug.
+  Exposure is now MEASURED rather than guessed (see MAGNITUDE): one city-day in
+  13 on daily MINIMA, with errors up to 6F against +/-1F ladder brackets. An
+  earlier draft of this entry called that "modest"; it is not.
+  ONE WORD OF CARE ON WHAT IS PROVEN. close_time is a TRADING deadline. What
+  the evidence below establishes directly is that the trading close sits at
+  midnight LST. That the CLIMATE day runs on the same clock is a strong and
+  natural inference from it -- and metar.py:373 still records TWC's own
+  convention as "unknown" -- but it is an inference, not a proof. An earlier
+  draft's title said "PROVES"; this one does not.
 Files: tracker.py ~8496-8520 (_fetch_asos_observations, the wrong one),
   metar.py ~360-372 (already correct, and already documents the contradiction).
 
@@ -156,12 +230,25 @@ THE EVIDENCE, fetched live from api.elections.kalshi.com on 2026-08-30:
     KXHIGHCHI     06:00       01:00 CDT         00:00            yes
     KXHIGHDEN     07:00       01:00 MDT         00:00            yes
     KXHIGHLAX     08:00       01:00 PDT         00:00            yes
+    KXHIGHAUS     06:00       01:00 CDT         00:00            yes
+    KXHIGHPHIL    05:00       01:00 EDT         00:00            yes
     KXHIGHTPHX    07:00       00:00 MST         00:00            NO
 
 Every market closes at midnight LOCAL STANDARD TIME. PHOENIX IS THE CONTROL:
 it never observes DST, and it closes at 00:00 under both conventions -- which
 is what rules out the alternative reading "they all close at 01:00 local
 clock". A single-city sample could not have separated those two.
+  THREE COMPETING READINGS, ALL KILLED BY PHOENIX. "01:00 local civil clock"
+  predicts PHX at 08:00Z; observed 07:00Z. "00:00 local civil clock" predicts
+  NY at 04:00Z; observed 05:00Z. "00:00 civil plus a uniform 1h operational
+  buffer" again predicts PHX at 08:00Z; observed 07:00Z. Only midnight LST
+  survives all eight rows. Note that "a fixed UTC offset per series" is not a
+  competing hypothesis -- a fixed per-series UTC offset IS midnight LST.
+  WHAT WOULD STRENGTHEN IT: a WINTER close_time, when LST and civil time
+  coincide everywhere and the two conventions make identical predictions --
+  the absence of a difference there would confirm the reading. That control
+  could not be obtained; the markets endpoint returns nothing for Jan-Mar 2026
+  events under event_ticker, status=settled, or max_close_ts.
 
 WHY THIS SETTLES SOMETHING. metar.py's own comment block records the
 contradiction and says the existing verification cannot resolve it:
@@ -176,13 +263,23 @@ contradiction and says the existing verification cannot resolve it:
      discriminate between them."
 close_time discriminates. metar.py is right; tracker is wrong.
 
-AND IT SURVIVES THE SETTLEMENT MIGRATION, which is the part that makes it worth
-acting on now. These close_times are set by Kalshi under the CURRENT regime --
-settlement_sources for KXHIGHNY reads exactly [{"name": "The Weather Company",
-"url": "https://weather.com/kalshi"}], with no NWS anywhere, and the live rules
-text still names station CLINYC. So the LST window is not a fact about the
-superseded NWS process that might have lapsed on 2026-08-14; it is a fact about
-what Kalshi is doing today.
+AND IT IS LIVE UNDER THE CURRENT SETTLEMENT REGIME, which is the part that
+makes it worth acting on now. settlement_sources for KXHIGHNY reads exactly
+[{"name": "The Weather Company", "url": "https://weather.com/kalshi"}], and the
+live rules text still names station CLINYC. So the LST window is not a fact
+about the superseded NWS process that might have lapsed on 2026-08-14.
+  TWO LIMITS ON THAT SENTENCE, both of which cut against an earlier draft:
+  * These close_times are LIVE under the current regime, which is not the same
+    as RE-DERIVED at the 2026-08-14 migration. A legacy NWS-era schedule left
+    untouched would look identical. The evidence shows the convention has not
+    been changed; it cannot show it was affirmatively re-chosen.
+  * "with no NWS anywhere" was FALSE as written, and the correction helps the
+    conclusion. settlement_sources contains no NWS -- but the same series
+    object's product_metadata.important_info reads "The Weather Company
+    utilizes NWS as its primary underlying source." So the claim must be
+    scoped to settlement_sources. An NWS-derived underlying is a REASON the
+    LST convention persists; what it undercuts is only the framing that "the
+    NWS regime is gone".
 
 THE DEFECT. tracker.py builds:
     local_start = datetime(y, m, d,  0, 0, 0, tzinfo=tz)
@@ -195,25 +292,56 @@ next local-clock day, so this window:
 Phoenix is unaffected year-round. Every other traded city is affected for
 roughly eight months a year.
 
-MAGNITUDE, stated honestly rather than inflated. Daily maxima occur
-mid-afternoon and daily minima near dawn, both far from the contested
-00:00-00:59 hour, so on most days the window error is a no-op. It bites only
-when the day's extreme falls in that hour -- a warm-advection night, or a
-frontal passage just after local midnight. KXLOWT is more exposed than KXHIGH
-because minima sit nearer the boundary. This is a correctness defect with a low
-hit rate, not a widespread mis-scoring.
+MAGNITUDE, MEASURED. An earlier draft argued from meteorology that maxima are
+mid-afternoon and minima near dawn, so the contested hour is rarely the
+extreme, and called the result "a correctness defect with a low hit rate". The
+direction was right and the size was wrong on the minimum side. Fetched from
+the IEM ASOS feed with the SAME endpoint and report_type=3 that
+_fetch_asos_observations itself uses, 10 stations x 118 days, 2026-05-02 to
+2026-08-27, scoring the civil-clock window against the LST window:
+
+    quantity     differs     rate     worst magnitude
+    daily MAX    11 / 1180   0.9%     3 F
+    daily MIN    93 / 1180   7.9%     6 F  (KLAS)
+    either      100 / 1180   8.5%
+
+Per-station minima differing: KMDW 15, KSEA 14, KDEN 11, KBOS 11, KMSP 10,
+KLAX 10, KNYC 9, KMIA 8, KLAS 5, and KPHX 0 of 118 on BOTH max and min. The
+control behaves exactly as the close_time table predicts, on a completely
+independent data source -- which is the strongest single line in this entry.
+
+SO: "KXLOWT is more exposed than KXHIGH" is CONFIRMED, and the ratio is 8.5x.
+But one city-day in 13 with errors up to 6F, against ladder brackets that are
+often +/-1F wide, is not a low hit rate. The maximum side genuinely is rare
+(0.9%); the minimum side is not.
 
 FIX. Build the window on local STANDARD time: take the zone's January UTC
 offset (its standard offset) and construct the day in that fixed offset rather
 than in the zone's DST-aware local time. Phoenix then falls out correctly with
 no special case. Do NOT hardcode a +1h shift -- that is the error the research
 doc's own B7 warns about, because it would break Phoenix and Honolulu.
+  "THE JANUARY OFFSET" IS CORRECT ONLY AS SCOPED. January is DST in the
+  southern hemisphere, so the rule is not general; every city in
+  metar.MARKET_STATION_MAP is US, which is what makes it safe here. Note also
+  that Honolulu, named in B7's warning, is NOT in that map -- Phoenix is the
+  only non-DST city this project actually trades, which is precisely why it is
+  load-bearing as the control and why it must be in the test.
 
-TEST IT WITH A DST/NON-DST PAIR, not one city. A test using only NYC passes
-under a blanket +1h rule, which is wrong; the pair NYC (DST) plus Phoenix
-(never DST) is what discriminates, exactly as the close_time table above did.
-Seed an observation at 00:30 local clock on a DST date and assert it is
-attributed to the PREVIOUS climate day in NYC and to the SAME day in Phoenix.
+TEST IT WITH A DST/NON-DST PAIR, not one city, AND ASSERT BOTH HALVES OF THE
+DEFECT. A test using only NYC passes under a blanket +1h rule, which is wrong;
+the pair NYC (DST) plus Phoenix (never DST) is what discriminates, exactly as
+the close_time table above did.
+  1. WRONGLY INCLUDED: seed an observation at 00:30 local clock on day D, on a
+     DST date, and assert it is attributed to the PREVIOUS climate day in NYC
+     and to the SAME day in Phoenix.
+  2. WRONGLY EXCLUDED: seed an observation at 00:30 local clock on day D+1 and
+     assert it IS included in day D's window for NYC, and is NOT for Phoenix.
+  Assertion 1 alone is not enough. A fix that merely DROPS the 00:00 hour --
+  the conservative approach metar.py takes -- passes assertion 1 and fails
+  assertion 2, and it would leave the wrongly-excluded half of the defect in
+  place. Since the measured exposure above is concentrated in daily MINIMA,
+  which sit near dawn on the far side of that boundary, assertion 2 is the one
+  guarding the larger error.
 
 When to revisit: next time tracker.py's settlement scoring is open. Nothing
 downstream is being reported wrongly at a rate that makes this urgent, but the
@@ -232,10 +360,21 @@ Files: measurement only (analysis_attempts).
 
 METHOD. Reliability regression y ~ a + b*logit(p) on the 642 settled
 core-temperature rows in analysis_attempts (condition type above/below/between,
-outcome NOT NULL). Perfect calibration is a = 0, b = 1. Note this population is
-NOT what the calibrators are fitted on -- those train on `predictions` -- so
-this is an out-of-sample-ish check, which makes the result harder to dismiss,
-not easier.
+outcome NOT NULL). Perfect calibration is a = 0, b = 1.
+  ON WHETHER THIS IS OUT-OF-SAMPLE, stated precisely because an earlier draft
+  got the reason wrong. It said "those train on `predictions`". That holds for
+  temperature scaling (data/temperature_scale.json), Platt (main.py:8813, on
+  multiday_predictions) and the blend weights (calibration.py:275). It does NOT
+  hold for the stage that produces this very column: weather_markets.py:19140
+  section 9c calls ml_bias.apply_analysis_calibration, and ml_bias.py:1366
+  reaches tracker.get_analysis_calibration_data(), whose query at
+  tracker.py:~4930 is FROM analysis_attempts WHERE outcome IS NOT NULL AND
+  days_out >= 1 -- essentially the multi-day n=207 cell below.
+  The correct statement is therefore NOT "no calibrator trains here" but "no
+  calibrator is CURRENTLY trained here": data/analysis_calibration.json is
+  {"multiday": {"a": 1.0, "b": 0.0, "n": 0, "_uncalibrated": true}}, an
+  untrained identity map. The moment cron's weekly D5 block fits it, the
+  multi-day row below becomes IN-SAMPLE and stops being evidence.
 
     series                          n        a    SE(a)        b    SE(b)   z(b vs 1)
     post-calibration forecast     642  -0.6863   0.1020  +1.5028   0.1301      +3.86
@@ -243,6 +382,7 @@ not easier.
     -- multi-day (d>=1)           207  -0.6383   0.2644  +2.6376   0.5033      +3.25
     the MARKET price (benchmark)  642  -0.1286   0.1214  +1.3363   0.1012      +3.32
     PRE-calibration forecast       40  -0.4147   0.4079  +1.7972   0.5880      +1.36
+                                       ^ THIS ROW MEASURES NOTHING -- see below
 
 TWO SEPARATE FAULTS, and they compound rather than cancel:
   * INTERCEPT -0.6863. Where the model says 50% the truth is about 33%. That is
@@ -269,58 +409,121 @@ BETTER CALIBRATED THAN THE MODEL ON BOTH PARAMETERS. That is the same
 conclusion the no-edge entries reach by every other route, arrived at here on
 the calibration parameters directly.
 
-CAVEATS. forecast_prob_precal is populated on only 40 of 642 rows, so the
-pre-versus-post comparison is indicative at best -- the pre-cal slope of +1.80
-against post-cal +1.50 hints the calibrator helps a little and nowhere near
-enough, but n=40 with SE 0.59 cannot carry that claim. And the reliability
-regression assumes independent rows; ladder rungs of one city-day are not
-independent, so the SEs above are optimistic. The intercept is far enough from
-zero that clustering would not rescue it.
+THE PRE-CALIBRATION ROW IS VACUOUS, NOT MERELY UNDERPOWERED. An earlier draft
+read the pre-cal slope of +1.80 against post-cal +1.50 as a hint that "the
+calibrator helps a little and nowhere near enough", and caveated it with n=40.
+That caveat does not cover the actual problem. On all 40 rows where
+forecast_prob_precal is populated, forecast_prob EQUALS forecast_prob_precal:
+max |difference| = 0.0 exactly. Fitting either column on those same 40 rows
+returns bit-identical coefficients. So the +1.80-versus-+1.50 gap is 100% a
+40-row-versus-642-row subsample effect and 0% calibration. The cause is the
+untrained identity map quoted in METHOD above -- and section 9c no-ops on
+days_out = 0 regardless, which 32 of the 40 rows are. NO INFERENCE ABOUT THE
+CALIBRATOR CAN BE DRAWN FROM THIS ROW. It is retained only so the next reader
+does not recompute it and reach the conclusion this draft had to withdraw.
+
+CLUSTERING -- AND IT CUTS FOR THE ENTRY, NOT AGAINST IT. The reliability
+regression assumes independent rows, and ladder rungs of one city-day are not
+independent. An earlier draft conceded the SEs were optimistic and claimed only
+the intercept would survive. Both parameters survive, under every clustering
+this data supports (sandwich SEs, small-sample corrected):
+
+    clustering             G     SE(a)    z(a)    SE(b)   z(b-1)
+    iid (as filed)       642    0.1020   -6.73   0.1301    +3.86
+    (city, target_date)  442    0.0910   -7.54   0.1665    +3.02
+    city                  20    0.1111   -6.17   0.1925    +2.61
+    target_date           35    0.0852   -8.06   0.1864    +2.70
+
+The slope stays significant at z = +2.61 even clustering on 20 cities. The
+reason clustering moves so little is that city-day cells are only 1.45 rows
+deep on average -- 289 of 442 are singletons and the deepest is 5 -- so there
+is very little within-cluster correlation to absorb. NOTE at 20 and 35 clusters
+these are below the ~40 where cluster-robust SEs are themselves reliable; a
+wild cluster bootstrap-t would be the rigorous version. The three definitions
+agreeing closely is the reason for not doing it here.
 
 
 [OPEN 2026-08-30 -- research doc section 7 item 4, "use Venn-Abers as a
   diagnostic before considering it as a predictor". Done. The diagnosis is
-  do not fit per-city.]
-  VENN-ABERS DIAGNOSTIC: THE p0-p1 PAIR IS 10x WIDER AT PER-CITY CELL SIZES
-  THAN POOLED, WHICH IS THE PAPER'S OWN OVERFITTING SIGNAL
+  do not fit on cells of this SIZE -- an earlier draft said "do not fit
+  per-city", which a control showed was the wrong variable.]
+  VENN-ABERS DIAGNOSTIC: THE p0-p1 PAIR IS 10x WIDER AT ~25-ROW CELL SIZES
+  THAN POOLED -- AND THE EFFECT IS CELL SIZE, WITH NO CITY CONTENT AT ALL
 Priority: LOW-MEDIUM. It closes a question rather than opening one -- and it
   closes it against a technique the doc had listed as promising.
 Files: measurement only (analysis_attempts).
 
 METHOD. Inductive Venn-Abers per city cell: for each row, refit the isotonic
 regression with that row's label forced to 0 and then to 1; the two fitted
-values at its score are p0 and p1. The paper's stated diagnostic property is
-that the p0-p1 width indicates how flexible the scoring function is relative to
-the dataset size, and that the pair stays tight unless the underlying isotonic
-fit is overfitting grossly.
+values at its score are p0 and p1. The property being used is the one the
+research doc attributes to the paper at section A4 -- the difference between p0
+and p1 "gives us some indication" of how flexible the scoring function is
+relative to the dataset size. AN EARLIER DRAFT ADDED "and the pair stays tight
+unless the underlying isotonic fit is overfitting grossly". That clause is not
+in the doc and could not be verified against the paper; it has been removed.
+The property is about INFORMATIVENESS, not overfitting detection.
 
     per-city cells (n = 11 to 49)   median width 0.143   mean 0.188
     all 642 rows as ONE cell        median width 0.014   mean 0.024
 
-An order of magnitude. And it tracks cell size cleanly -- Boston (n=49) 0.077,
-Philadelphia (38) 0.121, Las Vegas (24) 0.267, Austin (15) 0.200, New Orleans
-(11) 0.190 -- with individual maxima reaching 1.000 (Miami), i.e. rows where
-the pair spans the entire probability range and the fit is being decided by a
-single point.
+An order of magnitude. Individual maxima reach 1.000 (Miami) -- rows where the
+pair spans the entire probability range and the fit is decided by one point.
 
-WHAT IT MEANS. At per-city cell sizes an isotonic-family calibrator carries
+THE CONTROL THAT CHANGES WHAT THIS ENTRY CONCLUDES. Partitioning the SAME 642
+rows at RANDOM into 20 cells of the SAME sizes, 40 replications:
+
+    observed, partitioned by CITY     median width 0.1429
+    random cells, identical sizes     median width 0.1530  (sd 0.0100)
+
+Random cells are if anything WIDER. There is no city content in this
+measurement whatsoever -- not per-city heterogeneity, not anything specific to
+this corpus. The width is an arithmetic property of IVAP at n around 25 that
+any dataset of that size reproduces. An earlier draft framed this as "the ICML
+2005 contraindication measured on this project's own data rather than
+transferred from a benchmark"; that overclaims. The project's own research doc
+predicted it a priori at section A4: "at per-city n = 10-15 the pair will be
+valid and near-uninformative."
+
+IT TRACKS CELL SIZE STRONGLY BUT NOT CLEANLY. Spearman(n, median width) =
+-0.757 across the 20 cells -- strong and correctly signed. But an earlier draft
+said "cleanly" and quoted five cities that happen to read as monotone; they are
+not. Las Vegas (n=24) at 0.267 exceeds both Austin (n=15) at 0.200 and New
+Orleans (n=11) at 0.190, and Miami (n=28) at 0.134 sits below Seattle (n=35)
+at 0.143.
+
+WHAT IT MEANS. At cell sizes around 25 an isotonic-family calibrator carries
 essentially no information: a median width of 0.14 says a typical row's
-probability is pinned only to a 14-point interval by the fit itself, before any
-sampling error in the underlying data. This is the empirical form of the ICML
+probability is pinned only to a 14-point interval by the fit itself. NOTE the
+earlier draft said "before any sampling error in the underlying data", which is
+backwards -- the p0-p1 width IS the fit's sensitivity to a single label, i.e. it
+is itself a finite-sample quantity, and the random-cell control above shows it
+is very nearly deterministic in n. It is consistent in direction with the ICML
 2005 contraindication the doc cites (isotonic reliably matches or beats Platt
-only above ~1000 calibration points) measured on this project's own data rather
-than transferred from a benchmark.
+only above ~1000 calibration points), but it is not an independent measurement
+of it.
 
-SO: do not fit isotonic, Venn-Abers, or any isotonic-family calibrator PER
-CITY. Pooled, the pair is tight enough to be informative, which is consistent
-with the beta/Platt calibration already shipped operating on a pooled fit.
-Venn-Abers remains defensible as a DIAGNOSTIC -- that is what this entry is --
-and this run is evidence against promoting it to a predictor at the cell sizes
-this project has.
+SO, SCOPED CORRECTLY: do not fit isotonic, Venn-Abers, or any isotonic-family
+calibrator on cells of roughly this size, HOWEVER THOSE CELLS ARE DEFINED. The
+earlier draft's "do not fit PER CITY" is true but narrower than the evidence
+and attributes to cities something that is purely about n -- it would wrongly
+license the same mistake under any other partition of similar granularity
+(per-station, per-condition-type, per-month). Pooled, the pair is tight enough
+to be informative, which is consistent with the beta/Platt calibration already
+shipped operating on a pooled fit. Venn-Abers remains defensible as a
+DIAGNOSTIC -- that is what this entry is.
+  THIS IS WHY ITEM 2 OF THE RESEARCH-QUESTIONS ENTRY BELOW MATTERS. If the
+  problem is n and not cities, hierarchical partial pooling is the standard
+  answer, and it is currently unexamined.
 
-CAVEAT. The widths above are computed on forecast_prob, the post-calibration
-output, so they describe how much room a FURTHER isotonic stage would have.
-They are not a statement about the calibrator already deployed.
+CAVEAT -- AND THE EARLIER ONE WAS GUARDING NOTHING. A previous draft cautioned
+that the widths are computed on forecast_prob, the post-calibration output.
+That caveat is unnecessary and implies a limitation that does not exist:
+isotonic fitted values depend only on the RANK ORDER of the scores, so IVAP
+widths are invariant under any strictly increasing transform. Verified --
+recomputing on logit(p) gives max |change in width| = 0.000000 across all 642
+rows. Every calibration stage in this repo is monotone, so no calibration stage
+can move a single number here. The caveat that actually belongs in this slot is
+the random-cell control above: this measures n, not cities.
 
 
 [OPEN 2026-08-30 -- research doc section 8, "what was never answered". These
@@ -352,11 +555,25 @@ Files: none (research record).
 
 WHY FILING THEM COSTS NOTHING AND HELPS. docs/calibration-and-edge-research-
 2026-08-29.md section 8 exists precisely so "a future pass does not assume
-these were covered". A docs file is not where anyone looks for open work. Two
-items from that same section -- the forward-validation protocol and the Kalshi
-fee mechanics -- have since been closed, so the section is already stale as a
-to-do list; this entry is the part that is still open, moved somewhere it will
-be seen.
+these were covered". A docs file is not where anyone looks for open work.
+
+THE FULL ACCOUNTING OF SECTION 8, because an earlier draft's arithmetic looked
+complete and was not. The section has SEVEN bullets, not six:
+  * 4 filed above.
+  * 2 addressed since. The Kalshi fee mechanics are genuinely CLOSED --
+    backlog.txt ~1310 quotes the CFTC filing (rule091222kexdcm003.pdf)
+    verbatim, corrects the doc's per-contract framing to per-ORDER rounding,
+    and utils.kalshi_taker_fee ships it. The forward-validation protocol is
+    closed IN SUBSTANCE -- the PRE-REGISTRATION entry covers the stopping
+    rule, the clustering and protocol_version, and quotes Gelman & Loken and
+    Harvey & Liu from primary sources -- but that entry is itself marked
+    [OPEN] because the forward log is still accruing. An earlier draft said
+    both "have since been closed"; for the protocol that is loose, and the
+    distinction matters because nothing about it is finished until look 1.
+  * 1 NOT accounted for anywhere: "Comparable-system mechanisms", which the
+    doc records as failed in both passes but defers to §0 as "largely already
+    answered in docs/RESEARCH-FINDINGS.md". Nothing is lost by not filing it;
+    it is named here so the count reconciles.
 
 
 [OPEN 2026-08-30 -- observed on the first cron cycle after the option-5 shadow
