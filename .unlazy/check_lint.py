@@ -36,7 +36,22 @@ if probe.returncode != 0:
     sys.exit(1)
 print(f"pre-commit: {probe.stdout.strip()}")
 
+# NOT read-only otherwise: `pre-commit run` includes ruff-format and
+# `ruff --fix`, both of which REWRITE files in place. In a worktree carrying
+# uncommitted work, a lint gate that edits the code it is checking is a
+# verification that changes its own subject. Snapshot first, restore after, and
+# fail loudly if anything moved rather than silently keeping the rewrite.
+before = {f: (ROOT / f).read_bytes() for f in FILES}
 r = run([*PRECOMMIT, "run", "--files", *FILES])
+rewritten = [f for f in FILES if (ROOT / f).read_bytes() != before[f]]
+for f in rewritten:
+    (ROOT / f).write_bytes(before[f])
+if rewritten:
+    print(f"FAIL: the hooks rewrote {rewritten} -- restored from the pre-run "
+          f"snapshot. Apply the formatting deliberately and re-run; this gate "
+          f"must not be the thing that edits the code it certifies.")
+    print(r.stdout[-2000:])
+    sys.exit(1)
 print(r.stdout[-4000:])
 if r.stderr.strip():
     print("stderr:", r.stderr[-1500:])

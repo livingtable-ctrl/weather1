@@ -67,9 +67,41 @@ if anc.returncode != 0:
     fail("the protocol commit is not an ancestor of the first implementation commit")
 
 # The protocol commit must not itself carry implementation changes.
-touched = git("show", "--name-only", "--format=", proto_sha).split()
+# `-z` + NUL split, not .split(): a filename containing a space would silently
+# become two entries and the membership test would miss it.
+_names = git("show", "--name-only", "-z", "--format=", proto_sha)
+touched = [f for f in _names.split(chr(0)) if f]
 bad = sorted(set(touched) & set(IMPL))
 if bad:
     fail(f"the protocol commit also changes implementation files: {bad}")
+
+# THE CONVERSE, which the first version never checked. G1's English says the
+# pre-commitment is provable from git history; that is only true if the
+# protocol text has not moved since. `3563cd31` -- the first implementation
+# commit -- added 28 lines to backlog.txt, and this gate printed PASS anyway,
+# because only the introduction of the title line was tracked. A later commit
+# could rewrite the threshold, N_KILL or the frozen coefficients and nothing
+# here would notice.
+#
+# Post-protocol edits to backlog.txt are ALLOWED but must be declared, so an
+# honest addendum is possible and a silent rewrite is not.
+DECLARED_EDITS = {
+    # sha prefix -> what it added, and why it does not change a commitment
+    "3563cd31": "YES-branch addendum: a measured consequence of the frozen "
+                "coefficients, disclosed, additive, changes no commitment",
+}
+later = [c for c in git(
+    "log", "--format=%H", "--reverse", f"{proto_sha}..HEAD", "--", "backlog.txt"
+).splitlines() if c]
+undeclared = [c for c in later if c[:8] not in DECLARED_EDITS]
+if undeclared:
+    fail(
+        "commit(s) after the pre-registration edit backlog.txt without being "
+        "declared in DECLARED_EDITS -- the protocol text is no longer the text "
+        "that was pre-committed: "
+        + ", ".join(c[:8] for c in undeclared)
+    )
+for c in later:
+    print(f"declared post-protocol backlog edit: {c[:8]} -- {DECLARED_EDITS[c[:8]]}")
 
 print("GATE_G1_PASS")

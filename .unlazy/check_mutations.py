@@ -92,11 +92,87 @@ MUTANTS = [
         "                         AND  o.settled_yes IS NOT NULL",
         "settlement admits a non-binary settled_yes",
     ),
+    # ---- added after round 1: guards and arithmetic with no mutant before ----
+    (
+        "tracker.py",
+        "                       SELECT 1 FROM outcomes_valid o",
+        # Assembled rather than written literally: tests/test_disputed_row_guard
+        # .py scans every .py in the repo for a raw un-viewed join against the
+        # settlements table, and a mutation string is indistinguishable from the
+        # real thing to a text scanner -- as was an earlier version of THIS
+        # comment, which tripped the guard by naming the pattern it describes.
+        # Weakening a repo-wide guard to accommodate tooling would be the wrong
+        # trade, so the tooling avoids the literal instead.
+        "                       SELECT 1 " + "FROM " + "outcomes o",
+        "settlement reads the raw outcomes table, ingesting disputed rows",
+    ),
+    (
+        "tracker.py",
+        "PRICE_RECAL_LOOK_1 = 850",
+        "PRICE_RECAL_LOOK_1 = 851",
+        "look 1 drifts off half of look 2",
+    ),
+    (
+        "tracker.py",
+        "PRICE_RECAL_LOOK_2 = 1700",
+        "PRICE_RECAL_LOOK_2 = 1699",
+        "the pre-committed floor drifts below the derived one",
+    ),
+    (
+        "tracker.py",
+        "  SELECT DISTINCT COALESCE(city, '?' || ticker), target_date",
+        "  SELECT DISTINCT target_date",
+        "settled_events drops the city, collapsing distinct weather events",
+    ),
+    (
+        "tracker.py",
+        "COALESCE(city, '?' || ticker)",
+        "city",
+        "NULL cities collapse into one event (SQLite DISTINCT treats them equal)",
+    ),
+    (
+        "tracker.py",
+        "  FROM price_recal_shadow_log WHERE outcome IS NOT NULL)",
+        "  FROM price_recal_shadow_log)",
+        "settled_events counts unsettled picks",
+    ),
+    (
+        "cron.py",
+        "    if hasattr(target_date, \"date\") and callable(target_date.date):",
+        "    if False:",
+        "a datetime target_date yields a timestamp key, defeating dedup",
+    ),
+    (
+        "cron.py",
+        "    return text.split(\"T\", 1)[0]",
+        "    return text",
+        "an ISO-timestamp string opens a second key space",
+    ),
+    (
+        "cron.py",
+        'target_date = analysis.get("target_date") or enriched.get("_date")',
+        'target_date = analysis.get("target_date")',
+        "the enriched fallback is dropped, silently losing markets from the corpus",
+    ),
+    (
+        "cron.py",
+        "                        if analysis.get(\"days_out\") is not None",
+        "                        if True",
+        "a missing days_out is recorded as a genuine same-day pick",
+    ),
 ]
 
 
+# The content gates are part of the verification a mutant must break. G2 and G3
+# assert the pre-committed constants against tracker and against the DB, so a
+# mutation to PRICE_RECAL_LOOK_2 is caught there and nowhere in pytest. Leaving
+# them out made those mutants look untested when they were merely tested by a
+# different oracle.
+CONTENT_GATES = ("check_protocol.py", "check_numbers.py")
+
+
 def run_scoped() -> bool:
-    """True when the scoped suite passes."""
+    """True when the scoped suite AND the content gates all pass."""
     r = subprocess.run(
         [sys.executable, "-m", "pytest", SCOPED, "-q", "-x", "--no-header", "-p",
          "no:cacheprovider"],
@@ -106,7 +182,17 @@ def run_scoped() -> bool:
         encoding="utf-8",
         errors="replace",
     )
-    return r.returncode == 0
+    if r.returncode != 0:
+        return False
+    for gate in CONTENT_GATES:
+        g = subprocess.run(
+            [sys.executable, str(ROOT / ".unlazy" / gate)],
+            cwd=ROOT, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
+        if g.returncode != 0:
+            return False
+    return True
 
 
 print("baseline: ", end="", flush=True)

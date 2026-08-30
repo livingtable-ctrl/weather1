@@ -75,6 +75,15 @@ def _rows(db):
         return [dict(r) for r in con.execute("SELECT * FROM price_recal_shadow_log")]
 
 
+def _tracker_db_at(tmp_path, monkeypatch, path):
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", path)
+    monkeypatch.setattr(tracker, "_db_initialized", False)
+    tracker.init_db()
+    return tracker, path
+
+
 def _tracker_db(tmp_path, monkeypatch):
     import tracker
 
@@ -178,6 +187,13 @@ class TestDecisionRule:
         assert row["market_mid"] == pytest.approx(0.25)
         assert row["entry_price_mid"] == pytest.approx(0.75)
         assert row["entry_price_exec"] == pytest.approx(0.76)
+        # BOTH book columns, with DIFFERENT values. Nothing asserted a stored
+        # yes_bid in an earlier draft, and market_mid/yes_bid/yes_ask are three
+        # adjacent REALs in the INSERT tuple -- swapping yes_bid and yes_ask
+        # passed all 36 tests, all 10 gates and all 12 mutants. The asymmetric
+        # fixture (0.24 vs 0.26) is what makes the swap detectable at all.
+        assert row["yes_bid"] == pytest.approx(0.24)
+        assert row["yes_ask"] == pytest.approx(0.26)
 
     def test_a_market_inside_the_threshold_is_not_picked(self, db):
         """mid=0.50 recalibrates to a divergence of -0.032, under 0.05."""
@@ -265,6 +281,78 @@ class TestDecisionRule:
             db,
         )
         assert (wrote, skipped) == (0, 1)
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("2026-08-29", "2026-08-29"),
+            (__import__("datetime").date(2026, 8, 29), "2026-08-29"),
+            (__import__("datetime").datetime(2026, 8, 29, 14, 30), "2026-08-29"),
+            ("2026-08-29T14:30:00", "2026-08-29"),
+            (None, None),
+            ("", None),
+        ],
+    )
+    def test_every_target_date_shape_normalises_to_one_calendar_day(
+        self, value, expected
+    ):
+        """A datetime used to yield '2026-08-29T14:00:00'.
+
+        datetime subclasses date, so a bare hasattr(x, 'isoformat') branch gave
+        a timestamp for one shape and a day for the other -- two keys for one
+        market. That defeats the unique index (the same pick logged again and
+        again) AND splits one weather event across several (city, target_date)
+        clusters, INFLATING the independent-sample count in the direction that
+        flatters the result. Zero coverage before: every fixture passed a string.
+        """
+        assert cron._price_recal_target_day(value) == expected
+
+    def test_a_datetime_and_a_date_produce_the_same_row_key(self, db):
+        """End-to-end control for the normaliser: the two shapes must dedup
+        against each other, not merely normalise in isolation."""
+        import datetime as _dt
+
+        cron._log_price_recal_picks(
+            _pairs((_market(), _analysis(target_date=_dt.date(2026, 8, 29)))), db
+        )
+        _, second, _, _ = cron._log_price_recal_picks(
+            _pairs(
+                (
+                    _market(),
+                    _analysis(target_date=_dt.datetime(2026, 8, 29, 14, 30)),
+                )
+            ),
+            db,
+        )
+        assert second == 0
+        rows = _rows(db)
+        assert len(rows) == 1
+        assert rows[0]["target_date"] == "2026-08-29"
+
+    def test_the_enriched_fallback_reads_the_key_production_actually_sets(self, db):
+        """`_date` is what enrich_with_forecast sets; `_target_date` has no
+        production writer at all. With the analysis missing its own
+        target_date, the fallback is the only thing standing between the market
+        and a silent drop -- and a silent drop is a selection effect."""
+        import datetime as _dt
+
+        m = dict(_market())
+        m.pop("_target_date", None)
+        m["_date"] = _dt.date(2026, 8, 29)
+        a = _analysis()
+        a.pop("target_date")
+        _, wrote, skipped, _ = cron._log_price_recal_picks(_pairs((m, a)), db)
+        assert (wrote, skipped) == (1, 0)
+        assert _rows(db)[0]["target_date"] == "2026-08-29"
+
+    def test_a_missing_days_out_is_not_silently_recorded_as_same_day(self, db):
+        """days_out drives the protocol's horizon argument; `or 0` would make
+        an absent value indistinguishable from a genuine same-day pick."""
+        a = _analysis()
+        a.pop("days_out")
+        _, wrote, _, _ = cron._log_price_recal_picks(_pairs((_market(), a)), db)
+        assert wrote == 1
+        assert _rows(db)[0]["days_out"] is None
 
     def test_a_malformed_analysis_costs_its_row_and_is_counted(self, db):
         cand, wrote, skipped, _ = cron._log_price_recal_picks(
@@ -438,6 +526,69 @@ class TestCronPathAndDedup:
         assert (first, second) == (1, 0)
         assert len(_rows(db)) == 1
 
+    def test_the_same_market_on_two_utc_days_writes_two_rows(self, db):
+        """The BEHAVIOUR the day-keyed index exists for.
+
+        `test_dedup_index_keys_on_the_day_not_the_hour` only greps the DDL
+        string, and the repeat-cycle test writes twice within one second, so it
+        holds identically under a 2-column index. Dropping `date(recorded_at)`
+        entirely failed nothing behavioural. This drives two real UTC days.
+        """
+        pairs = _pairs((_market(), _analysis()))
+        cron._log_price_recal_picks(pairs, db)
+        with sqlite3.connect(db) as con:
+            con.execute(
+                "UPDATE price_recal_shadow_log SET recorded_at = ?",
+                ("2026-08-28T23:59:59.000000+00:00",),
+            )
+        _, second, _, _ = cron._log_price_recal_picks(pairs, db)
+        assert second == 1, "a pick on a new UTC day must not be deduped away"
+        rows = _rows(db)
+        assert len(rows) == 2
+        assert len({r["recorded_at"][:10] for r in rows}) == 2
+
+    def test_two_rows_within_one_utc_day_are_still_deduped(self, db):
+        """The positive control for the test above: without it, that test
+        would also pass under an index keyed on the full timestamp."""
+        pairs = _pairs((_market(), _analysis()))
+        cron._log_price_recal_picks(pairs, db)
+        with sqlite3.connect(db) as con:
+            con.execute(
+                "UPDATE price_recal_shadow_log SET recorded_at = ?",
+                ("2026-08-29T00:00:01.000000+00:00",),
+            )
+        # same UTC day as the writer's own `now`, different hour
+        _, second, _, _ = cron._log_price_recal_picks(pairs, db)
+        assert second in (0, 1)  # depends on today's UTC date vs the fixture
+        with sqlite3.connect(db) as con:
+            con.execute("DELETE FROM price_recal_shadow_log")
+        base = "2026-08-29T"
+        for hh in ("01", "13", "23"):
+            with sqlite3.connect(db) as con:
+                con.execute(
+                    "INSERT OR IGNORE INTO price_recal_shadow_log "
+                    "(ticker, target_date, market_mid, recal_prob, divergence, "
+                    " side, entry_price_mid, entry_price_exec, fit_a, fit_b, "
+                    " threshold, protocol_version, recorded_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        CORE_TICKER,
+                        "2026-08-29",
+                        0.25,
+                        0.21,
+                        -0.08,
+                        "NO",
+                        0.75,
+                        0.76,
+                        cron._PRICE_RECAL_FIT_A,
+                        cron._PRICE_RECAL_FIT_B,
+                        cron._PRICE_RECAL_THRESHOLD,
+                        cron._PRICE_RECAL_PROTOCOL_VERSION,
+                        f"{base}{hh}:00:00.000000+00:00",
+                    ),
+                )
+        assert len(_rows(db)) == 1, "three hours of one UTC day is one pick"
+
     def test_two_different_markets_on_one_city_day_both_log(self, db):
         """One city-day's ladder rungs are one weather EVENT for the protocol's
         clustering, but they are still separate picks and both must be
@@ -475,6 +626,54 @@ class TestCronPathAndDedup:
                 con.execute("PRAGMA user_version").fetchone()[0]
                 == tracker._SCHEMA_VERSION
             )
+
+
+class TestMigrationOnAnExistingDatabase:
+    """G4 proves the _MIGRATIONS list is append-only. Nothing proved the
+    version CURSOR actually advances a database that already exists -- every
+    other test builds from version 0, which is the one case where an
+    append-only violation is invisible."""
+
+    def test_an_existing_pre_migration_db_gains_the_table_and_the_version(
+        self, tmp_path, monkeypatch
+    ):
+        import tracker
+
+        path = tmp_path / "upgrade.db"
+        # Build the DB, then wind the cursor back to before the two new
+        # migrations, exactly as a production DB sits today (user_version 84).
+        tracker_db = _tracker_db_at(tmp_path, monkeypatch, path)
+        with sqlite3.connect(path) as con:
+            con.execute("DROP TABLE IF EXISTS price_recal_shadow_log")
+            con.execute(f"PRAGMA user_version={len(tracker._MIGRATIONS) - 2}")
+        with sqlite3.connect(path) as con:
+            assert not con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='price_recal_shadow_log'"
+            ).fetchone()
+
+        con = sqlite3.connect(path)
+        try:
+            tracker._run_migrations(con)
+            con.commit()
+        finally:
+            con.close()
+
+        with sqlite3.connect(path) as con:
+            assert con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='price_recal_shadow_log'"
+            ).fetchone(), "the appended migration never ran on an existing DB"
+            assert con.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='idx_prsl_ticker_target_day'"
+            ).fetchone(), "the appended index never ran on an existing DB"
+            assert (
+                con.execute("PRAGMA user_version").fetchone()[0]
+                == tracker._SCHEMA_VERSION
+            )
+        _, wrote, _, _ = cron._log_price_recal_picks(
+            _pairs((_market(), _analysis())), path
+        )
+        assert wrote == 1
+        assert tracker_db is not None
 
 
 # ------------------------------------------------------------------- settlement
@@ -545,6 +744,164 @@ class TestSettlement:
                 is None
             )
 
+    def test_a_disputed_settlement_never_reaches_the_corpus(
+        self, tmp_path, monkeypatch
+    ):
+        """The repo's `outcomes_valid` view is its one definition of "not
+        disputed", and this fill is one-way: a disputed settlement copied in
+        would be frozen there permanently, with no disputed column on the row
+        to filter it out at read time. An earlier draft joined raw `outcomes`
+        and failed tests/test_disputed_row_guard.py."""
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        cron._log_price_recal_picks(_pairs((_market(), _analysis())), path)
+        with sqlite3.connect(path) as con:
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, disputed) VALUES (?, ?, 1)",
+                (CORE_TICKER, 1),
+            )
+        assert tracker.settle_price_recal_picks() == 0
+        with sqlite3.connect(path) as con:
+            assert (
+                con.execute("SELECT outcome FROM price_recal_shadow_log").fetchone()[0]
+                is None
+            )
+
+    def test_positive_control_the_same_settlement_undisputed_does_fill(
+        self, tmp_path, monkeypatch
+    ):
+        """Without this the test above could pass by never filling anything."""
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        cron._log_price_recal_picks(_pairs((_market(), _analysis())), path)
+        with sqlite3.connect(path) as con:
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, disputed) VALUES (?, ?, 0)",
+                (CORE_TICKER, 1),
+            )
+        assert tracker.settle_price_recal_picks() == 1
+
+    def test_look_one_is_exactly_half_of_look_two(self):
+        """The futility look's power cost is computed at N/2 and the
+        correlation rho = sqrt(n1/n2) = 0.7071 depends on it. If look 1 drifts
+        off half, the stated cost of 0.00019 stops being the cost of this
+        design."""
+        import tracker
+
+        assert tracker.PRICE_RECAL_LOOK_1 == tracker.PRICE_RECAL_LOOK_2 // 2
+
+    def test_settled_events_counts_only_settled_picks(self, tmp_path, monkeypatch):
+        """The fixtures elsewhere are all-settled, so dropping the settled
+        filter from the query changed nothing and the mutant survived. This
+        seeds a MIX."""
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        with sqlite3.connect(path) as con:
+            for tk, date, outcome in (
+                ("S1", "2026-08-29", 1),
+                ("S2", "2026-08-30", 0),
+                ("U1", "2026-09-01", None),
+                ("U2", "2026-09-02", None),
+            ):
+                con.execute(
+                    "INSERT INTO price_recal_shadow_log (ticker, target_date, "
+                    " city, market_mid, recal_prob, divergence, side, "
+                    " entry_price_mid, entry_price_exec, fit_a, fit_b, "
+                    " threshold, protocol_version, recorded_at, outcome) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        tk,
+                        date,
+                        "NYC",
+                        0.25,
+                        0.21,
+                        -0.08,
+                        "NO",
+                        0.75,
+                        0.76,
+                        cron._PRICE_RECAL_FIT_A,
+                        cron._PRICE_RECAL_FIT_B,
+                        cron._PRICE_RECAL_THRESHOLD,
+                        cron._PRICE_RECAL_PROTOCOL_VERSION,
+                        "2026-08-29T00:00:00+00:00",
+                        outcome,
+                    ),
+                )
+        progress = tracker.get_price_recal_progress()
+        assert progress["logged"] == 4
+        assert progress["settled"] == 2
+        # 4 distinct (city, date) pairs exist; only 2 are settled.
+        assert progress["settled_events"] == 2
+
+    def test_the_terminal_state_reports_no_further_look(self, tmp_path, monkeypatch):
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        with sqlite3.connect(path) as con:
+            for i in range(tracker.PRICE_RECAL_LOOK_2):
+                con.execute(
+                    "INSERT INTO price_recal_shadow_log (ticker, target_date, "
+                    " city, market_mid, recal_prob, divergence, side, "
+                    " entry_price_mid, entry_price_exec, fit_a, fit_b, "
+                    " threshold, protocol_version, recorded_at, outcome) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+                    (
+                        f"T{i}",
+                        f"2026-08-{20 + i % 4:02d}",
+                        "NYC",
+                        0.25,
+                        0.21,
+                        -0.08,
+                        "NO",
+                        0.75,
+                        0.76,
+                        cron._PRICE_RECAL_FIT_A,
+                        cron._PRICE_RECAL_FIT_B,
+                        cron._PRICE_RECAL_THRESHOLD,
+                        cron._PRICE_RECAL_PROTOCOL_VERSION,
+                        "2026-08-29T00:00:00+00:00",
+                    ),
+                )
+        progress = tracker.get_price_recal_progress()
+        assert progress["settled"] == tracker.PRICE_RECAL_LOOK_2
+        assert progress["next_look"] is None
+        assert progress["picks_to_next_look"] == 0
+
+    def test_a_null_city_does_not_collapse_distinct_events(self, tmp_path, monkeypatch):
+        """SQLite treats NULLs as EQUAL for DISTINCT, so two NULL-city picks on
+        one date would count as one event and UNDERSTATE the cluster count."""
+        tracker, path = _tracker_db(tmp_path, monkeypatch)
+        with sqlite3.connect(path) as con:
+            for tk in ("A", "B"):
+                con.execute(
+                    "INSERT INTO price_recal_shadow_log (ticker, target_date, "
+                    " city, market_mid, recal_prob, divergence, side, "
+                    " entry_price_mid, entry_price_exec, fit_a, fit_b, "
+                    " threshold, protocol_version, recorded_at, outcome) "
+                    "VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,1)",
+                    (
+                        tk,
+                        "2026-08-29",
+                        0.25,
+                        0.21,
+                        -0.08,
+                        "NO",
+                        0.75,
+                        0.76,
+                        cron._PRICE_RECAL_FIT_A,
+                        cron._PRICE_RECAL_FIT_B,
+                        cron._PRICE_RECAL_THRESHOLD,
+                        cron._PRICE_RECAL_PROTOCOL_VERSION,
+                        "2026-08-29T00:00:00+00:00",
+                    ),
+                )
+        assert tracker.get_price_recal_progress()["settled_events"] == 2
+
+    def test_one_ticker_under_two_target_dates_writes_two_rows(self, db):
+        cron._log_price_recal_picks(
+            _pairs((_market(), _analysis(target_date="2026-08-29"))), db
+        )
+        _, second, _, _ = cron._log_price_recal_picks(
+            _pairs((_market(), _analysis(target_date="2026-08-30"))), db
+        )
+        assert second == 1
+        assert len(_rows(db)) == 2
+
     def test_an_unsettled_market_leaves_the_pick_unscored(self, tmp_path, monkeypatch):
         tracker, path = _tracker_db(tmp_path, monkeypatch)
         cron._log_price_recal_picks(_pairs((_market(), _analysis())), path)
@@ -593,16 +950,27 @@ class TestNoPeeking:
         progress = tracker.get_price_recal_progress()
         assert progress["logged"] == 1
         assert progress["settled"] == 0
-        assert progress["next_look"] == 670
-        assert progress["picks_to_next_look"] == 670
-        forbidden = {"z", "edge", "win_rate", "pnl", "mean_edge", "statistic", "net"}
-        leaked = forbidden & set(progress)
-        assert not leaked, f"progress leaked a result field: {leaked}"
+        assert progress["next_look"] == tracker.PRICE_RECAL_LOOK_1
+        assert progress["picks_to_next_look"] == tracker.PRICE_RECAL_LOOK_1
+        # ALLOWLIST, not a blocklist. An earlier draft asserted a forbidden set
+        # of key names was absent, which any new key ("wins", "roi", "sharpe",
+        # "hit_rate") walks straight past -- theatre against a claim a blocklist
+        # structurally cannot make. An exact-set assertion forces a new key to
+        # be justified here before it can reach a caller.
+        assert set(progress) == {
+            "logged",
+            "settled",
+            "settled_events",
+            "first_at",
+            "last_at",
+            "next_look",
+            "picks_to_next_look",
+        }
 
     def test_the_look_points_match_the_pre_registration(self, tmp_path, monkeypatch):
         tracker, path = _tracker_db(tmp_path, monkeypatch)
         with sqlite3.connect(path) as con:
-            for i in range(700):
+            for i in range(900):
                 con.execute(
                     "INSERT INTO price_recal_shadow_log (ticker, target_date, "
                     " city, market_mid, recal_prob, divergence, side, "
@@ -611,8 +979,8 @@ class TestNoPeeking:
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
                     (
                         f"T{i}",
-                        "2026-08-29",
-                        "NYC",
+                        f"2026-08-{20 + i % 4:02d}",
+                        ["NYC", "CHI", "LAX"][i % 3],
                         0.25,
                         0.21,
                         -0.08,
@@ -627,10 +995,19 @@ class TestNoPeeking:
                     ),
                 )
         progress = tracker.get_price_recal_progress()
-        assert progress["settled"] == 700
-        assert progress["next_look"] == 1340
-        assert progress["picks_to_next_look"] == 640
-        # 700 picks on one city-day is one weather EVENT, and the protocol's
-        # clustering is what makes that distinction. Surfaced so a pick count
-        # cannot be mistaken for an independent-sample count.
-        assert progress["settled_events"] == 1
+        assert progress["settled"] == 900
+        # Past look 1, so the two fields must now DIFFER -- at settled == 0 they
+        # are both LOOK_1 and swapping them passes.
+        assert progress["next_look"] == tracker.PRICE_RECAL_LOOK_2
+        assert progress["picks_to_next_look"] == tracker.PRICE_RECAL_LOOK_2 - 900
+        assert progress["next_look"] != progress["picks_to_next_look"]
+        # THE FIXTURE VARIES BOTH KEYS ON PURPOSE. An earlier draft seeded 700
+        # rows all at one city and one date, so the query, the clustering key
+        # and the settled filter could every one have been replaced by
+        # `return 1` and this assertion still passed -- vacuous on the single
+        # figure that separates a pick count from an independent-sample count.
+        # 3 cities x 4 dates = 12 events out of 900 picks, and that 12 is
+        # reachable only if BOTH columns are in the DISTINCT and the settled
+        # filter is applied.
+        assert progress["settled_events"] == 12
+        assert progress["settled_events"] != progress["settled"]

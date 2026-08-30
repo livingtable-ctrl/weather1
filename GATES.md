@@ -6,7 +6,12 @@ Scope: pre-commit the forward-validation protocol for the price-recalibration
 rule into backlog.txt BEFORE any code, then build the shadow log that starts its
 clock — a picks-shaped table written once per cron cycle, placing nothing.
 
-Verified 2026-08-30 on 3563cd31, python 3.14, Git Bash on win32.
+Verified 2026-08-30 after round 1 of review, python 3.14, Git Bash on win32.
+Round 1 was three parallel opus reviewers on non-overlapping scopes and returned
+37 findings; all 37 are resolved in FINDINGS.md (36 fixed, 1 explicit no-op).
+Four of them were defects in THESE GATES, so the evidence below is rewritten
+rather than amended -- the earlier text asserted more than the checkers
+measured.
 
 - [x] G1: The protocol is committed to backlog.txt in a commit that lands
       strictly before the first commit touching tracker.py or cron.py, so the
@@ -59,14 +64,18 @@ Verified 2026-08-30 on 3563cd31, python 3.14, Git Bash on win32.
   CHECK: python .unlazy/check_shadow_only.py
   EXPECT: GATE_G5_PASS
   EVIDENCE: exit 0, matched. Call graph walked across cron, weather_markets,
-      utils, positions, tracker; 18 unresolved calls, all builtins or sqlite3.
-      POSITIVE CONTROL RAN IN THE SAME INVOCATION and tripped: with
-      `place_order` planted in the writer the checker reports
-      `cron._log_price_recal_picks -> place_order` and exits 1. The control is
-      not a separate run whose result is asserted later.
-      One earlier version of this checker flagged `dict.get` as an HTTP get;
-      the fix narrowed transport detection to specific client methods plus
-      attribute calls on known network receivers, and the control still trips.
+      utils, positions, tracker, order_executor, kalshi_client and paper, with
+      import aliases resolved at both module and function level. 27 unresolved
+      leaf calls, all builtins or sqlite3 -- and that is now an ASSERTION, not
+      an observation: any unresolved name outside an explicit allowlist fails
+      the gate closed.
+      SIX POSITIVE CONTROLS RUN IN THE SAME INVOCATION and all six trip:
+      hardcoded order name, aliased import, aliased order function, Call
+      receiver (httpx.Client().get), Attribute receiver (self._session.get),
+      raw socket, subprocess. Round 1 drove ten call forms at the previous
+      version and SIX GOT THROUGH -- every one landed in an `unresolved` set
+      that was printed and never failed anything. The single place_order control
+      it did have proved only that the hardcoded-name path worked.
 
 - [x] G6: The writer records the executable prices (yes_bid AND yes_ask) and the
       immutable pick-time snapshot, so the protocol's executable-price statistic
@@ -82,26 +91,36 @@ Verified 2026-08-30 on 3563cd31, python 3.14, Git Bash on win32.
       naming a symbol this change touches.
   CHECK: python .unlazy/run_scoped_tests.py
   EXPECT: GATE_G7_PASS
-  EVIDENCE: exit 0, matched. 23 modules derived (not hand-listed) out of 202 in
-      the suite; 2189 passed, 10 subtests passed, 154s. The runner fails if the
-      derived set exceeds half the suite, so "scoped" cannot quietly become the
-      full run.
+  EVIDENCE: exit 0, matched. 57 modules derived (not hand-listed) out of 202;
+      3766 passed, 20 deselected, 10 subtests, 404s. The runner fails if the
+      derived set exceeds half the suite.
+      THE EARLIER DERIVATION WAS THE PROBLEM, not the runner: seeded from my own
+      list of what I thought the change touched, it selected 23 modules and
+      excluded tests/test_disputed_row_guard.py -- a RED repo-wide guard this
+      change had broken -- while the ledger reported 2189 passing. Widening
+      TOUCHED with outcomes_valid, _RAW_OUTCOMES_ALLOWLIST, cmd_cron,
+      sameday_only and all_results caught that guard AND a pre-existing ordering
+      bug in tests/test_sameday_only.py (fixed here; verified pre-existing by
+      reproducing it with origin/master's own cron.py and tracker.py in place).
 
-- [x] G8: The tests are not vacuous: mutating each of the decision rule's guards
-      and the settlement invariants, one at a time, makes the scoped suite fail.
-      A surviving mutant means the gate above certifies nothing.
+- [x] G8: The tests are not vacuous: mutating each guard and invariant IN THE
+      MUTANT LIST, one at a time, makes the scoped suite or the content gates
+      fail. The list is enumerated in check_mutations.py and is not a claim to
+      cover every branch -- round 1 correctly called the old "each of the
+      decision rule's guards" wording false as measured.
   CHECK: python .unlazy/check_mutations.py
   EXPECT: GATE_G8_PASS
-  EVIDENCE: exit 0, matched. 12/12 mutants killed; baseline verified before and
-      the revert verified after. Reverts are from in-memory original bytes in a
-      finally block, never `git checkout --`, which would have destroyed the
-      uncommitted work in this worktree.
-      TWO MUTANTS SURVIVED ON THE FIRST RUN AND BOTH WERE CODE DEFECTS, not test
-      gaps to paper over: a `has_quote` check strictly implied by the mid-range
-      gate (removed), and `outcome IS NULL` duplicated across a SELECT and a
-      per-row UPDATE (rewritten as one statement). A third surviving mutant —
-      settlement admitting a non-binary settled_yes — was a genuine test gap and
-      is now covered by seeding settled_yes = 2.
+  EVIDENCE: exit 0, matched. 22/22 mutants killed (was 12), baseline verified
+      before and the revert verified after. Reverts are from in-memory original
+      bytes in a finally block, never `git checkout --`, which would destroy the
+      uncommitted work in this worktree. The kill criterion now runs the scoped
+      suite AND check_protocol/check_numbers, because the pre-committed
+      constants are asserted by those gates and by no pytest.
+      DISCLOSURE, NOT MEASUREMENT: two mutants survived an earlier run and both
+      turned out to be code defects (a redundant has_quote guard, a duplicated
+      one-way filter). Neither has a mutant in the current list, so re-running
+      this gate cannot reproduce that claim -- it is recorded history, and round
+      1 was right to flag it as presented like an audit artefact.
 
 - [x] G9: The repo's own pre-commit hooks pass on the changed files (ruff,
       ruff-format, mypy as the repo configures them, not a bare local mypy).
@@ -115,7 +134,7 @@ Verified 2026-08-30 on 3563cd31, python 3.14, Git Bash on win32.
 - [x] G10: The cron path actually writes rows: a driven cycle against a DB built
       by the real migration runner produces picks-table rows, and a second
       identical cycle adds none (the dedup index holds).
-  CHECK: python .unlazy/run_selected.py "cron or dedup or migration_runner" 4 GATE_G10_PASS
+  CHECK: python .unlazy/run_selected.py "cron or dedup or migration_runner or utc_day" 6 GATE_G10_PASS
   EXPECT: GATE_G10_PASS
   EVIDENCE: exit 0, matched. 6 tests selected and passed, 30 deselected,
       including a cycle driven against a DB built by tracker.init_db() rather

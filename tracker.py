@@ -14303,6 +14303,17 @@ def settle_price_recal_picks() -> int:
     that decides a market has settled -- if it disagreed with `outcomes`, the
     forward corpus would be scoring picks against its own opinion.
 
+    Reads `outcomes_valid`, NEVER the raw `outcomes` table. That view is this
+    repo's single definition of "not disputed" (disputed IS NULL OR disputed =
+    0) and tests/test_disputed_row_guard.py enforces it repo-wide. An earlier
+    draft joined the raw table and failed that guard. It is not a lint point:
+    outcomes.settled_yes is written once and never revised -- only the
+    `disputed` flag flips afterwards -- and this fill is deliberately one-way,
+    so a settlement disputed AFTER the sweep ran would be frozen into the
+    corpus permanently, with no disputed column on the row to filter it out at
+    read time. A pre-committed statistic that cannot be re-cut must not ingest
+    a value that can silently turn out to be wrong.
+
     `outcome` here is the MARKET's settlement (settled_yes), not the pick's
     win; see the table's migration comment for why the raw value is stored and
     the win derived from `side` at analysis time.
@@ -14327,12 +14338,12 @@ def settle_price_recal_picks() -> int:
             """
             UPDATE price_recal_shadow_log
             SET    outcome = (
-                       SELECT o.settled_yes FROM outcomes o
+                       SELECT o.settled_yes FROM outcomes_valid o
                        WHERE  o.ticker = price_recal_shadow_log.ticker
                    )
             WHERE  outcome IS NULL
               AND  EXISTS (
-                       SELECT 1 FROM outcomes o
+                       SELECT 1 FROM outcomes_valid o
                        WHERE  o.ticker = price_recal_shadow_log.ticker
                          AND  o.settled_yes IN (0, 1)
                    )
@@ -14345,6 +14356,18 @@ def settle_price_recal_picks() -> int:
             filled,
         )
     return filled
+
+
+# The two pre-registered look points, defined ONCE. They were transcribed
+# independently into tracker.py, the test module and backlog.txt in an earlier
+# draft, so tracker could have held 660 with every gate still green. The test
+# reads them from here and .unlazy/check_protocol.py asserts backlog.txt agrees,
+# which closes the loop without a circular import (cron imports tracker, not the
+# reverse). Derived in backlog.txt section 5: 1,700 picks for 80% power against
+# the raw selection edge at the frozen coefficients' own price distribution,
+# interim at half.
+PRICE_RECAL_LOOK_1 = 850
+PRICE_RECAL_LOOK_2 = 1700
 
 
 def get_price_recal_progress() -> dict:
@@ -14374,10 +14397,15 @@ def get_price_recal_progress() -> dict:
             FROM   price_recal_shadow_log
             """
         ).fetchone()
+        # COALESCE before DISTINCT: SQLite treats NULLs as EQUAL for DISTINCT,
+        # so every NULL-city pick sharing a target_date would collapse into one
+        # cluster and UNDERSTATE the event count. Keyed on the ticker in that
+        # case, which is the most conservative reading available -- an unknown
+        # city cannot be assumed to share an event with another unknown city.
         events = con.execute(
             "SELECT COUNT(*) AS n FROM ("
-            "  SELECT DISTINCT city, target_date FROM price_recal_shadow_log"
-            "  WHERE outcome IS NOT NULL)"
+            "  SELECT DISTINCT COALESCE(city, '?' || ticker), target_date"
+            "  FROM price_recal_shadow_log WHERE outcome IS NOT NULL)"
         ).fetchone()
     settled = int(row["settled"] or 0)
     return {
@@ -14387,11 +14415,15 @@ def get_price_recal_progress() -> dict:
         "first_at": row["first_at"],
         "last_at": row["last_at"],
         # Both look points from the pre-registration; see backlog.txt.
-        "next_look": 670 if settled < 670 else (1340 if settled < 1340 else None),
+        "next_look": (
+            PRICE_RECAL_LOOK_1
+            if settled < PRICE_RECAL_LOOK_1
+            else (PRICE_RECAL_LOOK_2 if settled < PRICE_RECAL_LOOK_2 else None)
+        ),
         "picks_to_next_look": (
-            670 - settled
-            if settled < 670
-            else (1340 - settled if settled < 1340 else 0)
+            PRICE_RECAL_LOOK_1 - settled
+            if settled < PRICE_RECAL_LOOK_1
+            else (PRICE_RECAL_LOOK_2 - settled if settled < PRICE_RECAL_LOOK_2 else 0)
         ),
     }
 

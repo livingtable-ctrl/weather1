@@ -1,18 +1,30 @@
 """G3: every quantitative claim in the protocol re-derives from source.
 
-ANTI-ECHO. Each figure is recomputed here from data/predictions.db or from the
-CFTC-filed fee formula and THEN compared against the entry's text. No number is
-parsed out of backlog.txt and compared against itself.
+ANTI-ECHO, and the earlier version was not. It hardcoded Z_SEL = 1.98,
+D_MID = 0.852 - 0.791 and P_BAR = 0.791 at the top of the file -- values retyped
+from the entry it was checking (`0.852` appears nowhere in the entry at all,
+only the derived difference does) -- and then asserted quantities derived from
+them back into that same entry. Two `claims()` calls were pure self-comparison.
+The docstring said "no number is parsed out of backlog.txt and compared against
+itself", which was literally true (nothing was PARSED) and materially false.
 
-Two classes of figure, checked differently on purpose:
-  * ARITHMETIC (haircuts, noise floor, sample floor, fee, power) is
-    deterministic and is asserted exactly at the stated precision.
-  * POPULATION figures come from a table the cron appends to daily, so they
-    drift. They are asserted against a re-fit of the entry's own stated
-    population definition, with an explicit tolerance, and the observed drift is
-    printed either way. Drift beyond tolerance is a real finding, not a flaky
-    test: it means the frozen coefficients no longer describe the population the
-    entry says they were fitted on.
+Every input now has an authority outside the text under test:
+
+  * the DISCOVERY row (n, mean price, win rate, z) is PARSED from the PARENT
+    backlog entry's own table -- a different entry this one does not control, so
+    a disagreement is a real failure rather than a tautology;
+  * the FORWARD pick distribution (sd, fee, mean entry, band, rate) is
+    recomputed from data/predictions.db by applying the frozen rule;
+  * the fee comes from the CFTC-filed formula;
+  * the look points come from tracker, which the test module also reads;
+  * the haircut, noise floor, power and sample floor are arithmetic on those.
+
+The one input with no external authority is the 1c half-spread. It is not
+checked numerically -- it is asserted to be LABELLED an assumption in the entry,
+with a pre-committed trigger, rather than sitting silently among derived values.
+
+The haircut table is matched POSITIONALLY (whole row, one regex per row), not by
+substring, so the entry's rows cannot be permuted and still pass.
 """
 
 from __future__ import annotations
@@ -26,7 +38,9 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import cron  # noqa: E402
 import paths  # noqa: E402
+import tracker  # noqa: E402
 
 TEXT = (ROOT / "backlog.txt").read_text(encoding="utf-8")
 MARKER = "FORWARD-VALIDATION PROTOCOL FOR THE PRICE-RECALIBRATION RULE"
@@ -38,6 +52,10 @@ nxt = re.search(r"\n\[(?:OPEN|DONE|CLOSED) ", TEXT[start:])
 ENTRY = TEXT[start : start + (nxt.start() if nxt else len(TEXT) - start)]
 
 GAMMA = 0.5772156649015328606
+HALF = 0.01
+C_REF = 25
+M_DECLARED = 12
+FIT_A, FIT_B, THR = -0.12856, 1.33635, 0.05
 failures: list[str] = []
 
 
@@ -47,11 +65,9 @@ def need(cond: bool, msg: str) -> None:
 
 
 def claims(s: str, why: str) -> None:
-    """Assert the recomputed string `s` literally appears in the entry."""
     need(s in ENTRY, f"{why}: recomputed {s!r} does not appear in the entry")
 
 
-# ----------------------------------------------------------------- primitives
 def ndtri(p: float) -> float:
     a = [-3.969683028665376e01, 2.209460984245205e02, -2.759285104469687e02,
          1.383577518672690e02, -3.066479806614716e01, 2.506628277459239e00]
@@ -84,117 +100,34 @@ def p2(z: float) -> float:
     return 2 * (1 - ndtr(abs(z)))
 
 
-def logit(x: float) -> float:
-    x = min(max(x, 1e-6), 1 - 1e-6)
-    return math.log(x / (1 - x))
-
-
-# =========================================================== A. fee (CFTC form)
-# fees = round up(0.07 x C x P x (1-P)); round up = to the next cent.
-def fee_pc(price: float, C: int) -> float:
+def fee_pc(price: float, C: int = C_REF) -> float:
+    """CFTC-filed Kalshi taker fee: round_up_to_cent(0.07*C*P*(1-P)), per contract."""
     return (math.ceil(0.07 * C * price * (1 - price) * 100) / 100) / C
 
 
-unrounded = 0.07 * 0.79 * (1 - 0.79)
-claims(f"${unrounded:.5f}/contract", "fee at P=0.79 unrounded")
-claims(f"${fee_pc(0.79, 1):.5f}/contract", "fee at P=0.79, C=1")
-claims(f"${fee_pc(0.79, 25):.5f}/contract", "fee at P=0.79, C=25")
-need(
-    abs(fee_pc(0.79, 1) / unrounded - 1.72) < 0.005,
-    f"C=1 rounding multiple recomputes to {fee_pc(0.79, 1) / unrounded:.2f}, entry says 1.72x",
+# ================================ A. inputs PARSED from the PARENT entry
+parent = TEXT.find("TWO WAYS OUT OF THE NO-EDGE RESULT")
+need(parent > 0, "the parent discovery entry is missing from backlog.txt")
+row = re.search(
+    r"^\s*0\.05\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+\+([\d.]+)%\s+\+([\d.]+)\s",
+    TEXT[parent:] if parent > 0 else "", re.M,
 )
-claims("fees = round up(0.07 x C x P x (1-P))", "the filed fee formula verbatim")
-print(f"  fee P=0.79: unrounded ${unrounded:.5f}  C=1 ${fee_pc(0.79, 1):.5f}  "
-      f"C=25 ${fee_pc(0.79, 25):.5f}")
+if row is None:
+    print("FAIL: the parent entry's thr=0.05 discovery row did not parse -- "
+          "this checker's inputs have no external authority without it")
+    sys.exit(1)
+DISC_PRICE = float(row.group(2))
+DISC_WIN = float(row.group(3))
+Z_SEL = float(row.group(5))
+D_MID = DISC_WIN - DISC_PRICE
+print(f"  parsed from the PARENT entry: n={row.group(1)} price={DISC_PRICE} "
+      f"win={DISC_WIN} z={Z_SEL}  ->  delta_mid={D_MID:+.4f}")
 
-# ================================================= B. haircut table (Harvey&Liu)
-Z_SEL, D_MID, P_BAR, HALF, C_REF = 1.98, 0.852 - 0.791, 0.791, 0.01, 25
-a_exec = P_BAR + HALF
-fee = fee_pc(a_exec, C_REF)
-sd = math.sqrt(a_exec * (1 - a_exec))
-claims(f"a = {a_exec:.4f}", "mean executable entry")
-claims(f"sd      = {sd:.4f}", "per-pick sd")
-
-p_raw = p2(Z_SEL)
-need(abs(p_raw - 0.0477) < 5e-5, f"two-sided p at z=1.98 recomputes to {p_raw:.4f}")
-claims("two-sided p = 0.0477", "p-value of the selection statistic")
-claims(f"edge vs the mid +{D_MID:.4f}", "selection edge vs the mid")
-
-for M, hc_txt, dmid_txt, dnet_txt in (
-    (3, "26.0%", "+0.0451", "+0.0239"),
-    (4, "33.9%", "+0.0403", "+0.0191"),
-    (6, "46.1%", "+0.0329", "+0.0117"),
-    (10, "64.1%", "+0.0219", "+0.0007"),
-    (20, "97.1%", "+0.0018", "-0.0194"),
-):
-    p_bon = min(M * p_raw, 1.0)
-    z_hc = ndtri(1 - p_bon / 2) if p_bon < 1 else 0.0
-    hc = (Z_SEL - z_hc) / Z_SEL
-    d_mid = D_MID * (1 - hc)
-    d_net = d_mid - fee - HALF
-    need(f"{hc * 100:.1f}%" == hc_txt,
-         f"M={M} haircut recomputes to {hc * 100:.1f}%, entry says {hc_txt}")
-    need(f"{d_mid:+.4f}" == dmid_txt,
-         f"M={M} edge-vs-mid recomputes to {d_mid:+.4f}, entry says {dmid_txt}")
-    need(f"{d_net:+.4f}" == dnet_txt,
-         f"M={M} net edge recomputes to {d_net:+.4f}, entry says {dnet_txt}")
-    claims(hc_txt, f"M={M} haircut appears in the table")
-    claims(dmid_txt, f"M={M} edge-vs-mid appears in the table")
-    claims(dnet_txt, f"M={M} net edge appears in the table")
-print("  haircut table: 5 rows recomputed and matched")
-
-Z_CRIT = ndtri(1 - 0.05 / (2 * 10))
-need(f"{Z_CRIT:.3f}" == "2.807", f"HL Bonferroni t-cut recomputes to {Z_CRIT:.3f}")
-claims("|z| >= 2.807", "the Bonferroni decision threshold")
-
-# ============================================ C. noise floor (DSR expected max)
-for N, want in ((3, "0.853"), (4, "1.052"), (6, "1.300"), (10, "1.575"), (20, "1.901")):
-    em = (1 - GAMMA) * ndtri(1 - 1.0 / N) + GAMMA * ndtri(1 - 1.0 / (N * math.e))
-    need(f"{em:.3f}" == want, f"E[max z] at N={N} recomputes to {em:.3f}, entry says {want}")
-    claims(want, f"noise floor at N={N}")
-print("  noise floor: 5 values recomputed and matched")
-
-# ================================================== D. sample floor (power calc)
-Z_POW = ndtri(0.80)
-need(f"{Z_POW:.3f}" == "0.842", f"z_power recomputes to {Z_POW:.3f}")
-for M, want_n in ((1, "1,340"), (4, "5,815")):
-    if M == 1:
-        d = D_MID - fee - HALF
-    else:
-        p_bon = min(M * p_raw, 1.0)
-        d = D_MID * (ndtri(1 - p_bon / 2) / Z_SEL) - fee - HALF
-    n = ((Z_CRIT + Z_POW) * sd / d) ** 2
-    need(f"{n:,.0f}" == want_n, f"n at M={M} recomputes to {n:,.0f}, entry says {want_n}")
-    claims(want_n, f"sample floor at M={M}")
-d_raw = D_MID - fee - HALF
-mde = (Z_CRIT + Z_POW) * sd / math.sqrt(1340)
-need(abs(mde - d_raw) < 5e-4,
-     f"MDE at N_KILL ({mde:+.4f}) must equal the edge it was sized on ({d_raw:+.4f})")
-claims(f"is +{mde:.4f}", "MDE at 1,340 picks")
-print(f"  sample floor: N_KILL=1,340 sized on delta={d_raw:+.4f}, MDE={mde:+.4f}")
-
-# 60-day claim in the superseded option-5 status line
-mde60 = (Z_CRIT + Z_POW) * sd / math.sqrt(384)
-need(f"{mde60:+.3f}" == "+0.074",
-     f"60-day MDE recomputes to {mde60:+.3f}, cross-reference says +0.074")
-need(mde60 > 0.0610,
-     f"the 60-day MDE ({mde60:+.4f}) must exceed the discovery edge (+0.0610) "
-     f"for the cross-reference argument to hold")
-
-# ============================================================ E. futility power
-mu = d_raw * math.sqrt(670) / sd
-power_kept = 0.80 * (1 - ndtr(-mu))
-need(f"{power_kept:.3f}" == "0.796",
-     f"retained power recomputes to {power_kept:.3f}, entry says 0.796")
-claims("0.800 -> 0.796", "the measured power cost of the futility look")
-claims(f"P(stop | H1) = {ndtr(-mu):.3f}", "futility stop probability under H1")
-print(f"  futility look at 670: E[z|H1]={mu:.3f} power kept {power_kept:.3f}")
-
-# ==================================================== F. population (drifts)
+# ============================ B. the forward pick set, recomputed from the DB
 db = pathlib.Path(paths.DB_PATH)
 con = sqlite3.connect("file:" + db.as_posix() + "?mode=ro", uri=True)
 rows = con.execute(
-    "SELECT city, condition, target_date, market_prob, days_out, outcome "
+    "SELECT city, condition, target_date, market_prob, outcome "
     "FROM analysis_attempts WHERE outcome IS NOT NULL "
     "AND forecast_prob IS NOT NULL AND market_prob IS NOT NULL "
     "AND target_date <= '2026-08-29'"
@@ -209,24 +142,158 @@ def ctype(c):
         return None
 
 
-def cvar(c):
-    try:
-        return ast.literal_eval(c).get("var")
-    except Exception:
-        return None
-
-
 core = [r for r in rows if ctype(r[1]) in {"above", "below", "between"}]
 
 
+def recal(m):
+    m = min(max(m, 1e-6), 1 - 1e-6)
+    return 1 / (1 + math.exp(-(FIT_A + FIT_B * math.log(m / (1 - m)))))
+
+
+picks = []
+for r in core:
+    m = r[3]
+    d = recal(m) - m
+    if abs(d) < THR:
+        continue
+    yes = d > 0
+    picks.append({"entry": m if yes else 1 - m, "date": r[2],
+                  "side": "YES" if yes else "NO"})
+
+n_pick = len(picks)
+mean_entry = sum(q["entry"] for q in picks) / n_pick
+sd = math.sqrt(sum((q["entry"] + HALF) * (1 - q["entry"] - HALF) for q in picks) / n_pick)
+fee = sum(fee_pc(q["entry"] + HALF) for q in picks) / n_pick
+rate = n_pick / len(set(q["date"] for q in picks))
+inband = sum(1 for q in picks if 0.74 <= q["entry"] <= 0.86) / n_pick
+print(f"  recomputed forward pick set: n={n_pick} "
+      f"sides={sorted({q['side'] for q in picks})} mean_mid={mean_entry:.4f} "
+      f"a={mean_entry+HALF:.4f} sd={sd:.5f} fee={fee:.5f} rate={rate:.2f}/day "
+      f"inband={inband*100:.1f}%")
+
+need({q["side"] for q in picks} == {"NO"},
+     "the YES branch now fires -- the addendum's central disclosure is stale")
+claims(f"{sd:.5f}", "recomputed sd")
+claims(f"{fee:.5f}", "recomputed fee at C=25")
+claims(f"{mean_entry:.4f}", "recomputed mean mid entry")
+claims(f"{mean_entry + HALF:.4f}", "recomputed mean executable entry")
+claims(f"{rate:.2f} picks/day", "recomputed pick rate")
+claims(f"{inband*100:.1f}%", "recomputed share inside the 0.74-0.86 band")
+
+# =================================================== C. fee formula (CFTC)
+claims("fees = round up(0.07 x C x P x (1-P))", "the filed fee formula verbatim")
+claims(f"${0.07*0.79*0.21:.5f}/contract", "unrounded fee at P=0.79")
+claims(f"${fee_pc(0.79, 1):.5f}/contract", "fee at P=0.79, C=1")
+claims(f"${fee_pc(0.79, 25):.5f}/contract", "fee at P=0.79, C=25")
+ratio = fee_pc(0.79, 1) / fee_pc(0.79, 25)
+need(abs(ratio - 1.667) < 0.005,
+     f"the C=1 vs C=25 ratio at P=0.79 recomputes to {ratio:.3f}, entry says 67%")
+
+# ================================================= D. haircut table (H&L)
+praw = p2(Z_SEL)
+claims(f"two-sided p = {praw:.4f}", "p-value of the PARSED selection statistic")
+claims(f"edge vs the mid +{D_MID:.4f}", "selection edge from the PARENT table")
+matched = 0
+for M in (3, 4, 6, 10, 12, 20):
+    pb = min(M * praw, 1.0)
+    zh = ndtri(1 - pb / 2) if pb < 1 else 0.0
+    hc = (Z_SEL - zh) / Z_SEL
+    dm = D_MID * (1 - hc)
+    dn = dm - fee - HALF
+    pat = (rf"^\s*{M}\s+{re.escape(f'{hc*100:.1f}')}%\s+"
+           rf"{re.escape(f'{dm:+.4f}')}\s+{re.escape(f'{dn:+.4f}')}\s*(<--.*)?$")
+    if re.search(pat, ENTRY, re.M):
+        matched += 1
+    else:
+        failures.append(
+            f"haircut row M={M} (haircut {hc*100:.1f}%, mid {dm:+.4f}, "
+            f"net {dn:+.4f}) does not appear as ONE row in the entry's table"
+        )
+print(f"  haircut table: {matched}/6 rows recomputed and positionally matched")
+
+Z_CRIT = ndtri(1 - 0.05 / (2 * M_DECLARED))
+Z_POW = ndtri(0.80)
+claims(f"{Z_CRIT:.4f}", "the M=12 two-sided Bonferroni cut")
+claims(f"{ndtri(1 - 0.05 / M_DECLARED):.4f}", "the one-sided cut, quoted for contrast")
+
+# ============================================== E. noise floor and its tail
+for N in (3, 4, 6, 10, 12, 20):
+    em = (1 - GAMMA) * ndtri(1 - 1.0 / N) + GAMMA * ndtri(1 - 1.0 / (N * math.e))
+    claims(f"{em:.3f}", f"E[max z] at N={N}")
+    claims(f"{1 - (1 - praw) ** N:.3f}", f"tail probability at N={N}")
+print("  noise floor: 6 rows recomputed, both columns")
+
+# =============================================== F. sample floor and looks
+delta = D_MID - fee - HALF
+n_req = ((Z_CRIT + Z_POW) * sd / delta) ** 2
+N_KILL = tracker.PRICE_RECAL_LOOK_2
+N_LOOK1 = tracker.PRICE_RECAL_LOOK_1
+claims(f"{delta:+.5f}", "delta net of the recomputed fee and the 1c spread")
+claims(f"{n_req:,.0f}", "the derived floor")
+need(N_KILL >= n_req,
+     f"the pre-committed floor {N_KILL} is BELOW the derived {n_req:,.0f}")
+need(N_LOOK1 == N_KILL // 2, "look 1 is not half of look 2")
+claims(f"N_KILL = {N_KILL:,}", "the pre-committed floor")
+claims(f"{N_LOOK1} settled picks", "look 1")
+mde = (Z_CRIT + Z_POW) * sd / math.sqrt(N_KILL)
+power = ndtr(delta * math.sqrt(N_KILL) / sd - Z_CRIT)
+claims(f"{mde:+.4f}", "MDE at the floor")
+claims(f"{power*100:.1f}%", "power at the floor")
+claims(f"{N_KILL/rate:.0f} days", "accrual at the recomputed rate")
+d2 = D_MID - fee - 0.02
+claims(f"{d2:+.5f}", "delta at a 2c half-spread")
+claims(f"{((Z_CRIT + Z_POW) * sd / d2) ** 2:,.0f}", "floor at a 2c half-spread")
+print(f"  floor: derived {n_req:,.0f}, committed {N_KILL}, MDE {mde:+.4f}, "
+      f"power {power*100:.1f}%, {N_KILL/rate:.0f} days")
+
+# ======================== G. the futility look, correctly correlated (A-F9)
+rho = math.sqrt(N_LOOK1 / N_KILL)
+mu1 = delta * math.sqrt(N_LOOK1) / sd
+mu2 = delta * math.sqrt(N_KILL) / sd
+
+
+def bvn_upper(h: float, k: float, r: float, steps: int = 120000) -> float:
+    lo = h
+    tot = 0.0
+    step = 12.0 / steps
+    for i in range(steps):
+        z1 = lo + (i + 0.5) * step
+        phi = math.exp(-0.5 * z1 * z1) / math.sqrt(2 * math.pi)
+        tot += phi * (1 - ndtr((k - r * z1) / math.sqrt(1 - r * r))) * step
+    return tot
+
+
+pw_uncond = ndtr(mu2 - Z_CRIT)
+pw_joint = bvn_upper(-mu1, Z_CRIT - mu2, rho)
+a_joint = bvn_upper(0.0, Z_CRIT, rho)
+need(a_joint <= (1 - ndtr(Z_CRIT)) + 1e-6,
+     f"the futility look INFLATES alpha: {a_joint:.6f} vs {1-ndtr(Z_CRIT):.6f}")
+claims(f"{pw_uncond:.5f}", "unconditional power")
+claims(f"{pw_joint:.5f}", "joint power across both looks")
+claims(f"{a_joint:.6f}", "type-I error across both looks")
+need(f"{pw_uncond - pw_joint:.5f}" in ENTRY,
+     f"the futility look's power cost recomputes to {pw_uncond-pw_joint:.5f}; "
+     f"the entry must state that value, not a product of the two marginals")
+print(f"  futility: rho={rho:.4f} power {pw_uncond:.5f} -> {pw_joint:.5f} "
+      f"(cost {pw_uncond-pw_joint:.5f}), alpha {a_joint:.6f}")
+
+# ============================================ H. the unverified assumption
+need("THE 1c HALF-SPREAD IS AN ASSUMPTION, NOT A MEASUREMENT" in ENTRY,
+     "the 1c half-spread has no external authority and must be labelled an "
+     "assumption, not left among derived quantities")
+need("PRE-COMMITTED TRIGGER" in ENTRY,
+     "no pre-committed rule for what happens if the spread measures wider")
+
+# ========================================= I. frozen coefficients vs the DB
 def fit(sample):
-    xs = [logit(r[3]) for r in sample]
-    ys = [float(r[5]) for r in sample]
+    xs = [math.log(min(max(r[3], 1e-6), 1-1e-6) / (1 - min(max(r[3], 1e-6), 1-1e-6)))
+          for r in sample]
+    ys = [float(r[4]) for r in sample]
     a, b = 0.0, 1.0
     for _ in range(300):
         g0 = g1 = h00 = h01 = h11 = 0.0
         for x, y in zip(xs, ys):
-            pr = 1.0 / (1.0 + math.exp(-max(min(a + b * x, 40), -40)))
+            pr = 1 / (1 + math.exp(-max(min(a + b * x, 40), -40)))
             g0 += y - pr
             g1 += (y - pr) * x
             w = pr * (1 - pr)
@@ -240,34 +307,24 @@ def fit(sample):
         b += db
         if abs(da) < 1e-13 and abs(db) < 1e-13:
             break
-    return a, b, math.sqrt(h00 / det)
+    return a, b
 
 
-a_f, b_f, se_f = fit(core)
-FROZEN_A, FROZEN_B, TOL = -0.12856, 1.33635, 0.01
-print(f"  population: {len(rows)} rows, core {len(core)}")
-print(f"  refit: a={a_f:+.5f} b={b_f:+.5f} SE={se_f:.5f} z={(b_f - 1) / se_f:+.3f}")
-print(f"  frozen: a={FROZEN_A:+.5f} b={FROZEN_B:+.5f}   "
-      f"drift b={abs(b_f - FROZEN_B):.5f} (tol {TOL})")
-need(
-    abs(b_f - FROZEN_B) <= TOL and abs(a_f - FROZEN_A) <= TOL,
-    f"the frozen coefficients no longer reproduce from the entry's own stated "
-    f"population definition (refit a={a_f:+.5f} b={b_f:+.5f} vs frozen "
-    f"a={FROZEN_A:+.5f} b={FROZEN_B:+.5f}). Either the population definition in "
-    f"section 1 is wrong or late settlements have moved it materially.",
-)
-claims(f"a = {FROZEN_A:.5f}", "frozen intercept")
-claims(f"b = +{FROZEN_B:.5f}", "frozen slope")
+a_f, b_f = fit(core)
+print(f"  population: {len(rows)} rows, core {len(core)}; refit a={a_f:+.5f} "
+      f"b={b_f:+.5f} (frozen {FIT_A:+.5f}/{FIT_B:+.5f}, drift {abs(b_f-FIT_B):.5f})")
+need(abs(b_f - FIT_B) <= 0.01 and abs(a_f - FIT_A) <= 0.01,
+     f"the frozen coefficients no longer reproduce from the entry's own stated "
+     f"population definition (refit a={a_f:+.5f} b={b_f:+.5f})")
+claims(f"a = {FIT_A:.5f}", "frozen intercept")
+claims(f"b = +{FIT_B:.5f}", "frozen slope")
 
-events_cd = len({(r[0], r[2]) for r in core})
-events_cdv = len({(r[0], r[2], cvar(r[1])) for r in core})
-print(f"  events: (city,date)={events_cd}  (city,date,var)={events_cdv}  "
-      f"rows/city-day={len(core) / events_cd:.2f}")
-need(
-    abs(len(core) / events_cd - 1.45) < 0.05,
-    f"rows per city-day recomputes to {len(core) / events_cd:.2f}, entry says 1.45",
-)
-claims("1.45 rows per city-day", "the clustering ratio")
+need(cron._PRICE_RECAL_FIT_A == FIT_A, "cron's intercept differs from the entry's")
+need(cron._PRICE_RECAL_FIT_B == FIT_B, "cron's slope differs from the entry's")
+need(cron._PRICE_RECAL_THRESHOLD == THR, "cron's threshold differs from the entry's")
+need(f'"{cron._PRICE_RECAL_PROTOCOL_VERSION}"' in ENTRY,
+     f"the protocol version {cron._PRICE_RECAL_PROTOCOL_VERSION!r} stamped on every "
+     f"row does not appear in the entry, so the stamp has no external authority")
 
 if failures:
     for f in failures:

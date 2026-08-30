@@ -1306,11 +1306,46 @@ _PRICE_RECAL_FIT_B = 1.33635
 # unfired, rather than being deleted as dead code.
 _PRICE_RECAL_THRESHOLD = 0.05
 _PRICE_RECAL_PROTOCOL_VERSION = "2026-08-29.v1"
-# The rule was fitted on core temperature only (KXHIGH*/KXLOW* above/below/
-# between). precip_month_total and hurricane_next_event rows exist in the same
-# table and were excluded from the fit, so they are excluded here; letting them
-# in would score the rule on a population it was never fitted on.
+# The gate is on the CONDITION TYPE, not the ticker family, and the fit was
+# taken the same way -- that is what makes the two populations identical, which
+# is the only property that matters here. Saying "KXHIGH*/KXLOW*" would be a
+# ticker claim and would be wrong: 30 of the 642 rows behind the frozen
+# coefficients are KXTEMP* hourly-directional markets, which _parse_market_
+# condition also types as above/below. They were in the fit, so they belong in
+# the forward corpus; excluding them here would be the mismatch, not including
+# them. precip_month_total and hurricane_next_event were NOT in the fit and are
+# excluded. See the backlog entry's section 1 for why the discovery entry's own
+# "538 rows (KXHIGH/KXLOWT)" wording does not settle this.
 _PRICE_RECAL_CORE_TYPES = frozenset({"above", "below", "between"})
+
+
+def _price_recal_target_day(target_date) -> str | None:
+    """Normalise a target date to a bare `YYYY-MM-DD` string, or None.
+
+    THE CALENDAR DAY, never a timestamp. `datetime` subclasses `date`, so a
+    naive `hasattr(x, "isoformat")` branch returns `2026-08-29T14:00:00` for a
+    datetime and `2026-08-29` for a date -- two different keys for one market.
+    That breaks the table in two places at once: the unique index
+    (ticker, target_date, date(recorded_at)) stops deduping, so the same pick is
+    logged repeatedly; and the protocol clusters on (city, target_date), so one
+    weather event splits into several clusters, INFLATING the independent-sample
+    count in the direction that flatters the result.
+
+    Strings are truncated at the `T` for the same reason -- an analyser that
+    starts emitting an ISO timestamp must not silently open a second key space.
+    """
+    if target_date is None:
+        return None
+    # datetime has .date(); date does not. Checked before .isoformat() because
+    # datetime.isoformat() is exactly the thing being guarded against.
+    if hasattr(target_date, "date") and callable(target_date.date):
+        target_date = target_date.date()
+    if hasattr(target_date, "isoformat"):
+        return target_date.isoformat()
+    text = str(target_date).strip()
+    if not text or text.lower() == "none":
+        return None
+    return text.split("T", 1)[0]
 
 
 def _price_recal_recalibrated(mid: float) -> float:
@@ -1368,7 +1403,16 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
     import sqlite3
     from datetime import UTC, datetime
 
+    from tracker import init_db as _prsl_init_db
     from weather_markets import parse_market_price
+
+    # The table has to exist before the first INSERT, and nothing upstream
+    # guarantees it: batch_log_analysis_attempts returns BEFORE its own
+    # init_db() when the batch is empty, so it is not a reliable guarantor.
+    # Without this, a first cycle on a pre-migration DB raises `no such table`,
+    # gets swallowed by the caller's except, and logs "skipped this cycle"
+    # forever. init_db short-circuits on a module flag, so this is free.
+    _prsl_init_db()
 
     now_iso = datetime.now(UTC).isoformat()
     rows = []
@@ -1387,12 +1431,17 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
                 skipped += 1
                 continue
 
-            target_date = analysis.get("target_date") or enriched.get("_target_date")
-            target_str = (
-                target_date.isoformat()
-                if hasattr(target_date, "isoformat")
-                else (str(target_date) if target_date else None)
-            )
+            # `_date` is the key enrich_with_forecast actually sets
+            # (weather_markets.py). An earlier draft read `_target_date`, which
+            # no production writer sets anywhere -- only three test modules
+            # construct it -- so the fallback was dead and a market whose
+            # analyser stopped emitting `target_date` would have been silently
+            # DROPPED from the corpus rather than recovered. A silent drop is a
+            # selection effect, which is the exact defect this table exists to
+            # avoid. (The same dead fallback sits in the analysis_attempts block
+            # below; inherited, not invented.)
+            target_date = analysis.get("target_date") or enriched.get("_date")
+            target_str = _price_recal_target_day(target_date)
             ticker = enriched.get("ticker") or ""
             if not ticker or not target_str:
                 skipped += 1
@@ -1438,7 +1487,16 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
                     ticker,
                     enriched.get("_city"),
                     target_str,
-                    int(analysis.get("days_out") or 0),
+                    # NULL, not 0, when absent. `or 0` made a missing horizon
+                    # indistinguishable from a genuine same-day pick, and
+                    # days_out is what the protocol's horizon argument rests on
+                    # -- the d>=1 selection defect in analysis_attempts is the
+                    # whole reason this column is stamped at pick time.
+                    (
+                        int(analysis["days_out"])
+                        if analysis.get("days_out") is not None
+                        else None
+                    ),
                     ctype,
                     condition.get("var"),
                     mid,
@@ -3248,7 +3306,17 @@ def _cmd_cron_body(
             _prsl_skipped,
             _prsl_stamp,
         ) = _log_price_recal_picks(result.all_results if result else [], _PRSL_DB)
-        if _prsl_wrote:
+        # NOT behind `if _prsl_wrote`. An earlier draft was, and its docstring
+        # claimed a systematic parse failure "cannot look like the rule did not
+        # fire" -- which was false: with every market failing, written == 0, the
+        # log line was skipped, the skip count was discarded, and the per-row
+        # detail went to _log.debug, which reaches a per-pid file and never the
+        # console an operator watches. The cycle printed nothing at any visible
+        # level, byte-for-byte identical to a legitimately quiet day. The
+        # protocol's horizon is a PICK COUNT, so a silently-stalled log stops
+        # the clock invisibly, which is the one failure this table cannot
+        # tolerate.
+        if _prsl_cand:
             _log.info(
                 "price_recal_shadow_log: logged %d pick(s) from %d analysed "
                 "market(s), %d skipped",
@@ -3256,13 +3324,44 @@ def _cmd_cron_body(
                 _prsl_cand,
                 _prsl_skipped,
             )
+        # A high skip RATE is the shape a field-rename or an API shape change
+        # takes here, and it is indistinguishable from "no market qualified"
+        # unless it is said out loud. Rate, not count: a big scan legitimately
+        # skips a lot.
+        if _prsl_cand and _prsl_skipped >= max(10, 0.9 * _prsl_cand):
+            _log.warning(
+                "price_recal_shadow_log: skipped %d of %d analysed market(s) "
+                "(%.0f%%) -- if this persists the log has stopped accruing and "
+                "the protocol's pick clock has stalled",
+                _prsl_skipped,
+                _prsl_cand,
+                100.0 * _prsl_skipped / _prsl_cand,
+            )
         # Fill outcomes for previously-logged picks from `outcomes`. Zero API
         # calls; see settle_price_recal_picks. Separate try so a settlement
         # failure cannot lose this cycle's writes, which already committed.
         try:
+            from tracker import get_price_recal_progress as _prsl_progress
             from tracker import settle_price_recal_picks as _prsl_settle
 
             _prsl_settle()
+            # The only production read of the progress counters. COUNTS ONLY
+            # -- get_price_recal_progress deliberately returns no statistic,
+            # because a running z printed every cycle is the deflated-Sharpe
+            # holdout failure (twenty looks make a false positive expected, not
+            # unlikely). Without this the counters had no caller at all and the
+            # pick clock could only be read from a Python REPL.
+            _prsl_prog = _prsl_progress()
+            if _prsl_prog.get("settled"):
+                _log.info(
+                    "price_recal_shadow_log: %d logged, %d settled across %d "
+                    "event(s); %d to the next pre-registered look (%s)",
+                    _prsl_prog["logged"],
+                    _prsl_prog["settled"],
+                    _prsl_prog["settled_events"],
+                    _prsl_prog["picks_to_next_look"],
+                    _prsl_prog["next_look"],
+                )
         except Exception as _prsl_serr:
             _log.warning(
                 "price_recal_shadow_log: settlement sweep skipped: %s", _prsl_serr

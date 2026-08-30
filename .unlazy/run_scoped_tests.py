@@ -25,6 +25,16 @@ TOUCHED = (
     "_run_migrations",
     "exit_rule_shadow_log",  # the sibling writer, same cron block
     "batch_log_analysis_attempts",  # the call site immediately above the wiring
+    # ADDED after round 1. The first list was built from what I THOUGHT the
+    # change touched, and it missed tests/test_disputed_row_guard.py entirely --
+    # a RED repo-wide guard that this change broke, while the ledger reported
+    # 2189 passing. A derivation seeded from the author's own recollection
+    # inherits the author's blind spots.
+    "outcomes_valid",          # the guard that was red
+    "_RAW_OUTCOMES_ALLOWLIST",  # its allowlist, same module
+    "cmd_cron",                 # the wiring's actual host
+    "sameday_only",             # the flag the new block changes behaviour for
+    "all_results",              # the data source the writer reads
 )
 
 modules = {NEW}

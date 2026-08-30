@@ -92,6 +92,22 @@ class TestCronSamedayOnlyCliWiring:
     def _mocked_main_deps(self, monkeypatch):
         import main
 
+        # KALSHI_ENV must be neutralised or these tests pass only by ordering
+        # luck. The real .env sets KALSHI_ENV=prod, and conftest imports `main`
+        # at collection time so load_dotenv() puts that into os.environ --
+        # while conftest's own autouse _clear_ws_credentials deletes
+        # KALSHI_KEY_ID and KALSHI_PRIVATE_KEY_PATH. main.main() then reaches
+        # _validate_config(), sees prod with no credentials, and raises
+        # SystemExit(1) before cmd_cron is ever called.
+        #
+        # Run alone, this module never triggers the collection-time import that
+        # loads .env, so KALSHI_ENV falls back to its "demo" default and the
+        # tests pass. Run after almost any other module, they fail. Found
+        # 2026-08-30 when a widened scoped-test set put this module in the same
+        # run as tests/test_exit_rule_shadow_log.py; verified pre-existing by
+        # reproducing it with origin/master's own cron.py and tracker.py.
+        monkeypatch.setenv("KALSHI_ENV", "demo")
+
         monkeypatch.setattr(main, "validate_env", lambda: True)
         monkeypatch.setattr(main, "init_db", lambda: None)
         monkeypatch.setattr(main, "cleanup_data_dir", lambda: None)
