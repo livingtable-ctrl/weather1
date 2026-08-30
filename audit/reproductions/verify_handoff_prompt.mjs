@@ -112,10 +112,23 @@ const fitOf = (s) => fit(s.map((r) => Number(r.outcome)), s.map((r) => logit(r.m
 const CHECKS = {
   /** Files, branch, doc sections and backlog titles the prompt tells a reader to open. */
   refs() {
-    const br = git("-C", REPO, "rev-parse", "--abbrev-ref", "HEAD");
-    const cb = claim(/branch\s+(claude\/[A-Za-z0-9._\-\/]+)/, "branch name");
-    if (cb) cb[1] === br ? ok(`branch ${br}`)
-      : bad(`branch: prompt says ${cb[1]}, repo is on ${br}`);
+    // The prompt names the ref the work lives on. Verify that ref EXISTS and
+    // CONTAINS the research doc -- not that it happens to be checked out. The
+    // earlier "== HEAD" form failed the moment the branch merged to master,
+    // which is a property of the checkout, not of the prompt being wrong.
+    const cb = claim(/committed on ([A-Za-z0-9._\-\/]+)\)?:/, "the ref the work is on");
+    if (cb) {
+      const ref = cb[1];
+      let contains = false;
+      try {
+        git("-C", REPO, "rev-parse", "--verify", `${ref}^{commit}`);
+        contains = git("-C", REPO, "log", "--format=%H", "-1", ref, "--",
+          "docs/calibration-and-edge-research-2026-08-29.md").length > 0;
+      } catch { bad(`prompt names ref "${ref}"; it does not exist in this repo`); }
+      if (contains) ok(`ref ${ref} contains the research doc`);
+      else if (git("-C", REPO, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`) !== "")
+        bad(`ref "${ref}" exists but does not contain the research doc`);
+    }
 
     for (const f of ["docs/calibration-and-edge-research-2026-08-29.md", "backlog.txt", "cron.py"])
       existsSync(path.join(REPO, f)) ? ok(`exists ${f}`) : bad(`missing ${f}`);

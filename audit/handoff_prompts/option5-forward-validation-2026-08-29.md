@@ -2,7 +2,7 @@ Task: design the forward-validation protocol for the price-recalibration rule
 ("option 5" / "option I"), then build the shadow log that starts its clock.
 Protocol first — the log is worthless without it.
 
-START BY READING (all committed on branch claude/bit-read-memory-calibration-83c9e5):
+START BY READING (all committed on master):
   - docs/calibration-and-edge-research-2026-08-29.md  §2, §3, §7, §8
   - backlog.txt "TWO WAYS OUT OF THE NO-EDGE RESULT..." — option I is the rule,
     and its "WHY THIS IS NOT YET AN EDGE" block is the caveat list, not preamble
