@@ -1,8 +1,86 @@
-# HANDOFF: the model's confidence collapsed in July, and calibration is not the cause
+# HANDOFF: the model had market-matching skill in May-June and lost it in July
 
 Written 2026-08-30. Self-contained on purpose — re-derive every number below
 rather than citing this file. Prior handoffs in this project went stale because
 figures were carried forward instead of recomputed.
+
+---
+
+## THE HEADLINE — read this before anything else
+
+Everything below this section was written while chasing a *confidence*
+collapse. That framing is subordinate to this one and is kept only because the
+eliminations in it are still valid work. **The actual finding is a loss of
+DISCRIMINATION**, which is a different and much more serious thing.
+
+AUC — the probability the model ranks a random YES above a random NO. 0.50 is
+no signal. **AUC is invariant under temperature scaling** (a strictly
+increasing map fixing 0.5), so unlike every other metric in this document it
+cannot be an artefact of the calibration argument that occupies the rest of it.
+
+| period | who | n | AUC | SE | z vs 0.50 |
+|--------|-----|---|-----|----|-----------|
+| May-Jun | **model** | 198 | **0.6828** | 0.0377 | **+4.85** |
+| May-Jun | market | 198 | 0.6853 | 0.0376 | +4.93 |
+| Jul-Aug | **model** | 143 | **0.5321** | 0.0484 | **+0.66** |
+| Jul-Aug | market | 143 | 0.7271 | 0.0424 | +5.35 |
+
+- model, MayJun - JulAug = **+0.1507**, SE 0.0613, **z = +2.46 — SIGNIFICANT**
+- market, MayJun - JulAug = -0.0418, SE 0.0567, z = -0.74 — not significant
+
+Monthly: May 0.6215 (n=51) | Jun 0.6973 (147) | Jul 0.5497 (69) | Aug 0.5085 (74).
+Pooled model AUC 0.6178 (n=341, z=+3.89); pooled market 0.7049 (z=+7.31).
+
+### What that says
+
+1. **In May-June the model discriminated as well as the market did** — 0.6828
+   against 0.6853. Not proven equal (the SEs are ~0.038, so the interval is
+   wide), but there is no measurable gap.
+2. **In July-August the model fell to chance** (0.5321, z=+0.66) while the
+   market on the SAME markets stayed strong (0.7271, z=+5.35). The later
+   markets were not harder. The model specifically broke.
+3. **This is a REGRESSION, not a limitation.** More data cannot fix it. Adding
+   settled rows only averages a working model together with a broken one,
+   which is what every May-August aggregate in this project silently does.
+4. **It cannot be calibration.** AUC is calibration-invariant by construction.
+   Any explanation involving T, EMOS, Platt or blend weights is ruled out on
+   mathematics, not on evidence.
+
+### The coherent story underneath
+
+In May-June the model matched the market on RANKING (AUC) while losing on
+Brier (edge -0.0459 May, -0.0240 Jun). Equal discrimination, worse
+calibration — which is the *fixable* combination, and precisely what a
+temperature around 5 addresses. On this reading the model was close to parity
+in June, and then lost the ranking ability that made that possible.
+
+### What it does to the project's no-edge conclusion
+
+It does not overturn it — the model never beat the market on Brier in ANY
+month, including May and June. But it damages the evidence: roughly half the
+settled corpus was produced by a model with no discrimination, so every pooled
+May-August figure mixes two different systems and the Jul-Aug half is
+measuring a bug. **Any re-measurement must split at the July step.**
+
+### Honest limits on this finding
+
+- n = 198 and 143; SEs 0.038-0.048. The May-June model-vs-market comparison is
+  within noise, so "as good as the market" is *not measurably worse*, not
+  proven equal.
+- Many splits were examined on 2026-08-30 before this one was found. Treat
+  z = +2.46 as weaker than it looks.
+- Population drift between the halves is still unchecked (see "still open").
+  If Jul-Aug scanned systematically different markets, that is an alternative
+  explanation — though the market's own AUC RISING on those same rows argues
+  against it.
+
+### Therefore the priority question is unchanged but now much more valuable
+
+**What changed between 2026-06-30 03:34 and 2026-07-02 19:07?** That window
+still contains zero commits. It now sits between a model with real,
+market-matching skill and a model with none.
+
+---
 
 ## The question that started it
 
