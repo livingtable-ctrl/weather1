@@ -92,6 +92,58 @@ measuring a bug. **Any re-measurement must split at the July step.**
   traded subset (n=63) is entirely AUGUST. The comparison is really May-June
   versus August, and it cannot speak to July directly.
 
+
+### THE DEFECT IS IN THE TEMPERATURE->PROBABILITY STEP, NOT THE FORECAST
+
+This narrows the search more than anything else in this document.
+
+Raw forecast error, `|forecast_temp_f - outcomes.settled_temp_f|`, degrees F:
+
+| month | n | median | mean | p90 |
+|-------|---|--------|------|-----|
+| 2026-05 | 51 | 2.65 | 2.69 | 5.50 |
+| 2026-06 | 50 | 2.68 | 2.80 | 5.20 |
+| 2026-07 | 56 | **1.18** | 2.01 | 4.14 |
+| 2026-08 | 70 | **1.67** | 2.05 | 4.18 |
+
+**The temperature forecast roughly HALVED its error in July** and stayed
+better in August — over exactly the span where AUC fell from 0.68 to chance.
+The model is forecasting the weather better than ever and converting that into
+worse probabilities. So the defect is downstream of the forecast, in the step
+that turns a predicted temperature into a probability.
+
+WHAT THIS RULES OUT: any explanation that degrades the forecast itself —
+a model dropping out of the blend, a data source going stale, seasonality
+making the weather harder. Corroborating that, `n_members` is constant at
+**238** from 2026-06-20 through August with `blend_exclusions` empty
+throughout, so the ensemble did not lose a member. That substantially weakens
+the ECMWF silent-drop lead (`5a3d80b3`), which was the best remaining
+candidate before this measurement.
+
+WHERE TO LOOK NOW: the sigma / distribution-width step. Note the asymmetry
+that makes this precise — a sigma that is uniformly WRONG compresses
+probabilities but PRESERVES their ranking, so it cannot move AUC. Only a
+sigma that became noisy ROW-TO-ROW can hold forecast accuracy constant while
+destroying discrimination. That is the specific signature to hunt.
+
+WHAT THE STORED SIGMA FIELDS COULD AND COULD NOT SHOW: `ens_var` is the only
+sigma-like column populated on both sides of the boundary, and it is stable
+(median 4.39 Jun, 4.90 Jul, 4.07 Aug) with a consistently high row-to-row
+CV of 0.77-0.84 throughout — no step. `ensemble_spread_f`, `implied_sigma`
+and `model_disagreement_f` are only populated from July onward, so they cannot
+be compared across the boundary at all. `implied_sigma` is worth attention on
+its own terms: median 3.33 (Jul) and 1.91 (Aug) with CV 1.19-1.33, which is
+extremely noisy, and `fit_market_implied_distribution()` already has an open
+backlog entry for returning a degenerate fit on ~19% of rows.
+
+A WARNING FOR WHOEVER RUNS THESE QUERIES: an earlier pass of this analysis
+reported a dramatic scale change in `model_disagreement_f` (~74 in May-June
+versus ~1 in July-August) and nearly filed it as a semantic-change defect. It
+was an off-by-one in the analysis script — five column names enumerated
+against six selected columns, so the field was reading `forecast_temp_f`, and
+"74" was simply the temperature. `model_disagreement_f` is NULL before July.
+Check column alignment before believing any cross-boundary jump.
+
 ### Therefore the priority question is unchanged but now much more valuable
 
 **What changed between 2026-06-30 03:34 and 2026-07-02 19:07?** That window
