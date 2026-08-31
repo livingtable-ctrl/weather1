@@ -1,4 +1,5 @@
-# HANDOFF: the model had market-matching skill in May-June and lost it in July
+# HANDOFF: a suspected July regression in model discrimination — DIRECTION
+# CONSISTENT, SIGNIFICANCE NOT ESTABLISHED
 
 Written 2026-08-30. Self-contained on purpose — re-derive every number below
 rather than citing this file. Prior handoffs in this project went stale because
@@ -35,7 +36,9 @@ Pooled model AUC 0.6178 (n=341, z=+3.89); pooled market 0.7049 (z=+7.31).
 
 1. **In May-June the model discriminated as well as the market did** — 0.6828
    against 0.6853. Not proven equal (the SEs are ~0.038, so the interval is
-   wide), but there is no measurable gap.
+   wide), but there is no measurable gap. **SEE THE COMPOSITION QUALIFICATION
+   BELOW — this pooled figure is weighted by `between` markets that are
+   nearly absent from the later period.**
 2. **In July-August the model fell to chance** (0.5321, z=+0.66) while the
    market on the SAME markets stayed strong (0.7271, z=+5.35). The later
    markets were not harder. The model specifically broke.
@@ -61,6 +64,90 @@ month, including May and June. But it damages the evidence: roughly half the
 settled corpus was produced by a model with no discrimination, so every pooled
 May-August figure mixes two different systems and the Jul-Aug half is
 measuring a bug. **Any re-measurement must split at the July step.**
+
+### MAJOR QUALIFICATION — the drop is substantially a COMPOSITION effect
+
+Added 2026-08-30 by a hardening pass that went looking for the one confound
+the earlier version listed as unchecked. It found it. **Read this before
+acting on the headline table above.**
+
+The condition-type mix is almost completely different across the boundary:
+
+| condition | May-Jun share | Jul-Aug share |
+|-----------|---------------|---------------|
+| `between` | **55.6%** | **2.8%** |
+| `above` | 26.3% | 59.4% |
+| `below` | 14.1% | 37.8% |
+
+Family drifted too (KXHIGH 65.7% -> 45.5%, KXLOWT 34.3% -> 54.5%). Ladder
+width did not: `between` markets are 2.00F wide in both periods.
+
+Stratifying AUC by condition type changes the reading:
+
+| condition | period | who | n | AUC | SE | z vs 0.50 |
+|-----------|--------|-----|---|-----|----|-----------|
+| above | May-Jun | model | 52 | 0.6989 | 0.0723 | +2.75 |
+| above | Jul-Aug | model | 85 | 0.5786 | 0.0620 | +1.27 |
+| below | May-Jun | model | 28 | **0.5444** | 0.1144 | **+0.39** |
+| below | Jul-Aug | model | 54 | 0.4731 | 0.0793 | -0.34 |
+| between | May-Jun | model | 110 | 0.6378 | 0.0545 | +2.53 |
+| between | Jul-Aug | model | **4** | — | — | too few |
+
+WHAT THIS MEANS:
+1. **The model's May-June skill was concentrated in `between` markets**
+   (n=110, AUC 0.638) and `above` (n=52, 0.699). On `below` it NEVER
+   discriminated — 0.5444 at z=+0.39 in its best period.
+2. **`between` all but disappeared**, 110 rows to 4. The pooled May-June AUC
+   is therefore heavily weighted by a market type that is absent later.
+3. **Within `above`, the drop is 0.6989 -> 0.5786** — real in direction, but
+   the difference SE is ~0.095, so **z is about 1.27. NOT SIGNIFICANT.**
+4. So the pooled drop of -0.1507 at z=+2.46 **overstates the evidence for a
+   regression.** A large part of it is the mix moving away from the one
+   condition type the model was good at.
+
+THE LAST SURVIVING CLAIM WAS ALSO TESTED, AND IT DOES NOT HOLD EITHER.
+The argument for keeping this as a qualification rather than a retraction was
+that **the market's AUC did not fall in any stratum** — `above` 0.7358 ->
+0.7530, `below` 0.5861 -> 0.6517 — so the model and market diverged in
+OPPOSITE directions on the same rows, which composition alone cannot produce.
+That is a difference-in-differences, and it was measured properly rather than
+eyeballed (`.unlazy/did_bootstrap.py`):
+
+    statistic = (model_MayJun - model_JulAug) - (market_MayJun - market_JulAug)
+    averaged over the `above` and `below` strata, cluster-bootstrapped by
+    ticker so rows of one settlement are not treated as independent.
+
+    observed DiD  = +0.1373   (positive = model deteriorated vs the market)
+    95% CI        = [-0.0794, +0.3446]   2000 resamples
+    two-sided p   ~ 0.21
+
+**THE CONFIDENCE INTERVAL INCLUDES ZERO. The divergence is NOT established.**
+
+SO THE HONEST STATE OF THE HEADLINE, after three rounds of testing it:
+- Pooled, the drop is large (0.6828 -> 0.5321) and nominally significant
+  (z=+2.46), but it is **confounded** by the `between` share collapsing from
+  55.6% to 2.8%.
+- Within `above`, the drop is 0.6989 -> 0.5786, **z about 1.27 — not
+  significant**.
+- Within `below`, the model never discriminated in either period.
+- The model-versus-market divergence, the last thing standing, is
+  **p about 0.21 — not significant**.
+
+**DO NOT PRESENT "THE MODEL BROKE IN JULY" AS ESTABLISHED.** What is true is
+that every measurement points the same DIRECTION — model down, market up, in
+both strata — and not one of them reaches significance once the confound is
+handled and clustering is respected. That is a hypothesis worth testing on
+more data, not a finding.
+
+HOW TO SETTLE IT: a within-stratum comparison needs enough `between` rows in
+the later period, which this corpus does not have (n=4). Any future
+re-measurement must stratify by condition type rather than pool, and must
+cluster by ticker.
+
+A GENUINELY NEW AND ACTIONABLE FINDING FROM THIS: the model's discrimination
+was always concentrated in `between` markets. That is where it had edge and
+where a future effort should look first — not in `below`, where it has never
+beaten a coin flip in any period.
 
 ### Honest limits on this finding
 

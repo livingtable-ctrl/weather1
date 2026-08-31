@@ -191,3 +191,53 @@ REMAINING, NOT DONE — the honest ceiling on this ledger:
  3. Population drift by city and ladder width across the July boundary is
     still unchecked. The traded-subset test refutes the SELECTION confound but
     not a change in the market MIX.
+
+
+## PASS 4 — hardening round 2, 2026-08-30
+
+Attacked the two gaps pass 3 recorded as NOT DONE. Both closed, and the
+headline finding did not survive either one.
+
+### G10 — population drift by condition type and family  [MET, and it FIRED]
+    CHECK: python .unlazy/audit_handoff.py --numbers   (strata table gated)
+The confound pass 3 listed as unchecked is REAL and large. `between` markets
+are 55.6% of May-June and 2.8% of July-August. Family drifted too (KXHIGH
+65.7% -> 45.5%). Ladder width did not (2.00F both periods).
+Stratified AUC shows the model's May-June skill lived in `between` (n=110,
+0.6378) and `above` (n=52, 0.6989), and that it NEVER discriminated on
+`below` (0.5444, z=+0.39) even at its best. Within `above` the drop is
+0.6989 -> 0.5786 at z about 1.27 — NOT significant. The pooled z=+2.46 is
+therefore substantially a mix effect.
+
+### G11 — bootstrap the surviving claim  [MET, and it FIRED]
+    CHECK: python .unlazy/did_bootstrap.py
+    EXPECT: a 95% CI on the difference-in-differences
+The one claim that survived G10 was that the market rose within the same
+strata where the model fell, which composition cannot produce. Measured as a
+difference-in-differences, cluster-bootstrapped by ticker, 2000 resamples:
+observed +0.1373, 95% CI [-0.0794, +0.3446], p about 0.21. **CI includes
+zero.** Not established.
+
+### Consequence
+The document's headline was rewritten for the third time. It now reads
+"DIRECTION CONSISTENT, SIGNIFICANCE NOT ESTABLISHED" and explicitly says not
+to present "the model broke in July" as a finding. Every measurement points
+the same way and none reaches significance once the confound is handled and
+clustering respected.
+
+### What hardening actually bought
+Pass 3 hardened the ORACLE and found my gates were vacuous. Pass 4 hardened
+the FINDING and found it was not established. In both cases the hardening
+attacked my own work rather than the document's prose, and in both cases that
+is where the defect was.
+
+### REMAINING, NOT DONE
+ 1. The oracle still cannot catch an internally consistent wrong idea. Two
+    passes of manual review are what caught the composition confound, and
+    manual review is not reproducible.
+ 2. `between` has n=4 in the later period, so the stratum where the model
+    actually had skill CANNOT be compared across the boundary with this
+    corpus. No amount of analysis fixes that; it needs more data.
+ 3. Claim coverage is unmeasured: nobody has counted what fraction of the
+    document's assertions have any gate at all. The gated set was chosen by
+    me, which is the same selection problem the document itself is about.
