@@ -293,3 +293,52 @@ and not a characterisation of what remains.
     measures arithmetic, not reasoning.
  3. The `between` stratum still has n=4 in the later period, so the one place
     the model had skill cannot be compared across the boundary at all.
+
+
+## PASS 6 — the prose/claim split, counted, 2026-08-30
+
+Pass 5 said 29% coverage was "a floor, not a grade" and speculated that much
+of the remainder was prose. **That speculation was wrong and is retracted.**
+
+Classified mechanically. The only judgement is the PROSE rule, stated so it
+can be argued with: a token counts as prose ONLY if it is the literal 0.5/0.50
+null reference or a table header cell — it asserts nothing about this corpus.
+RESTATED means the identical value is gated elsewhere. GENUINE means a factual
+claim about this corpus that no gate reacts to.
+
+    FIRST COUNT (at 29.0% coverage, 220 ungated):
+      PROSE      4   (1.8%)
+      RESTATED  51  (23.2%)
+      GENUINE  165  (75.0%)
+
+So three quarters of the ungated set were real assertions, not prose. Coverage
+of GENUINE claims specifically was 90 / (90+165) = **35.3%**, not 29% of a
+mostly-decorative remainder. Among the ungated were the document's own
+bootstrap CI, the market's per-stratum AUCs carrying the "what survives
+composition" argument, the live temperature_scale values carrying the
+self-training section, the ens_var medians, and the raw_prob difference table.
+
+GATE ADDED: `--market-strata` (HANDOFF_MARKET_STRATA_OK) covers the market's
+per-stratum AUCs and the live `data/temperature_scale.json` T and n values.
+
+    AFTER (9 checks):
+      PROSE      4   (1.9%)
+      RESTATED  56  (26.7%)
+      GENUINE  150  (71.4%)
+
+All 9 checks pass, all 9 mutants die, lint passes.
+
+### THE HONEST STATE
+150 genuine numeric claims still have no oracle. The largest clusters are the
+forecast-error mean/p90 columns, the n_members detail, the sigma-field
+medians, and the bootstrap CI. None is load-bearing for the headline, which is
+now fully gated — but "not load-bearing" is my judgement, not a measurement,
+and it is exactly the kind of judgement this pass just caught me getting wrong.
+
+### REMAINING, NOT DONE
+ 1. 150 genuine ungated numeric claims (above).
+ 2. The bootstrap CI is deterministic under its fixed seed and COULD be gated;
+    it is not, because the check would take ~30s inside `--all`.
+ 3. NON-numeric claims remain entirely ungated. Every causal and eliminative
+    sentence has no oracle. This is the largest hole and mutation coverage
+    cannot reach it.

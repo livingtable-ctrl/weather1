@@ -628,6 +628,65 @@ def check_restatements() -> list[str]:
     return fails
 
 
+def check_market_strata() -> list[str]:
+    """Gate the market's per-stratum AUCs and the live temperature_scale values.
+
+    Both were GENUINE ungated claims in the 2026-08-30 coverage sweep. The
+    market stratum figures carry the document's "what survives composition"
+    argument; the T values carry the self-training-loop section. Neither had
+    any oracle.
+    """
+    fails: list[str] = []
+    rows = _core_rows_ct()
+
+    def per(m):
+        return "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
+
+    g: dict[tuple, list] = defaultdict(list)
+    for m, _op, mp, y, ct, _tk in rows:
+        if mp is not None:
+            g[(per(m), ct)].append((mp, float(y)))
+
+    mm = re.search(
+        r"`above` ([0-9.]+)\s*->\s*([0-9.]+), `below` ([0-9.]+) -> ([0-9.]+)", text()
+    )
+    if not mm:
+        fails.append("market stratum sentence: not found in document")
+    else:
+        for i, (ct, p_) in enumerate(
+            [
+                ("above", "MayJun"),
+                ("above", "JulAug"),
+                ("below", "MayJun"),
+                ("below", "JulAug"),
+            ]
+        ):
+            a, n1, n0 = _auc(g[(p_, ct)])
+            claimed = float(mm.group(i + 1))
+            if a is None or abs(a - claimed) > TOL:
+                fails.append(f"market {ct}/{p_} AUC: {a} doc says {claimed}")
+
+    # live temperature_scale.json, quoted in the self-training section
+    import json
+
+    ts = json.loads((DB.parent / "temperature_scale.json").read_text(encoding="utf-8"))
+    tm = re.search(
+        r"`sameday` \*\*T = ([0-9.]+)\*\* \(n=(\d+)\)[^`]*`global` T = ([0-9.]+) \(n=(\d+)\), `above` T = ([0-9.]+) \(n=(\d+)\)",
+        text(),
+    )
+    if not tm:
+        fails.append("temperature_scale sentence: not found in document")
+    else:
+        for i, key in enumerate(("sameday", "global", "above")):
+            wt, wn = float(tm.group(2 * i + 1)), int(tm.group(2 * i + 2))
+            got = ts.get(key, {})
+            if abs(float(got.get("T", -1)) - wt) > 1e-4:
+                fails.append(f"temperature_scale {key} T: {got.get('T')} doc says {wt}")
+            if int(got.get("n", -1)) != wn:
+                fails.append(f"temperature_scale {key} n: {got.get('n')} doc says {wn}")
+    return fails
+
+
 CHECKS = {
     "--numbers": ("HANDOFF_NUMBERS_OK", check_numbers),
     "--commits": ("HANDOFF_COMMITS_OK", check_commits),
@@ -637,6 +696,7 @@ CHECKS = {
     "--rederive": ("HANDOFF_REDERIVE_OK", check_rederive),
     "--strata": ("HANDOFF_STRATA_OK", check_strata),
     "--restatements": ("HANDOFF_RESTATEMENTS_OK", check_restatements),
+    "--market-strata": ("HANDOFF_MARKET_STRATA_OK", check_market_strata),
 }
 
 

@@ -110,6 +110,48 @@ def main() -> int:
         _write(DOC, snapshot)
         assert DOC.read_text(encoding="utf-8") == snapshot, "RESTORE FAILED"
 
+    # ---- classify the ungated set -----------------------------------------
+    # Three buckets. Only the first rule involves judgement, and it is narrow:
+    #   PROSE     the token is the 0.5 null reference itself, or a table header
+    #             cell -- it asserts nothing about this corpus.
+    #   RESTATED  the identical value is gated somewhere else, so a wrong edit
+    #             here is caught by --restatements only if that specific phrase
+    #             is covered; otherwise the doc can contradict itself silently.
+    #   GENUINE   a factual claim about this corpus that NO gate reacts to.
+    gated_values = {tok for _ln, tok, _ctx in covered}
+    prose, restated, genuine = [], [], []
+    for ln, tok, ctx in uncovered:
+        if tok in {"0.5", "0.50"} and (
+            "z vs" in ctx
+            or "fixing 0.5" in ctx
+            or "ranks a random" in ctx
+            or "no signal" in ctx
+            or "0.50 is" in ctx
+        ):
+            prose.append((ln, tok, ctx))
+        elif tok in gated_values:
+            restated.append((ln, tok, ctx))
+        else:
+            genuine.append((ln, tok, ctx))
+
+    print()
+    print("UNGATED, CLASSIFIED")
+    tot_u = len(uncovered)
+    for label, bucket in (
+        ("PROSE (null refs / headers)", prose),
+        ("RESTATED (value gated elsewhere)", restated),
+        ("GENUINE ungated claims", genuine),
+    ):
+        print(
+            f"  {label:<34} {len(bucket):>4}  ({100 * len(bucket) / tot_u:.1f}% of ungated)"
+        )
+    print()
+    print("GENUINE UNGATED CLAIMS — no gate reacts to these:")
+    for ln, tok, ctx in genuine[:60]:
+        print(f"   L{ln:<4} {tok:>8}   {ctx}")
+    if len(genuine) > 60:
+        print(f"   ... and {len(genuine) - 60} more")
+
     total = len(covered) + len(uncovered)
     pct = 100 * len(covered) / total if total else 0.0
     print()
