@@ -86,3 +86,58 @@ evidence is unmet"):
 HANDOFF REQUIRED: G1, G3 and G7 are unmet as declared. Anyone re-running this
 audit should write `.unlazy/audit_handoff.py` so the checks are reproducible
 rather than trusting this session's transcript.
+
+
+## PASS 2 — 2026-08-30, second 20-pass audit
+
+The HANDOFF REQUIRED from pass 1 is DISCHARGED: `.unlazy/audit_handoff.py`
+now exists and implements G1-G7 as real oracles. Re-running the ledger
+reproduces the checks instead of trusting a transcript.
+
+    python .unlazy/audit_handoff.py --all
+    -> HANDOFF_NUMBERS_OK / _COMMITS_OK / _CITATIONS_OK
+       / _NO_CONTRADICTIONS / _POPULATIONS_OK / _REDERIVE_OK
+
+- G1 numbers        — MET (runnable). Caught one real defect: the doc claimed
+                      n_members "constant 238 from 2026-06-20 through August".
+                      False — August carries 208/258/2427/2438. July IS
+                      uniformly 238 across all 56 rows, so the conclusion held
+                      but the claim was overstated from a truncated view.
+- G2 commits        — MET (runnable). All cited hashes exist with matching dates.
+- G3 citations      — MET (runnable). One failure was a defect in the CHECKER
+                      (regex dropped the `tests/` prefix), not the document.
+- G4 contradictions — MET (runnable). Found 2 stale headings surviving prior
+                      retractions, then 2 more stale passages by hand; the
+                      stale-phrase list now covers all of them.
+- G5 populations    — MET (runnable).
+- G6 EMOS gate      — MET (carried from pass 1).
+- G7 re-derive      — MET (runnable). The document's own recipe reproduces its
+                      headline confidence table.
+- G8 20 passes      — MET. Lenses: structure, oracle authoring, each of the six
+                      runnable checks, n_members depth, four stale-section
+                      reads, oracle extension, injection hygiene,
+                      self-containment, table validity, duplication,
+                      actionability, retraction hygiene.
+- G9 issues handled — MET. 9 issues this pass, all fixed in the document.
+
+ISSUES FOUND, PASS 2:
+ 1. n_members "constant 238" — false outside July.
+ 2. Stale heading "CONFIRMED LIVE DEFECT: the temperature ratchet, visible in
+    the snapshots" — the ratchet had been retracted.
+ 3. Stale heading "THE LEADING HYPOTHESIS: temperature scaling" — ruled out on
+    mathematics once the headline became AUC.
+ 4. Retracted conclusion still asserted flatly ("So no calibration stage is
+    degrading anything") inside the superseded block.
+ 5. Stale "a live, ratcheting T-scaling defect ... now confirmed with data".
+ 6. Stale heading "Finding 2 — what actually happened".
+ 7. **LOGICAL ERROR**: "that explains the accuracy drop". Compression toward
+    0.5 is monotone and cannot move a prediction across the threshold, so it
+    leaves accuracy EXACTLY unchanged. Corrected in place.
+ 8. Two "in this session" references, unresolvable for a stranger.
+ 9. Checker regex dropped directory prefixes (my defect, not the doc's).
+
+STANDING LIMITATION, not a gate failure: the oracle's expected values are
+taken FROM the document, so it proves doc-versus-database consistency and
+arithmetic, not that a premise is true. It cannot catch a wrong idea that is
+internally consistent. Only the manual passes can, and they are not
+reproducible.

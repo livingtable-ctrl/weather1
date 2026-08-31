@@ -114,9 +114,16 @@ that turns a predicted temperature into a probability.
 
 WHAT THIS RULES OUT: any explanation that degrades the forecast itself —
 a model dropping out of the blend, a data source going stale, seasonality
-making the weather harder. Corroborating that, `n_members` is constant at
-**238** from 2026-06-20 through August with `blend_exclusions` empty
-throughout, so the ensemble did not lose a member. That substantially weakens
+making the weather harder. Corroborating that, `n_members` is **238 on every one of the 56 July rows**,
+spanning the collapse window, with `blend_exclusions` empty throughout — so
+the ensemble did not lose a member when discrimination died.
+  PRECISION NOTE, because an earlier draft overstated this as "constant 238
+  from 2026-06-20 through August": it is not. June carries both 138 (23 rows)
+  and 238 (21) either side of a 06-20 switch, and August carries 238 (54),
+  258 (13), 208 (1) and — implausibly for a member count — **2427 (2 rows,
+  2026-08-30) and 2438 (8 rows, 2026-08-28/29)**. None of that variation
+  touches the June-30-to-July-2 boundary, so the conclusion stands, but the
+  late-August values look like a separate defect and are not explained here. That substantially weakens
 the ECMWF silent-drop lead (`5a3d80b3`), which was the best remaining
 candidate before this measurement.
 
@@ -189,9 +196,15 @@ is an untrained identity map, and `forecast_prob == forecast_prob_precal` to
 0.0 on all 40 `analysis_attempts` rows carrying both. Both concern the ml_bias
 section-9c stage ONLY. Neither covers temperature scaling.
 
-## THE LEADING HYPOTHESIS: temperature scaling fits T on its own output
+## A CONFIRMED CODE DEFECT (but NOT the cause): T is fit on its own output
 
-This is a filed, known code defect, not a new conjecture. `backlog.txt` ~L47711:
+SUPERSEDED AS AN EXPLANATION. An earlier draft called this "the leading
+hypothesis" for the July collapse. It cannot be: the headline finding is a
+loss of AUC, and AUC is invariant under temperature scaling by construction,
+so no value of T can produce it. What follows is still a real, filed defect
+worth fixing on its own merits — it is simply not the answer to July.
+
+`backlog.txt` ~L47711:
 
 > train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT, AND _fit_T's
 > LOWER BOUND CANNOT EXPRESS THE CORRECTION THE UNBIASED DATA ASKS FOR
@@ -260,19 +273,33 @@ the mechanism that explains both:
 3. On `analysis_attempts`, `forecast_prob == forecast_prob_precal` with
    max |difference| exactly 0.0 across all 40 rows carrying both.
 
-**So no calibration stage is degrading anything. It is a pass-through.**
+**[RETRACTED — see the retraction section above. This sentence read "So no
+calibration stage is degrading anything. It is a pass-through." It does not
+follow: `raw_prob` is `our_prob + bias_correction`, so the comparison it rests
+on never measured calibration at all. Kept verbatim only so the error is
+legible.]**
 Note the trap this creates: `tracker.get_analysis_calibration_data()`
 (`tracker.py` ~4930) trains that calibrator FROM `analysis_attempts` with
 `days_out >= 1`. The moment cron's weekly block fits it, it stops being a
 no-op and any analysis of the multi-day population becomes in-sample.
 
-## Finding 2 — what actually happened
+## Superseded: the confidence collapse (a symptom, not the finding)
 
+This section was the original headline. It is demoted: confidence compression
+is a real observation but it is downstream of the discrimination loss above.
 Raw model confidence collapsed between June and July: **0.1958 -> 0.0723**,
 and the share of predictions sitting within 10 points of a coin flip went
 **37.5% -> 75%**. It has not recovered (0.0775 in August).
 
-That explains the accuracy drop, which is the symptom originally noticed:
+**CORRECTION — an earlier draft said "that explains the accuracy drop". It
+does not, and the error is worth stating because it is the same one the
+headline finding corrects.** Compressing probabilities toward 0.5 is a
+monotone transform: it cannot move a prediction across the 0.5 threshold, so
+it leaves accuracy EXACTLY unchanged. An accuracy drop therefore requires
+genuine loss of discrimination, which is what the AUC section measures.
+Confidence and accuracy fell together because both are downstream of that
+loss — not because one caused the other. The table below is kept as the
+original observation:
 
 | month | n | Brier(model) | Brier(market) | edge | accuracy |
 |-------|---|--------------|---------------|------|----------|
@@ -494,10 +521,12 @@ per file, and the oldest surviving `temperature_scale_*` is
 **2026-08-01T20:35**. July's values have rotated out. Do not spend time
 hunting for them there.
 
-## CONFIRMED LIVE DEFECT: the temperature ratchet, visible in the snapshots
+## Temperature scaling: a self-training loop, and what the snapshots do NOT show
 
-Separate from the July question. This one is measured, not hypothesised, and
-it is degrading the model right now.
+Separate from the July question, and NOT a cause of it — AUC is
+calibration-invariant, so nothing in this section can explain the
+discrimination loss in the headline. The self-training loop here is confirmed
+in code; the runaway it would predict is NOT confirmed in the data.
 
 `data/.history/temperature_scale_*.json`, every surviving snapshot:
 
@@ -531,8 +560,8 @@ THREE THINGS ARE WRONG HERE:
    broadly flat with one late jump that coincides with n falling 111 -> 78.
    And `global` moves the OTHER WAY over the same span, 6.414 -> 4.755. A
    genuine runaway would show on every key; it shows on none.
-   ALSO NOT SUPPORTED, and briefly asserted in this session before being
-   checked: "T spikes when n drops". Pooled across all 39 fits, Pearson
+   ALSO NOT SUPPORTED, and briefly asserted during the 2026-08-30 analysis
+   before being checked: "T spikes when n drops". Pooled across all 39 fits, Pearson
    r(n, T) = **+0.406** — the opposite sign — though that pooled figure is
    itself confounded by key (`above` runs T~1.2-1.7, `global` T~4-6), so it
    is Simpson's paradox and should not be cited in either direction.
@@ -560,7 +589,7 @@ THREE THINGS ARE WRONG HERE:
    docstring is simply describing a population the trainer does not use, and
    sameday T is now 3.8-5.3, i.e. exactly the "T=3+" the docstring warns is
    wrong to apply. Anyone reasoning from that docstring will reach a false
-   conclusion — it did so in this session.
+   conclusion — it did so during the 2026-08-30 analysis.
 
 WHAT THIS DOES AND DOES NOT EXPLAIN. It does NOT explain July: on 2026-08-01
 the sameday key was ABSENT and global T was 1.0 with n=0, so temperature
@@ -572,9 +601,11 @@ compressor produced no visible discontinuity — it merely held it there.
 
 SO THERE ARE TWO PROBLEMS, NOT ONE:
 - **July onset (2026-06-30 -> 2026-07-02): cause still unknown.**
-- **August onward: a live, ratcheting T-scaling defect, already filed as
-  L47711, now confirmed with data.** This one is actionable immediately and
-  does not depend on solving July.
+- **August onward: T-scaling is live and its self-training loop is confirmed
+  IN CODE (the fitter reads `our_prob`), filed as L47711. The RUNAWAY that
+  loop would predict is NOT confirmed in the data** — sameday is broadly flat
+  with one late jump and `global` moves the other way. Worth fixing on its own
+  merits, and it cannot be the July cause because AUC is calibration-invariant.
 
 ## Already-filed related work — read before starting
 

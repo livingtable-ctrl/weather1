@@ -1,0 +1,341 @@
+"""Runnable audit oracle for docs/HANDOFF-confidence-collapse-2026-08-30.md.
+
+The handoff is a PROMPT: it will be pasted into a session with no access to
+the conversation that produced it. Its only value is that a stranger acting on
+it reaches correct conclusions. These checks test that property.
+
+Written because the 2026-08-30 audit declared G1/G3/G7 as runnable gates and
+then verified them ad hoc, leaving the ledger unreproducible. That was logged
+as HANDOFF REQUIRED. This is the discharge.
+
+READ-ONLY: opens the DB with mode=ro and never writes.
+
+Usage: python .unlazy/audit_handoff.py --numbers | --commits | --citations
+                                       | --contradictions | --populations
+                                       | --rederive | --all
+"""
+
+from __future__ import annotations
+
+import math
+import pathlib
+import re
+import sqlite3
+import statistics
+import subprocess
+import sys
+from collections import defaultdict
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+DOC = ROOT / "docs" / "HANDOFF-confidence-collapse-2026-08-30.md"
+# paths.py resolves data/ to the MAIN clone, not the worktree.
+sys.path.insert(0, str(ROOT))
+import paths  # noqa: E402
+
+DB = pathlib.Path(paths.DB_PATH)
+TOL = 5e-4  # figures are quoted to 4dp
+
+
+def con():
+    return sqlite3.connect("file:" + DB.as_posix() + "?mode=ro", uri=True)
+
+
+def text() -> str:
+    return DOC.read_text(encoding="utf-8")
+
+
+def _auc(pairs):
+    pos = [p for p, y in pairs if y == 1]
+    neg = [p for p, y in pairs if y == 0]
+    if not pos or not neg:
+        return None, 0, 0
+    w = sum(1.0 if a > b else 0.5 if a == b else 0.0 for a in pos for b in neg)
+    return w / (len(pos) * len(neg)), len(pos), len(neg)
+
+
+def _se_auc(a, n1, n0):
+    q1 = a / (2 - a)
+    q2 = 2 * a * a / (1 + a)
+    return math.sqrt(
+        (a * (1 - a) + (n1 - 1) * (q1 - a * a) + (n0 - 1) * (q2 - a * a)) / (n1 * n0)
+    )
+
+
+def _core_rows():
+    with con() as c:
+        return c.execute(
+            """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob, p.market_prob,
+                      o.settled_yes, p.ticker
+               FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
+               WHERE o.settled_yes IN (0,1) AND p.our_prob IS NOT NULL
+                 AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
+        ).fetchall()
+
+
+def check_numbers() -> list[str]:
+    """Re-derive the load-bearing figures the document asserts."""
+    fails = []
+    rows = _core_rows()
+
+    # --- the headline AUC table ---------------------------------------------
+    g = defaultdict(lambda: defaultdict(list))
+    for m, op, mp, y, _tk in rows:
+        per = "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
+        g[per]["model"].append((op, float(y)))
+        if mp is not None:
+            g[per]["market"].append((mp, float(y)))
+    want = {
+        ("MayJun", "model"): (198, 0.6828, 0.0377),
+        ("MayJun", "market"): (198, 0.6853, 0.0376),
+        ("JulAug", "model"): (143, 0.5321, 0.0484),
+        ("JulAug", "market"): (143, 0.7271, 0.0424),
+    }
+    for key, (wn, wa, wse) in want.items():
+        a, n1, n0 = _auc(g[key[0]][key[1]])
+        if a is None:
+            fails.append(f"AUC {key}: no data")
+            continue
+        n, se = n1 + n0, _se_auc(a, n1, n0)
+        if n != wn:
+            fails.append(f"AUC {key}: n={n} doc says {wn}")
+        if abs(a - wa) > TOL:
+            fails.append(f"AUC {key}: {a:.4f} doc says {wa}")
+        if abs(se - wse) > TOL:
+            fails.append(f"AUC {key} SE: {se:.4f} doc says {wse}")
+
+    # --- monthly AUC --------------------------------------------------------
+    bym = defaultdict(list)
+    for m, op, _mp, y, _tk in rows:
+        bym[m].append((op, float(y)))
+    for m, wa, wn in (
+        ("2026-05", 0.6215, 51),
+        ("2026-06", 0.6973, 147),
+        ("2026-07", 0.5497, 69),
+        ("2026-08", 0.5085, 74),
+    ):
+        a, n1, n0 = _auc(bym[m])
+        if n1 + n0 != wn:
+            fails.append(f"monthly AUC {m}: n={n1+n0} doc says {wn}")
+        if a is None or abs(a - wa) > TOL:
+            fails.append(f"monthly AUC {m}: {a} doc says {wa}")
+
+    # --- forecast error table ----------------------------------------------
+    with con() as c:
+        fe = c.execute(
+            """SELECT strftime('%Y-%m', p.predicted_at),
+                      ABS(p.forecast_temp_f - o.settled_temp_f)
+               FROM predictions p JOIN outcomes o ON o.ticker = p.ticker
+               WHERE p.forecast_temp_f IS NOT NULL AND o.settled_temp_f IS NOT NULL
+                 AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
+        ).fetchall()
+    byfe = defaultdict(list)
+    for m, e in fe:
+        byfe[m].append(e)
+    for m, wn, wmed in (
+        ("2026-05", 51, 2.65),
+        ("2026-06", 50, 2.68),
+        ("2026-07", 56, 1.18),
+        ("2026-08", 70, 1.67),
+    ):
+        v = byfe[m]
+        if len(v) != wn:
+            fails.append(f"forecast error {m}: n={len(v)} doc says {wn}")
+        if v and abs(statistics.median(v) - wmed) > 0.005:
+            fails.append(
+                f"forecast error {m}: median {statistics.median(v):.2f} doc says {wmed}"
+            )
+
+    # --- the selection-confound table (rows with a paper trade) -------------
+    import json
+
+    pt = json.loads((DB.parent / "paper_trades.json").read_text(encoding="utf-8"))
+    pt = pt if isinstance(pt, list) else pt.get("trades", pt)
+    if isinstance(pt, dict):
+        pt = list(pt.values())
+    traded = {r["ticker"] for r in pt if r.get("ticker")}
+    share = defaultdict(lambda: [0, 0])
+    tg = defaultdict(list)
+    for m, op, mp, y, tk in rows:
+        share[m][0] += 1
+        if tk in traded:
+            share[m][1] += 1
+            per = "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
+            tg[(per, "model")].append((op, float(y)))
+            if mp is not None:
+                tg[(per, "market")].append((mp, float(y)))
+    for m, wt, wx in (
+        ("2026-05", 51, 51),
+        ("2026-06", 147, 147),
+        ("2026-07", 69, 0),
+        ("2026-08", 74, 63),
+    ):
+        t, x = share[m]
+        if (t, x) != (wt, wx):
+            fails.append(f"traded share {m}: {t}/{x} doc says {wt}/{wx}")
+    for key, wn, wa in (
+        (("JulAug", "model"), 63, 0.4849),
+        (("JulAug", "market"), 63, 0.7213),
+    ):
+        a, n1, n0 = _auc(tg[key])
+        if n1 + n0 != wn:
+            fails.append(f"traded-subset AUC {key}: n={n1+n0} doc says {wn}")
+        if a is None or abs(a - wa) > TOL:
+            fails.append(f"traded-subset AUC {key}: {a} doc says {wa}")
+
+    # --- n_members across the COLLAPSE WINDOW only --------------------------
+    # The doc claims 238 on every July row (spanning the 06-30..07-02 step),
+    # and explicitly does NOT claim constancy outside July. An earlier draft
+    # did claim that and was wrong: August carries 208/258/2427/2438 too.
+    with con() as c:
+        jul = c.execute(
+            """SELECT n_members, COUNT(*) FROM predictions
+               WHERE predicted_at >= '2026-07-01' AND predicted_at < '2026-08-01'
+                 AND method='ensemble' AND n_members IS NOT NULL
+                 AND (ticker LIKE 'KXHIGH%' OR ticker LIKE 'KXLOWT%')
+               GROUP BY n_members"""
+        ).fetchall()
+    if jul != [(238, 56)]:
+        fails.append(f"July n_members is {jul}, doc says 238 on all 56 rows")
+    # and the doc's own list of the August oddities must stay true
+    with con() as c:
+        aug = {
+            r[0]
+            for r in c.execute(
+                """SELECT DISTINCT n_members FROM predictions
+                   WHERE predicted_at >= '2026-08-01' AND method='ensemble'
+                     AND n_members IS NOT NULL
+                     AND (ticker LIKE 'KXHIGH%' OR ticker LIKE 'KXLOWT%')"""
+            ).fetchall()
+        }
+    for odd in (2427, 2438):
+        if odd not in aug:
+            fails.append(f"doc cites August n_members={odd}; not present")
+    return fails
+
+
+def check_commits() -> list[str]:
+    fails = []
+    for h, date in re.findall(r"`([0-9a-f]{7,8})`[^\n]*?\((\d{4}-\d{2}-\d{2})\)", text()):
+        r = subprocess.run(
+            ["git", "log", "-1", "--format=%ad", "--date=short", h],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            fails.append(f"commit {h}: does not exist")
+        elif r.stdout.strip() != date:
+            fails.append(f"commit {h}: dated {r.stdout.strip()}, doc says {date}")
+    return fails
+
+
+def check_citations() -> list[str]:
+    """Every `file.py:NNNN` must resolve to an existing line."""
+    fails = []
+    for fname, line in re.findall(r"`?((?:[a-z_]+/)?[a-z_]+\.py):(\d{2,5})`?", text()):
+        f = ROOT / fname
+        if not f.exists():
+            fails.append(f"{fname}:{line}: file missing")
+            continue
+        n = len(f.read_text(encoding="utf-8", errors="replace").splitlines())
+        if int(line) > n:
+            fails.append(f"{fname}:{line}: file has only {n} lines")
+    return fails
+
+
+# Phrases that must NOT survive, each paired with why it is stale.
+STALE = [
+    ("EMOS one merely has the best mechanism story", "EMOS was eliminated"),
+    ("Five commits land in that window", "the window has zero commits"),
+    ("split at 2026-06-27.", "the step is 06-30..07-02, not the EMOS commit"),
+    ("premature_do_not_use_20260704` is still on disk", "no emos file exists"),
+    ("The ratchet is real and observable", "the ratchet was retracted"),
+    ("visible in the snapshots", "the ratchet was retracted"),
+    ("THE LEADING HYPOTHESIS: temperature scaling", "AUC is calibration-invariant"),
+    ("ratcheting T-scaling defect", "the ratchet was retracted"),
+    ("now confirmed with data", "the ratchet was retracted"),
+    ("That explains the accuracy drop", "compression is monotone; accuracy is invariant"),
+    ("So no calibration stage is degrading anything", "Finding 1 was retracted"),
+]
+
+
+def check_contradictions() -> list[str]:
+    t = text()
+    return [f"stale text present ({why}): {p!r}" for p, why in STALE if p in t]
+
+
+def check_populations() -> list[str]:
+    """Any n quoted for June must be reconcilable to a stated filter."""
+    fails = []
+    t = text()
+    if "n=48" in t.replace(" ", "") or "| 48 |" in t:
+        if "blend_sources" not in t:
+            fails.append("June n=48 and n=44 both appear but no filter is stated")
+    return fails
+
+
+def check_rederive() -> list[str]:
+    """Execute the document's own re-derivation recipe literally."""
+    fails = []
+    with con() as c:
+        rows = c.execute(
+            """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob, p.raw_prob
+               FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
+               WHERE o.settled_yes IN (0,1) AND p.our_prob IS NOT NULL
+                 AND p.method='ensemble'
+                 AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
+        ).fetchall()
+    by = defaultdict(list)
+    for m, op, rp in rows:
+        by[m].append((op, rp))
+    for m, wn, wconf in (
+        ("2026-05", 51, 0.2333),
+        ("2026-06", 48, 0.1958),
+        ("2026-07", 56, 0.0723),
+        ("2026-08", 70, 0.0775),
+    ):
+        v = by[m]
+        if len(v) != wn:
+            fails.append(f"rederive {m}: recipe yields n={len(v)}, doc says {wn}")
+            continue
+        conf = statistics.fmean(abs(p - 0.5) for p, _ in v)
+        if abs(conf - wconf) > TOL:
+            fails.append(f"rederive {m}: conf {conf:.4f}, doc says {wconf}")
+    return fails
+
+
+CHECKS = {
+    "--numbers": ("HANDOFF_NUMBERS_OK", check_numbers),
+    "--commits": ("HANDOFF_COMMITS_OK", check_commits),
+    "--citations": ("HANDOFF_CITATIONS_OK", check_citations),
+    "--contradictions": ("HANDOFF_NO_CONTRADICTIONS", check_contradictions),
+    "--populations": ("HANDOFF_POPULATIONS_OK", check_populations),
+    "--rederive": ("HANDOFF_REDERIVE_OK", check_rederive),
+}
+
+
+def main() -> int:
+    args = sys.argv[1:] or ["--all"]
+    todo = list(CHECKS) if args == ["--all"] else args
+    bad = 0
+    for a in todo:
+        if a not in CHECKS:
+            print(f"unknown check {a}")
+            return 2
+        token, fn = CHECKS[a]
+        try:
+            fails = fn()
+        except Exception as exc:  # a broken check is a failure, not a pass
+            print(f"{a}: RAISED {type(exc).__name__}: {exc}")
+            bad += 1
+            continue
+        if fails:
+            bad += 1
+            print(f"{a}: {len(fails)} FAILURE(S)")
+            for f in fails:
+                print(f"    - {f}")
+        else:
+            print(f"{a}: {token}")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
