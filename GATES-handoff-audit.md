@@ -141,3 +141,53 @@ taken FROM the document, so it proves doc-versus-database consistency and
 arithmetic, not that a premise is true. It cannot catch a wrong idea that is
 internally consistent. Only the manual passes can, and they are not
 reproducible.
+
+
+## PASS 3 — hardening, 2026-08-30
+
+The question was whether the prompt could be hardened further. It could, and
+the answer was found by attacking my own gates rather than the document.
+
+MUTATION TESTING THE ORACLE (`.unlazy/mutate_handoff_oracle.py`). Nine
+mutations injected into the handoff in memory, restored from an in-memory
+snapshot (never `git checkout --`, which would discard unrelated work).
+
+FIRST RUN: **5 of 9 mutants SURVIVED.** `--numbers` and `--rederive` were
+VACUOUS with respect to the document. They held their own hardcoded copies of
+every figure and compared those to the database, so the gate proved "the DB
+says X" and never "the document says what the DB says". Four figures in the
+text could be changed to anything and the ledger still reported green. Pass 2
+reported G1 and G7 as "MET (runnable)"; that claim was misleading and is
+corrected here.
+
+FIX: every expectation is now PARSED OUT OF THE DOCUMENT and compared against
+a freshly derived value, so editing a figure in the text fails the gate.
+
+A SECOND DEFECT SURFACED WHILE FIXING THE FIRST: the initial doc-parsing
+regexes were unscoped and matched the HEADLINE AUC table when looking for the
+traded-subset and forecast-error tables — comparing real derivations against
+the wrong quoted numbers. Added `_section()` so every pattern is scoped to its
+own block.
+
+SECOND RUN: **all 9 mutants killed.** The gates can now fail honestly.
+
+- G1 numbers        — MET, and now non-vacuous (proven by mutation).
+- G7 re-derive      — MET, and now non-vacuous (proven by mutation).
+- G3 citations      — MET; both a bogus line number and a bogus filename are
+                      caught.
+- G4 contradictions — MET; re-injecting two retracted phrases is caught.
+- G9 lint           — GATE_G9_PASS after fixing 4 mypy findings and running
+                      ruff format. NOTE pass 2 pushed this file lint-failing
+                      because `check_lint.py` was piped through `tail`, so the
+                      shell chain continued on tail's exit status.
+
+REMAINING, NOT DONE — the honest ceiling on this ledger:
+ 1. The oracle proves internal consistency and arithmetic. It cannot catch an
+    internally consistent WRONG IDEA. Only the manual passes can, and those
+    are not reproducible.
+ 2. The headline AUC finding rests on a parametric Hanley-McNeil SE. A
+    bootstrap or permutation test of the May-Jun minus Jul-Aug difference
+    would be stronger and has NOT been run.
+ 3. Population drift by city and ladder width across the July boundary is
+    still unchecked. The traded-subset test refutes the SELECTION confound but
+    not a change in the market MIX.

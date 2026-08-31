@@ -61,6 +61,38 @@ def _se_auc(a, n1, n0):
     )
 
 
+def _doc_num(pattern: str, label: str, fails: list) -> float | None:
+    """Extract ONE number the document asserts. Missing anchor is a FAILURE.
+
+    The gates must read their expectations FROM the document, not hold their
+    own copy. A hardcoded expectation makes the gate vacuous with respect to
+    the doc: mutation testing on 2026-08-30 changed four figures in the text
+    and every --numbers check still passed, because it was only ever
+    comparing the database against constants in this file.
+    """
+    m = re.search(pattern, text())
+    if not m:
+        fails.append(f"{label}: anchor not found in document (pattern {pattern!r})")
+        return None
+    return float(m.group(1))
+
+
+def _section(start_marker: str, fails: list, label: str) -> str:
+    """Slice the doc from a heading/anchor to the next heading.
+
+    Scoping matters: an unscoped regex for a table row matched the HEADLINE
+    AUC table instead of the traded-subset table during the 2026-08-30
+    hardening, silently comparing the wrong numbers.
+    """
+    t = text()
+    i = t.find(start_marker)
+    if i < 0:
+        fails.append(f"{label}: section anchor {start_marker!r} not found")
+        return ""
+    j = t.find(chr(10) + "## ", i + len(start_marker))
+    return t[i : j if j > 0 else len(t)]
+
+
 def _core_rows():
     with con() as c:
         return c.execute(
@@ -74,7 +106,7 @@ def _core_rows():
 
 def check_numbers() -> list[str]:
     """Re-derive the load-bearing figures the document asserts."""
-    fails = []
+    fails: list[str] = []
     rows = _core_rows()
 
     # --- the headline AUC table ---------------------------------------------
@@ -84,12 +116,21 @@ def check_numbers() -> list[str]:
         g[per]["model"].append((op, float(y)))
         if mp is not None:
             g[per]["market"].append((mp, float(y)))
-    want = {
-        ("MayJun", "model"): (198, 0.6828, 0.0377),
-        ("MayJun", "market"): (198, 0.6853, 0.0376),
-        ("JulAug", "model"): (143, 0.5321, 0.0484),
-        ("JulAug", "market"): (143, 0.7271, 0.0424),
-    }
+    # Expectations are READ FROM THE DOCUMENT so that editing a figure in the
+    # text fails this gate. Row shape: | May-Jun | **model** | 198 | **0.6828** | 0.0377 |
+    want = {}
+    for per, lbl, who in (
+        ("MayJun", "May-Jun", "model"),
+        ("MayJun", "May-Jun", "market"),
+        ("JulAug", "Jul-Aug", "model"),
+        ("JulAug", "Jul-Aug", "market"),
+    ):
+        row = rf"\| {lbl} \| \*{{0,2}}{who}\*{{0,2}} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| ([0-9.]+) \|"
+        m = re.search(row, _section("## THE HEADLINE", fails, "headline-auc"))
+        if not m:
+            fails.append(f"AUC row {per}/{who}: not found in document")
+            continue
+        want[(per, who)] = (int(m.group(1)), float(m.group(2)), float(m.group(3)))
     for key, (wn, wa, wse) in want.items():
         a, n1, n0 = _auc(g[key[0]][key[1]])
         if a is None:
@@ -107,12 +148,20 @@ def check_numbers() -> list[str]:
     bym = defaultdict(list)
     for m, op, _mp, y, _tk in rows:
         bym[m].append((op, float(y)))
-    for m, wa, wn in (
-        ("2026-05", 0.6215, 51),
-        ("2026-06", 0.6973, 147),
-        ("2026-07", 0.5497, 69),
-        ("2026-08", 0.5085, 74),
+    # "Monthly: May 0.6215 (n=51) | Jun 0.6973 (147) | Jul 0.5497 (69) | Aug 0.5085 (74)."
+    months = []
+    for name, mkey in (
+        ("May", "2026-05"),
+        ("Jun", "2026-06"),
+        ("Jul", "2026-07"),
+        ("Aug", "2026-08"),
     ):
+        mm = re.search(rf"{name} ([0-9.]+) \(n?=?(\d+)\)", text())
+        if not mm:
+            fails.append(f"monthly AUC {mkey}: not found in document")
+            continue
+        months.append((mkey, float(mm.group(1)), int(mm.group(2))))
+    for m, wa, wn in months:
         a, n1, n0 = _auc(bym[m])
         if n1 + n0 != wn:
             fails.append(f"monthly AUC {m}: n={n1 + n0} doc says {wn}")
@@ -131,12 +180,21 @@ def check_numbers() -> list[str]:
     byfe = defaultdict(list)
     for m, e in fe:
         byfe[m].append(e)
-    for m, wn, wmed in (
-        ("2026-05", 51, 2.65),
-        ("2026-06", 50, 2.68),
-        ("2026-07", 56, 1.18),
-        ("2026-08", 70, 1.67),
-    ):
+    # Row shape: | 2026-07 | 56 | **1.18** | 2.01 | 4.14 |
+    fe_want = []
+    for fkey in ("2026-05", "2026-06", "2026-07", "2026-08"):
+        scope = _section(
+            "Raw forecast error, `|forecast_temp_f", fails, "forecast-error"
+        )
+        mm = re.search(
+            rf"\| {fkey} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| [0-9.]+ \| [0-9.]+ \|",
+            scope,
+        )
+        if not mm:
+            fails.append(f"forecast error {fkey}: row not found in document")
+            continue
+        fe_want.append((fkey, int(mm.group(1)), float(mm.group(2))))
+    for m, wn, wmed in fe_want:
         v = byfe[m]
         if len(v) != wn:
             fails.append(f"forecast error {m}: n={len(v)} doc says {wn}")
@@ -172,10 +230,22 @@ def check_numbers() -> list[str]:
         t, x = share[m]
         if (t, x) != (wt, wx):
             fails.append(f"traded share {m}: {t}/{x} doc says {wt}/{wx}")
-    for key, wn, wa in (
-        (("JulAug", "model"), 63, 0.4849),
-        (("JulAug", "market"), 63, 0.7213),
-    ):
+    tr_want = []
+    for who in ("model", "market"):
+        scope = _section(
+            "Restricting BOTH halves to rows that have a paper trade",
+            fails,
+            "traded-subset",
+        )
+        mm = re.search(
+            rf"\| Jul-Aug \| {who} \| \*{{0,2}}(\d+)\*{{0,2}} \| \*{{0,2}}([0-9.]+)\*{{0,2}} \|",
+            scope,
+        )
+        if not mm:
+            fails.append(f"traded-subset AUC Jul-Aug/{who}: not found in document")
+            continue
+        tr_want.append((("JulAug", who), int(mm.group(1)), float(mm.group(2))))
+    for key, wn, wa in tr_want:
         a, n1, n0 = _auc(tg[key])
         if n1 + n0 != wn:
             fails.append(f"traded-subset AUC {key}: n={n1 + n0} doc says {wn}")
@@ -214,7 +284,7 @@ def check_numbers() -> list[str]:
 
 
 def check_commits() -> list[str]:
-    fails = []
+    fails: list[str] = []
     for h, date in re.findall(
         r"`([0-9a-f]{7,8})`[^\n]*?\((\d{4}-\d{2}-\d{2})\)", text()
     ):
@@ -233,7 +303,7 @@ def check_commits() -> list[str]:
 
 def check_citations() -> list[str]:
     """Every `file.py:NNNN` must resolve to an existing line."""
-    fails = []
+    fails: list[str] = []
     for fname, line in re.findall(r"`?((?:[a-z_]+/)?[a-z_]+\.py):(\d{2,5})`?", text()):
         f = ROOT / fname
         if not f.exists():
@@ -271,7 +341,7 @@ def check_contradictions() -> list[str]:
 
 def check_populations() -> list[str]:
     """Any n quoted for June must be reconcilable to a stated filter."""
-    fails = []
+    fails: list[str] = []
     t = text()
     if "n=48" in t.replace(" ", "") or "| 48 |" in t:
         if "blend_sources" not in t:
@@ -281,7 +351,7 @@ def check_populations() -> list[str]:
 
 def check_rederive() -> list[str]:
     """Execute the document's own re-derivation recipe literally."""
-    fails = []
+    fails: list[str] = []
     with con() as c:
         rows = c.execute(
             """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob, p.raw_prob
@@ -293,12 +363,20 @@ def check_rederive() -> list[str]:
     by = defaultdict(list)
     for m, op, rp in rows:
         by[m].append((op, rp))
-    for m, wn, wconf in (
-        ("2026-05", 51, 0.2333),
-        ("2026-06", 48, 0.1958),
-        ("2026-07", 56, 0.0723),
-        ("2026-08", 70, 0.0775),
-    ):
+    # Row shape: | 2026-06 | 48 | 0.1958 | 0.1958 | 37.5% |
+    rd_want = []
+    for key in ("2026-05", "2026-06", "2026-07", "2026-08"):
+        scope = _section(
+            "## Superseded: the original Finding 1 numbers", fails, "rederive"
+        )
+        mm = re.search(
+            rf"\| {key} \| (\d+) \| ([0-9.]+) \| ([0-9.]+) \| [0-9.]+% \|", scope
+        )
+        if not mm:
+            fails.append(f"rederive {key}: row not found in document")
+            continue
+        rd_want.append((key, int(mm.group(1)), float(mm.group(2))))
+    for m, wn, wconf in rd_want:
         v = by[m]
         if len(v) != wn:
             fails.append(f"rederive {m}: recipe yields n={len(v)}, doc says {wn}")
