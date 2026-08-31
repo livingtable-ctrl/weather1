@@ -346,6 +346,66 @@ per file, and the oldest surviving `temperature_scale_*` is
 **2026-08-01T20:35**. July's values have rotated out. Do not spend time
 hunting for them there.
 
+## CONFIRMED LIVE DEFECT: the temperature ratchet, visible in the snapshots
+
+Separate from the July question. This one is measured, not hypothesised, and
+it is degrading the model right now.
+
+`data/.history/temperature_scale_*.json`, every surviving snapshot:
+
+| snapshot | sameday T | n | global T | n |
+|----------|-----------|---|----------|---|
+| 2026-08-01T20:35 | **absent** | — | 1.000 | 0 |
+| 2026-08-02T02:56 | 3.423 | 71 | 6.414 | 53 |
+| 2026-08-03T16:02 | 3.258 | 88 | 5.357 | 62 |
+| 2026-08-08T13:05 | 3.258 | 88 | 5.357 | 62 |
+| 2026-08-10T05:30 | 3.320 | 93 | 4.185 | 65 |
+| 2026-08-14T17:28 | 3.829 | 102 | 4.601 | 68 |
+| 2026-08-16T01:27 | 3.849 | 111 | 5.558 | 78 |
+| 2026-08-16T16:12 | 3.849 | 111 | 5.200 | **40** |
+| 2026-08-20T21:53 | **5.265** | **78** | 4.755 | 79 |
+
+THREE THINGS ARE WRONG HERE:
+
+1. **The ratchet is real and observable.** sameday T climbs 3.423 -> 5.265 in
+   under three weeks. This is the mechanism `backlog.txt` ~L47711 describes
+   ("FITS T ON ITS OWN PRIOR OUTPUT"), on the `sameday` key that the same
+   entry says was never frozen. A larger T flattens output; the next fit reads
+   the flattened output and asks for a larger T still.
+2. **The training n moves BACKWARDS between fits** — sameday 111 -> 78, global
+   78 -> 40 on the same day. A calibration set that shrinks while the corpus
+   grows means the population is being re-selected between runs, not
+   accumulated. Nothing in this document explains that and it is not
+   accounted for anywhere in the backlog. **Treat it as an independent
+   defect.**
+3. **The docstring contradicts the trainer.** `apply_temperature_scaling`
+   (ml_bias.py:848) justifies the separate sameday pool by saying it is
+   "fitted only on METAR-derived probabilities" whose distribution is "sharp,
+   near 0/1", and warns that "applying multi-day T=3+ would wrongly compress
+   METAR probs toward 0.5 and under-size same-day bets". But
+   `train_all_temperature_scaling` **explicitly EXCLUDES `metar_lockout`
+   rows** from that pool, with its own stated rationale (the METAR-locked
+   branch bypasses section 7b, so it would be training on data the transform
+   never touches). Both pieces of reasoning are individually defensible; the
+   docstring is simply describing a population the trainer does not use, and
+   sameday T is now 3.8-5.3, i.e. exactly the "T=3+" the docstring warns is
+   wrong to apply. Anyone reasoning from that docstring will reach a false
+   conclusion — it did so in this session.
+
+WHAT THIS DOES AND DOES NOT EXPLAIN. It does NOT explain July: on 2026-08-01
+the sameday key was ABSENT and global T was 1.0 with n=0, so temperature
+scaling was inert through July. That is now the second independent
+confirmation that T-scaling is not the July cause. It DOES give August an
+active degradation mechanism of its own, and it explains the absence of a step
+at 2026-08-02: July was already flat from an unknown cause, so switching on a
+compressor produced no visible discontinuity — it merely held it there.
+
+SO THERE ARE TWO PROBLEMS, NOT ONE:
+- **July onset (2026-06-30 -> 2026-07-02): cause still unknown.**
+- **August onward: a live, ratcheting T-scaling defect, already filed as
+  L47711, now confirmed with data.** This one is actionable immediately and
+  does not depend on solving July.
+
 ## Already-filed related work — read before starting
 
 The backlog entry "EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED
