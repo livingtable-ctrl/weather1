@@ -367,11 +367,33 @@ it is degrading the model right now.
 
 THREE THINGS ARE WRONG HERE:
 
-1. **The ratchet is real and observable.** sameday T climbs 3.423 -> 5.265 in
-   under three weeks. This is the mechanism `backlog.txt` ~L47711 describes
-   ("FITS T ON ITS OWN PRIOR OUTPUT"), on the `sameday` key that the same
-   entry says was never frozen. A larger T flattens output; the next fit reads
-   the flattened output and asks for a larger T still.
+1. **The self-training loop is confirmed IN CODE. The ratchet is NOT confirmed
+   in the data, and an earlier version of this section wrongly claimed it was.**
+   CONFIRMED: `train_all_temperature_scaling`'s sameday query is
+   `SELECT p.our_prob, o.settled_yes FROM predictions p JOIN outcomes_valid o
+   ... WHERE p.days_out = 0 AND (p.method IS NULL OR p.method !=
+   'metar_lockout')`. `our_prob` is the STORED POST-CALIBRATION value — the
+   output `apply_temperature_scaling` produced. So T is fit on data that T
+   itself shaped. That is exactly the mechanism `backlog.txt` ~L47711
+   describes ("FITS T ON ITS OWN PRIOR OUTPUT"), on the `sameday` key that the
+   same entry says was never frozen. The loop exists.
+   NOT CONFIRMED: that it produces a runaway ratchet. The claim "sameday T
+   climbs 3.423 -> 5.265" is true only as endpoints and is misleading. The
+   actual series is 3.423, 3.258, 3.258, 3.320, 3.829, 3.849, 3.849, 5.265 —
+   broadly flat with one late jump that coincides with n falling 111 -> 78.
+   And `global` moves the OTHER WAY over the same span, 6.414 -> 4.755. A
+   genuine runaway would show on every key; it shows on none.
+   ALSO NOT SUPPORTED, and briefly asserted in this session before being
+   checked: "T spikes when n drops". Pooled across all 39 fits, Pearson
+   r(n, T) = **+0.406** — the opposite sign — though that pooled figure is
+   itself confounded by key (`above` runs T~1.2-1.7, `global` T~4-6), so it
+   is Simpson's paradox and should not be cited in either direction.
+   WHAT IS SAFE TO SAY: the loop is real in code; T values on `global` and
+   `sameday` are large enough (3-6) to compress probabilities materially; and
+   T is unstable across refits. Whether the loop is DRIVING that instability
+   is unproven on 9 snapshots spanning 19 days. **Do not present the ratchet
+   as established.** The way to settle it is to refit T on a
+   pre-calibration probability column and compare against the live series.
 2. **The training n moves BACKWARDS between fits** — sameday 111 -> 78, global
    78 -> 40 on the same day. A calibration set that shrinks while the corpus
    grows means the population is being re-selected between runs, not
