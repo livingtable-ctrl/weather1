@@ -69,10 +69,28 @@ measuring a bug. **Any re-measurement must split at the July step.**
   proven equal.
 - Many splits were examined on 2026-08-30 before this one was found. Treat
   z = +2.46 as weaker than it looks.
-- Population drift between the halves is still unchecked (see "still open").
-  If Jul-Aug scanned systematically different markets, that is an alternative
-  explanation — though the market's own AUC RISING on those same rows argues
-  against it.
+- **Population drift WAS the obvious confound, and it has been TESTED and
+  REFUTED.** The recording regime genuinely did change: May-June recorded only
+  markets where a paper trade was placed (51/51 and 147/147 = 100%), July
+  recorded predictions with NO trades at all (0/69 — trading was paused
+  2026-07-01 to 07-31 for travel), and August is 63/74 = 85%. So the later
+  population is not selected the same way, and selection on model-market
+  disagreement would inflate the earlier AUC.
+  Restricting BOTH halves to rows that have a paper trade — i.e. imposing the
+  old regime's own selection on the new data — does not rescue the model:
+
+  | period | who | n | AUC | SE | z vs 0.50 |
+  |--------|-----|---|-----|----|-----------|
+  | May-Jun | model | 198 | 0.6828 | 0.0377 | +4.85 |
+  | Jul-Aug | model | **63** | **0.4849** | 0.0733 | **-0.21** |
+  | Jul-Aug | market | 63 | 0.7213 | 0.0645 | +3.43 |
+
+  Under identical selection the model is still at chance, marginally BELOW
+  0.50, while the market on those same rows is still strongly discriminating.
+  The drop is not a population artefact.
+  ONE LIMIT ON THAT TEST: July contributes zero traded rows, so the Jul-Aug
+  traded subset (n=63) is entirely AUGUST. The comparison is really May-June
+  versus August, and it cannot speak to July directly.
 
 ### Therefore the priority question is unchanged but now much more valuable
 
