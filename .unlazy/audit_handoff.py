@@ -125,13 +125,18 @@ def check_numbers() -> list[str]:
         ("JulAug", "Jul-Aug", "model"),
         ("JulAug", "Jul-Aug", "market"),
     ):
-        row = rf"\| {lbl} \| \*{{0,2}}{who}\*{{0,2}} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| ([0-9.]+) \|"
+        row = rf"\| {lbl} \| \*{{0,2}}{who}\*{{0,2}} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| ([0-9.]+) \| \*{{0,2}}\+([0-9.]+)\*{{0,2}} \|"
         m = re.search(row, _section("## THE HEADLINE", fails, "headline-auc"))
         if not m:
             fails.append(f"AUC row {per}/{who}: not found in document")
             continue
-        want[(per, who)] = (int(m.group(1)), float(m.group(2)), float(m.group(3)))
-    for key, (wn, wa, wse) in want.items():
+        want[(per, who)] = (
+            int(m.group(1)),
+            float(m.group(2)),
+            float(m.group(3)),
+            float(m.group(4)),
+        )
+    for key, (wn, wa, wse, wz) in want.items():
         a, n1, n0 = _auc(g[key[0]][key[1]])
         if a is None:
             fails.append(f"AUC {key}: no data")
@@ -143,6 +148,31 @@ def check_numbers() -> list[str]:
             fails.append(f"AUC {key}: {a:.4f} doc says {wa}")
         if abs(se - wse) > TOL:
             fails.append(f"AUC {key} SE: {se:.4f} doc says {wse}")
+        z = (a - 0.5) / se
+        if abs(z - wz) > 0.005:
+            fails.append(f"AUC {key} z: {z:.2f} doc says {wz}")
+
+    # --- the pooled difference-in-differences sentence ----------------------
+    dm = re.search(
+        r"model, MayJun - JulAug = \*{0,2}\+([0-9.]+)\*{0,2}, SE ([0-9.]+), \*{0,2}z = \+([0-9.]+)",
+        text(),
+    )
+    if not dm:
+        fails.append("DiD model sentence: not found in document")
+    else:
+        vals = {}
+        for p_ in ("MayJun", "JulAug"):
+            a, n1, n0 = _auc(g[p_]["model"])
+            vals[p_] = (a, _se_auc(a, n1, n0))
+        d = vals["MayJun"][0] - vals["JulAug"][0]
+        sd = math.sqrt(vals["MayJun"][1] ** 2 + vals["JulAug"][1] ** 2)
+        for lbl, actual, claimed, tol in (
+            ("diff", d, float(dm.group(1)), TOL),
+            ("SE", sd, float(dm.group(2)), TOL),
+            ("z", d / sd, float(dm.group(3)), 0.005),
+        ):
+            if abs(actual - claimed) > tol:
+                fails.append(f"DiD model {lbl}: {actual:.4f} doc says {claimed}")
 
     # --- monthly AUC --------------------------------------------------------
     bym = defaultdict(list)
@@ -387,6 +417,217 @@ def check_rederive() -> list[str]:
     return fails
 
 
+def check_strata() -> list[str]:
+    """Gate the stratified-AUC table, the composition table, and every z.
+
+    Added after a mutation-based coverage sweep on 2026-08-30 found 267 of 310
+    numeric claims ungated (13.9% covered) -- including every z-value and the
+    entirety of both tables added by the preceding hardening pass. A finding
+    added without a gate is a finding the ledger will certify wrong.
+    """
+    fails: list[str] = []
+    rows = _core_rows_ct()
+
+    def per(m):
+        return "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
+
+    # --- composition table --------------------------------------------------
+    tot: dict[str, int] = defaultdict(int)
+    cnt: dict[tuple, int] = defaultdict(int)
+    for m, _op, _mp, _y, ct, _tk in rows:
+        tot[per(m)] += 1
+        cnt[(per(m), ct)] += 1
+    scope = _section(
+        "| condition | May-Jun share | Jul-Aug share |", fails, "composition"
+    )
+    for ct in ("between", "above", "below"):
+        mm = re.search(
+            rf"\| `{ct}` \| \*{{0,2}}([0-9.]+)%\*{{0,2}} \| \*{{0,2}}([0-9.]+)%\*{{0,2}} \|",
+            scope,
+        )
+        if not mm:
+            fails.append(f"composition row {ct}: not found in document")
+            continue
+        for i, p_ in enumerate(("MayJun", "JulAug")):
+            claimed = float(mm.group(i + 1))
+            actual = 100 * cnt[(p_, ct)] / tot[p_]
+            if abs(actual - claimed) > 0.05:
+                fails.append(
+                    f"composition {ct}/{p_}: {actual:.1f}% doc says {claimed}%"
+                )
+
+    # --- stratified AUC table, including z ---------------------------------
+    g: dict[tuple, list] = defaultdict(list)
+    for m, op, mp, y, ct, _tk in rows:
+        g[(per(m), ct, "model")].append((op, float(y)))
+        if mp is not None:
+            g[(per(m), ct, "market")].append((mp, float(y)))
+    sc = _section(
+        "| condition | period | who | n | AUC | SE | z vs 0.50 |", fails, "strata"
+    )
+    for ct, lbl, who in (
+        ("above", "May-Jun", "model"),
+        ("above", "Jul-Aug", "model"),
+        ("below", "May-Jun", "model"),
+        ("below", "Jul-Aug", "model"),
+        ("between", "May-Jun", "model"),
+    ):
+        mm = re.search(
+            rf"\| {ct} \| {lbl} \| {who} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| ([0-9.]+) \| \*{{0,2}}([+-][0-9.]+)\*{{0,2}} \|",
+            sc,
+        )
+        if not mm:
+            fails.append(f"strata row {ct}/{lbl}: not found in document")
+            continue
+        p_ = "MayJun" if lbl == "May-Jun" else "JulAug"
+        a, n1, n0 = _auc(g[(p_, ct, who)])
+        if a is None:
+            fails.append(f"strata {ct}/{lbl}: no data")
+            continue
+        se = _se_auc(a, n1, n0)
+        z = (a - 0.5) / se
+        for label, actual, claimed, tol in (
+            ("n", n1 + n0, int(mm.group(1)), 0),
+            ("AUC", a, float(mm.group(2)), TOL),
+            ("SE", se, float(mm.group(3)), TOL),
+            ("z", z, float(mm.group(4)), 0.005),
+        ):
+            if abs(actual - claimed) > tol:
+                fails.append(f"strata {ct}/{lbl} {label}: {actual} doc says {claimed}")
+
+    # --- pooled AUC sentence, with its z ------------------------------------
+    mm = re.search(
+        r"Pooled model AUC ([0-9.]+) \(n=(\d+), z=\+([0-9.]+)\); pooled market ([0-9.]+) \(z=\+([0-9.]+)\)",
+        text(),
+    )
+    if not mm:
+        fails.append("pooled AUC sentence: not found in document")
+    else:
+        allm = [(op, float(y)) for _m, op, _mp, y, _ct, _tk in rows]
+        allk = [(mp, float(y)) for _m, _op, mp, y, _ct, _tk in rows if mp is not None]
+        for lbl, pairs, wa, wz in (
+            ("model", allm, float(mm.group(1)), float(mm.group(3))),
+            ("market", allk, float(mm.group(4)), float(mm.group(5))),
+        ):
+            a, n1, n0 = _auc(pairs)
+            z = (a - 0.5) / _se_auc(a, n1, n0)
+            if abs(a - wa) > TOL:
+                fails.append(f"pooled {lbl} AUC: {a:.4f} doc says {wa}")
+            if abs(z - wz) > 0.005:
+                fails.append(f"pooled {lbl} z: {z:.2f} doc says {wz}")
+        if int(mm.group(2)) != len(allm):
+            fails.append(f"pooled n: {len(allm)} doc says {mm.group(2)}")
+    return fails
+
+
+def _core_rows_ct():
+    with con() as c:
+        return c.execute(
+            """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob, p.market_prob,
+                      o.settled_yes, p.condition_type, p.ticker
+               FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
+               WHERE o.settled_yes IN (0,1) AND p.our_prob IS NOT NULL
+                 AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
+        ).fetchall()
+
+
+def check_restatements() -> list[str]:
+    """Prose that restates a gated figure must agree with it.
+
+    A mutation-coverage sweep on 2026-08-30 showed that figures repeated in
+    prose (e.g. "the model fell to chance (0.5321, z=+0.66)") were UNGATED
+    even though the same numbers were gated inside their table. Editing only
+    the prose would leave the ledger green while the document contradicted
+    itself. This gate ties each restatement back to a freshly derived value.
+    """
+    fails: list[str] = []
+    rows = _core_rows_ct()
+
+    def per(m):
+        return "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
+
+    g: dict[tuple, list] = defaultdict(list)
+    for m, op, mp, y, ct, _tk in rows:
+        g[(per(m), "model")].append((op, float(y)))
+        if mp is not None:
+            g[(per(m), "market")].append((mp, float(y)))
+
+    derived = {}
+    for p_ in ("MayJun", "JulAug"):
+        for who in ("model", "market"):
+            a, n1, n0 = _auc(g[(p_, who)])
+            derived[(p_, who)] = (a, (a - 0.5) / _se_auc(a, n1, n0))
+
+    # each: (regex with one capture, derived value, tolerance, label)
+    checks = [
+        (
+            r"discriminated as well as the market did\*\* — ([0-9.]+)",
+            derived[("MayJun", "model")][0],
+            TOL,
+            "prose MayJun model AUC",
+        ),
+        (
+            r"fell to chance\*\* \(([0-9.]+), z=\+[0-9.]+\)",
+            derived[("JulAug", "model")][0],
+            TOL,
+            "prose JulAug model AUC",
+        ),
+        (
+            r"fell to chance\*\* \([0-9.]+, z=\+([0-9.]+)\)",
+            derived[("JulAug", "model")][1],
+            0.005,
+            "prose JulAug model z",
+        ),
+        (
+            r"stayed strong \(([0-9.]+), z=\+[0-9.]+\)",
+            derived[("JulAug", "market")][0],
+            TOL,
+            "prose JulAug market AUC",
+        ),
+        (
+            r"stayed strong \([0-9.]+, z=\+([0-9.]+)\)",
+            derived[("JulAug", "market")][1],
+            0.005,
+            "prose JulAug market z",
+        ),
+    ]
+    for pat, actual, tol, label in checks:
+        m = re.search(pat, text())
+        if not m:
+            fails.append(f"{label}: restatement not found in document")
+            continue
+        claimed = float(m.group(1))
+        if abs(actual - claimed) > tol:
+            fails.append(f"{label}: derived {actual:.4f} but prose says {claimed}")
+
+    # family drift percentages
+    fm = re.search(
+        r"KXHIGH ([0-9.]+)% -> ([0-9.]+)%, KXLOWT ([0-9.]+)% -> ([0-9.]+)%", text()
+    )
+    if not fm:
+        fails.append("family drift sentence: not found in document")
+    else:
+        tot: dict[str, int] = defaultdict(int)
+        cnt: dict[tuple, int] = defaultdict(int)
+        for m, _op, _mp, _y, _ct, tk in rows:
+            fam = "KXLOWT" if tk.startswith("KXLOWT") else "KXHIGH"
+            tot[per(m)] += 1
+            cnt[(per(m), fam)] += 1
+        for i, (fam, p_) in enumerate(
+            [
+                ("KXHIGH", "MayJun"),
+                ("KXHIGH", "JulAug"),
+                ("KXLOWT", "MayJun"),
+                ("KXLOWT", "JulAug"),
+            ]
+        ):
+            actual = 100 * cnt[(p_, fam)] / tot[p_]
+            claimed = float(fm.group(i + 1))
+            if abs(actual - claimed) > 0.05:
+                fails.append(f"family {fam}/{p_}: {actual:.1f}% doc says {claimed}%")
+    return fails
+
+
 CHECKS = {
     "--numbers": ("HANDOFF_NUMBERS_OK", check_numbers),
     "--commits": ("HANDOFF_COMMITS_OK", check_commits),
@@ -394,6 +635,8 @@ CHECKS = {
     "--contradictions": ("HANDOFF_NO_CONTRADICTIONS", check_contradictions),
     "--populations": ("HANDOFF_POPULATIONS_OK", check_populations),
     "--rederive": ("HANDOFF_REDERIVE_OK", check_rederive),
+    "--strata": ("HANDOFF_STRATA_OK", check_strata),
+    "--restatements": ("HANDOFF_RESTATEMENTS_OK", check_restatements),
 }
 
 

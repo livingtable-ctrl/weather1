@@ -241,3 +241,55 @@ is where the defect was.
  3. Claim coverage is unmeasured: nobody has counted what fraction of the
     document's assertions have any gate at all. The gated set was chosen by
     me, which is the same selection problem the document itself is about.
+
+
+## PASS 5 — claim coverage, measured by mutation, 2026-08-30
+
+Pass 4 recorded that claim coverage was unmeasured and that the gated set had
+been chosen by the same person who wrote the document. That is the selection
+problem the document itself is about, so it was measured rather than argued.
+
+METHOD (`.unlazy/coverage_handoff.py`): coverage is defined by MUTATION, not
+inspection. Perturb one number in the document, run the full oracle, and see
+whether anything fails. If nothing fails, that claim is ungated — the ledger
+would certify the document with that figure wrong. The doc is restored from an
+in-memory snapshot after every mutation and asserted byte-identical at the end.
+
+    FIRST MEASUREMENT:  43 / 310 gated  =  13.9%
+    AFTER THIS PASS:    90 / 310 gated  =  29.0%
+
+WHAT THE FIRST MEASUREMENT EXPOSED: the two findings added by the PREVIOUS
+hardening pass — the composition-drift table and the stratified AUC table —
+were entirely ungated, as was every z-value in the document including the
++2.46 that the headline rested on. A finding added without a gate is a finding
+the ledger will certify wrong.
+
+GATES ADDED:
+- `--strata` (HANDOFF_STRATA_OK): the composition table, the stratified AUC
+  table including its z column, and the pooled-AUC sentence with its z.
+- headline z column and the model difference-in-differences sentence, folded
+  into `--numbers`.
+- `--restatements` (HANDOFF_RESTATEMENTS_OK): prose that repeats a gated
+  figure must agree with a freshly derived value, plus the family-drift
+  percentages. This closes a failure mode the sweep revealed — editing only
+  the prose copy of a number left the ledger green while the document
+  contradicted itself.
+
+All 8 checks pass, all 9 mutants still die, G9 lint passes.
+
+### WHY 29% IS NOT A FAILING GRADE, AND WHY IT IS NOT A GOOD ONE EITHER
+Of the 220 still-ungated tokens, a large share are not claims: the constant
+`0.5` used to define the null, `0.50` in table headers, and figures that
+merely restate a gated table value in prose. The gates now cover every number
+the headline argument depends on. But the exact split between "prose" and
+"genuine ungated claim" HAS NOT BEEN COUNTED, so 29% is a floor on coverage
+and not a characterisation of what remains.
+
+### REMAINING, NOT DONE
+ 1. The prose/claim split in the 220 ungated tokens is uncounted (above).
+ 2. NON-numeric claims are entirely ungated. Every causal and eliminative
+    sentence — "the bug lost money", "EMOS was never active", "the defect is
+    downstream of the forecast" — has no oracle at all. Mutation coverage
+    measures arithmetic, not reasoning.
+ 3. The `between` stratum still has n=4 in the later period, so the one place
+    the model had skill cannot be compared across the boundary at all.
