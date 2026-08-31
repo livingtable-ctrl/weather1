@@ -62,34 +62,89 @@ contradiction — hedging toward 0.5 caps the penalty on every wrong answer.
 discrimination, not gaining skill.** The market's Brier improved faster
 (0.2250 -> 0.1978), so the gap widened throughout.
 
-## The prime suspect, NOT established
+## The window, pinned to two days
 
-`ae1d5bae`, 2026-06-27:
-`feat(emos): deploy EMOS calibration, disable T-scaling — fixes ensemble
-under-dispersion (REL=0.046)`
+Daily confidence, ensemble only, temperature ladders. `our_prob` values are
+shown because the step is more obvious in the raw numbers than in the mean:
 
-It lands exactly in the June -> July gap. Fixing under-dispersion widens the
-predictive distribution, and a wider distribution pushes probabilities toward
-0.5. Mechanism and timing both match. The irony to keep in view: correcting
-under-dispersion is a legitimate fix for a real defect, and it may have
-destroyed the model's usefulness by over-correcting — better reliability,
-no discrimination.
+| date | n | conf | our_prob values |
+|------|---|------|-----------------|
+| 2026-06-28 | 3 | 0.3483 | 0.898, 0.946, 0.701 |
+| 2026-06-29 | 2 | 0.3674 | 0.031, 0.234 |
+| 2026-06-30 | 2 | **0.4623** | 0.038, **0.963** |
+| 2026-07-02 | 6 | **0.0742** | 0.336, 0.578, 0.367, 0.523, ... |
+| 2026-07-03 | 1 | 0.1610 | 0.339 |
+| 2026-07-05 | 6 | 0.0722 | 0.558, 0.492, 0.798, 0.554, ... |
 
-**Check this before building on it:** the backlog carries
-`[PARTIALLY RESOLVED] EMOS CALIBRATION STAYS DISABLED UNTIL THE
-ens_var-POPULATED TRAINING SET CLEARS 40 ROWS`. If EMOS is gated off, it
-CANNOT be the cause and this whole hypothesis dies. Verify whether EMOS is
-actually live on the path that produced these rows before spending time on it.
+Last extreme prediction: **2026-06-30 03:34:15** (`our_prob` 0.963).
+First flat prediction: **2026-07-02 19:07:45** (`our_prob` 0.336).
+It never recovers. This is a step change, not a drift.
 
-Other commits in the window, none yet examined:
-- `4ccbeb28` 2026-07-12 Restore climate-derived sigma
-- `5a3d80b3` 2026-07-07 Fix ECMWF silently dropped from daily forecast
-- `38c64aef` 2026-06-28 regime-specific blend weights, auto-activation at 30
-- `8337b87f` 2026-06-27 exclude ensemble from blend when circuit breaker OPEN
-- `da935c62` 2026-06-24 prevent condition weight overfitting
+**There are ZERO commits between those two timestamps.** `git log --since
+'2026-06-30 03:34' --until '2026-07-02 20:00'` is empty. That is the single
+most useful fact here: whatever changed was **data, configuration, external
+input, or accumulated state — not code**.
 
-`8337b87f` deserves attention alongside EMOS: if the circuit breaker is open,
-the ensemble is excluded from the blend, which would also flatten output.
+## Suspects ELIMINATED, with the evidence
+
+Each of these was a leading hypothesis and each is dead. Do not re-open one
+without new evidence; the reasoning is recorded so the work is not repeated.
+
+1. **`ae1d5bae` (2026-06-27) EMOS deployment — "fixes ensemble
+   under-dispersion".** Was the prime suspect: right era, and widening a
+   distribution is exactly the mechanism that flattens probabilities.
+   ELIMINATED TWICE. (a) Confidence hit its series MAXIMUM on Jun 28/29/30,
+   the three days AFTER the commit. (b) EMOS is gated behind a 40-row
+   `ens_var` training set; cumulative `ens_var`-populated rows crossed 40 on
+   **2026-07-05**, three days AFTER the collapse had already begun.
+2. **`d5a6440f` (2026-06-30 00:46) pricing field fix
+   (`yes_bid_dollars`/`yes_ask_dollars`).** ELIMINATED: the 02:13 and 03:34
+   predictions later that same morning were still extreme (0.038, 0.963).
+3. **`TRADING_PAUSED` / shadow-mode selection.** Trading was paused
+   2026-07-01 to 2026-07-31 for travel, which matches the onset almost
+   exactly, and the obvious story is that paused mode logs marginal
+   predictions that live mode filters out. ELIMINATED: August ran with
+   `is_shadow = 0` (71 of 78 rows, trading resumed) and confidence STAYED
+   collapsed at 0.0700. The effect outlived the pause.
+   Monthly: May `is_shadow=0` conf 0.2333 | Jun `0` 0.1958 |
+   Jul `1` 0.0739 | Aug `0` **0.0700**.
+4. **Loss of the `obs` component from the blend.** Looked compelling on a
+   day-by-day read: high-confidence days carry `{"obs": 0.87, ...}` and flat
+   days carry `{"ensemble": .., "gaussian": .., "climatology": ..}`.
+   ELIMINATED by the aggregate, which points the other way — blends
+   CONTAINING obs have LOWER mean confidence (0.1135, n=88) than blends
+   without it (0.1425, n=137), and the share of predictions carrying obs
+   ROSE across the collapse: May 0%, Jun 43.2%, **Jul 62.5%**, Aug 45.9%.
+   A warning attached to this one: it was called a confirmed finding on the
+   strength of a hand-read of ~15 days at n=1-6 per day, before the aggregate
+   was computed. That is the same error that produced two other retractions
+   in this project on the same day.
+
+## Still open, none examined
+
+- **`5a3d80b3` (2026-07-07) "Fix ECMWF silently dropped from daily
+  forecast".** This is a FIX, so the defect it repairs predates it. If ECMWF
+  was silently dropping out from around Jul 1, the blend lost a member — a
+  plausible flattening mechanism with no commit at the onset, which fits the
+  empty-window constraint. **Best remaining lead.** Find when the bug was
+  introduced, not when it was fixed.
+- **`38c64aef` (2026-06-28) regime blend weights, auto-activation at 30
+  settled trades**, and **`2356f77e` PDO/PNA auto-activation at 20 west-coast
+  settled trades.** Auto-activating features change behaviour with no commit
+  at the moment of change, which is exactly the signature here. Find the
+  settled-trade counts as a function of date and see whether either crossed
+  on Jul 1-2. Note this is the SAME reasoning that made EMOS attractive, and
+  EMOS died on its dates — so check the dates FIRST.
+- **`learned_weights.json`** may have been refit during the pause and stuck.
+  It has file history (`4c9a51fa` added `atomic_write_json_with_history`
+  keeping the last 10 states) — read the history and look for a Jul 1-2 write.
+- **External data change.** No commit is required for Open-Meteo to change a
+  model, or for a source to start returning wider spreads. Unfalsifiable from
+  the repo alone, but `ensemble_spread_f` and `ens_var` are stored per row and
+  can be trended across the boundary.
+- **Population / market-composition drift.** Whether Jul/Aug scanned the same
+  cities and ladder widths as May/Jun is unchecked. Wider brackets alone
+  flatten probabilities.
 
 ## What is NOT established
 
@@ -124,6 +179,15 @@ Known traps in this database, each of which has cost a run:
   06:00Z central, 07:00Z mountain, 08:00Z pacific) — not 00:00 UTC. See the
   close_time entry at the top of `backlog.txt`.
 - Open the DB read-only: `sqlite3.connect("file:...?mode=ro", uri=True)`.
+
+## What the deeper commit research actually produced
+
+Elimination, not identification. Four leading suspects are dead on dates or
+on aggregates, and the window is pinned to a 2-day gap containing no commits
+at all. That empty window is the finding: it redirects the search away from
+the commit log entirely and toward accumulated state, config, and external
+inputs. A new session should start from the "still open" list above and NOT
+re-derive the eliminated four.
 
 ## Why this matters more than it looks
 
