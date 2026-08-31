@@ -342,3 +342,63 @@ and it is exactly the kind of judgement this pass just caught me getting wrong.
  3. NON-numeric claims remain entirely ungated. Every causal and eliminative
     sentence has no oracle. This is the largest hole and mutation coverage
     cannot reach it.
+
+
+## PASS 7 — the three remaining items, discharged, 2026-08-30
+
+All three of pass 6's NOT DONE entries are closed. New module
+`.unlazy/audit_handoff_ext.py`; the oracle now has 12 checks and runs in 0.94s.
+
+### (1) The 150 genuine ungated numeric claims -> `--tables`
+Gating figures one at a time does not scale; `check_tables` derives WHOLE
+tables instead — the forecast-error mean/p90 columns, the our_prob-vs-raw_prob
+magnitude table, the n_members August detail, and the temperature_scale
+history snapshots read back off disk.
+
+### (2) The bootstrap CI -> `--bootstrap`
+Was gateable but "too slow at ~30s". That was an implementation problem, not a
+fact: the O(n^2) AUC was replaced with a rank-based Mann-Whitney form, so 2000
+cluster resamples now run inside a 0.94s full-suite pass. The gate reproduces
+the observed DiD, the CI bounds, AND asserts the CI still includes zero — so
+if the data ever moves enough to make the divergence significant, the gate
+fails and forces the document to be rewritten rather than quietly going stale.
+
+### (3) Non-numeric claims -> `--assertions`  ** the interesting one **
+Pass 6 called this unreachable by mutation coverage. It is unreachable by
+MUTATION, but not ungateable: every causal and eliminative sentence has a truth
+condition, and writing it down makes it testable. Ten claims are now gated,
+each requiring BOTH that the document still makes the claim AND that the data
+supports it — a claim silently deleted fails the gate just as a refuted one
+does. Covered: EMOS was never active; the forecast halved its error; AUC is
+calibration-invariant; compression leaves accuracy unchanged; the market did
+not fall in any stratum; the model never discriminated on `below`; the
+raw_prob deltas are rounding noise; July n_members is single-valued; `between`
+is unmeasurably small later; the fitter reads `our_prob`.
+
+### THE GATE IMMEDIATELY EARNED ITSELF
+Writing the AUC-invariance claim as an executable assertion REFUTED the
+document's wording. The invariance is exact in real arithmetic and exact in
+float64 at most temperatures (delta 0.0 at T=2 and T=10) but NOT all: at
+T=4.6 three of 303 distinct stored probabilities round together, creating ties
+worth 3.4e-05 of AUC. The claim survives at that magnitude; the word "EXACTLY"
+does not. Recorded in the document as a precision caveat. **A qualitative
+claim that had been asserted three times in this session, and stated as
+"by construction", was wrong in its literal form the first time it was
+executed.**
+
+### MEASURED
+    coverage    121 / 314 gated = 38.5%   (was 100/310 = 32.3%)
+    ungated     PROSE 4 (2.1%) | RESTATED 60 (31.1%) | GENUINE 129 (66.8%)
+    genuine-claim coverage = 121 / 250 = 48.4%   (was 35.3%)
+All 12 checks pass, all 9 mutants still die, G9 lint passes.
+
+### REMAINING, NOT DONE
+ 1. 129 genuine ungated numeric claims remain. The count is falling
+    (165 -> 150 -> 129) but table-level gating has taken the cheap wins.
+ 2. `--tables` skips rows whose formatting does not match its patterns
+    (scientific-notation cells, untabulated snapshots) via `continue`. Those
+    silent skips are not counted or reported, so the gate's own coverage of
+    the tables it claims is unmeasured.
+ 3. The assertion list was written by me from my own document. A claim I never
+    thought to gate is still ungated, and nothing measures that omission — the
+    same selection problem, one level up.

@@ -700,7 +700,22 @@ CHECKS = {
 }
 
 
+def _load_extensions() -> None:
+    """Register the extended gates.
+
+    Imported inside main() rather than at module scope: running this file as a
+    script makes it __main__, so a module-level import of the sibling would
+    re-import this file under its real name and hit a half-initialised module,
+    printing a spurious warning while everything actually worked.
+    """
+    from audit_handoff_ext import EXT_CHECKS
+
+    CHECKS.update(EXT_CHECKS)
+
+
 def main() -> int:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    _load_extensions()
     args = sys.argv[1:] or ["--all"]
     todo = list(CHECKS) if args == ["--all"] else args
     bad = 0

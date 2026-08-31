@@ -46,6 +46,14 @@ Pooled model AUC 0.6178 (n=341, z=+3.89); pooled market 0.7049 (z=+7.31).
    settled rows only averages a working model together with a broken one,
    which is what every May-August aggregate in this project silently does.
 4. **It cannot be calibration.** AUC is calibration-invariant by construction.
+   ONE PRECISION CAVEAT, found by gating this claim rather than asserting it:
+   the invariance is exact in real arithmetic and exact in float64 at most
+   temperatures — delta 0.0 at T=2 and T=10 on this corpus — but NOT at every
+   T. At T=4.6, three of the 303 distinct stored probabilities round together
+   under the transform, creating ties worth **3.4e-05** of AUC. The argument
+   is unaffected at that magnitude; the word "EXACTLY" is not literally true
+   in floating point, and the gate for this claim uses a 1e-3 tolerance rather
+   than 0 for that reason.
    Any explanation involving T, EMOS, Platt or blend weights is ruled out on
    mathematics, not on evidence.
 
