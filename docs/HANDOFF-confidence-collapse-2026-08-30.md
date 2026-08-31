@@ -12,7 +12,83 @@ against all logic."
 The logic is sound. The premise was subtly wrong, and finding out why exposed
 something larger.
 
-## Finding 1 — the calibration layer is a no-op, so it cannot be the cause
+## RETRACTED: "Finding 1 — the calibration layer is a no-op"
+
+**The reasoning below is unsound and the conclusion is withdrawn.** It is kept
+because the numbers are real and the error is instructive.
+
+`raw_prob` IS NOT THE PRE-CALIBRATION PROBABILITY. It is reconstructed as
+`raw_prob = round(forecast_prob + bias_correction, 6)` — see
+`weather_markets.py:18614` and the comment at `weather_markets.py:15495`
+citing `tracker.py:1528`, and `tests/test_tracker.py:1449` which states the
+relation outright. So `our_prob ≈ raw_prob` demonstrates only that
+**`bias_correction` is approximately zero**. It says NOTHING about whether
+temperature scaling, Platt, or blend calibration ran.
+
+Measured magnitude of `|our_prob - raw_prob|`, ensemble, temperature ladders:
+
+| month | n | median | mean | max | rows > 0.01 |
+|-------|---|--------|------|-----|-------------|
+| 2026-05 | 51 | 2.4e-7 | 0.0049 | 0.1231 | 2 |
+| 2026-06 | 48 | 2.0e-7 | 2.1e-7 | 4.9e-7 | 0 |
+| 2026-07 | 57 | 2.4e-7 | 2.4e-7 | 5.0e-7 | 0 |
+| 2026-08 | 78 | 3.1e-7 | 0.0010 | 0.0776 | 1 |
+
+The medians are rounding noise from that `round(..., 6)`. **So the question
+"is calibration degrading the model" is OPEN, not answered.** Two narrower
+claims do survive and should not be over-read: `data/analysis_calibration.json`
+is an untrained identity map, and `forecast_prob == forecast_prob_precal` to
+0.0 on all 40 `analysis_attempts` rows carrying both. Both concern the ml_bias
+section-9c stage ONLY. Neither covers temperature scaling.
+
+## THE LEADING HYPOTHESIS: temperature scaling fits T on its own output
+
+This is a filed, known code defect, not a new conjecture. `backlog.txt` ~L47711:
+
+> train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT, AND _fit_T's
+> LOWER BOUND CANNOT EXPRESS THE CORRECTION THE UNBIASED DATA ASKS FOR
+
+Its own priority note records that batch-87 froze `global/above/below/between`
+while a real analysis calibration exists — **"but the freeze lifts the moment
+that fit declines, and sameday/hourly were never frozen and are not covered by
+either half below."**
+
+Current `data/temperature_scale.json`: `sameday` **T = 3.8294** (n=102),
+`global` T = 4.6013 (n=68), `above` T = 1.2739 (n=44). Most predictions in
+this corpus are same-day, and same-day is the key that was never frozen.
+
+MECHANISM, which is a genuine positive feedback loop: T divides the logit, so
+a large T flattens output toward 0.5. If the next fit trains on that flattened
+output, it sees a model that discriminates poorly, and asks for MORE
+flattening. T ratchets up, confidence ratchets down, and it never recovers —
+which matches the observed series, where confidence fell and stayed fallen.
+A T near 4-5 is not a plausible correction for a sane forecaster; it is what a
+fitter emits when it is being fed its own damage.
+
+WHY THIS ALSO ANSWERS THE ORIGINAL OBJECTION. "A model cannot get worse from
+being calibrated" is correct for calibration fitted on independent data. It is
+FALSE for a calibrator fitted on its own prior output — that is not
+calibration, it is a feedback loop, and it degrades monotonically. The
+objection was right and it correctly identified that something was structurally
+wrong.
+
+WHAT MUST BE CHECKED BEFORE ACCEPTING THIS — it is a hypothesis:
+1. **Is T actually applied to these rows?** Find where T is applied relative
+   to the `forecast_prob` write. If T-scaling sits upstream of the stored
+   probability, it is live; if the same-day path never calls it, this dies.
+2. **What was `sameday` T during July?** `data/.history/` retains only the
+   last 10 snapshots and the oldest is 2026-08-01T20:35 (T=1.0, n=0), so July
+   is NOT recoverable there. Look for another source or reconstruct from the
+   fit's own inputs.
+3. **The Aug-01 snapshot shows T=1.0 with n=0**, meaning T-scaling was inert
+   at that instant — which does not fit a July collapse caused by T. Either
+   the collapse has a different July cause and T sustains it from August, or
+   the July `sameday` key was non-1.0 while `global` was not. RESOLVE THIS.
+   It is the strongest evidence AGAINST the hypothesis.
+4. There is still **no confidence step at 2026-08-02** when global T went
+   1.0 -> 6.41. Explain that before accepting T as the mechanism.
+
+## Superseded: the original Finding 1 numbers
 
 `predictions`, `method='ensemble'`, joined to `outcomes_valid`, temperature
 ladders only. `conf` is mean `|p - 0.5|`:
@@ -25,7 +101,9 @@ ladders only. `conf` is mean `|p - 0.5|`:
 | 2026-08 | 70 | 0.0775 | 0.0775 | 80.0% |
 
 `our_prob` equals `raw_prob` from June onward. Post-calibration IS
-pre-calibration. Three independent confirmations of the same fact:
+pre-calibration. Three confirmations — note (1) and (3) are the same fact
+measured on two different tables rather than independent evidence, and (2) is
+the mechanism that explains both:
 
 1. The column equality above.
 2. `data/analysis_calibration.json` is
@@ -93,21 +171,49 @@ without new evidence; the reasoning is recorded so the work is not repeated.
 1. **`ae1d5bae` (2026-06-27) EMOS deployment — "fixes ensemble
    under-dispersion".** Was the prime suspect: right era, and widening a
    distribution is exactly the mechanism that flattens probabilities.
-   ELIMINATED TWICE. (a) Confidence hit its series MAXIMUM on Jun 28/29/30,
-   the three days AFTER the commit. (b) EMOS is gated behind a 40-row
-   `ens_var` training set; cumulative `ens_var`-populated rows crossed 40 on
-   **2026-07-05**, three days AFTER the collapse had already begun.
+   ELIMINATED, but read the correction below before trusting the reason.
+   (a) Confidence hit its series MAXIMUM on Jun 28/29/30, the three days
+   AFTER the commit. NOTE this rests on **7 rows total** (3+2+2) — it is
+   suggestive, not decisive on its own.
+   (b) **EMOS WAS NEVER ACTIVE.** `data/emos_params.json` does not exist —
+   verified 2026-08-30, there is no `emos`-named file in `data/` at all.
+   Activation requires an explicit `py main.py emos-train --activate`; it
+   does not auto-enable, and `cron.py:2202` only ever prints a readiness
+   REMINDER "until emos_params.json exists (training done)". A method that
+   never ran cannot have flattened anything. **This is the load-bearing
+   reason; (a) is corroboration.**
+   ONE CAVEAT ON THE SOURCE: the backlog entry describes EMOS as "caught
+   and deliberately reverted the same session" and names an artefact
+   `data/emos_params.json.premature_do_not_use_20260704`. That FILE DOES
+   NOT EXIST on disk today. An earlier version of this paragraph cited it
+   as present, having copied it out of the backlog without checking. The
+   absence of `emos_params.json` is verified and sufficient; the reverted-
+   artefact story is backlog testimony and is not independently confirmed.
+   CORRECTION TO AN EARLIER DRAFT OF THIS FILE: it eliminated EMOS by
+   claiming the 40-row gate crossed on 2026-07-05, after the collapse. That
+   used the wrong column. `_EMOS_TRAIN_GATE = 40` at `cron.py:2218` counts
+   **`ens_mean`** rows, not `ens_var`; cumulative `ens_mean` rows crossed 40
+   on **2026-06-28**, i.e. BEFORE the collapse. Had EMOS been active, that
+   timing would have made it MORE plausible, not less. The elimination
+   survives only because EMOS never activated.
 2. **`d5a6440f` (2026-06-30 00:46) pricing field fix
    (`yes_bid_dollars`/`yes_ask_dollars`).** ELIMINATED: the 02:13 and 03:34
    predictions later that same morning were still extreme (0.038, 0.963).
 3. **`TRADING_PAUSED` / shadow-mode selection.** Trading was paused
    2026-07-01 to 2026-07-31 for travel, which matches the onset almost
    exactly, and the obvious story is that paused mode logs marginal
-   predictions that live mode filters out. ELIMINATED: August ran with
-   `is_shadow = 0` (71 of 78 rows, trading resumed) and confidence STAYED
-   collapsed at 0.0700. The effect outlived the pause.
+   predictions that live mode filters out. **WEAKENED, NOT ELIMINATED** —
+   an earlier draft of this file called it eliminated and the argument does
+   not hold as stated. The evidence: August ran with `is_shadow = 0` (71 of
+   78 rows, trading resumed) and confidence STAYED collapsed at 0.0700, so
+   the effect outlived the pause.
    Monthly: May `is_shadow=0` conf 0.2333 | Jun `0` 0.1958 |
    Jul `1` 0.0739 | Aug `0` **0.0700**.
+   WHY THAT IS NOT CONCLUSIVE: it assumes nothing else sustains the
+   flatness in August. Something else plausibly does — see the temperature
+   scaling section below — and a pause can also strand persistent state
+   rather than reverting cleanly when the flag clears. Treat this as the
+   best-supported remaining hypothesis for the JULY onset, not as dead.
 4. **Loss of the `obs` component from the blend.** Looked compelling on a
    day-by-day read: high-confidence days carry `{"obs": 0.87, ...}` and flat
    days carry `{"ensemble": .., "gaussian": .., "climatology": ..}`.
@@ -115,6 +221,10 @@ without new evidence; the reasoning is recorded so the work is not repeated.
    CONTAINING obs have LOWER mean confidence (0.1135, n=88) than blends
    without it (0.1425, n=137), and the share of predictions carrying obs
    ROSE across the collapse: May 0%, Jun 43.2%, **Jul 62.5%**, Aug 45.9%.
+   POPULATION NOTE: this analysis requires `blend_sources IS NOT NULL`, so
+   its June n is **44**, not the 48 in the headline table above. Same month,
+   different filter. Verified: June ensemble rows are 48 both unjoined and
+   joined to settled outcomes, and 44 with `blend_sources` populated.
    A warning attached to this one: it was called a confirmed finding on the
    strength of a hand-read of ~15 days at n=1-6 per day, before the aggregate
    was computed. That is the same error that produced two other retractions
@@ -151,14 +261,14 @@ without new evidence; the reasoning is recorded so the work is not repeated.
 - **n is small.** 48 rows in June against 56 in July. A confidence shift this
   large is unlikely to be noise, but the monthly Brier differences are not
   individually significant.
-- **Timing is not causation.** Five commits land in that window. The EMOS one
-  merely has the best mechanism story.
-- **Seasonality is unexamined.** July/August temperature spreads differ from
-  May/June. A widening ensemble spread could be physical rather than a code
-  change. Rule this out before blaming a commit.
-- **Population drift is unexamined.** Whether July/August scanned the same
-  cities and ladder types as May/June has not been checked. It should be — a
-  shift toward wider brackets alone would flatten probabilities.
+- **No cause has been identified.** Four hypotheses were tested and none
+  survived as the explanation. The window contains no commits. This document
+  narrows the search; it does not answer it.
+- **The eliminations rest on small n.** The EMOS timing argument uses 7 rows.
+  The daily table runs n=1-6 per day. Only the monthly aggregates and the
+  step itself are on firmer ground.
+- Seasonality and population drift are unexamined; both are listed under
+  "still open" above rather than repeated here.
 
 ## How to re-derive
 
@@ -189,6 +299,64 @@ the commit log entirely and toward accumulated state, config, and external
 inputs. A new session should start from the "still open" list above and NOT
 re-derive the eliminated four.
 
+## Temperature scaling: a second, separate mechanism — and a trap
+
+This was missed entirely by the first two drafts and it changes how the
+May-August series should be read.
+
+`ae1d5bae` did not only deploy EMOS. Per the backlog entry "EMOS CALIBRATION
+STAYS DISABLED...", that same commit **reset `temperature_scale.json`'s T to
+1.0 (identity) across the board** as a handoff to EMOS — and EMOS was then
+reverted. So from 2026-06-27 there was NO temperature scaling and NO EMOS:
+that is the mechanical explanation for Finding 1's `our_prob == raw_prob`.
+
+Then temperature scaling came back, hard, and NOT during July:
+
+| snapshot | global T | n | sameday T |
+|----------|----------|---|-----------|
+| 2026-08-01T20:35 | **1.0** | 0 | 1.0 |
+| 2026-08-02T02:56 | **6.4136** | 53 | — |
+| 2026-08-03T16:02 | 5.3570 | 62 | — |
+| current (`data/temperature_scale.json`) | **4.6013** | 68 | 3.8294 |
+
+A T near 5 divides logits by 5 and crushes probabilities toward 0.5. So there
+are potentially **two different regimes**, not one phenomenon:
+- **July**: T = 1.0, EMOS never active, no calibration at all — yet
+  probabilities are flat. Cause UNKNOWN.
+- **August**: T = 4.6-6.4 is live and is a sufficient mechanism for flatness
+  on its own.
+
+TWO CONSTRAINTS THAT COMPLICATE THIS, both measured, both to be respected:
+1. **There is no confidence step at 2026-08-02.** Daily confidence is already
+   ~0.03-0.10 in late July and stays ~0.04-0.14 through August. If T-scaling
+   were newly crushing the output, a step should be visible and is not.
+2. **`our_prob` still equals `raw_prob` through August**, so whatever
+   T-scaling does, it is NOT applied between those two stored columns. Either
+   it is upstream of where `raw_prob` is captured, or it is not reaching this
+   path. **Resolve this before building on the T-scaling story** — find where
+   T is applied relative to the `raw_prob` write.
+
+THE TRAP FOR THE NEXT SESSION: because August has its own candidate
+mechanism, "the flatness persisted into August" is NOT by itself proof that a
+July-specific cause (such as the trading pause) is innocent. An earlier draft
+of this file made exactly that inference and it has been downgraded above.
+
+WHAT CANNOT BE RECOVERED: `data/.history/` keeps only the last 10 snapshots
+per file, and the oldest surviving `temperature_scale_*` is
+**2026-08-01T20:35**. July's values have rotated out. Do not spend time
+hunting for them there.
+
+## Already-filed related work — read before starting
+
+The backlog entry "EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED
+TRAINING SET CLEARS 40 ROWS" (`backlog.txt` ~L9854) documents a Brier
+degradation found 2026-07-31 — two consecutive weeks over the P10.3 alert
+threshold at **0.2329 and 0.2804**. That is very likely the same event this
+document is chasing, observed from the alerting side seven weeks earlier. Its
+2026-08-18 and 2026-08-22 updates also record that the real EMOS go-live bar
+was raised to ~80 rows (not 40), and that a live re-check on 2026-08-22 found
+56. Start there rather than re-deriving it.
+
 ## Why this matters more than it looks
 
 The stated no-edge conclusion for this project rests on the model having been
@@ -198,7 +366,9 @@ generated by a crippled model, and every aggregate spanning May-August mixes
 two different systems. That does not resurrect the forecasting thesis on its
 own — the model never beat the market in ANY month, including May and June
 when it was confident — but it does mean the *magnitude* of the deficit is
-not trustworthy, and any future re-measurement must split at 2026-06-27.
+not trustworthy, and any future re-measurement must split at the step itself,
+between 2026-06-30 and 2026-07-02 — NOT at the 2026-06-27 EMOS commit, which
+an earlier draft of this file wrongly named as the boundary.
 
 The one conclusion that survives regardless: **`edge` is negative in every
 month, before and after the collapse.** The model has never beaten the market
