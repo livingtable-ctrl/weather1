@@ -78,7 +78,7 @@ def check_numbers() -> list[str]:
     rows = _core_rows()
 
     # --- the headline AUC table ---------------------------------------------
-    g = defaultdict(lambda: defaultdict(list))
+    g: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for m, op, mp, y, _tk in rows:
         per = "MayJun" if m in ("2026-05", "2026-06") else "JulAug"
         g[per]["model"].append((op, float(y)))
@@ -115,7 +115,7 @@ def check_numbers() -> list[str]:
     ):
         a, n1, n0 = _auc(bym[m])
         if n1 + n0 != wn:
-            fails.append(f"monthly AUC {m}: n={n1+n0} doc says {wn}")
+            fails.append(f"monthly AUC {m}: n={n1 + n0} doc says {wn}")
         if a is None or abs(a - wa) > TOL:
             fails.append(f"monthly AUC {m}: {a} doc says {wa}")
 
@@ -153,7 +153,7 @@ def check_numbers() -> list[str]:
     if isinstance(pt, dict):
         pt = list(pt.values())
     traded = {r["ticker"] for r in pt if r.get("ticker")}
-    share = defaultdict(lambda: [0, 0])
+    share: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     tg = defaultdict(list)
     for m, op, mp, y, tk in rows:
         share[m][0] += 1
@@ -178,7 +178,7 @@ def check_numbers() -> list[str]:
     ):
         a, n1, n0 = _auc(tg[key])
         if n1 + n0 != wn:
-            fails.append(f"traded-subset AUC {key}: n={n1+n0} doc says {wn}")
+            fails.append(f"traded-subset AUC {key}: n={n1 + n0} doc says {wn}")
         if a is None or abs(a - wa) > TOL:
             fails.append(f"traded-subset AUC {key}: {a} doc says {wa}")
 
@@ -215,10 +215,14 @@ def check_numbers() -> list[str]:
 
 def check_commits() -> list[str]:
     fails = []
-    for h, date in re.findall(r"`([0-9a-f]{7,8})`[^\n]*?\((\d{4}-\d{2}-\d{2})\)", text()):
+    for h, date in re.findall(
+        r"`([0-9a-f]{7,8})`[^\n]*?\((\d{4}-\d{2}-\d{2})\)", text()
+    ):
         r = subprocess.run(
             ["git", "log", "-1", "--format=%ad", "--date=short", h],
-            cwd=ROOT, capture_output=True, text=True,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
         )
         if r.returncode != 0:
             fails.append(f"commit {h}: does not exist")
@@ -252,7 +256,10 @@ STALE = [
     ("THE LEADING HYPOTHESIS: temperature scaling", "AUC is calibration-invariant"),
     ("ratcheting T-scaling defect", "the ratchet was retracted"),
     ("now confirmed with data", "the ratchet was retracted"),
-    ("That explains the accuracy drop", "compression is monotone; accuracy is invariant"),
+    (
+        "That explains the accuracy drop",
+        "compression is monotone; accuracy is invariant",
+    ),
     ("So no calibration stage is degrading anything", "Finding 1 was retracted"),
 ]
 
