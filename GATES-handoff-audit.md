@@ -569,3 +569,68 @@ accident.
  3. The evidence half of every prose gate is untested by mutation (above).
  4. `prose_coverage.py`'s claim-detection regexes remain mine. Unchanged and
     unresolvable from inside.
+
+
+## PASS 11 — third 20-pass audit, 2026-08-30
+
+Lenses: 14 gates; numeric mutants; prose anchors; both coverage tools;
+document size; reading order; flat-assertion scan; severity language;
+dependent sections; citation EXISTENCE; citation CONTENT; duplication;
+markdown validity; self-containment; backlog cross-check; still-open
+currency; tooling references; mutation revalidation; final coverage;
+final re-run.
+
+10 ISSUES FOUND. The automated suite was green throughout — every one of
+these was found by reading, which is the honest measure of what the gates
+still do not cover.
+
+### THE WORST ONE: reading order
+The headline table's summary line read "**z = +2.46 — SIGNIFICANT**" in bold,
+and the qualification that withdraws it sat **54 lines below**. A stranger
+skimming the lead would take away the exact opposite of the title. Fixed with
+a blockquote warning ABOVE the table and an inline qualification on the bullet
+itself. **A document whose title contradicts its own headline table is worse
+than one with no title.**
+
+### Sections still written as if the finding held
+- "The actual finding is a loss of DISCRIMINATION" -> "suspected".
+- The AUC framing said the metric cannot be a calibration artefact but never
+  said it CAN be a composition artefact — which it largely is.
+- "then lost the ranking ability that made that possible" -> marked as a
+  STORY, not a finding.
+- "roughly half the settled corpus was produced by a model with no
+  discrimination" and "the Jul-Aug half is measuring a bug" -> both assert the
+  unestablished finding; rewritten to the defensible version.
+- "Still open" called the ECMWF lead **"Best remaining lead"** while a later
+  section refuted it with n_members and forecast error. Downgraded, with the
+  contradiction named.
+
+### A CITATION WAS SIMPLY WRONG, AND THE GATE COULD NOT SEE IT
+The document cited `tracker.py:1528` for the `raw_prob` assignment. That line
+concerns an unrelated MECHANISM column; the assignment is at **1630**. The
+`--citations` gate passed because it only checked that the line EXISTS.
+Upgraded to check CONTENT for named citations — and the upgrade immediately
+caught a second error, my own expectation of `ml_bias.py:906` (real line 907).
+
+The stale number propagates through THREE places: the backlog entry "THE
+HOURLY PATH PUBLISHES A degF TEMPERATURE INTO bias_correction"
+(`backlog.txt` ~L2175), the comment at `weather_markets.py:15495`, and this
+document. Nothing checked any of them. Recorded in the document so a fix
+covers all three.
+
+### MEASURED AFTER
+    14 gates pass | 9 numeric mutants die | 30 prose anchors die | lint clean
+    numeric coverage 128/331 = 38.7%
+    prose coverage    31/100 = 31.0%   (was 33.3%)
+
+Note the prose percentage FELL while the document improved. Fixing a claim
+adds prose, and new prose is ungated by construction. **Coverage percentage is
+not a quality score** — it moves whenever the denominator does, and chasing it
+would penalise exactly the corrections this pass made.
+
+### REMAINING, NOT DONE
+ 1. 55 evidential prose sentences and 203 numeric tokens ungated.
+ 2. Citation CONTENT is checked for 5 named citations only; the rest are
+    existence-only and could be as wrong as tracker.py:1528 was.
+ 3. The stale citation in backlog.txt and weather_markets.py is recorded but
+    NOT fixed — it is outside this document's scope and needs its own change.

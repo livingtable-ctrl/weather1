@@ -9,15 +9,25 @@ figures were carried forward instead of recomputed.
 
 ## THE HEADLINE — read this before anything else
 
+> **READ THIS PARAGRAPH BEFORE THE TABLE BELOW.** The table's own summary line
+> says "z = +2.46 — SIGNIFICANT". That figure is POOLED and it is CONFOUNDED;
+> the qualification section further down withdraws it, and a
+> difference-in-differences bootstrap returns **p about 0.21**. Nothing in this
+> document establishes that the model broke. The table is kept because the
+> numbers are real; the inference from it is not.
+
 Everything below this section was written while chasing a *confidence*
 collapse. That framing is subordinate to this one and is kept only because the
-eliminations in it are still valid work. **The actual finding is a loss of
-DISCRIMINATION**, which is a different and much more serious thing.
+eliminations in it are still valid work. **The suspected finding is a loss of
+DISCRIMINATION** — a different and more serious thing than a calibration
+problem, IF it is real.
 
 AUC — the probability the model ranks a random YES above a random NO. 0.50 is
 no signal. **AUC is invariant under temperature scaling** (a strictly
 increasing map fixing 0.5), so unlike every other metric in this document it
 cannot be an artefact of the calibration argument that occupies the rest of it.
+It CAN, however, be an artefact of which markets were scanned — and it largely
+is. See the composition qualification below before drawing any conclusion.
 
 | period | who | n | AUC | SE | z vs 0.50 |
 |--------|-----|---|-----|----|-----------|
@@ -26,7 +36,11 @@ cannot be an artefact of the calibration argument that occupies the rest of it.
 | Jul-Aug | **model** | 143 | **0.5321** | 0.0484 | **+0.66** |
 | Jul-Aug | market | 143 | 0.7271 | 0.0424 | +5.35 |
 
-- model, MayJun - JulAug = **+0.1507**, SE 0.0613, **z = +2.46 — SIGNIFICANT**
+- model, MayJun - JulAug = **+0.1507**, SE 0.0613, z = +2.46
+  — nominally significant, **BUT CONFOUNDED: see the composition
+  qualification. The `between` share falls from 55.6% to 2.8% across this
+  boundary, and within-stratum the same drop is z about 1.27, NOT
+  significant.**
 - market, MayJun - JulAug = -0.0418, SE 0.0567, z = -0.74 — not significant
 
 Monthly: May 0.6215 (n=51) | Jun 0.6973 (147) | Jul 0.5497 (69) | Aug 0.5085 (74).
@@ -70,15 +84,26 @@ In May-June the model matched the market on RANKING (AUC) while losing on
 Brier (edge -0.0459 May, -0.0240 Jun). Equal discrimination, worse
 calibration — which is the *fixable* combination, and precisely what a
 temperature around 5 addresses. On this reading the model was close to parity
-in June, and then lost the ranking ability that made that possible.
+in June and then lost the ranking ability that made that possible.
+**This paragraph is a STORY, not a finding.** It is what the numbers would
+mean if the drop were real; the drop is not established, and the May-June half
+of it is itself weighted by `between` markets that vanish later.
 
 ### What it does to the project's no-edge conclusion
 
 It does not overturn it — the model never beat the market on Brier in ANY
-month, including May and June. But it damages the evidence: roughly half the
-settled corpus was produced by a model with no discrimination, so every pooled
-May-August figure mixes two different systems and the Jul-Aug half is
-measuring a bug. **Any re-measurement must split at the July step.**
+month, including May and June. That is the one conclusion here that survives
+every qualification in this document.
+
+What it does to the EVIDENCE is weaker than an earlier draft claimed. That
+draft said "roughly half the settled corpus was produced by a model with no
+discrimination" and that "the Jul-Aug half is measuring a bug". Both assert
+the unestablished finding as fact. The defensible version: the corpus spans a
+period over which the market MIX changed substantially (`between` 55.6% ->
+2.8%) and over which measured model discrimination fell, so pooling May-August
+mixes populations whether or not the model itself changed.
+**Any re-measurement must stratify by condition type, and should split at the
+July step as well.**
 
 ### MAJOR QUALIFICATION — the drop is substantially a COMPOSITION effect
 
@@ -276,9 +301,19 @@ because the numbers are real and the error is instructive.
 
 `raw_prob` IS NOT THE PRE-CALIBRATION PROBABILITY. It is reconstructed as
 `raw_prob = round(forecast_prob + bias_correction, 6)` — see
-`weather_markets.py:18614` and the comment at `weather_markets.py:15495`
-citing `tracker.py:1528`, and `tests/test_tracker.py:1449` which states the
-relation outright. So `our_prob ≈ raw_prob` demonstrates only that
+`weather_markets.py:18614`, `tracker.py:1630` (`raw_prob =
+round(forecast_prob + bias, 6)`), and `tests/test_tracker.py:1449` which
+states the relation outright.
+  CITATION CORRECTION, and it is a defect in the REPO as well as in an earlier
+  draft of this file: the comment at `weather_markets.py:15495` cites
+  "tracker.py:1528" for that assignment. Line 1528 is unrelated (it concerns a
+  MECHANISM column stored as JSON). The real assignment is at
+  **tracker.py:1630**. An earlier draft of this document copied the stale
+  number out of that comment instead of checking it. THE SAME STALE NUMBER
+  APPEARS IN A THIRD PLACE: the open backlog entry "THE HOURLY PATH PUBLISHES
+  A degF TEMPERATURE INTO bias_correction" (`backlog.txt` ~L2175) also cites
+  tracker.py:1528 for that assignment. Whoever fixes one should fix all three;
+  none of them is checked by anything today. So `our_prob ≈ raw_prob` demonstrates only that
 **`bias_correction` is approximately zero**. It says NOTHING about whether
 temperature scaling, Platt, or blend calibration ran.
 
@@ -517,8 +552,13 @@ without new evidence; the reasoning is recorded so the work is not repeated.
   forecast".** This is a FIX, so the defect it repairs predates it. If ECMWF
   was silently dropping out from around Jul 1, the blend lost a member — a
   plausible flattening mechanism with no commit at the onset, which fits the
-  empty-window constraint. **Best remaining lead.** Find when the bug was
-  introduced, not when it was fixed.
+  empty-window constraint. **DOWNGRADED — this section was written before the
+  forecast-error measurement.** `n_members` is 238 on every July row with
+  `blend_exclusions` empty, so the ensemble did not lose a member across the
+  boundary, and the raw forecast error IMPROVED. Both cut against a
+  lost-member mechanism. Still worth checking when the bug was introduced
+  rather than when it was fixed, but it is no longer the best lead — and this
+  list previously called it that while the section below refuted it.
 - **`38c64aef` (2026-06-28) regime blend weights, auto-activation at 30
   settled trades**, and **`2356f77e` PDO/PNA auto-activation at 20 west-coast
   settled trades.** Auto-activating features change behaviour with no commit

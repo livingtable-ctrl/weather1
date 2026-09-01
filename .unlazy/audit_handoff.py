@@ -331,17 +331,43 @@ def check_commits() -> list[str]:
     return fails
 
 
+# Citations where the document states what the line contains. Existence is
+# not enough: an earlier draft cited tracker.py:1528 for a raw_prob assignment
+# that actually lives at 1630, having copied a stale line number out of a
+# source comment. The line existed, so the old gate passed.
+CITATION_CONTENT = {
+    ("cron.py", 2218): "_EMOS_TRAIN_GATE",
+    ("ml_bias.py", 848): "def apply_temperature_scaling",
+    # not cited by the document, but the entire T-scaling argument rests on
+    # this being a DIVISION of the logit; if it ever becomes a multiplication
+    # every inversion in the analysis silently flips.
+    ("ml_bias.py", 907): "_sigmoid(_logit(prob) / T)",
+    ("tracker.py", 1630): "raw_prob = round(forecast_prob + bias",
+    ("weather_markets.py", 18614): "raw_prob",
+}
+
+
 def check_citations() -> list[str]:
-    """Every `file.py:NNNN` must resolve to an existing line."""
+    """Every `file.py:NNNN` must resolve, and named ones must CONTAIN what the
+    document says they contain."""
     fails: list[str] = []
     for fname, line in re.findall(r"`?((?:[a-z_]+/)?[a-z_]+\.py):(\d{2,5})`?", text()):
         f = ROOT / fname
         if not f.exists():
             fails.append(f"{fname}:{line}: file missing")
             continue
-        n = len(f.read_text(encoding="utf-8", errors="replace").splitlines())
-        if int(line) > n:
-            fails.append(f"{fname}:{line}: file has only {n} lines")
+        src = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        if int(line) > len(src):
+            fails.append(f"{fname}:{line}: file has only {len(src)} lines")
+    for (fname, ln), token in CITATION_CONTENT.items():
+        f = ROOT / fname
+        if not f.exists():
+            fails.append(f"{fname}: missing (content check)")
+            continue
+        src = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        if ln > len(src) or token not in src[ln - 1]:
+            got = src[ln - 1][:60] if ln <= len(src) else "<past EOF>"
+            fails.append(f"{fname}:{ln}: expected {token!r}, line reads: {got!r}")
     return fails
 
 
