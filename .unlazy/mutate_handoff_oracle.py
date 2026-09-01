@@ -21,6 +21,10 @@ ORACLE = REPO / ".unlazy" / "audit_handoff.py"
 
 MUTANTS = [
     # (label, check-flag, find, replace)
+    # Retargeted 2026-08-30 for the 212-line condensed document. Three earlier
+    # mutants anchored on sections that the condensation deleted; the harness
+    # reported ANCHOR NOT FOUND rather than passing, which is the behaviour it
+    # exists for.
     (
         "number: AUC MayJun model",
         "--numbers",
@@ -30,9 +34,9 @@ MUTANTS = [
     ("number: monthly Aug AUC", "--numbers", "Aug 0.5085 (74)", "Aug 0.6085 (74)"),
     (
         "number: forecast error Jul",
-        "--numbers",
-        "| 2026-07 | 56 | **1.18** |",
-        "| 2026-07 | 56 | **2.18** |",
+        "--tables",
+        "| 2026-07 | 56 | **1.18** | 2.01 | 4.14 |",
+        "| 2026-07 | 56 | **1.18** | 2.51 | 4.14 |",
     ),
     (
         "number: traded-subset AUC",
@@ -40,25 +44,37 @@ MUTANTS = [
         "| **63** | **0.4849** |",
         "| **63** | **0.6849** |",
     ),
-    ("citation: bogus line", "--citations", "`cron.py:2218`", "`cron.py:999999`"),
-    ("citation: bogus file", "--citations", "ml_bias.py:848", "nosuchmod.py:848"),
     (
-        "stale: ratchet heading",
-        "--contradictions",
-        "## Temperature scaling, part 2: the self-training loop",
-        "## CONFIRMED LIVE DEFECT: the temperature ratchet, visible in the snapshots\n## x",
+        "number: stratified above JulAug",
+        "--strata",
+        "| above | Jul-Aug | model | 85 | 0.5786 |",
+        "| above | Jul-Aug | model | 85 | 0.6786 |",
     ),
     (
-        "stale: accuracy claim",
-        "--contradictions",
-        "The table below is kept as the",
-        "That explains the accuracy drop. The table below is kept as the",
+        "number: composition between",
+        "--strata",
+        "| `between` | **55.6%** | **2.8%** |",
+        "| `between` | **65.6%** | **2.8%** |",
     ),
     (
-        "rederive: conf value",
-        "--rederive",
-        "| 2026-06 | 48 | 0.1958 |",
-        "| 2026-06 | 48 | 0.2958 |",
+        "number: bootstrap CI",
+        "--bootstrap",
+        "95% CI        = [-0.0794, +0.3446]",
+        "95% CI        = [-0.0794, +0.4446]",
+    ),
+    ("citation: bogus line", "--citations", "`cron.py:2202`", "`cron.py:999999`"),
+    ("citation: bogus file", "--citations", "tracker.py:1630", "nosuchmod.py:1630"),
+    (
+        "stale: withdrawn conclusion",
+        "--contradictions",
+        "## Bottom line",
+        "## Bottom line" + chr(10) + chr(10) + "The model specifically broke.",
+    ),
+    (
+        "assertion: delete an anchor",
+        "--assertions",
+        "invariant under temperature scaling",
+        "invariant under [REMOVED]",
     ),
 ]
 

@@ -753,3 +753,59 @@ warnings that would eventually become errors.
  3. `--singletons2`'s daily-table check verifies that each listed probability
     is one of that day's rows, but NOT that the list is complete — a row could
     be omitted from the document without failing.
+
+
+## PASS 14 — condensed to 212 lines, 2026-08-30
+
+The 833-line document was cut to **212**. The full version is preserved as
+`docs/HANDOFF-confidence-collapse-2026-08-30-FULL.md`; nothing was destroyed.
+
+WHAT WAS CUT: the retraction archaeology. Roughly 620 lines of "an earlier
+draft said X, that was wrong because Y". Honest, but it served the author
+showing work more than a reader wanting the current position.
+
+WHAT WAS KEPT: the bottom line, the AUC measurement, the composition
+qualification and the bootstrap that withdraws it, the forecast-error
+localisation, the four eliminations, the confirmed T self-training defect, the
+open questions, and the trap list.
+
+### RETIRING GATES IS NOT SILENCING THEM
+Cutting content broke 40+ gate assertions. Every one was triaged as RETARGET
+(content survived, wording moved) or RETIRE (content deliberately deleted), and
+every retirement is named in the source comment where the check used to live:
+
+  RETIRED  --rederive (confidence table cut) | --singletons2 (all four of its
+           tables cut) | tables: rawprob, ts-history, n_members-August |
+           singletons: Brier table, Brier scope, obs-split | 5 prose
+           restatements | 4 prose claims | 8 prose2 claims
+  RETARGET headline/traded/strata section anchors, temperature_scale sentence,
+           AUC + accuracy invariance, market-did-not-fall, rounding-noise,
+           never-beat-Brier, skill-in-between, below-never-discriminated,
+           between-n=4, 11 further prose anchors
+
+Vacuity floors were LOWERED to match what each gate now actually derives, not
+raised to make it pass: batch 1 derives 15 and floors at 12, so deleting a
+whole cluster still fails.
+
+### THE HARNESSES CAUGHT THE CUT
+Three numeric mutants and several prose anchors pointed at deleted sections.
+Both harnesses reported **ANCHOR NOT FOUND -- mutation never applied** rather
+than passing. The mutant list was retargeted; it now covers the composition
+table, the stratified table and the bootstrap CI, which it did not before.
+
+### MEASURED AFTER
+    14 gates pass | 11 numeric mutants die | 18 prose anchors die | lint clean
+    numeric coverage 48.4% -> **75.2%**  (115 of 153)
+    prose coverage   31.0% -> **44.4%**  (16 of 36); META now 0
+    document 833 -> 212 lines
+
+Coverage rose sharply because the denominator fell: cutting ungated prose
+raises the percentage without gating anything new. **That is the same
+denominator effect noted in pass 12, running the other way — do not read 75.2%
+as three passes' worth of new verification.**
+
+### REMAINING, NOT DONE
+ 1. 20 evidential prose sentences and 38 numeric tokens ungated.
+ 2. The FULL document is now unguarded — no gate reads it, so it can rot.
+ 3. `--singletons2` remains in the file but unregistered; if its tables ever
+    return, it must be re-registered rather than rewritten.

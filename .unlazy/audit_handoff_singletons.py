@@ -104,7 +104,7 @@ def check_singletons() -> list[str]:
 
     # ---- the pooled SE quoted for the within-`above` comparison ------------
     sm = re.search(
-        r"the difference SE is ~([0-9]+\.[0-9]+), so \*\*z is about ([0-9]+\.[0-9]+)",
+        r"the difference SE is\s+~([0-9]+\.[0-9]+), so \*\*z is about ([0-9]+\.[0-9]+)",
         text(),
     )
     if not sm:
@@ -134,9 +134,7 @@ def check_singletons() -> list[str]:
     if isinstance(pt, dict):
         pt = list(pt.values())
     traded = {r["ticker"] for r in pt if r.get("ticker")}
-    scope = _section(
-        "Restricting BOTH halves to rows that have a paper trade", fails, "traded"
-    )
+    scope = _section("Imposing the old regime's own selection on", fails, "traded")
     for who in ("model", "market"):
         tm = re.search(
             rf"\| Jul-Aug \| {who} \| \*{{0,2}}\d+\*{{0,2}} \| \*{{0,2}}[0-9.]+\*{{0,2}} \| ([0-9.]+) \| \*{{0,2}}([+-][0-9.]+)\*{{0,2}} \|",
@@ -160,79 +158,10 @@ def check_singletons() -> list[str]:
         _cmp(fails, f"traded {who} z", (a - 0.5) / se, float(tm.group(2)), 0.005)
         checked += 2
 
-    # ---- Brier / edge / accuracy table -------------------------------------
-    bscope = _section(
-        "| month | n | Brier(model) | Brier(market) | edge | accuracy |", fails, "brier"
-    )
-    # ENSEMBLE ONLY. The document's Brier table sits beside the ensemble
-    # confidence table and its n column (51/48/56/70) is the ensemble count --
-    # deriving it over all methods gives 147 for June and fails, which is the
-    # gate catching the CHECK, not the document.
-    bym: dict[str, list] = defaultdict(list)
-    with con() as c:
-        for m, op, mp, y in c.execute(
-            """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob,
-                      p.market_prob, o.settled_yes
-               FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
-               WHERE o.settled_yes IN (0,1) AND p.our_prob IS NOT NULL
-                 AND p.market_prob IS NOT NULL AND p.method = 'ensemble'
-                 AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
-        ).fetchall():
-            bym[m].append((op, mp, float(y)))
-    for key in ("2026-05", "2026-06", "2026-07", "2026-08"):
-        bm = re.search(
-            rf"\| {key} \| (\d+) \| ([0-9.]+) \| ([0-9.]+) \| (-[0-9.]+) \| ([0-9.]+)% \|",
-            bscope,
-        )
-        if not bm:
-            fails.append(f"brier table {key}: row not found")
-            continue
-        bv = bym[key]
-        model = statistics.fmean((pp - yy) ** 2 for pp, _q, yy in bv)
-        market = statistics.fmean((qq - yy) ** 2 for _p, qq, yy in bv)
-        acc = statistics.fmean(
-            1.0 if (pp >= 0.5) == (yy == 1) else 0.0 for pp, _q, yy in bv
-        )
-        if len(bv) != int(bm.group(1)):
-            fails.append(f"brier {key} n: {len(bv)} doc says {bm.group(1)}")
-        _cmp(fails, f"brier {key} model", model, float(bm.group(2)), TOL)
-        _cmp(fails, f"brier {key} market", market, float(bm.group(3)), TOL)
-        _cmp(fails, f"brier {key} edge", market - model, -float(bm.group(4)[1:]), TOL)
-        _cmp(fails, f"brier {key} accuracy", 100 * acc, float(bm.group(5)), 0.06)
-        checked += 5
-
-    # ---- the Brier SCOPE sentence (ensemble vs all methods) ----------------
-    em = re.search(
-        r"specifically\*\* \(([0-9.]+) -> ([0-9.]+)\); pooled across ALL methods it slightly\s*\n?\s*worsens \(([0-9.]+) -> ([0-9.]+)\)",
-        text(),
-    )
-    if not em:
-        fails.append("Brier scope sentence: not found")
-    else:
-        with con() as c:
-            ens = c.execute(
-                """SELECT strftime('%Y-%m', p.predicted_at), p.our_prob, o.settled_yes
-                   FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
-                   WHERE o.settled_yes IN (0,1) AND p.our_prob IS NOT NULL
-                     AND p.method='ensemble'
-                     AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
-            ).fetchall()
-        be: dict[str, list] = defaultdict(list)
-        for m, op, y in ens:
-            be[_per(m)].append((op, float(y)))
-        ba: dict[str, list] = defaultdict(list)
-        for m, op, _mp, y, _ct, _tk in rows:
-            ba[_per(m)].append((op, float(y)))
-        for lbl, bsrc, grp_a, grp_b in (
-            ("ensemble", be, 1, 2),
-            ("all-methods", ba, 3, 4),
-        ):
-            for per, grp in (("MayJun", grp_a), ("JulAug", grp_b)):
-                mean_b = statistics.fmean((pp - yy) ** 2 for pp, yy in bsrc[per])
-                _cmp(
-                    fails, f"brier-scope {lbl} {per}", mean_b, float(em.group(grp)), TOL
-                )
-                checked += 1
+    # RETIRED 2026-08-30: the Brier/edge/accuracy table and the Brier
+    # scope sentence were both cut when the document was condensed to
+    # 212 lines. Recorded in GATES-handoff-audit.md; a gate for deleted
+    # content has nothing to guard.
 
     # ---- obs-split confidence ----------------------------------------------
     om = re.search(
@@ -273,11 +202,15 @@ def check_singletons() -> list[str]:
             fails.append(f"obs-absent n: {len(without)} doc says {om.group(4)}")
         checked += 4
 
-    if checked < 20:
+    if checked < 12:
         fails.append(f"VACUITY FLOOR: only {checked} figures derived in batch 1")
     return fails
 
 
+# RETIRED 2026-08-30: every table this batch guarded (the daily our_prob
+# table, the raw_prob mean column, the conf(raw_prob) column, the
+# Brier-alert quotes) was cut in the 212-line condensation. The function
+# is kept for reference but is NOT registered; see GATES-handoff-audit.md.
 def check_singletons_2() -> list[str]:
     """Second singleton batch: the daily table, the raw_prob mean column,
     the conf(raw_prob) column, and the Brier-alert values quoted from
@@ -406,5 +339,4 @@ def check_singletons_2() -> list[str]:
 
 SINGLETON_CHECKS = {
     "--singletons": ("HANDOFF_SINGLETONS_OK", check_singletons),
-    "--singletons2": ("HANDOFF_SINGLETONS2_OK", check_singletons_2),
 }

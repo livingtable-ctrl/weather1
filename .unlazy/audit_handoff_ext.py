@@ -66,19 +66,21 @@ def _per(m: str) -> str:
 
 # ------------------------------------------------------------ bulk tables ---
 def check_tables() -> list[str]:
-    """Derive whole tables, not single figures.
+    """Derive the forecast-error table in full.
 
-    EVERY skip is counted and reported. An earlier version used bare
-    `continue` when a row did not match its pattern, so the gate could pass
-    while silently covering nothing -- which is precisely how the --numbers
-    gate was vacuous two passes ago. A gate that declines to check something
-    must say so out loud.
+    RETIRED 2026-08-30, when the document was condensed from 833 to 212 lines:
+    the raw_prob magnitude table, the n_members August detail and the
+    temperature_scale history table were all cut, so their checks are removed
+    rather than left failing. The removal is recorded in GATES-handoff-audit.md.
+    A gate for deleted content has nothing to guard; it is not a regression to
+    be silenced.
+
+    Every skip is counted and a vacuity floor applies, because a gate that
+    silently checks nothing is how --numbers was vacuous two passes ago.
     """
     fails: list[str] = []
-    skipped: list[str] = []
     checked: list[str] = []
 
-    # --- forecast-error table: mean and p90 columns (median already gated) --
     with con() as c:
         fe = c.execute(
             """SELECT strftime('%Y-%m', p.predicted_at),
@@ -90,106 +92,33 @@ def check_tables() -> list[str]:
     byfe: dict[str, list] = defaultdict(list)
     for m, e in fe:
         byfe[m].append(e)
+
     scope = _section("Raw forecast error, `|forecast_temp_f", fails, "fe-table")
     for key in ("2026-05", "2026-06", "2026-07", "2026-08"):
         mm = re.search(
-            rf"\| {key} \| \d+ \| \*{{0,2}}[0-9.]+\*{{0,2}} \| ([0-9.]+) \| ([0-9.]+) \|",
+            rf"\| {key} \| (\d+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \| ([0-9.]+) \| ([0-9.]+) \|",
             scope,
         )
         if not mm:
-            fails.append(f"fe-table {key}: mean/p90 row not found")
+            fails.append(f"fe-table {key}: row not found")
             continue
-        checked.append(f"fe/{key}")
+        checked.append(key)
         v = sorted(byfe[key])
-        mean = statistics.fmean(v)
-        p90 = v[int(0.9 * (len(v) - 1))]
-        if abs(mean - float(mm.group(1))) > 0.005:
-            fails.append(f"fe {key} mean: {mean:.2f} doc says {mm.group(1)}")
-        if abs(p90 - float(mm.group(2))) > 0.005:
-            fails.append(f"fe {key} p90: {p90:.2f} doc says {mm.group(2)}")
-
-    # --- our_prob vs raw_prob magnitude table ------------------------------
-    with con() as c:
-        rp = c.execute(
-            """SELECT strftime('%Y-%m', predicted_at), ABS(our_prob - raw_prob)
-               FROM predictions
-               WHERE our_prob IS NOT NULL AND raw_prob IS NOT NULL
-                 AND method='ensemble' AND predicted_at >= '2026-05-01'
-                 AND (ticker LIKE 'KXHIGH%' OR ticker LIKE 'KXLOWT%')"""
-        ).fetchall()
-    byrp: dict[str, list] = defaultdict(list)
-    for m, d in rp:
-        byrp[m].append(d)
-    sc = _section("Measured magnitude of `|our_prob - raw_prob|`", fails, "rawprob")
-    for key in ("2026-05", "2026-06", "2026-07", "2026-08"):
-        mm = re.search(
-            rf"\| {key} \| (\d+) \| [0-9.e-]+ \| ([0-9.]+) \| ([0-9.]+) \| (\d+) \|", sc
-        )
-        if not mm:
-            skipped.append(f"rawprob/{key}: row format not matched")
-            continue
-        checked.append(f"rawprob/{key}")
-        v = byrp[key]
         if len(v) != int(mm.group(1)):
-            fails.append(f"rawprob {key} n: {len(v)} doc says {mm.group(1)}")
-        if abs(max(v) - float(mm.group(3))) > 5e-4:
-            fails.append(f"rawprob {key} max: {max(v):.4f} doc says {mm.group(3)}")
-        over = sum(1 for x in v if x > 0.01)
-        if over != int(mm.group(4)):
-            fails.append(f"rawprob {key} rows>0.01: {over} doc says {mm.group(4)}")
+            fails.append(f"fe {key} n: {len(v)} doc says {mm.group(1)}")
+        for label, actual, claimed in (
+            ("median", statistics.median(v), float(mm.group(2))),
+            ("mean", statistics.fmean(v), float(mm.group(3))),
+            ("p90", v[int(0.9 * (len(v) - 1))], float(mm.group(4))),
+        ):
+            if abs(actual - claimed) > 0.005:
+                fails.append(f"fe {key} {label}: {actual:.2f} doc says {claimed}")
 
-    # --- n_members detail --------------------------------------------------
-    with con() as c:
-        aug = dict(
-            c.execute(
-                """SELECT n_members, COUNT(*) FROM predictions
-                   WHERE predicted_at >= '2026-08-01' AND method='ensemble'
-                     AND n_members IS NOT NULL
-                     AND (ticker LIKE 'KXHIGH%' OR ticker LIKE 'KXLOWT%')
-                   GROUP BY n_members"""
-            ).fetchall()
+    if len(checked) < 4:
+        fails.append(
+            f"VACUITY FLOOR: only {len(checked)} forecast-error rows checked "
+            f"(minimum 4) -- the gate is not covering what it claims"
         )
-    am = re.search(
-        r"August carries 238 \((\d+)\),\s*\n?\s*258 \((\d+)\), 208 \((\d+)\)", text()
-    )
-    if not am:
-        fails.append("n_members August detail: sentence not found")
-    else:
-        for val, grp in ((238, 1), (258, 2), (208, 3)):
-            if aug.get(val, 0) != int(am.group(grp)):
-                fails.append(
-                    f"n_members Aug {val}: {aug.get(val, 0)} rows, doc says {am.group(grp)}"
-                )
-
-    # --- live temperature_scale history table ------------------------------
-    hist = sorted((DB.parent / ".history").glob("temperature_scale_*.json"))
-    hs = _section("| snapshot | sameday T | n | global T |", fails, "ts-history")
-    for f in hist:
-        stamp = f.stem.replace("temperature_scale_", "")
-        pretty = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}T{stamp[9:11]}:{stamp[11:13]}"
-        mm = re.search(
-            rf"\| {re.escape(pretty)} \| \*{{0,2}}([0-9.]+|absent)\*{{0,2}} \| ([0-9—-]+) \| \*{{0,2}}([0-9.]+)\*{{0,2}} \|",
-            hs,
-        )
-        if not mm:
-            skipped.append(f"ts-history/{pretty}: snapshot not tabulated")
-            continue
-        checked.append(f"ts-history/{pretty}")
-        d = json.loads(f.read_text(encoding="utf-8"))
-        sd, gl = d.get("sameday"), d.get("global")
-        if mm.group(1) == "absent":
-            if sd is not None:
-                fails.append(
-                    f"ts-history {pretty}: doc says sameday absent, file has it"
-                )
-        elif abs(float(sd["T"]) - float(mm.group(1))) > 1e-3:
-            fails.append(
-                f"ts-history {pretty} sameday: {sd['T']} doc says {mm.group(1)}"
-            )
-        if gl is not None and abs(float(gl["T"]) - float(mm.group(3))) > 1e-3:
-            fails.append(
-                f"ts-history {pretty} global: {gl['T']} doc says {mm.group(3)}"
-            )
     return fails
 
 
@@ -413,17 +342,17 @@ def check_assertions() -> list[str]:
             "forecast error halved Jun->Jul",
         ),
         (
-            r"AUC is calibration-invariant by construction",
+            r"invariant under temperature scaling",
             auc_calibration_invariant,
             "AUC unchanged under temperature scaling, on this corpus",
         ),
         (
-            r"it leaves accuracy EXACTLY unchanged",
+            r"Accuracy at\s+a fixed 0\.5 threshold is equally invariant",
             accuracy_invariant_under_compression,
             "accuracy unchanged under temperature scaling, on this corpus",
         ),
         (
-            r"the market's AUC did not fall in any stratum",
+            r"market.s AUC did not fall in any\s+stratum",
             market_did_not_fall_in_any_stratum,
             "market AUC did not fall in above or below",
         ),
@@ -433,7 +362,7 @@ def check_assertions() -> list[str]:
             "model AUC on below MayJun is at chance",
         ),
         (
-            r"The medians are rounding noise",
+            r"The medians are\s+rounding noise",
             rawprob_is_rounding_noise,
             "median |our_prob-raw_prob| below 1e-6",
         ),
