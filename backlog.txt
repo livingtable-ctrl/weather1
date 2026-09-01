@@ -1,6 +1,100 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-31 -- filed after the measurement REFUTED the finding it was
+  opened to record. Kept because the negative result and the four traps below
+  cost real effort to find, and the raw (wrong) number is easy to reproduce.]
+  THE "ADVERSE SELECTION AROUND OUR OWN FILLS" QUESTION IS ANSWERABLE WITHOUT
+  LIVE FILLS AFTER ALL -- AND THE ANSWER IS THAT THE PAPER LEDGER'S FILL
+  ASSUMPTION IS SOUND AND NO ADVERSE SELECTION IS DETECTABLE
+Priority: LOW as an action item (nothing to fix). MEDIUM as a trap record --
+  the naive version of this analysis produces a large, wrong, very
+  publishable-looking number, and this entry exists so the next reader does
+  not ship it.
+Files: data/paper_trades.json, predictions.db price_history. Analysis was
+  ad-hoc and READ-ONLY; nothing was committed to .unlazy/.
+
+WHAT THE STANDING ENTRY SAYS, AND WHY IT IS ONLY HALF TRUE. The entry at
+  backlog.txt ~L20533 records the adverse-selection half as "structurally
+  unanswerable ... revisit once ENABLE_MICRO_LIVE is ever flipped", because
+  execution_log.orders had 0 of 243 rows with filled_at/market_mid_at_fill
+  (re-checked 2026-08-22). That is correct FOR THAT ROUTE and remains so.
+  A different join answers it without any live fill: price_history's hourly
+  OHLC bars (added 2026-07-12 for exactly "the deferred edge-decay/adverse-
+  selection analysis", tracker.py:266-288) against paper_trades.json's
+  entered_at / side / entry_price. Paper books every resting midpoint GTC
+  order as filled unconditionally; the bars say whether the market actually
+  traded there.
+
+THE RESULT (261 settled paper trades, all matched to price_history):
+
+    order left up   fill rate   missed   filled avg   missed avg   perm p
+    1 hour             97%         8       -0.64        +7.48       0.142
+    3 hours            96%         9       -0.37        +6.40       0.170
+    6 hours            97%         8       -0.32       +10.82       0.066
+    24 hours          100%         1       -0.37       +44.64       0.018
+
+  1. THE FILL ASSUMPTION IS VALIDATED, which is a positive result and was not
+     the expected one: 96-100% of resting midpoint orders would have filled.
+     Paper is not booking fills that could not happen.
+  2. ADVERSE SELECTION IS NOT DETECTABLE. Permutation test, 20,000 shuffles of
+     the fill/miss label holding the count fixed, one-sided on "did the missed
+     trades do better than the filled ones". Nothing clears 0.05 except the
+     24-hour row, and THAT ROW IS ONE TRADE (KXLOWTDAL-26JUN05-T74, +44.64).
+     A p-value computed on n=1 is not evidence and must not be cited.
+
+FOUR TRAPS, each of which I hit, and each of which manufactures a finding.
+
+  TRAP 1 -- SIDE. price_low/price_high are YES prices. A YES buy at P fills
+    when the market trades <= P (price_low <= P). A NO buy at P is a YES price
+    of 1-P and fills when the market trades >= 1-P (price_high >= 1-P). Using
+    price_low for everything is wrong for 164 of the 261 trades (63%: the log
+    is 164 no / 97 yes).
+
+  TRAP 2 -- ZERO-COVERAGE TRADES ARE NOT MISSES. 32 of 261 trades have NO bar
+    at all inside a 1-hour window from entry. Counting them as "did not fill"
+    rather than excluding them produces exactly the false headline this entry
+    was opened to file: fill rate 85%, "P&L of the fills only" -141.35 against
+    a booked -51.99, i.e. "the paper ledger is optimistic by ~90 dollars".
+    That entire effect is missing data. Excluded properly, the fill rate is
+    97% and the gap is not significant (p=0.142).
+
+  TRAP 3 -- HOURLY BARS ARE NEARLY BLIND AT SHORT HORIZONS. Median bars inside
+    a 1-hour window is 1. Any horizon under a few hours is measuring bar
+    availability more than it is measuring fills.
+
+  TRAP 4 -- A BAR TOUCHING YOUR PRICE DOES NOT PROVE YOUR ORDER FILLED. Queue
+    position is invisible in OHLC; resting size ahead of you at that price can
+    absorb the whole print. Every fill rate above is an UPPER bound.
+
+A SEPARATE CORRECTION FOUND ON THE WAY, AND THE MORE USEFUL HALF OF THIS
+ENTRY. THIS BOT PAYS NO FEES ON ENTRY AND ANY ANALYSIS THAT CHARGES IT THE
+TAKER FEE IS MEASURING A COST THAT WAS NEVER INCURRED. Live and paper entries
+are always resting midpoint GTC limit orders, i.e. maker fills, which are $0
+on this bot's series (config.py:261-266; utils.py:99 KALSHI_MAKER_FEE_RATE
+defaults to 0.0; cron.py:842 _check_fee_change asserts every maker fill's
+fee_cost is $0 daily and alerts if that ever changes). Confirmed against the
+stored data rather than the comment: cost - quantity*entry_price is +0.0000
+at mean, median AND max across the settled log. No fee is embedded anywhere.
+  WHY THIS MATTERS ENOUGH TO WRITE DOWN: applying utils.kalshi_taker_fee to
+  the paper trades -- which is the obvious thing to do, and which I did --
+  invents roughly 135 dollars of fees across 261 trades and turns the
+  `below` condition type from its true flat -2.37 into a fictional "+15.84
+  gross, eaten by 18.21 of fees". That framing then argues for a maker
+  migration that has already shipped. The taker rate in config.py:258 is
+  documented as reference-only for exactly this reason and it is easy to grab
+  by mistake.
+
+WHAT WOULD ACTUALLY SETTLE THE ADVERSE-SELECTION QUESTION. Not more of this
+analysis -- it is bounded by hourly resolution and by queue-position
+invisibility (traps 3 and 4), and neither improves with more trades. It needs
+either sub-hourly book data at the moment of the resting order, or the live
+execution_log.orders fills the standing entry is already waiting on. This
+entry does not supersede that one; it narrows it, by removing "we cannot look
+at all" and replacing it with "we looked at what is visible and it is quiet".
+
+DO NOT re-run this expecting the -141.35 number. It is an artifact of trap 2.
+
 [OPEN 2026-08-31 -- found while researching "why is there no edge". The
   operator's objection is what surfaced it: following the market is the
   opposite of what a forecasting model is supposed to do. It is doing exactly
