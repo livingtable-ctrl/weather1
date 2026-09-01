@@ -402,3 +402,64 @@ All 12 checks pass, all 9 mutants still die, G9 lint passes.
  3. The assertion list was written by me from my own document. A claim I never
     thought to gate is still ungated, and nothing measures that omission — the
     same selection problem, one level up.
+
+
+## PASS 8 — the last three, 2026-08-30
+
+### (2) `--tables` silent skips  [CLOSED]
+Every `continue` is now an accounted skip, reported in the failure text, plus
+a VACUITY FLOOR: fewer than 8 rows actually checked is itself a failure. On
+the current document skips = 0 and checked > 8, so `--tables` was NOT vacuous
+— but it could have become so silently, which is how `--numbers` failed
+before.
+
+### (3) "the assertion list was written by me"  [MEASURED, not closed]
+New tool `.unlazy/prose_coverage.py`. Mutation cannot measure prose — changing
+a sentence with no number in it moves nothing an oracle reads — so this
+extracts sentences carrying an assertive marker and reports which have no
+matching `--assertions` entry. Extraction over-collects on purpose: a claim
+wrongly listed as ungated costs a moment, one wrongly omitted is the failure
+being measured.
+
+    PROSE CLAIMS DETECTED  93
+      matched by a gate     4  (4.3%)
+      UNGATED              89  (95.7%)
+
+**THE TOOL WAS ITSELF VACUOUS ON FIRST RUN** and reported 0.0%. Its extractor
+required the literal `(r"` sequence, which stopped matching the moment ruff
+format split the CLAIMS tuples across lines. A measurement instrument can be
+vacuous exactly like a gate. It now refuses to print a coverage number at all
+if it extracts zero patterns, rather than reporting a confident 0%.
+
+**AND IT IMMEDIATELY FOUND WHAT IT WAS BUILT TO FIND.** Two conclusions in the
+headline's own summary list still read "The model specifically broke." and
+"**This is a REGRESSION, not a limitation.**" — flatly contradicting the
+corrected headline, which says not to present that as established. The
+`--contradictions` gate missed them because that gate only knows the stale
+phrases I thought to write down. Both are now withdrawn in the document,
+rewritten as conditional, and added to the stale list.
+
+### (1) 129 genuine ungated numeric claims  [PARTIAL]
+Numeric coverage is 121/315 = 38.4%, genuine-claim coverage 48.2%. The count
+moved 165 -> 150 -> 129 -> 130 across passes; it is no longer falling, because
+table-level gating has taken every cheap win and what remains is
+one-off figures scattered through prose.
+
+All 12 checks pass, all 9 mutants die, G9 lint passes.
+
+### THE STANDING RESULT, stated plainly
+    numeric claims : 38.4% gated
+    prose claims   : 4.3% gated
+The document's ARITHMETIC is now well guarded. Its REASONING is almost
+entirely unguarded, and the gap between those two numbers is the honest
+summary of what this ledger can and cannot promise.
+
+### REMAINING, NOT DONE
+ 1. 89 ungated prose claims. Each needs a hand-written truth condition; there
+    is no mechanical route.
+ 2. 130 genuine ungated numeric claims, now mostly one-off figures in prose.
+ 3. `prose_coverage.py`'s ASSERTIVE/NON_CLAIM regexes were written by me and
+    decide what counts as a claim at all. A claim phrased outside those
+    markers is invisible to the measurement. This is the same selection
+    problem displaced one further level, and it is not resolvable by adding
+    another tool written by the same author.

@@ -361,6 +361,8 @@ STALE = [
         "compression is monotone; accuracy is invariant",
     ),
     ("So no calibration stage is degrading anything", "Finding 1 was retracted"),
+    ("The model specifically broke.", "significance is not established"),
+    ("**This is a REGRESSION, not a limitation.**", "significance is not established"),
 ]
 
 

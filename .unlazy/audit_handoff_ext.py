@@ -66,8 +66,17 @@ def _per(m: str) -> str:
 
 # ------------------------------------------------------------ bulk tables ---
 def check_tables() -> list[str]:
-    """Derive whole tables, not single figures."""
+    """Derive whole tables, not single figures.
+
+    EVERY skip is counted and reported. An earlier version used bare
+    `continue` when a row did not match its pattern, so the gate could pass
+    while silently covering nothing -- which is precisely how the --numbers
+    gate was vacuous two passes ago. A gate that declines to check something
+    must say so out loud.
+    """
     fails: list[str] = []
+    skipped: list[str] = []
+    checked: list[str] = []
 
     # --- forecast-error table: mean and p90 columns (median already gated) --
     with con() as c:
@@ -90,6 +99,7 @@ def check_tables() -> list[str]:
         if not mm:
             fails.append(f"fe-table {key}: mean/p90 row not found")
             continue
+        checked.append(f"fe/{key}")
         v = sorted(byfe[key])
         mean = statistics.fmean(v)
         p90 = v[int(0.9 * (len(v) - 1))]
@@ -116,7 +126,9 @@ def check_tables() -> list[str]:
             rf"\| {key} \| (\d+) \| [0-9.e-]+ \| ([0-9.]+) \| ([0-9.]+) \| (\d+) \|", sc
         )
         if not mm:
-            continue  # rows using scientific notation for mean are skipped
+            skipped.append(f"rawprob/{key}: row format not matched")
+            continue
+        checked.append(f"rawprob/{key}")
         v = byrp[key]
         if len(v) != int(mm.group(1)):
             fails.append(f"rawprob {key} n: {len(v)} doc says {mm.group(1)}")
@@ -160,7 +172,9 @@ def check_tables() -> list[str]:
             hs,
         )
         if not mm:
-            continue  # not every snapshot is tabulated
+            skipped.append(f"ts-history/{pretty}: snapshot not tabulated")
+            continue
+        checked.append(f"ts-history/{pretty}")
         d = json.loads(f.read_text(encoding="utf-8"))
         sd, gl = d.get("sameday"), d.get("global")
         if mm.group(1) == "absent":

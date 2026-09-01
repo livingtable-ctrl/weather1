@@ -41,10 +41,17 @@ Pooled model AUC 0.6178 (n=341, z=+3.89); pooled market 0.7049 (z=+7.31).
    nearly absent from the later period.**
 2. **In July-August the model fell to chance** (0.5321, z=+0.66) while the
    market on the SAME markets stayed strong (0.7271, z=+5.35). The later
-   markets were not harder. The model specifically broke.
-3. **This is a REGRESSION, not a limitation.** More data cannot fix it. Adding
-   settled rows only averages a working model together with a broken one,
-   which is what every May-August aggregate in this project silently does.
+   markets were not harder on the market's own showing. **CAUTION: an earlier
+   draft ended this item with a flat assertion that the model had specifically
+   broken. That assertion is withdrawn by the composition qualification below
+   and must not be read as a conclusion.**
+3. **IF the effect is real it is a REGRESSION rather than a limitation** —
+   more data would not fix a regression, it would only average a working model
+   together with a broken one, which is what every May-August aggregate in
+   this project silently does. **This item is CONDITIONAL.** An earlier draft
+   stated it flatly as "This is a REGRESSION, not a limitation"; the
+   difference-in-differences bootstrap below returns p about 0.21, so the
+   antecedent is not established.
 4. **It cannot be calibration.** AUC is calibration-invariant by construction.
    ONE PRECISION CAVEAT, found by gating this claim rather than asserting it:
    the invariance is exact in real arithmetic and exact in float64 at most
