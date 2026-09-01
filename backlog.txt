@@ -1,6 +1,116 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-31 -- found while researching "why is there no edge". The
+  operator's objection is what surfaced it: following the market is the
+  opposite of what a forecasting model is supposed to do. It is doing exactly
+  that, in two places, and both were added deliberately.]
+  THE PIPELINE BLENDS THE MODEL INTO THE MARKET PRICE AND THEN DISCARDS
+  WHATEVER STILL DISAGREES, SO THE ONLY TRADES THAT SURVIVE ARE THE ONES WITH
+  NOTHING TO WIN
+Priority: HIGH as the structural explanation of the no-edge result. NOTHING IS
+  BROKEN -- both mechanisms were added in response to real measurements and
+  both reduce losses. The problem is what they imply taken together, which is
+  that the system cannot express an edge even if it had one.
+Files: weather_markets.py:658-664 (_MARKET_ANCHOR_* constants),
+  weather_markets.py:18215-18245 (section 7c, the blend),
+  weather_markets.py:18250-18277 (section 7d, the divergence gate).
+
+THE TWO MECHANISMS.
+
+1. MARKET ANCHOR (weather_markets.py:18237). The model's probability is
+   linearly blended into the market mid before anything else sees it:
+
+       blended_prob = (1.0 - w) * blended_prob + w * _mkt_mid
+
+   with w = _MARKET_ANCHOR_BETWEEN 0.25, _MARKET_ANCHOR_ABOVE 0.10,
+   _MARKET_ANCHOR_BELOW 0.10 (weather_markets.py:662-664). So a quarter of
+   every `between` probability, and a tenth of every direction-market
+   probability, IS THE MARKET PRICE. Guarded to fire only when
+   0.05 < mid < 0.95.
+
+2. DIVERGENCE GATE (weather_markets.py:18258). Any candidate whose PRE-ANCHOR
+   model-market gap exceeds MAX_MODEL_MKT_GAP = 0.25 is dropped entirely.
+
+TAKEN TOGETHER: pull the model toward the market, then throw away whatever
+still disagrees. What can reach a trade is the subset where the model roughly
+agreed with the market already -- and agreement is precisely where there is no
+edge to collect. Every such trade pays the measured 1.5c median half-spread
+plus the taker fee to reproduce a price that was already there.
+
+WHY THIS IS NOT STUPID, AND WHY THAT MAKES IT WORSE. The gate's own comment
+(weather_markets.py:18252) records the measurement it was built from:
+
+    "trades: 74% win rate at 10-20% gap, 50% at 20-30%, 20% at 30%+. The
+     market aggregates real-time intraday observations (hourly station
+     readings, same-day temperature trends) that overnight NWS/ensemble
+     forecasts cannot replicate. At >25% disagreement the market's
+     informational advantage consistently outweighs our model's edge."
+
+THAT COMMENT DOES NOT REPRODUCE, AND IT IS THE GATE'S ONLY STATED EVIDENCE.
+Re-derived 2026-08-31 over all 341 settled core predictions, bucketing by
+|our_prob - market_prob| and scoring the model's side against settlement:
+
+    gap        n     model win rate      code comment claims
+    0-10%      3          33.3%                --
+    10-20%   150          61.3%               74%
+    20-30%   131          54.2%               50%
+    30%+      57          57.9%               20%
+
+The load-bearing number -- 20% at the largest disagreements, i.e. the model is
+ANTI-informative there -- comes out at 57.9%. It does not hold.
+
+ONE CAVEAT THAT STOPS THIS BEING A CLEAN REFUTATION, and it must not be
+dropped: `our_prob` is stored POST-ANCHOR, so the gaps above are compressed by
+the very blend under discussion, while the gate measures the PRE-ANCHOR gap.
+They are not the same quantity and the pre-anchor gap is not stored anywhere.
+So the correct status of the comment's 74/50/20 is UNVERIFIED, not refuted --
+but it is currently the sole justification for a gate that is discarding
+candidates on a live path, and nothing in the repo re-checks it.
+
+WHAT THAT MEANS FOR THIS ENTRY. The structural claim -- blend toward the
+market, then discard the disagreements, so only no-edge trades survive -- rests
+on reading the code and is solid. The claim that this was a REASONABLE response
+to a measured anti-informative model rests on a code comment that does not
+reproduce. Do not repeat the 20% figure as established.
+
+THE CIRCLE, stated plainly:
+  * where the model disagrees with the market it is ASSUMED wrong (on the
+    unreproduced comment above) and those rows are gated out;
+  * where it agrees there is nothing to win, so the surviving rows pay spread
+    and fees to replicate the market;
+  * and the probabilities that survive are 10-25% market price by construction.
+
+A MEASUREMENT THIS EXPLAINS. A separate test on 2026-08-31 refit sigma out of
+sample from the model's own realised forecast residuals (mean -1.17F, sd
+2.81F) and recomputed p = Phi((threshold - forecast)/sigma). It made Brier
+WORSE at all four cutoffs (+0.0128 to +0.0238), and the fitted sigma landed at
+2.76-3.01F -- essentially the shipped _SIGMA_1DAY_CAP of 3.0. The reason a
+"pure" recomputation loses is that THE SHIPPED PROBABILITY IS NOT A PURE MODEL
+OUTPUT: it already contains 10-25% market price, which is the better-calibrated
+component. Recomputing without it throws that away. Any future attempt to
+"fix calibration" by refitting the Gaussian must account for the anchor or it
+will measure the wrong thing.
+
+WHAT WOULD ACTUALLY TEST THE STRATEGY. Set MARKET_ANCHOR_* to 0.0 (the
+constants are env-overridable and documented as "Set to 0.0 to disable") and
+raise MAX_MODEL_MKT_GAP, then measure Brier and P&L on the unanchored,
+ungated population in shadow. That is the only way to see what the model
+believes on its own. The code comment predicts it will be WORSE; the
+re-derivation above does not support that prediction. Either way this is the
+number that settles whether there is any signal to build on, and it has never
+been measured. Note the pre-anchor probability is NOT persisted, so this test
+requires logging it -- it cannot be run retrospectively on stored rows.
+
+DO NOT ACT ON THIS BY REMOVING THE GATES ON A LIVE PATH. They are currently
+reducing losses. This is a shadow-mode measurement, not a change.
+
+ALSO, A STALE CITATION FOUND IN PASSING: backlog.txt ~L19997 cites
+_MARKET_ANCHOR_BETWEEN/ABOVE/BELOW at "weather_markets.py:173-175". They are
+at 662-664. Line citations in this repo are unchecked by anything and drift on
+every edit above them; six others were corrected on 2026-08-30.
+
+
 [OPEN 2026-08-31 -- found only because the operator refused to accept a P&L
   figure that "did not make sense". It did not make sense because it was wrong
   by 9x. Every prior P&L statement in this project that cited
