@@ -309,11 +309,17 @@ states the relation outright.
   "tracker.py:1528" for that assignment. Line 1528 is unrelated (it concerns a
   MECHANISM column stored as JSON). The real assignment is at
   **tracker.py:1630**. An earlier draft of this document copied the stale
-  number out of that comment instead of checking it. THE SAME STALE NUMBER
-  APPEARS IN A THIRD PLACE: the open backlog entry "THE HOURLY PATH PUBLISHES
-  A degF TEMPERATURE INTO bias_correction" (`backlog.txt` ~L2175) also cites
-  tracker.py:1528 for that assignment. Whoever fixes one should fix all three;
-  none of them is checked by anything today. So `our_prob ≈ raw_prob` demonstrates only that
+  number out of that comment instead of checking it.
+  FIXED 2026-08-30 IN ALL THREE PLACES, and the sweep found more than three:
+  `weather_markets.py:15495` carried THREE stale numbers (1528 -> 1630, plus
+  the SELECT at 4678 -> 4780 and its filter at 4684 -> 4786), and the backlog
+  entry "THE HOURLY PATH PUBLISHES A degF TEMPERATURE INTO bias_correction"
+  repeated the same set twice. A fourth, unrelated stale citation surfaced in
+  the same sweep: `backlog.txt` cited get_calibration_by_season at
+  tracker.py:1562, which is an unrelated docstring; it is at **8003**.
+  Every corrected line was verified to CONTAIN the construct it is cited for.
+  NOTHING PREVENTS THIS RECURRING: line citations across this repo are
+  unchecked by any gate, and they drift on every edit above them. So `our_prob ≈ raw_prob` demonstrates only that
 **`bias_correction` is approximately zero**. It says NOTHING about whether
 temperature scaling, Platt, or blend calibration ran.
 

@@ -15492,12 +15492,12 @@ def _analyze_hourly_trade(
         #
         # PRE-EXISTING and deliberately NOT changed here: this is a degF
         # temperature, and log_prediction adds it to a PROBABILITY --
-        # tracker.py:1528 does `raw_prob = round(forecast_prob + bias, 6)`
-        # where `bias` is the local bound one line above from this very key.
+        # tracker.py:1630 does `raw_prob = round(forecast_prob + bias, 6)`
+        # where `bias` is bound at :1628 from this very key.
         # 1 of the 5 stored hourly rows already has raw_prob = 3.08. Harmless
         # only because the sole raw_prob reader (the SELECT at
-        # tracker.py:4678, inside get_metar_lockout_calibration_data)
-        # filters method='metar_lockout' at :4684. Reusing the local
+        # tracker.py:4780, inside get_metar_lockout_calibration_data)
+        # filters method='metar_lockout' at :4786. Reusing the local
         # preserves the value exactly rather than papering over it. Tracked in
         # backlog.txt ("HOURLY bias_correction PUBLISHES A degF TEMPERATURE
         # INTO A PROBABILITY FIELD").

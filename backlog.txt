@@ -2172,10 +2172,10 @@ Files: weather_markets.py _analyze_hourly_trade (the `bias_correction` key),
   tracker.py log_prediction (raw_prob), tracker.get_metar_lockout_calibration_data.
 
 _analyze_hourly_trade publishes `"bias_correction": station_bias_applied` -- the
-station-bias delta, in DEGREES FAHRENHEIT. tracker.py:1528, inside
+station-bias delta, in DEGREES FAHRENHEIT. tracker.py:1630, inside
 log_prediction, then does
 
-    raw_prob = round(forecast_prob + bias, 6)   # `bias` bound at :1526
+    raw_prob = round(forecast_prob + bias, 6)   # `bias` bound at :1628
 
 documented (correctly, for the path it was written for) as "the amount SUBTRACTED
 from the blended prob". On the daily and metar_locked paths bias_correction IS a
@@ -2186,8 +2186,8 @@ KXTEMPNYCH-26JUL2406-T65.99, reads our_prob 0.334 / raw_prob 0.834: in range,
 and wrong by exactly the 0.5F bias.
 
 Blast radius is nil TODAY only by luck. raw_prob has exactly one reader --
-get_metar_lockout_calibration_data (the SELECT at tracker.py:4678) -- and it
-filters `p.method = 'metar_lockout'` at :4684, so hourly rows never reach it. That filter exists
+get_metar_lockout_calibration_data (the SELECT at tracker.py:4780) -- and it
+filters `p.method = 'metar_lockout'` at :4786, so hourly rows never reach it. That filter exists
 for an unrelated reason (the metar lock is the only calibrated path), so nothing
 stops a future caller from selecting COALESCE(raw_prob, our_prob) across methods
 and training a calibrator on a 3.08 "probability".
@@ -16372,10 +16372,12 @@ Problem:
       (tests/test_paper.py:1806+, added in the 2026-07-09/10 review
       batches) but is still unreachable in production: no CLI command in
       main.py, no dashboard route in web_app.py.
-    - tracker.get_calibration_by_season() (now tracker.py:1562) -- full
-      seasonal Brier/bias breakdown, zero callers, no test, no dashboard
-      endpoint (sibling get_calibration_by_city IS wired into the
-      dashboard). Re-verified 2026-07-10.
+    - tracker.get_calibration_by_season() (tracker.py:8003 as of 2026-08-30;
+      the "now tracker.py:1562" this entry carried was stale, and 1562 is an
+      unrelated docstring) -- full seasonal Brier/bias breakdown, zero
+      callers, no test, no dashboard endpoint (sibling
+      get_calibration_by_city IS wired into the dashboard).
+      Re-verified 2026-07-10; line number re-derived 2026-08-30.
     - tracker._fetch_ensemble_members_historical() (now tracker.py:2271) --
       full Open-Meteo archive-ensemble fetcher mirroring
       _fetch_previous_run_daily (which IS called from
