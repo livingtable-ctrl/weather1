@@ -1,6 +1,79 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-31 -- found only because the operator refused to accept a P&L
+  figure that "did not make sense". It did not make sense because it was wrong
+  by 9x. Every prior P&L statement in this project that cited
+  data/paper_trades.json alone is understated.]
+  THE PAPER LEDGER HAS TWO ERAS AND THE ID COUNTER RESTARTED BETWEEN THEM, SO
+  READING paper_trades.json ALONE MISSES 89% OF THE REALISED LOSS
+Priority: HIGH as a correctness issue on every P&L claim this project has
+  made, including the ones in docs/HANDOFF-confidence-collapse-2026-08-30.md
+  and in the no-edge entries. Nothing is broken in the trading code; the
+  defect is that the accounting is split across two files and nothing joins
+  them.
+Files: data/paper_trades.json (live), data/paper_archive/
+  paper_state_20260517_035116.json (archived era), paper.py (STARTING_BALANCE
+  at :262, state shape at :560).
+
+THE NUMBERS, derived 2026-08-31.
+
+    era        dates            trades  win%   mean/trade   realised
+    ARCHIVED   05-09 .. 05-14      25   32.0%    -17.29      -432.36
+    LIVE       05-17 .. 08-30     261   48.3%     -0.20       -51.99   (settled)
+                                                  COMBINED    -484.36
+
+  Plus 55.89 of capital currently committed to 8 open positions in the live
+  era. The live era's own balance reconciles exactly:
+  1000.00 start - 51.99 realised - 55.89 committed = 892.12 = the stored
+  balance, to the cent.
+
+WHY IT WAS INVISIBLE. The live ledger RESTARTED ITS ID COUNTER AT 1. Archive
+id 6 is KXHIGHDEN-26MAY12-T76; live id 6 is KXHIGHNY-26MAY19-B95.5. Twenty ids
+appear in both files and NONE of them is the same trade. A comparison keyed on
+id therefore looks like "the same 20 trades have completely different P&L",
+which reads as data corruption and is actually two disjoint trade sets wearing
+the same numbers. Checking the TICKER alongside the id is what settles it --
+0 of 7 sampled ids matched on ticker.
+
+WHAT THE FIRST ERA ACTUALLY DID. It bet the position cap and lost. The eight
+worst trades all cost ~50.00 (KXHIGHTSFO -50.16, KXLOWTDC -50.15, KXLOWTPHIL
+-48.43, KXHIGHTOKC -47.67, KXHIGHTSATX -47.26, KXHIGHDEN -46.41, and two more
+near -40), on quantities up to 357 contracts, at a 32% win rate. Five days,
+-432.36. The reset on 2026-05-17 archived that state and started fresh.
+
+WHAT CHANGED AFTER THE RESET, and it is a real improvement worth not losing:
+mean cost per trade 23.40 -> 17.48, mean quantity 76.6 -> 33.0, win rate
+32.0% -> 48.3%, mean P&L per trade -17.29 -> -0.20. The later system is ~86x
+better per trade. That does not make it profitable, but the catastrophic
+sizing behaviour is gone.
+
+WHAT THIS DOES NOT CHANGE. The no-edge conclusion stands and is if anything
+stronger: the ensemble path is -220.79 within the live era alone, and the
+model has never beaten the market on Brier in any month. This entry corrects
+the SIZE of the loss, not its direction.
+
+WHAT MUST BE FIXED.
+  1. Any P&L query in this repo or in docs/ that reads data/paper_trades.json
+     without also reading data/paper_archive/*.json is understated. Grep for
+     paper_trades.json before trusting any historical P&L number.
+  2. There is no join key across the eras. The id space is reused, so ids
+     cannot be used to deduplicate or concatenate. Ticker plus entered_at is
+     the only safe composite.
+  3. data/paper_trades.db and data/trades.db exist and contain ZERO tables.
+     They are empty shells. Either wire them up or delete them; today they
+     are a trap that looks like a data source.
+  4. data/backups/paper_trades_2026-08-2[6-9].json and -30 are daily snapshots
+     of the LIVE file only. They do not contain the archived era either.
+
+HOW TO RE-DERIVE. Load both JSON states, sum float(t["pnl"]) over
+t["settled"] and t["pnl"] is not None in each, and DO NOT deduplicate by id.
+Confirm the live era with the balance identity above; the archived era's
+balance (754.07) does not reconcile to a 1000 start the same way, and its
+peak_balance was manually overridden by the operator, so treat the archived
+balance field as unreliable and its per-trade pnl sum as the figure of record.
+
+
 [OPEN 2026-08-30 -- diagnosed while answering "why did the METAR lock stop
   firing". The lock is not broken and was not narrowed by a regression. It is
   STARVED, and the thing that starves it is a scheduling gap left behind by an
