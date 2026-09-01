@@ -35,6 +35,7 @@ DOC = ROOT / "docs" / "HANDOFF-confidence-collapse-2026-08-30.md"
 GATE_MODULES = [
     ROOT / ".unlazy" / "audit_handoff_ext.py",
     ROOT / ".unlazy" / "audit_handoff_prose.py",
+    ROOT / ".unlazy" / "audit_handoff_prose2.py",
 ]
 
 # A sentence asserts something checkable if it makes a claim about the corpus,
@@ -80,7 +81,7 @@ def main() -> int:
     # Collecting only the first one under-reported coverage and credited no
     # improvement when a second gate module was added on 2026-08-30.
     blocks = []
-    for marker in ("CLAIMS = [", "PROSE_CLAIMS = ["):
+    for marker in ("CLAIMS = [", "PROSE_CLAIMS = [", "PROSE_CLAIMS_2 = ["):
         i = 0
         while True:
             i = ext.find(marker, i)
@@ -108,21 +109,47 @@ def main() -> int:
         if ASSERTIVE.search(s) and not NON_CLAIM.search(s)
     ]
 
+    # Gate patterns are matched against the WHOLE document, then mapped back to
+    # line numbers. Matching them against one extracted sentence at a time
+    # under-reported coverage: several gate regexes deliberately span a line
+    # break (the document hard-wraps), so they could never match a single
+    # line and their claims were counted as ungated.
+    gated_lines: set[int] = set()
+    for pat in gated_patterns:
+        try:
+            rx = re.compile(pat, re.S)
+        except re.error:
+            continue
+        for m in rx.finditer(text):
+            first = text.count(chr(10), 0, m.start()) + 1
+            last = text.count(chr(10), 0, m.end()) + 1
+            for ln in range(first, last + 1):
+                gated_lines.add(ln)
+
     gated: list[tuple[int, str]] = []
     ungated: list[tuple[int, str]] = []
     for ln, s in claims:
-        hit = False
-        for pat in gated_patterns:
-            try:
-                if re.search(pat, s):
-                    hit = True
-                    break
-            except re.error:
-                continue
-        (gated if hit else ungated).append((ln, s))
+        (gated if ln in gated_lines else ungated).append((ln, s))
+
+    # Split the ungated set. A META sentence talks about this document's own
+    # revision history ("an earlier draft said X"). It is checkable only
+    # against the document, never against evidence, so gating it would test
+    # nothing. EVIDENTIAL sentences make a claim about the corpus, the code or
+    # the world, and are the ones a truth condition can be written for.
+    META = re.compile(
+        r"earlier draft|earlier version|this file|this document|"
+        r"CORRECTION|RETRACT|is kept only because|reasoning is recorded|"
+        r"read the correction|instructive|not independently confirmed|"
+        r"an earlier pass|prior handoffs|was briefly asserted|"
+        r"surfaced by gating|found by gating|the gate for this claim",
+        re.I,
+    )
+    meta = [(ln, s) for ln, s in ungated if META.search(s)]
+    evidential = [(ln, s) for ln, s in ungated if not META.search(s)]
 
     total = len(claims)
     print(f"PROSE CLAIMS DETECTED       : {total}")
+    print(f"  UNGATED split -> META {len(meta)} | EVIDENTIAL {len(evidential)}")
     print(
         f"  matched by an assertion gate : {len(gated)}  "
         f"({100 * len(gated) / total:.1f}%)"
@@ -141,11 +168,11 @@ def main() -> int:
     print("bound on unguarded prose, not a defect count.")
     if "--list" in sys.argv:
         print()
-        print("UNGATED PROSE CLAIMS:")
-        for ln, s in ungated[:50]:
+        print("UNGATED *EVIDENTIAL* CLAIMS (meta-commentary excluded):")
+        for ln, s in evidential[:60]:
             print(f"   L{ln:<4} {s[:104]}")
-        if len(ungated) > 50:
-            print(f"   ... and {len(ungated) - 50} more")
+        if len(evidential) > 60:
+            print(f"   ... and {len(evidential) - 60} more")
     return 0
 
 

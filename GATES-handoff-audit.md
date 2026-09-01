@@ -517,3 +517,55 @@ A measurement instrument needs the same suspicion as a gate.
     as a claim, and were written by me. A claim phrased outside those markers
     is invisible to the count. Unresolved and probably unresolvable from
     inside.
+
+
+## PASS 10 — the rest of the prose claims, 2026-08-30
+
+    prose coverage  15.1%  ->  33.3%   (31 of 93 sentences)
+    ungated split   META 14 | EVIDENTIAL 48   (was 63 evidential)
+
+### Two measurement defects fixed BEFORE adding gates
+1. **Span matching.** `prose_coverage.py` matched gate regexes against one
+   extracted sentence at a time, but several gates deliberately span a line
+   break because the document hard-wraps. Those could never match and their
+   claims were counted ungated. Patterns are now matched against the whole
+   document and mapped back to line numbers. This alone moved 15.1% -> 17.2%
+   with no new gates: the tool had been under-reporting.
+2. **META vs EVIDENTIAL split, MEASURED.** Pass 9 guessed "roughly half" of
+   the ungated set was meta-commentary. Wrong again: it is **14 of 77 (18%)**.
+   A META sentence describes this document's own revision history and is
+   checkable only against the document, so gating it would test nothing.
+   Everything else is evidential and can carry a truth condition.
+
+### 15 new conditions, `--prose2` (HANDOFF_PROSE2_OK)
+Composition (3), the eliminations (7), T-scaling (4), and one mathematical
+property. Notable ones are exact-equality checks that cannot be trivially
+true: `between` JulAug n is exactly 4; the EMOS timing argument rests on
+exactly 7 rows; the `blend_sources` filter yields exactly 44 June rows.
+
+### MUTATION-TESTED, and the harness had a defect first
+New `.unlazy/mutate_prose_gates.py` deletes the sentence each gate anchors to
+and asserts the gate FAILS. First run: 29 of 30 killed, one SURVIVOR. The
+survivor was NOT a vacuous gate — the phrase "an untrained identity map"
+occurs more than once and the harness removed only the first occurrence, so
+the anchor still matched. Harness now removes every occurrence.
+**Second run: all 30 anchors killed.** Every prose gate notices its claim
+disappearing.
+
+Note what mutation can and cannot reach here: it tests the DOCUMENT half of
+each gate. The EVIDENCE half cannot be mutation-tested without writing to the
+database, which stays read-only. That half rests on the checks being written
+correctly, and several are exact-equality precisely so they cannot pass by
+accident.
+
+14 checks pass, 9 numeric mutants die, 30 prose anchors die, G9 lint passes.
+
+### REMAINING, NOT DONE
+ 1. 48 ungated evidential prose sentences. Many are conditionals ("if the
+    same-day path never calls it, this dies") whose truth condition is a
+    future observation, not a present fact — those are not gateable now.
+    The count has NOT been split further and I am not guessing at it again.
+ 2. 130 genuine ungated numeric claims.
+ 3. The evidence half of every prose gate is untested by mutation (above).
+ 4. `prose_coverage.py`'s claim-detection regexes remain mine. Unchanged and
+    unresolvable from inside.

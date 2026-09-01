@@ -712,9 +712,11 @@ def _load_extensions() -> None:
     """
     from audit_handoff_ext import EXT_CHECKS
     from audit_handoff_prose import PROSE_CHECKS
+    from audit_handoff_prose2 import PROSE2_CHECKS
 
     CHECKS.update(EXT_CHECKS)
     CHECKS.update(PROSE_CHECKS)
+    CHECKS.update(PROSE2_CHECKS)
 
 
 def main() -> int:
