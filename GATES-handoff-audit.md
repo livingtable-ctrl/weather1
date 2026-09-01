@@ -701,3 +701,55 @@ lint clean, 833 lines.
  2. Coverage percentages fall as the document improves. Not a defect, but it
     means the metric cannot be used as a completion target.
  3. Repo-wide line citations remain unchecked by anything.
+
+
+## PASS 13 — the singleton figures, 2026-08-30
+
+Pass 12 recorded that 81 of 108 four-decimal figures appear exactly ONCE, so
+they cannot be cross-checked against a restatement and are guarded only if
+individually derived.
+
+### First: measure, do not assume
+`.unlazy/singleton_report.py` intersects singleton-ness with mutation
+coverage, because neither alone identifies the unguarded set. Of the 81, **34
+were already gated and 47 were not.** Gating all 81 would have been wasted
+work on 34 of them.
+
+### Gated by CLUSTER, not one figure at a time
+Two new checks, `--singletons` and `--singletons2`, derive whole table columns:
+the market difference-in-differences line, the stratified-AUC prose
+restatement, the within-`above` pooled SE, the traded-subset SE/z columns, the
+Brier/edge/accuracy table, the Brier scope sentence, the obs-split confidence,
+the daily `our_prob` table (20 figures, including a check that every listed
+probability is actually one of that day's rows), the raw_prob mean column, the
+conf(raw_prob) column, and the Brier-alert values quoted from backlog.txt.
+
+    singletons gated  34 -> 76 of 81   (5 remain)
+    numeric coverage  37.1% -> 48.4%
+
+### THE GATE CAUGHT ITS OWN AUTHOR, TWICE
+1. The Brier table derivation initially ran over ALL methods and failed 15
+   assertions. The document was RIGHT: that table is ensemble-only, and its n
+   column (51/48/56/70) proves it. **The gate was wrong, not the document** —
+   which is the outcome a gate exists to distinguish.
+2. A regex captured a trailing sentence period into a number ("1.27.") and
+   raised ValueError. The runner reports a raised exception as a FAILURE
+   rather than swallowing it, so this surfaced immediately.
+
+### Refactor forced by the work
+Appending the second batch into `check_singletons` reused local names across
+unrelated blocks and produced 16 mypy shadowing errors. Split into two
+functions with independent scopes; each carries its own vacuity floor.
+Regex literals were also rawified — they worked, but emitted deprecation
+warnings that would eventually become errors.
+
+16 checks pass, 9 numeric mutants die, 30 prose anchors die, lint clean.
+
+### REMAINING, NOT DONE
+ 1. **5 singleton figures still ungated**, all in the temperature_scale
+    history table and the `r(n, T) = +0.406` correlation.
+ 2. Numeric coverage is 48.4%; the majority of remaining ungated tokens are
+    not singletons and are cross-checkable, but only by inspection.
+ 3. `--singletons2`'s daily-table check verifies that each listed probability
+    is one of that day's rows, but NOT that the list is complete — a row could
+    be omitted from the document without failing.
