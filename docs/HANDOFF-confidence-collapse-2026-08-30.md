@@ -411,7 +411,11 @@ original observation:
 | 2026-08 | 70 | 0.2462 | 0.1978 | -0.0484 | 52.9% |
 
 Accuracy fell ~60% -> ~51%: a model emitting 0.48 and 0.52 is a coin flip by
-construction. Brier *improved* over the same span, which is not a
+construction. Brier *improved* over the same span — **for the ensemble population
+specifically** (0.2688 -> 0.2470); pooled across ALL methods it slightly
+worsens (0.2653 -> 0.2670), a scope distinction surfaced by gating this
+sentence rather than asserting it. Ensemble is the right population here
+because the table beside it is ensemble-only. That improvement is not a
 contradiction — hedging toward 0.5 caps the penalty on every wrong answer.
 **Brier improving while accuracy collapses is the signature of a model losing
 discrimination, not gaining skill.** The market's Brier improved faster

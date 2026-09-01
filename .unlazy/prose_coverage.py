@@ -28,7 +28,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "HANDOFF-confidence-collapse-2026-08-30.md"
-EXT = ROOT / ".unlazy" / "audit_handoff_ext.py"
+# EVERY module that registers assertion gates must be listed. Omitting one
+# makes this tool under-report coverage and silently credit no improvement --
+# which happened on 2026-08-30 when audit_handoff_prose.py was added with 15
+# new gates and this tool still reported the old 4.3%.
+GATE_MODULES = [
+    ROOT / ".unlazy" / "audit_handoff_ext.py",
+    ROOT / ".unlazy" / "audit_handoff_prose.py",
+]
 
 # A sentence asserts something checkable if it makes a claim about the corpus,
 # the code, or a causal relation. These are the markers.
@@ -65,10 +72,24 @@ def sentences(text: str) -> list[tuple[int, str]]:
 
 def main() -> int:
     text = DOC.read_text(encoding="utf-8")
-    ext = EXT.read_text(encoding="utf-8")
+    ext = chr(10).join(
+        m.read_text(encoding="utf-8") for m in GATE_MODULES if m.exists()
+    )
 
-    # Which claims are gated: pull the regexes out of the CLAIMS table.
-    block = ext[ext.find("CLAIMS = [") : ext.find("]", ext.find("CLAIMS = ["))]
+    # Which claims are gated: pull the regexes out of EVERY claims table.
+    # Collecting only the first one under-reported coverage and credited no
+    # improvement when a second gate module was added on 2026-08-30.
+    blocks = []
+    for marker in ("CLAIMS = [", "PROSE_CLAIMS = ["):
+        i = 0
+        while True:
+            i = ext.find(marker, i)
+            if i < 0:
+                break
+            end = ext.find(chr(10) + "]", i)
+            blocks.append(ext[i:end] if end > 0 else ext[i:])
+            i += len(marker)
+    block = chr(10).join(blocks)
     # NOTE: match any r"..." in the block. An earlier version required the
     # literal `(r"` sequence, which stopped matching the moment ruff format
     # split the tuples across lines -- so the tool silently reported 0%

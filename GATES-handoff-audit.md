@@ -463,3 +463,57 @@ summary of what this ledger can and cannot promise.
     markers is invisible to the measurement. This is the same selection
     problem displaced one further level, and it is not resolvable by adding
     another tool written by the same author.
+
+
+## PASS 9 — prose claims given truth conditions, 2026-08-30
+
+Pass 8 measured prose coverage at 4.3% and said closing it had no mechanical
+route: each sentence needs a truth condition written by hand. Written.
+
+New module `.unlazy/audit_handoff_prose.py`, gate `--prose`
+(HANDOFF_PROSE_OK), 15 claims, each requiring BOTH that the document still
+makes the claim AND that the evidence supports it. Grouped by what settles
+them: the database (9), files on disk (2), repository source (2), and a
+mathematical property demonstrated on this corpus (1).
+
+    prose coverage  4.3%  ->  15.1%   (14 of 93 sentences matched)
+
+### TWO FAILURES ON FIRST RUN, both real
+
+1. **"Brier improved over the same span" is TRUE ONLY FOR THE ENSEMBLE.**
+   Scoped to `method='ensemble'` it holds (0.2688 -> 0.2470). Pooled across
+   ALL methods it is FALSE — Brier slightly WORSENS (0.2653 -> 0.2670).
+   The sentence sits beside an ensemble-only table so ensemble is the right
+   population, but the unscoped reading a stranger would take is wrong. The
+   scope is now stated in the document.
+2. **The backlog quote could not be found.** "sameday/hourly were never
+   frozen" is presented as verbatim and a literal search failed, because
+   backlog.txt hard-wraps and the phrase spans a line break. The gate now
+   collapses whitespace before comparing. The quote IS faithful; the check
+   was naive.
+
+### AND THE MEASUREMENT TOOL WAS WRONG AGAIN
+`prose_coverage.py` read claims from ONE module. After 15 gates were added in
+a second module it still reported 4.3%, crediting no improvement. Fixed to
+scan every registered gate module, with the module list documented as
+load-bearing. This is the SECOND time this tool has silently under-reported —
+it previously returned a confident 0.0% because ruff format moved a bracket.
+A measurement instrument needs the same suspicion as a gate.
+
+13 checks pass, all 9 mutants die, G9 lint passes.
+
+### THE STANDING RESULT
+    numeric claims : 38.4% gated
+    prose claims   : 15.1% gated
+
+### REMAINING, NOT DONE
+ 1. 79 ungated prose sentences. Roughly half are meta-commentary about the
+    document's own revision history ("an earlier draft said X"), which is
+    checkable only against the document, not against evidence — gating those
+    would test nothing. The remainder are genuine and would each need a
+    hand-written condition.
+ 2. 130 genuine ungated numeric claims.
+ 3. `prose_coverage.py`'s ASSERTIVE/NON_CLAIM regexes still decide what counts
+    as a claim, and were written by me. A claim phrased outside those markers
+    is invisible to the count. Unresolved and probably unresolvable from
+    inside.

@@ -711,8 +711,10 @@ def _load_extensions() -> None:
     printing a spurious warning while everything actually worked.
     """
     from audit_handoff_ext import EXT_CHECKS
+    from audit_handoff_prose import PROSE_CHECKS
 
     CHECKS.update(EXT_CHECKS)
+    CHECKS.update(PROSE_CHECKS)
 
 
 def main() -> int:
