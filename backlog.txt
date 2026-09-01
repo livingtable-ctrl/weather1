@@ -383,7 +383,7 @@ the cause is a missing scheduled task, and the task is cheap.
 
 RESOLUTION 2026-08-31.
 WHAT SHIPPED. main.py cmd_schedule() now registers two more daily tasks,
-KalshiCronSameday_05UTC and KalshiCronSameday_23UTC, each running
+KalshiCronSameday_01UTC and KalshiCronSameday_03UTC, each running
 `cron --sameday-only` at the host-local wall time corresponding to those UTC
 instants (converted with the same datetime.fromtimestamp() idiom
 cmd_schedule_cycles() and the settlement-monitor block already use). Each
@@ -392,25 +392,34 @@ a failed registration steps over that task rather than aborting the rest.
 Registered on no machine yet -- the operator is standing up a dedicated
 always-on host and will run `py main.py schedule` there.
 
-WHY 05:10/23:10 AND NOT THE 06:10/22:10 FIRST PROPOSED. Both were checked
-against metar.py's actual gate rather than against a clock:
-  * 23:10 UTC puts EVERY tracked zone past _LOCK_IN_HOUR=14 with hours of
-    slack (19:10 EDT / 18:10 CDT / 17:10 MDT / 16:10 PDT). 22:10 UTC would
-    clear it on the Pacific side by ~17 minutes -- and metar.py gates on the
-    OBSERVATION's local hour, with routine METAR reporting at :53, so a
-    Pacific city needs the scan at >= 14:53 local. Registered in winter, the
-    pinned local wall time becomes 21:10 UTC after spring-forward and every
-    Pacific city silently drops out.
-  * 05:10 UTC covers Denver at 23:10 MDT. 06:10 UTC would put Mountain at
-    00:10, already the NEXT local day, failing the gate outright. It costs the
-    Pacific zone nothing, because _dynamic_lock_in_confidence()'s hour factor
-    min(1,(local_hour-14)/6) SATURATES AT HOUR 20 -- 22:10 and 23:10 PDT score
-    identically.
-Both tasks are pinned to a LOCAL wall time, so they drift an hour against UTC
-after each DST change until re-registered; 23:10 holds in both drift positions
-in every zone, 05:10 holds for Mountain and Pacific. The 05:10 task lands
-overnight on most US hosts, so the block now prints the same wake/battery/
-missed-run warning the settlement-monitor task already prints.
+WHY 01:30 AND 03:00 UTC. The deciding constraint is when the market closes,
+and it is later than the settlement window suggests: daily temperature markets
+close at MIDNIGHT LOCAL STANDARD (this file ~L495, from live Kalshi metadata)
+-- 01:00 local wall clock during DST. settlement_monitor's 17:00-19:00 window
+is when the extreme becomes KNOWN, which is a different thing. So the whole
+local evening is tradeable, and the best scan is late enough for
+_dynamic_lock_in_confidence()'s hour factor min(1,(local_hour-14)/6) to
+SATURATE AT HOUR 20 while the book is still open.
+
+03:00 UTC is the only instant putting every tracked zone at factor 1.00 with
+the market open (mid-July): 23:00 EDT / 22:00 CDT / 21:00 MDT / 20:00 PDT /
+20:00 MST, closing in 2h-5h. Total 5.00 of a possible 5.00. 01:30 UTC is an
+earlier hedge at 4.17 (21:30 EDT .. 18:30 PDT), every zone still qualifying
+with 3h-6h before close, so a lock that clears earlier is not left waiting on
+a single run.
+
+DST IS SELF-CORRECTING HERE. A /SC DAILY task is pinned to a LOCAL wall time
+and drifts +1h in UTC each winter -- and because market close is defined in
+local STANDARD time, that drift moves WITH the close, not against it. Both
+score the same in winter (03:00 -> 04:00 UTC, still 5.00; 01:30 -> 02:30 UTC,
+4.33).
+
+SUPERSEDES an earlier 05:10/23:10 pair committed in 18f32301, which scored
+only 3.00 and 2.67. That pair was chosen by optimising "past hour 14" alone,
+before the midnight-local-standard close was checked: 23:10 UTC caught the
+west at 16:10 local (factor 0.33) and 05:10 UTC was already past close for
+Eastern and before hour 14 for Central. Also superseded: this entry's earlier
+claim that 06:10 UTC "misses Denver" -- true, but it was the wrong question.
 
 THE STALENESS DETECTOR STILL FIRES, as this entry required. Verified, not
 assumed: tests/test_cron_integration.py::TestSamedayOnlyFullScanStaleness
@@ -446,11 +455,11 @@ pass metar.py:623 at all. Day-level and month-level attribution ARE safe
 hour-of-day is damaged. All 106 lock-in rows also carry local_hour NULL, so
 that column cannot rescue it either.
 
-TESTS. tests/test_cmd_schedule_sameday.py is new (13 tests); the four input
+TESTS. tests/test_cmd_schedule_sameday.py is new (16 tests); the four input
 mocks in tests/test_cmd_schedule_settlement_monitor.py were updated for the
 added prompts. Scoped run over test_cmd_schedule_sameday.py,
 test_cmd_schedule_settlement_monitor.py and test_cmd_schedule_cycles.py:
-27 passed; 46 across the wider sweep including test_cron_integration.py's
+30 passed; 49 across the wider sweep including test_cron_integration.py's
 TestSamedayOnlyFullScanStaleness and test_sameday_only.py.
 Nine mutations were applied and each killed by a named test. FOUR of them
 survived the first round and were caught only by independent opus review:
@@ -459,9 +468,11 @@ survived the first round and were caught only by independent opus review:
   * dropping `/F` -- a re-run hangs invisibly on schtasks' overwrite prompt,
     because the call uses capture_output=True;
   * the failure branch reduced to `pass` -- a failed registration swallowed;
-  * the overnight-warning threshold left at `< 6` after the times moved to
-    05:10/23:10, which silently stopped warning Mountain and Pacific hosts --
-    precisely the hosts the 05:10 task exists to serve.
+  * the overnight-warning threshold left at `< 6` after the times moved,
+    which silently stopped warning whole host timezones. Its test now DERIVES
+    the expectation from each task's own resolved local hour instead of a
+    hardcoded per-timezone list, because the hardcoded list is exactly what
+    let that threshold rot through a time change.
 The last one was a defect the FIRST round of fixes introduced, which is the
 argument for reviewing the fix and not just the original change.
 

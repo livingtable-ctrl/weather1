@@ -6,15 +6,21 @@ docs/HANDOFF-confidence-collapse-2026-08-30.md, .unlazy/probe_july_window.py,
 .unlazy/audit_handoff.py, backlog.txt, BACKLOG_OPEN.md
 
 Scope: (1) make `py main.py schedule` register two daily Windows tasks running
-`cron --sameday-only` at **05:10 and 23:10 UTC**; (2) identify what changed
+`cron --sameday-only` at **01:30 and 03:00 UTC**; (2) identify what changed
 between 2026-06-30 03:34 and 2026-07-02 19:07, or say plainly that it did not
 resolve.
 
-The times were 06:10/22:10 through round 1. The operator approved the move to
-05:10/23:10 after review showed 06:10 misses Denver outright and 22:10 clears
-the Pacific gate by ~17 minutes. NOTHING WAS REGISTERED ON ANY MACHINE in this
-session, so no orphaned `_06UTC`/`_22UTC` task can exist anywhere; the operator
-will run `py main.py schedule` fresh on a dedicated always-on host.
+The times moved TWICE, both times with the operator's approval and both times
+because a measurement corrected the previous choice: 06:10/22:10 -> 05:10/23:10
+(06:10 misses Denver; 22:10 clears the Pacific gate by ~17 minutes), then
+05:10/23:10 -> 01:30/03:00 once the market's actual close was checked. Daily
+temperature markets close at MIDNIGHT LOCAL STANDARD, not at the 17:00-19:00
+settlement-monitor window, so the whole local evening is tradeable and the
+confidence factor can saturate. 03:00 UTC scores 5.00/5.00 in both seasons
+against 2.67 and 3.00 for the pair it replaces.
+NOTHING WAS REGISTERED ON ANY MACHINE in this session, so no orphaned task
+under any earlier name can exist anywhere; the operator will run
+`py main.py schedule` fresh on a dedicated always-on host.
 
 All figures below are from the run that produced this text.
 
@@ -31,8 +37,8 @@ All figures below are from the run that produced this text.
 - [x] G2: `cmd_schedule()` registers exactly two `cron --sameday-only` tasks at
       the host-local wall times for 05:10 and 23:10 UTC.
   CHECK: python -m pytest tests/test_cmd_schedule_sameday.py -q --no-header
-  EXPECT: 13 passed
-  EVIDENCE: 13 passed. Driven under a frozen clock in New_York (summer AND
+  EXPECT: 16 passed
+  EVIDENCE: 16 passed. Driven under a frozen clock in New_York (summer AND
       winter), Los_Angeles, Denver and Europe/London. Expected times are
       re-derived via `astimezone()`, an independent route from the
       implementation's `fromtimestamp()`; the UTC targets live in one constant
@@ -50,9 +56,9 @@ All figures below are from the run that produced this text.
 
 - [x] G4: Scoped regression suite over every touched file is green.
   CHECK: python -m pytest tests/test_cmd_schedule_sameday.py tests/test_cmd_schedule_settlement_monitor.py tests/test_cmd_schedule_cycles.py -q --no-header
-  EXPECT: 27 passed
-  EVIDENCE: 27 passed, counted at the moment of writing this line. The wider
-      sweep including the two cron files is 46 passed.
+  EXPECT: 30 passed
+  EVIDENCE: 30 passed, counted at the moment of writing this line. The wider
+      sweep including the two cron files is 49 passed.
 
 - [x] G5: Lint and types pass via the repo's own pre-commit hooks.
   CHECK: python -m pre_commit run --files main.py tests/test_cmd_schedule_sameday.py tests/test_cmd_schedule_settlement_monitor.py .unlazy/probe_july_window.py .unlazy/audit_handoff.py
@@ -75,8 +81,12 @@ All figures below are from the run that produced this text.
         M9 minute 10 -> 30                       -> 4 failed
       Plus the four that SURVIVED round 1 and were only killed after round 2
       wrote assertions for them:
-        M-K warning threshold `<6` (stale after the time change) -> 2 failed,
-            precisely on the Los_Angeles and Denver cases
+        M-K warning threshold `<6` (stale after a time change) -> 3 failed.
+            Re-run after the SECOND time change and it still fails, because
+            the test now derives its expectation from each task's resolved
+            local hour instead of a hardcoded per-timezone list -- the
+            hardcoded list is what let this threshold rot in the first place.
+        wrong target hour (3 -> 4)               -> 13 failed
         M-G drop `.strip().lower()`              -> 1 failed
         M-D failure branch -> `pass` (swallowed) -> 1 failed
         `/mo 2` appended AFTER `/ST`             -> 1 failed

@@ -1,5 +1,5 @@
 """cmd_schedule() must register two daily `cron --sameday-only` tasks at the
-host-local wall times corresponding to 05:10 and 23:10 UTC.
+host-local wall times corresponding to 01:30 and 03:00 UTC.
 
 Nothing in this repo scheduled a same-day-only scan before this: every
 `scan_runs` row is mode='cron', never 'cron-sameday'. The METAR lock-in is
@@ -27,7 +27,7 @@ import pytest
 # The two UTC instants cmd_schedule() must target. Named once here and used
 # both to drive the expectation and to name the tasks, so a change to one
 # without the other fails rather than silently agreeing with itself.
-SAMEDAY_UTC_TIMES = ((5, 10), (23, 10))
+SAMEDAY_UTC_TIMES = ((1, 30), (3, 0))
 
 
 def _make_fake_dt(base_utc: datetime, host_tz: ZoneInfo):
@@ -126,11 +126,12 @@ class TestBothTasksRegistered:
     @pytest.mark.parametrize(
         "tz_name,base_utc",
         [
-            # Summer, US eastern host: 05:10 UTC is 01:10 local, 23:10 is 19:10.
+            # Summer, US eastern host: 03:00 UTC is 23:00 local, 01:30 is 21:30.
             ("America/New_York", datetime(2026, 8, 10, 12, 0, tzinfo=UTC)),
-            # Summer, US pacific host: 05:10 UTC is 22:10 of the PREVIOUS local
-            # day -- the late-local-evening slot the western cities need, and
-            # the case a naive "UTC hour == local hour" implementation breaks.
+            # Summer, US pacific host: 03:00 UTC is 20:00 of the PREVIOUS
+            # local day -- the case a naive "UTC hour == local hour"
+            # implementation breaks, and the slot where the western cities
+            # reach the confidence factor's hour-20 saturation point.
             ("America/Los_Angeles", datetime(2026, 8, 10, 12, 0, tzinfo=UTC)),
             # WINTER eastern: the same UTC targets land an hour earlier local
             # than the summer row above. A snapshotted fixed UTC offset taken
@@ -298,23 +299,36 @@ class TestOvernightWarning:
     decoration: on a laptop it is the only thing telling the operator why the
     task never ran. Nothing asserted it existed, so deleting the whole block --
     or leaving its hour threshold calibrated for a time the task no longer
-    uses -- passed the entire suite."""
+    uses -- passed the entire suite.
+
+    The expectation is DERIVED from each task's own resolved local hour rather
+    than hardcoded per timezone. A hardcoded list silently rots the next time
+    the UTC targets move, which is exactly how the `< 6` threshold survived the
+    05:10 -> 01:30/03:00 change while quietly covering nothing.
+    """
+
+    OVERNIGHT = range(22, 24), range(0, 7)  # matches main.py's `>=22 or <7`
+
+    @staticmethod
+    def _is_overnight(hhmm: str) -> bool:
+        h = int(hhmm.split(":")[0])
+        return h >= 22 or h < 7
 
     @pytest.mark.parametrize(
-        "tz_name,warn_hours,quiet_hours",
+        "tz_name",
         [
-            # Eastern: 05:10 UTC -> 01:10 local (warn), 23:10 -> 19:10 (quiet).
-            ("America/New_York", [5], [23]),
-            # PACIFIC IS THE REGRESSION CASE. 05:10 UTC -> 22:10 local, which a
-            # `< 6` threshold silently skips -- on exactly the host the 05:10
-            # task exists to serve, and the one most likely to be a laptop.
-            ("America/Los_Angeles", [5], [23]),
-            # Mountain: 05:10 UTC -> 23:10 local. Same skip under `< 6`.
-            ("America/Denver", [5], [23]),
+            # The operator's own host: 03:00 UTC lands 23:00 local -> warns.
+            "America/New_York",
+            "America/Chicago",
+            # Western hosts: both tasks land in the evening, neither warns.
+            "America/Denver",
+            "America/Los_Angeles",
+            # East of UTC, where both land in the morning.
+            "Europe/London",
         ],
     )
-    def test_warning_fires_for_the_overnight_task_only(
-        self, monkeypatch, capsys, tz_name, warn_hours, quiet_hours
+    def test_warning_fires_exactly_for_the_overnight_tasks(
+        self, monkeypatch, capsys, tz_name
     ):
         calls = _drive(
             monkeypatch,
@@ -323,27 +337,37 @@ class TestOvernightWarning:
             SAMEDAY_ONLY_YES,
         )
         out = capsys.readouterr().out
-        # Positive control: both tasks were actually registered, so the
-        # presence/absence of the warning below is about the warning and not
-        # about the block never having run.
-        assert sorted(_sameday_calls(calls)) == [h for h, _ in SAMEDAY_UTC_TIMES]
-
         sameday = _sameday_calls(calls)
-        for hour in warn_hours:
-            local = _st_time(sameday[hour])
-            assert f"{local} is overnight on this host" in out, (
-                f"{tz_name}: no overnight warning for the {hour:02d}UTC task "
-                f"at {local} local"
+        # Positive control: both tasks registered, so the presence or absence
+        # of a warning below is about the warning and not about a dead path.
+        assert sorted(sameday) == [h for h, _ in SAMEDAY_UTC_TIMES]
+
+        warned = 0
+        for hour, cmd in sameday.items():
+            local = _st_time(cmd)
+            expect = self._is_overnight(local)
+            present = f"{local} is overnight on this host" in out
+            assert present is expect, (
+                f"{tz_name}: {hour:02d}UTC task resolves to {local} local; "
+                f"expected warning={expect}, got {present}"
             )
-        for hour in quiet_hours:
-            local = _st_time(sameday[hour])
-            assert f"{local} is overnight on this host" not in out, (
-                f"{tz_name}: warned about the {hour:02d}UTC task at {local} "
-                f"local, which is not overnight"
-            )
-        # The warning must name the two settings that actually fix it.
-        assert "Wake the computer" in out
-        assert "AC power" in out
+            warned += present
+        if warned:
+            # The warning must name the two settings that actually fix it.
+            assert "Wake the computer" in out
+            assert "AC power" in out
+
+    def test_at_least_one_host_actually_warns(self, monkeypatch, capsys):
+        """Guards the parametrized test above against becoming vacuous: if the
+        times ever move somewhere no host warns, every case would pass by
+        asserting `False is False` and the warning could be deleted freely."""
+        _drive(
+            monkeypatch,
+            datetime(2026, 8, 10, 12, 0, tzinfo=UTC),
+            ZoneInfo("America/New_York"),
+            SAMEDAY_ONLY_YES,
+        )
+        assert "is overnight on this host" in capsys.readouterr().out
 
 
 class TestDeclineIsPerTask:

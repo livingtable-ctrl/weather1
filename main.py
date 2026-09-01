@@ -12793,40 +12793,37 @@ def cmd_schedule():
     # latter only when sameday_only).
     #
     # That matters because the METAR lock-in is gated on the market's OWN local
-    # day already being late (metar.py's `_LOCK_IN_HOUR = 14` check), so it can
-    # only fire on a same-day market scanned in its city's afternoon or
-    # evening. The two times are NOT symmetric, and it is worth being exact
-    # about which one does the work (US DST offsets, e.g. mid-July):
+    # day already being late (metar.py's `_LOCK_IN_HOUR = 14`), and its
+    # confidence rises with that hour: _dynamic_lock_in_confidence()'s factor
+    # `min(1, (local_hour - 14) / 6)` SATURATES AT HOUR 20.
     #
-    #   23:10 UTC -> 19:10 EDT / 18:10 CDT / 17:10 MDT / 16:10 PDT / 16:10 MST
-    #                (Phoenix). EVERY tracked zone is past hour 14. THIS is the
-    #                run that makes a lock-in possible everywhere.
-    #                CAVEAT, do not read "everywhere" as "comfortably": in
-    #                WINTER this is 15:10 PST, which is the same ~17-minute
-    #                margin against the :53 observation that 22:10 UTC is
-    #                rejected for below. It still PASSES the hour-14 gate in
-    #                every drift position, which 22:10 does not, but the
-    #                pacific margin is thin for half the year either way.
-    #   05:10 UTC -> 01:10 EDT / 00:10 CDT / 23:10 MDT / 22:10 PDT / 22:10 MST
-    #                Mountain, Pacific and Phoenix only -- a later, more-settled
-    #                second look at the western half, six hours after 23:10 UTC
-    #                already covered it. Eastern and central are far too early
-    #                here and contribute nothing.
+    # THE CONSTRAINT THAT DECIDES THESE TIMES is when the market closes, and it
+    # is later than it looks: daily temperature markets close at MIDNIGHT LOCAL
+    # STANDARD (backlog.txt ~L495, from live Kalshi metadata) -- 01:00 local
+    # wall clock during DST, not 17:00-19:00. That 17-19 window is
+    # settlement_monitor's polling window for when the extreme becomes KNOWN,
+    # which is a different thing. So the whole local evening is tradeable, and
+    # the best scan is late enough for the factor to saturate while the book is
+    # still open.
     #
-    # WHY THESE EXACT TIMES, since 06:10/22:10 look equivalent and are not:
-    #  * 06:10 UTC would miss Mountain by ten minutes -- 00:10 MDT has already
-    #    rolled into the NEXT local day and fails the gate outright, dropping
-    #    Denver. 05:10 costs the Pacific zone nothing in exchange, because
-    #    _dynamic_lock_in_confidence()'s hour factor
-    #    `min(1, (local_hour - 14) / 6)` (metar.py) SATURATES AT HOUR 20 --
-    #    22:10 and 23:10 PDT score identically.
-    #  * 22:10 UTC would clear the gate on the Pacific side by only ~17
-    #    minutes. metar.py gates on the OBSERVATION's local hour and routine
-    #    METAR reports at :53, so a Pacific city needs the scan at >= 14:53
-    #    local (21:53 UTC in PDT). Registered in WINTER, the pinned local wall
-    #    time becomes 21:10 UTC after spring-forward and every Pacific city
-    #    would silently drop out of the one run that is supposed to cover
-    #    everywhere. 23:10 holds in both DST drift positions, in every zone.
+    # 03:00 UTC is the only instant that puts EVERY tracked zone at factor 1.00
+    # with the market still open (mid-July):
+    #
+    #   03:00 UTC -> 23:00 EDT / 22:00 CDT / 21:00 MDT / 20:00 PDT / 20:00 MST
+    #                factor 1.00 in all five, closing in 2h-5h. Total 5.00/5.00.
+    #   01:30 UTC -> 21:30 EDT / 20:30 CDT / 19:30 MDT / 18:30 PDT / 18:30 MST
+    #                factor 1.00/1.00/0.83/0.67/0.67 = 4.17. An earlier hedge:
+    #                every zone still qualifies, with 3h-6h before close, so a
+    #                lock that clears earlier is not left waiting on one run.
+    #
+    # DST IS SELF-CORRECTING HERE, which is why these beat the 05:10/23:10 pair
+    # they replace. A /SC DAILY task is pinned to a LOCAL wall time, so it
+    # drifts +1h in UTC each winter -- and because market close is defined in
+    # local STANDARD time, that drift moves WITH the close rather than against
+    # it. Both times score identically in winter (03:00 -> 04:00 UTC, still
+    # 5.00; 01:30 -> 02:30 UTC, 4.33). The earlier pair scored 2.67 and 3.00:
+    # 23:10 UTC caught the west at only 16:10 local (factor 0.33), and 05:10
+    # UTC was past close for Eastern and before hour 14 for Central.
     #
     # These runs deliberately do NOT advance cron_heartbeat.json's
     # `last_full_scan` -- cmd_cron advances it only on a non-sameday run that
@@ -12837,7 +12834,7 @@ def cmd_schedule():
     # _check_cron_staleness() below and cron.py's matching
     # in-process 48h alert both key off it, and both must keep firing once
     # these are registered.
-    for _sameday_hour, _sameday_minute in ((5, 10), (23, 10)):
+    for _sameday_hour, _sameday_minute in ((1, 30), (3, 0)):
         sameday_task = f"KalshiCronSameday_{_sameday_hour:02d}UTC"
         sameday_cmd = f'"{py_exe}" "{script_path}" cron --sameday-only'
         # schtasks /SC DAILY /ST takes a LOCAL wall time, so the UTC target
@@ -12878,19 +12875,21 @@ def cmd_schedule():
                 "multi-day scan stops running."
             )
         )
-        # The 05:10 UTC task lands overnight on EVERY tracked host: 00:10-01:10
-        # local in the eastern/central zones, 21:10-23:10 in the mountain and
-        # pacific ones. Task Scheduler's defaults will not wake a sleeping
-        # machine, skip the run on battery, and do not re-run a missed start --
-        # so on a laptop this half of the change can no-op indefinitely with no
-        # signal at all. Same warning the settlement-monitor block above prints,
-        # for the same reason.
+        # Which task is overnight depends on the HOST's zone, not the market's:
+        # 03:00 UTC lands 23:00 on an eastern host and 22:00 on a central one,
+        # while both times land in the small hours on any host east of UTC.
+        # Task Scheduler's defaults will not wake a sleeping machine, skip the
+        # run on battery, and do not re-run a missed start -- so on a laptop a
+        # run scheduled then can no-op indefinitely with no signal at all. Same
+        # warning the settlement-monitor block above prints, for the same
+        # reason.
         #
-        # The window is `>= 22 or < 7`, NOT `< 6`: a bare `< 6` was calibrated
-        # for an earlier 06:10 UTC time and silently stopped firing for
-        # mountain and pacific hosts (22:10 / 21:10 local) when the task moved
-        # to 05:10 -- exactly the hosts this task exists to serve, and the ones
-        # most likely to be a laptop.
+        # The window is `>= 22 or < 7`, and it is deliberately computed from
+        # the RESOLVED local hour rather than pinned to a known task. A bare
+        # `< 6` lived here once, calibrated for a 06:10 UTC time that later
+        # moved twice; each move left it quietly covering fewer hosts while
+        # every test still passed. Its test now derives the expectation the
+        # same way, for the same reason.
         if _sameday_local.hour >= 22 or _sameday_local.hour < 7:
             print(
                 dim(

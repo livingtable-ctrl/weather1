@@ -52,7 +52,7 @@ def _run_cmd_schedule_and_capture(monkeypatch, fake_dt):
 
     # 6 confirm() prompts, in cmd_schedule()'s own order: scan, email,
     # settle, settlement-monitor, then the two same-day cron tasks
-    # (KalshiCronSameday_05UTC / _23UTC). The list is deliberately exact
+    # (KalshiCronSameday_01UTC / _03UTC). The list is deliberately exact
     # rather than defaulted -- a 7th prompt added later must raise
     # StopIteration here and force this list to be updated, not be
     # silently auto-answered.
