@@ -708,6 +708,37 @@ def _load_extensions() -> None:
     CHECKS.update(PROSE2_CHECKS)
     CHECKS.update(SINGLETON_CHECKS)
 
+    # The July-window probe was ORPHANED when first written: it lived only in
+    # its own file and in one prose line, so `--all` did not run it and the
+    # document's "How to re-derive" list did not name it. A corrupted figure
+    # in that section (89 of 205) then passed all fourteen other checks --
+    # including --contradictions, which does not notice that 89/205 is not
+    # 44.9%. Registering it here is the fix; it is a subprocess rather than an
+    # import because it is also meant to be runnable standalone.
+    def _july_window() -> list[str]:
+        import subprocess
+
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(pathlib.Path(__file__).parent / "probe_july_window.py"),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if r.returncode == 0 and "JULY_WINDOW_PROBE_OK" in r.stdout:
+            return []
+        return [
+            ln.removeprefix("FAIL: ")
+            for ln in r.stdout.splitlines()
+            if ln.startswith("FAIL:")
+        ] or [f"probe_july_window exited {r.returncode} without its token"]
+
+    CHECKS["--july-window"] = ("HANDOFF_JULY_WINDOW_OK", _july_window)
+
 
 def main() -> int:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))

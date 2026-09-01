@@ -278,10 +278,18 @@ peak_balance was manually overridden by the operator, so treat the archived
 balance field as unreliable and its per-trade pnl sum as the figure of record.
 
 
-[OPEN 2026-08-30 -- diagnosed while answering "why did the METAR lock stop
-  firing". The lock is not broken and was not narrowed by a regression. It is
-  STARVED, and the thing that starves it is a scheduling gap left behind by an
-  entry that is marked RESOLVED.]
+[RESOLVED 2026-08-31 -- the scheduled tasks are registered by cmd_schedule().
+  See the RESOLUTION block at the end of this entry, which also CORRECTS this
+  entry's own framing: the lock was not only starved, its `between` branch was
+  deliberately killed by a guard commit, and that is why June's volume must
+  NOT be the target. The original 2026-08-30 header is kept as prose just
+  below rather than as a second bracket -- backlog_index.py treats EVERY line
+  starting with "[" as its own entry, so a second header left this showing as
+  still-OPEN in BACKLOG_OPEN.md even with the resolution written.]
+  ORIGINAL HEADER, 2026-08-30 -- diagnosed while answering "why did the METAR
+  lock stop firing". The lock is not broken and was not narrowed by a
+  regression. It is STARVED, and the thing that starves it is a scheduling gap
+  left behind by an entry that is marked RESOLVED.
   `cron --sameday-only` SHIPPED 2026-08-22 AND NOTHING SCHEDULES IT -- THE ONLY
   PROFITABLE SIGNAL THIS BOT HAS RUNS ~5 TIMES A MONTH IN ITS USABLE WINDOW
 Priority: HIGH, and it is the highest expected-value item in this file. The
@@ -372,6 +380,90 @@ It also does not re-derive "every dollar came from the METAR lock" -- that is
 carried from the no-edge entry and was not independently checked here. What is
 established is narrow and sufficient to act on: the input volume collapsed,
 the cause is a missing scheduled task, and the task is cheap.
+
+RESOLUTION 2026-08-31.
+WHAT SHIPPED. main.py cmd_schedule() now registers two more daily tasks,
+KalshiCronSameday_05UTC and KalshiCronSameday_23UTC, each running
+`cron --sameday-only` at the host-local wall time corresponding to those UTC
+instants (converted with the same datetime.fromtimestamp() idiom
+cmd_schedule_cycles() and the settlement-monitor block already use). Each
+prompts Y/n independently like every other task in that function; a decline or
+a failed registration steps over that task rather than aborting the rest.
+Registered on no machine yet -- the operator is standing up a dedicated
+always-on host and will run `py main.py schedule` there.
+
+WHY 05:10/23:10 AND NOT THE 06:10/22:10 FIRST PROPOSED. Both were checked
+against metar.py's actual gate rather than against a clock:
+  * 23:10 UTC puts EVERY tracked zone past _LOCK_IN_HOUR=14 with hours of
+    slack (19:10 EDT / 18:10 CDT / 17:10 MDT / 16:10 PDT). 22:10 UTC would
+    clear it on the Pacific side by ~17 minutes -- and metar.py gates on the
+    OBSERVATION's local hour, with routine METAR reporting at :53, so a
+    Pacific city needs the scan at >= 14:53 local. Registered in winter, the
+    pinned local wall time becomes 21:10 UTC after spring-forward and every
+    Pacific city silently drops out.
+  * 05:10 UTC covers Denver at 23:10 MDT. 06:10 UTC would put Mountain at
+    00:10, already the NEXT local day, failing the gate outright. It costs the
+    Pacific zone nothing, because _dynamic_lock_in_confidence()'s hour factor
+    min(1,(local_hour-14)/6) SATURATES AT HOUR 20 -- 22:10 and 23:10 PDT score
+    identically.
+Both tasks are pinned to a LOCAL wall time, so they drift an hour against UTC
+after each DST change until re-registered; 23:10 holds in both drift positions
+in every zone, 05:10 holds for Mountain and Pacific. The 05:10 task lands
+overnight on most US hosts, so the block now prints the same wake/battery/
+missed-run warning the settlement-monitor task already prints.
+
+THE STALENESS DETECTOR STILL FIRES, as this entry required. Verified, not
+assumed: tests/test_cron_integration.py::TestSamedayOnlyFullScanStaleness
+passes, including test_full_scan_gap_alert_fires_with_distinct_cooldown_key
+(the cron.py ~2061 alert) and its positive control
+test_no_full_scan_gap_alert_when_recent. cron.py's
+`if sameday_only or not _full_scan:` is what enforces it.
+
+WHAT TO EXPECT, AND WHAT NOT TO. Judge this change by SAME-DAY SCAN VOLUME in
+each city's own local afternoon, NOT by lock-in count returning to June's
+level. June's volume was mostly the bug this entry already documents: commit
+e395392b (2026-06-25 21:31) added a local-date guard rejecting a lock whose
+METAR observation's local date is not the target date, and the 00-02h UTC
+scans it removed were the worse half (59.7% correct / Brier 0.2974, against
+80.8% / 0.1562 elsewhere). Measured 2026-08-31: the `between` BRANCH's last
+fire is 2026-06-25, the day that guard landed, and it does not fire again for
+48 days; above/below keep firing through 07-31. So the guard, not a schedule
+gap, is what ended the `between` lock-ins. The schedule gap is real and is what
+this change fixes, but it governs the above/below branches' thinning, which is
+the part that remains UNMEASURED.
+
+DO NOT CITE THIS ENTRY'S "20-22h UTC WINDOW: 5 same-day scans -> 4 locks"
+FIGURE. It is measuring the wrong clock twice. It bins on predicted_at's UTC
+hour while the gate is on the city's LOCAL hour (20-22h UTC spans 13-18h local
+across the tracked zones, so it neither includes nor excludes the gate
+cleanly); and predicted_at is pinned to the day's FIRST scan by
+tracker.py's ON CONFLICT(ticker, predicted_date) upsert, which omits
+predicted_at from its DO UPDATE SET while overwriting `method` -- so for a
+re-scanned ticker the hour belongs to a different scan than the method does.
+17 of 106 lock-in rows sit at local hour 0 under that attribution, which cannot
+pass metar.py:623 at all. Day-level and month-level attribution ARE safe
+(0 of 618 rows have substr(predicted_at,1,10) != predicted_date); only
+hour-of-day is damaged. All 106 lock-in rows also carry local_hour NULL, so
+that column cannot rescue it either.
+
+TESTS. tests/test_cmd_schedule_sameday.py is new (13 tests); the four input
+mocks in tests/test_cmd_schedule_settlement_monitor.py were updated for the
+added prompts. Scoped run over test_cmd_schedule_sameday.py,
+test_cmd_schedule_settlement_monitor.py and test_cmd_schedule_cycles.py:
+27 passed; 46 across the wider sweep including test_cron_integration.py's
+TestSamedayOnlyFullScanStaleness and test_sameday_only.py.
+Nine mutations were applied and each killed by a named test. FOUR of them
+survived the first round and were caught only by independent opus review:
+  * `== "n"` -> `!= "y"` -- bare Enter would have SKIPPED both tasks,
+    silently restoring the exact defect this entry exists to fix;
+  * dropping `/F` -- a re-run hangs invisibly on schtasks' overwrite prompt,
+    because the call uses capture_output=True;
+  * the failure branch reduced to `pass` -- a failed registration swallowed;
+  * the overnight-warning threshold left at `< 6` after the times moved to
+    05:10/23:10, which silently stopped warning Mountain and Pacific hosts --
+    precisely the hosts the 05:10 task exists to serve.
+The last one was a defect the FIRST round of fixes introduced, which is the
+argument for reviewing the fix and not just the original change.
 
 CROSS-REFERENCE. If MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM lands
 first, `watch --auto` at 5-minute cadence covers every city's local afternoon

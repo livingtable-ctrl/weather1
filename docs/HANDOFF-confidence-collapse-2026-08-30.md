@@ -169,11 +169,118 @@ way entirely.
 `data/.history/` keeps only the
 last 10 snapshots, so July's T values are unrecoverable there.
 
+## PARTLY ANSWERED 2026-08-31: the window is mis-anchored, and the corpus change has a commit
+
+Read this whole section before quoting any of it. The mechanism is
+established; the explanation is NOT.
+
+### What IS established
+
+**The window is an artefact of the population it was drawn from.** Its two
+endpoints are ensemble predictions. The regime change was in a different
+method entirely, five days earlier, and it has a commit: `e395392b`
+(2026-06-25), "fix(metar): add local-date guard to prevent prior-day obs from
+locking between markets". It rejects a lock when the METAR observation's local
+date is not the target date. The cron scanned at 00-02 UTC, which is
+20:00-22:00 the PREVIOUS local day, so the guard rejects exactly that traffic.
+
+**The `between` BRANCH of the METAR lock is what stopped, not the lock.** Its
+last fire is **2026-06-25**, the day `e395392b` landed; it does not fire again
+for 48 days (next: 08-13, then 08-24). The `above`/`below` branches, which the
+guard does not touch, keep firing through 07-31. The earlier claim that the
+lock "ran every day 06-03..06-26 then stopped" was wrong twice: it is
+branch-specific, and June has 21 lock days out of 31, not 24 (06-17, 06-22 and
+06-24 have none).
+
+**The composition shift is large and real.** METAR lock-ins were **89 of 198**
+May-June core rows (**44.9%**) and 17 of 143 (11.9%) in July-August, and
+**69 of the 110 May-June `between` rows (63%)** are lock-ins, as are all 4 of
+the July-August survivors. `ens+obs` went 9.6% -> 46.2% as they left.
+
+### What is NOT established: that any of this EXPLAINS the AUC gap
+
+Removing the METAR rows shrinks the May-June minus July-August gap from
+**+0.1507** to **+0.0920**. That looked decisive. It is not:
+
+- **Size-matched null.** Remove a RANDOM subset with the same per-period
+  counts (89 May-June, 17 July-August), 20,000 draws: mean shrink -0.0000,
+  sd 0.0382, and a shrink at least as large as the observed +0.0587 occurs
+  with **one-sided p = 0.062**.
+- **Discrimination-matched null.** Restrict those draws to subsets scoring at
+  least METAR's own 0.7248: **p = 0.361**. The shrink is fully accounted for
+  by "an 89-row subset scoring 0.7248 was removed"; the METAR label does no
+  work. A random 89-row May-June subset reaches 0.7248 **15.4%** of the time.
+- **The premise itself is unestablished.** METAR rows are not significantly
+  more discriminating than the rows they were pooled with:
+  May-June 0.7248 (n=89) vs 0.6369 (n=109), difference +0.0879, SE 0.0759,
+  **z = +1.16**. July-August: +0.5106, SE 0.1520, z = +0.07.
+
+So the honest statement is: **composition changed identifiably and for a known
+reason, and it is the largest single contributor anyone has named — but at
+this n it cannot be shown to explain the gap rather than to be one more thing
+that moved.** Do not present "the METAR rows explain it" as established.
+
+It also does NOT subsume the document's strongest evidence. On the
+selection-controlled traded subset above, which already contains zero
+July-August METAR rows, removing them accounts for only 23% of the gap and
+leaves z at +1.68, not +1.25.
+
+### Corrections to earlier drafts of this section
+
+- **"No commit is involved" was FALSE.** It was an absence claim made without
+  a repo-wide search. See `e395392b` above.
+- **"reads an already-observed daily extreme off a thermometer and is not a
+  forecast at all" was FALSE.** On all 106 lock-in rows,
+  `|observed_extreme_f - outcomes.settled_temp_f|` has median **8.94F**, mean
+  9.51F, and **zero** exact matches. The lock is a margin-gated extrapolation
+  from a partial-day reading, with realized accuracy ~70% on YES-locks
+  (`metar.py`'s own docstring), and July-August lock-ins score accuracy 0.471
+  / Brier 0.4153. It is a model path with its own beta calibration, not an
+  oracle. "The stratum that carried May-June's skill was mostly not the model"
+  over-reached.
+- **The `get_historical_sigma()` elimination had the right verdict for the
+  wrong reason.** `_load_dynamic_sigma` DID NOT EXIST during the collapse: it
+  was removed by `24559a75` (2026-05-26) and restored by `4ccbeb28`
+  (2026-07-12). Through the whole window the code took the STATIC
+  season-keyed fallback, which June and July share (both season 3), so it
+  could not change at the July boundary at all. The month-keyed ratios
+  (median 0.875 max / 0.794 min) were measured off a cache written 2026-08-29
+  and describe a dormant branch.
+- **UNEXAMINED CONFOUND that this surfaced:** `4ccbeb28` (2026-07-12) switched
+  sigma from the static seasonal table to dynamic per-month values, several
+  floored at 1.5F. That is a real, commit-driven sigma change landing INSIDE
+  the July-August period this document treats as homogeneous.
+- **The sigma-noise result is too fragile to carry weight.** Within
+  `ens+gaussian`/`above`, MAD(log effective sigma) is directionally lower in
+  July-August, but the cells are n=16-17 vs 28, the May-June value moves
+  0.766 -> 0.920 on the exclusion of any one of four rows, and a permutation
+  test gives one-sided p = 0.093 at n=17. The aggregate sigma move (median
+  3.554 -> 6.976 June to July, CV 1.185 -> 4.314 by August) is real; the
+  claim that stratifying REVERSES it is not established.
+- Removing the METAR rows leaves `between` with **n=0** in July-August, not
+  n=4, so that stratum becomes uncomparable rather than merely thin.
+
+`python .unlazy/probe_july_window.py` gates the four load-bearing figures
+(the METAR shares, the May-June METAR AUC, and both gaps) plus the null. It
+does NOT gate the per-stratum figures or the sigma paragraph; treat those as
+ungated. Run `python .unlazy/coverage_handoff.py` for the current list.
+
 ## Still open
 
-- **What changed between 2026-06-30 03:34 and 2026-07-02 19:07?** Zero commits
-  in that window, so look at data, config, accumulated state, or an
-  auto-activating feature crossing a threshold — not the commit log.
+- **Whether composition explains the gap at all.** The nulls above say the
+  corpus needs to be materially larger before this is answerable. The
+  direction is consistent in every stratum and significant in none.
+- Why the `above`/`below` lock-in branches also thinned after July, which
+  `e395392b` does not explain. A same-day market must be scanned late in its
+  city's own local day (`metar._LOCK_IN_HOUR = 14`) and nothing ever
+  scheduled `cron --sameday-only` (`scan_runs` holds no `mode='cron-sameday'`
+  row), which is a plausible but UNMEASURED mechanism. All 106 lock-in rows
+  carry `local_hour` NULL, so that check cannot be run on this corpus, and
+  `predicted_at` is pinned to the day's FIRST scan by the
+  `ON CONFLICT(ticker, predicted_date)` upsert while `method` is overwritten
+  by the last, so hour-of-day attribution is unsafe here in general. Day-level
+  and month-level attribution ARE safe: 0 of 618 rows have
+  `substr(predicted_at,1,10) != predicted_date`.
 - `5a3d80b3` (2026-07-07) "Fix ECMWF silently dropped from daily forecast" — a
   FIX, so the defect predates it. DOWNGRADED: `n_members` and the
   forecast-error result both cut against a lost-member mechanism.

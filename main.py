@@ -12784,6 +12784,147 @@ def cmd_schedule():
                     red(f"Failed: {result3.stderr.strip() or result3.stdout.strip()}")
                 )
 
+    # ── Daily same-day-only cron scans ───────────────────────────────────────
+    # Nothing in this repo ever scheduled `cron --sameday-only`: the four
+    # cycle-aligned tasks cmd_schedule_cycles() prints are all FULL scans, and
+    # every other task registered above runs analyze/brief/settle/
+    # settlement-monitor, not cron at all. `scan_runs` bears that out -- every
+    # recorded row is mode='cron', never 'cron-sameday' (cron.py sets the
+    # latter only when sameday_only).
+    #
+    # That matters because the METAR lock-in is gated on the market's OWN local
+    # day already being late (metar.py's `_LOCK_IN_HOUR = 14` check), so it can
+    # only fire on a same-day market scanned in its city's afternoon or
+    # evening. The two times are NOT symmetric, and it is worth being exact
+    # about which one does the work (US DST offsets, e.g. mid-July):
+    #
+    #   23:10 UTC -> 19:10 EDT / 18:10 CDT / 17:10 MDT / 16:10 PDT / 16:10 MST
+    #                (Phoenix). EVERY tracked zone is past hour 14. THIS is the
+    #                run that makes a lock-in possible everywhere.
+    #                CAVEAT, do not read "everywhere" as "comfortably": in
+    #                WINTER this is 15:10 PST, which is the same ~17-minute
+    #                margin against the :53 observation that 22:10 UTC is
+    #                rejected for below. It still PASSES the hour-14 gate in
+    #                every drift position, which 22:10 does not, but the
+    #                pacific margin is thin for half the year either way.
+    #   05:10 UTC -> 01:10 EDT / 00:10 CDT / 23:10 MDT / 22:10 PDT / 22:10 MST
+    #                Mountain, Pacific and Phoenix only -- a later, more-settled
+    #                second look at the western half, six hours after 23:10 UTC
+    #                already covered it. Eastern and central are far too early
+    #                here and contribute nothing.
+    #
+    # WHY THESE EXACT TIMES, since 06:10/22:10 look equivalent and are not:
+    #  * 06:10 UTC would miss Mountain by ten minutes -- 00:10 MDT has already
+    #    rolled into the NEXT local day and fails the gate outright, dropping
+    #    Denver. 05:10 costs the Pacific zone nothing in exchange, because
+    #    _dynamic_lock_in_confidence()'s hour factor
+    #    `min(1, (local_hour - 14) / 6)` (metar.py) SATURATES AT HOUR 20 --
+    #    22:10 and 23:10 PDT score identically.
+    #  * 22:10 UTC would clear the gate on the Pacific side by only ~17
+    #    minutes. metar.py gates on the OBSERVATION's local hour and routine
+    #    METAR reports at :53, so a Pacific city needs the scan at >= 14:53
+    #    local (21:53 UTC in PDT). Registered in WINTER, the pinned local wall
+    #    time becomes 21:10 UTC after spring-forward and every Pacific city
+    #    would silently drop out of the one run that is supposed to cover
+    #    everywhere. 23:10 holds in both DST drift positions, in every zone.
+    #
+    # These runs deliberately do NOT advance cron_heartbeat.json's
+    # `last_full_scan` -- cmd_cron advances it only on a non-sameday run that
+    # actually completed a full scan (cron.py's `if sameday_only or not
+    # _full_scan:`, so a kill-switch/black-swan abort or a crash inside
+    # _cmd_cron_body does not advance it either), exactly so a broken
+    # full-scan task cannot hide behind a healthy sameday cadence.
+    # _check_cron_staleness() below and cron.py's matching
+    # in-process 48h alert both key off it, and both must keep firing once
+    # these are registered.
+    for _sameday_hour, _sameday_minute in ((5, 10), (23, 10)):
+        sameday_task = f"KalshiCronSameday_{_sameday_hour:02d}UTC"
+        sameday_cmd = f'"{py_exe}" "{script_path}" cron --sameday-only'
+        # schtasks /SC DAILY /ST takes a LOCAL wall time, so the UTC target
+        # has to be converted for this host. fromtimestamp() asks the OS to
+        # localize that specific TARGET instant, correctly DST-adjusted for
+        # it -- the same conversion cmd_schedule_cycles() and the
+        # settlement-monitor block above already use, and for the same reason
+        # (a snapshotted `datetime.now().astimezone()` offset is wrong for a
+        # target on the far side of a transition from registration time).
+        # The registered task is still pinned to that local wall time, so it
+        # drifts an hour against UTC after the next DST change until
+        # re-registered; that is the existing behaviour of every
+        # KalshiCron_*UTC task, not a new limitation introduced here.
+        _sameday_utc = datetime.now(UTC).replace(
+            hour=_sameday_hour, minute=_sameday_minute, second=0, microsecond=0
+        )
+        _sameday_local = datetime.fromtimestamp(_sameday_utc.timestamp())
+        sameday_start_str = _sameday_local.strftime("%H:%M")
+        sameday_create = (
+            f"schtasks /Create /F /SC DAILY /ST {sameday_start_str} "
+            f'/TN "{sameday_task}" /TR "{_esc_tr(sameday_cmd)}" /RL HIGHEST'
+        )
+
+        print(bold(f"\nRegistering daily same-day scan task: {sameday_task}"))
+        print(dim(f"Command: {sameday_cmd}"))
+        print(
+            dim(
+                f"  Runs {sameday_start_str} local machine time "
+                f"({_sameday_hour:02d}:{_sameday_minute:02d} UTC) — scans only "
+                "same-day markets, so the METAR lock-in can fire while a "
+                "city's own local afternoon is still in progress."
+            )
+        )
+        print(
+            dim(
+                "  Same-day runs do not count as a FULL scan: the "
+                "'last FULL cron scan was Nh ago' warning still fires if the "
+                "multi-day scan stops running."
+            )
+        )
+        # The 05:10 UTC task lands overnight on EVERY tracked host: 00:10-01:10
+        # local in the eastern/central zones, 21:10-23:10 in the mountain and
+        # pacific ones. Task Scheduler's defaults will not wake a sleeping
+        # machine, skip the run on battery, and do not re-run a missed start --
+        # so on a laptop this half of the change can no-op indefinitely with no
+        # signal at all. Same warning the settlement-monitor block above prints,
+        # for the same reason.
+        #
+        # The window is `>= 22 or < 7`, NOT `< 6`: a bare `< 6` was calibrated
+        # for an earlier 06:10 UTC time and silently stopped firing for
+        # mountain and pacific hosts (22:10 / 21:10 local) when the task moved
+        # to 05:10 -- exactly the hosts this task exists to serve, and the ones
+        # most likely to be a laptop.
+        if _sameday_local.hour >= 22 or _sameday_local.hour < 7:
+            print(
+                dim(
+                    f"  {sameday_start_str} is overnight on this host. Task "
+                    "Scheduler will NOT wake a sleeping machine for it, skips "
+                    "it on battery, and will not re-run a missed start. Open "
+                    "the task's Conditions tab (check 'Wake the computer to "
+                    "run this task', uncheck 'Start only if on AC power') and "
+                    "its Settings tab ('Run task as soon as possible after a "
+                    "scheduled start is missed')."
+                )
+            )
+        confirm_sameday = input("  Register now? (Y/n): ").strip().lower()
+        if confirm_sameday == "n":
+            print(dim("Skipped."))
+            continue
+        result_sameday = subprocess.run(
+            sameday_create, shell=True, capture_output=True, text=True
+        )
+        if result_sameday.returncode == 0:
+            print(
+                green(
+                    f"\nTask '{sameday_task}' registered — runs daily at "
+                    f"{sameday_start_str}."
+                )
+            )
+            print(dim(f"To remove: schtasks /Delete /TN {sameday_task} /F"))
+        else:
+            print(
+                red(
+                    f"Failed: {result_sameday.stderr.strip() or result_sameday.stdout.strip()}"
+                )
+            )
+
 
 def cmd_schedule_cycles() -> None:
     """

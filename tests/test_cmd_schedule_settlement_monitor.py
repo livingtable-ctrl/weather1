@@ -50,8 +50,13 @@ def _run_cmd_schedule_and_capture(monkeypatch, fake_dt):
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
 
-    # 4 confirm() prompts: scan, email, settle, settlement-monitor.
-    answers = iter(["y", "n", "n", "y"])
+    # 6 confirm() prompts, in cmd_schedule()'s own order: scan, email,
+    # settle, settlement-monitor, then the two same-day cron tasks
+    # (KalshiCronSameday_05UTC / _23UTC). The list is deliberately exact
+    # rather than defaulted -- a 7th prompt added later must raise
+    # StopIteration here and force this list to be updated, not be
+    # silently auto-answered.
+    answers = iter(["y", "n", "n", "y", "n", "n"])
     monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
 
     main.cmd_schedule()
@@ -210,7 +215,7 @@ class TestFirstPromptDeclineStillRegistersOthers:
 
         calls: list[str] = []
         monkeypatch.setattr(subprocess, "run", _capturing_run(calls))
-        answers = iter(["n", "n", "n", "y"])
+        answers = iter(["n", "n", "n", "y", "n", "n"])
         monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
 
         main.cmd_schedule()
@@ -248,7 +253,12 @@ class TestSettlementMonitorImportFailureIsolated:
 
         calls: list[str] = []
         monkeypatch.setattr(subprocess, "run", _capturing_run(calls))
-        answers = iter(["y", "n", "n", "y"])
+        # ONLY FIVE prompts here, not the usual six: the settlement-monitor
+        # block is skipped wholesale when its import fails, so it never asks.
+        # The 4th and 5th answers therefore land on the two same-day cron
+        # tasks, not on settlement-monitor -- decline both, so this test's
+        # `calls` list stays about the blocks it actually reasons over.
+        answers = iter(["y", "n", "n", "n", "n"])
         monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
 
         import sys
@@ -286,7 +296,7 @@ class TestRealTimeIntegration:
 
         calls: list[str] = []
         monkeypatch.setattr(subprocess, "run", _capturing_run(calls))
-        answers = iter(["y", "n", "n", "y"])
+        answers = iter(["y", "n", "n", "y", "n", "n"])
         monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
 
         main.cmd_schedule()
