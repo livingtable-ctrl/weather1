@@ -45,7 +45,7 @@ MUTANTS = [
     (
         "stale: ratchet heading",
         "--contradictions",
-        "## Temperature scaling: a self-training loop",
+        "## Temperature scaling, part 2: the self-training loop",
         "## CONFIRMED LIVE DEFECT: the temperature ratchet, visible in the snapshots\n## x",
     ),
     (

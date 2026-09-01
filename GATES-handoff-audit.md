@@ -634,3 +634,70 @@ would penalise exactly the corrections this pass made.
     existence-only and could be as wrong as tracker.py:1528 was.
  3. The stale citation in backlog.txt and weather_markets.py is recorded but
     NOT fixed — it is outside this document's scope and needs its own change.
+
+
+## PASS 12 — fourth 20-pass audit, 2026-08-30
+
+The 14 gates are saturated: they were green at the start and never moved. So
+this pass used lenses NOT tried before — the skimmer's view, absolutes,
+orphaned cross-references, time-dependence, live data drift, the
+headings-only outline, singleton figures, and the re-derive recipe.
+**8 issues, none of which any gate could have caught.**
+
+### THE BEST FIND: the document contradicted its own proof
+The lead said AUC is invariant under temperature scaling "so unlike **every
+other metric in this document** it cannot be an artefact of the calibration
+argument". False on the document's own showing: it proves further down that
+**accuracy at a fixed threshold is equally invariant**, for the identical
+reason. Corrected to name the real split — invariant {AUC, accuracy},
+calibration-sensitive {Brier, confidence} — which also strengthens the
+argument, because it makes the accuracy drop evidence of the same thing rather
+than an independent symptom. Found by scanning ABSOLUTES ("every", "never",
+"only"), which is where overclaiming hides.
+
+### Structural defects an outline read exposed
+- **The title was TWO H1 headings.** Written as two `#` lines, it renders as
+  two titles. Now one.
+- **Two near-identical section names** both beginning "Temperature scaling:".
+  Renamed to part 1 / part 2 with distinct subjects.
+- The closing section required re-measurement to "split at the July step" but
+  never mentioned STRATIFYING by condition type, which the composition
+  qualification makes mandatory. Splitting without stratifying reproduces the
+  exact confound an earlier pass uncovered.
+
+### A TIME BOMB, now defused in writing
+Every figure is a snapshot of 341 settled rows. Verified the DB still matches
+today. The moment cron settles more markets the gates FAIL — correctly — but a
+reader could mistake that for a broken document. Added an explicit contract:
+a failing gate after new data means "re-derive", NOT "edit the number until it
+passes".
+
+### The re-derive section under-delivered
+It described ONE table while the document now holds seven, and predated the
+oracle entirely. Rewritten to lead with `audit_handoff.py --all` and the five
+supporting harnesses, and to state plainly that coverage is partial so a green
+run does not verify an ungated figure.
+
+### AND IT IMMEDIATELY PRODUCED A SELF-STALE CLAIM
+The rewrite quoted "about 39% / 31%" coverage. By the time it was written the
+real figures were 37.1% / 29.1% — my own edits had added ungated prose and
+moved the denominator. Replaced with an instruction to RUN the tools. A
+document must not hardcode a number its own tool prints.
+
+### A RENAME SILENTLY DISARMED A MUTATION CONTROL
+Renaming the "Temperature scaling" heading invalidated a mutant anchor in
+`mutate_handoff_oracle.py`. The harness reported "ANCHOR NOT FOUND — mutation
+never applied" rather than passing, which is the behaviour it was built for.
+Anchor realigned. **Editing a document can disarm the controls that guard it,
+and only an explicit not-applied report makes that visible.**
+
+Measured after: 14 gates pass, 9 numeric mutants die, 30 prose anchors die,
+lint clean, 833 lines.
+
+### REMAINING, NOT DONE
+ 1. 81 of 108 four-decimal figures appear exactly ONCE in the document, so
+    they cannot be cross-checked against a restatement — they are guarded only
+    if individually gated, and most are not.
+ 2. Coverage percentages fall as the document improves. Not a defect, but it
+    means the metric cannot be used as a completion target.
+ 3. Repo-wide line citations remain unchecked by anything.

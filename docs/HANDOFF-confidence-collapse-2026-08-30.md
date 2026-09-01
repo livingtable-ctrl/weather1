@@ -1,9 +1,16 @@
-# HANDOFF: a suspected July regression in model discrimination — DIRECTION
-# CONSISTENT, SIGNIFICANCE NOT ESTABLISHED
+# HANDOFF: a suspected July regression in model discrimination — direction consistent, significance NOT established
 
 Written 2026-08-30. Self-contained on purpose — re-derive every number below
 rather than citing this file. Prior handoffs in this project went stale because
 figures were carried forward instead of recomputed.
+
+**THE FIGURES HERE ARE A SNAPSHOT OF A GROWING CORPUS.** Every number was
+derived from 341 settled core rows, the state of `data/predictions.db` on
+2026-08-30. The moment cron settles more markets these figures become stale by
+construction. `python .unlazy/audit_handoff.py --all` re-derives them and will
+FAIL when that happens. **A failing gate after new data is EXPECTED and means
+"re-derive", not "the document is broken".** Do not edit a number to make a
+gate pass; re-run the analysis and rewrite the conclusion if it moved.
 
 ---
 
@@ -24,8 +31,17 @@ problem, IF it is real.
 
 AUC — the probability the model ranks a random YES above a random NO. 0.50 is
 no signal. **AUC is invariant under temperature scaling** (a strictly
-increasing map fixing 0.5), so unlike every other metric in this document it
-cannot be an artefact of the calibration argument that occupies the rest of it.
+increasing map fixing 0.5), so it cannot be an artefact of the calibration
+argument that occupies the rest of this document.
+  PRECISION, because an earlier draft said "unlike EVERY OTHER metric in this
+  document" and that was false on the document's own showing: **accuracy at a
+  fixed 0.5 threshold is equally invariant**, for exactly the same reason, and
+  this document proves it further down ("it cannot move a prediction across
+  the 0.5 threshold, so it leaves accuracy EXACTLY unchanged"). The metrics
+  that ARE calibration-sensitive here are Brier and confidence (mean |p-0.5|).
+  So the invariant pair is {AUC, accuracy} and the sensitive pair is
+  {Brier, confidence} — which is why the accuracy drop is evidence of the same
+  thing the AUC drop is, not an independent symptom.
 It CAN, however, be an artefact of which markets were scanned — and it largely
 is. See the composition qualification below before drawing any conclusion.
 
@@ -599,6 +615,31 @@ without new evidence; the reasoning is recorded so the work is not repeated.
 
 ## How to re-derive
 
+**START HERE, NOT WITH THE RECIPE BELOW.** Every figure in this document is
+re-derived from the live database by:
+
+    python .unlazy/audit_handoff.py --all
+
+Fourteen checks, about one second. They read the expected values OUT of this
+document and compare them against fresh derivations, so a figure edited in the
+text fails the gate. Supporting harnesses:
+
+    python .unlazy/mutate_handoff_oracle.py   # proves the numeric gates can fail
+    python .unlazy/mutate_prose_gates.py      # proves the prose gates can fail
+    python .unlazy/coverage_handoff.py        # which numeric claims are ungated
+    python .unlazy/prose_coverage.py          # which prose claims are ungated
+    python .unlazy/did_bootstrap.py           # the difference-in-differences CI
+
+COVERAGE IS PARTIAL. Roughly a third of the numeric claims and under a third
+of the prose claims are gated; **run the two coverage tools for the current
+figures rather than trusting a number written here** — this paragraph would
+otherwise become one more stale citation, and the percentages move whenever
+the document is edited, because new prose is ungated by construction.
+**An ungated figure is NOT verified by a green run.**
+
+The hand recipe below covers ONE table (the confidence table) and is kept
+because its trap list is the expensive part. It is not a recipe for the rest.
+
 The confidence table: `predictions` JOIN `outcomes_valid` on ticker,
 `settled_yes IN (0,1)`, tickers `LIKE 'KXHIGH%' OR 'KXLOWT%'`,
 `method='ensemble'`, grouped by `strftime('%Y-%m', predicted_at)`, computing
@@ -626,7 +667,7 @@ the commit log entirely and toward accumulated state, config, and external
 inputs. A new session should start from the "still open" list above and NOT
 re-derive the eliminated four.
 
-## Temperature scaling: a second, separate mechanism — and a trap
+## Temperature scaling, part 1: when it was live, and why July is not it
 
 This was missed entirely by the first two drafts and it changes how the
 May-August series should be read.
@@ -673,7 +714,7 @@ per file, and the oldest surviving `temperature_scale_*` is
 **2026-08-01T20:35**. July's values have rotated out. Do not spend time
 hunting for them there.
 
-## Temperature scaling: a self-training loop, and what the snapshots do NOT show
+## Temperature scaling, part 2: the self-training loop, and the ratchet that is NOT in the data
 
 Separate from the July question, and NOT a cause of it — AUC is
 calibration-invariant, so nothing in this section can explain the
@@ -779,9 +820,13 @@ generated by a crippled model, and every aggregate spanning May-August mixes
 two different systems. That does not resurrect the forecasting thesis on its
 own — the model never beat the market in ANY month, including May and June
 when it was confident — but it does mean the *magnitude* of the deficit is
-not trustworthy, and any future re-measurement must split at the step itself,
-between 2026-06-30 and 2026-07-02 — NOT at the 2026-06-27 EMOS commit, which
-an earlier draft of this file wrongly named as the boundary.
+not trustworthy, and any future re-measurement must do BOTH of the following,
+not one: **split at the step itself**, between 2026-06-30 and 2026-07-02 (NOT
+at the 2026-06-27 EMOS commit, which an earlier draft wrongly named as the
+boundary), **and stratify by condition type**, because the `between` share
+collapses from 55.6% to 2.8% across that same boundary and pooling hides it.
+Splitting without stratifying reproduces the confound this document spent a
+pass uncovering.
 
 The one conclusion that survives regardless: **`edge` is negative in every
 month, before and after the collapse.** The model has never beaten the market
