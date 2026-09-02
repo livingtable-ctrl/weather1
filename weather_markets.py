@@ -5643,9 +5643,16 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     NOT on an unconditional skip.
     IMPORTANT — graduating a model needs THREE steps, not one: (1)
     remove it from TRACKING_ONLY_MODEL_NAMES (so it starts accumulating real
-    learned data on the unrestricted path -- NB this alone also grows the
-    DETERMINISTIC blend's learned_weights.json denominator by that model's
-    1/mae, a small re-weighting of a blend you may not have meant to touch),
+    learned data on the unrestricted path). NB this grows the denominator of
+    the fit that feeds learned_weights.json, and therefore the PERSISTED value
+    of every model in it -- but it does NOT re-weight the deterministic blend,
+    because that blend's three models are all drawn from the same normalised
+    set and a common rescale cancels when shares are taken among them
+    (verified: gfs/ifs025/icon are 23.14%/38.73%/38.12% under both a 4- and a
+    5-model fit on identical MAE data). The cancellation FAILS only if a city
+    is missing one of the three keys, since `dyn.get(m, learned.get(m,
+    default))` would then mix a rescaled learned value with an unscaled
+    baseline; all 18 cities carry all three today, so there is no such path,
     AND (2) add it to the `baseline` dict below (even a plain 1.0, if it has
     no seasonal prior) — because once removed from TRACKING_ONLY_MODEL_NAMES,
     it's also no longer in `ensemble_candidate_models` (which is

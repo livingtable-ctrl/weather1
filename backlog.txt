@@ -872,12 +872,26 @@ A SECOND LEAK IN THE SAME FUNCTION, found by the opus review of this entry and
     10-observation 30-day floor (max is 5). Not fixed here because fixing it
     would move the deterministic blend, which this change exists to leave
     alone.
-  * GRADUATING A MODEL NOW RE-WEIGHTS THE OTHER BLEND TOO. Removing a name
-    from TRACKING_ONLY_MODEL_NAMES grows the UNRESTRICTED fit's denominator by
-    that model's 1/mae, and that fit is what learned_weights.json holds. The
-    UKMO graduation already has this pending: on the next 5-day refresh the
-    deterministic blend's ECMWF share moves 38.93% -> 38.73%. Small, but it is
-    the same omission class that produced this entry's own wrong first fix.
+  * GRADUATING A MODEL MOVES THE PERSISTED VALUES BUT NOT THE OTHER BLEND'S
+    SHARES -- and the first version of this bullet claimed otherwise, on a
+    figure taken from a review without re-deriving it. Removing a name from
+    TRACKING_ONLY_MODEL_NAMES grows the UNRESTRICTED fit's denominator, so
+    every value in learned_weights.json changes. It does NOT re-weight the
+    deterministic blend: that blend's three models are all drawn from the same
+    normalised set, ratios among them are (1/mae_a)/(1/mae_b) and independent
+    of the normalisation, so the common rescale cancels in shares. Verified on
+    identical MAE data -- gfs/ifs025/icon are 23.14% / 38.73% / 38.12% under
+    both a 4-model (pre-graduation) and 5-model (post) fit.
+    The claimed "38.93% -> 38.73%" was comparing the ON-DISK file, written
+    with older MAE data, against a fresh fit: that gap is the 60-day window
+    rolling, not the graduation. Caught by the parallel session that had just
+    accepted the same identity from me, which is the right way round.
+    THE CANCELLATION IS NOT UNCONDITIONAL, and this is the part worth
+    keeping: `dyn.get(m, learned.get(m, default))` mixes a rescaled learned
+    value with an UNSCALED baseline, so if any city were missing one of the
+    three keys the shares WOULD move. All 18 cities carry all three today, so
+    there is no such path -- but a future model added to the deterministic
+    baseline without a learned entry would create one.
 
   TWO OPERATIONAL NOTES.
   * _MAE_WEIGHTS_CACHE has a 4h TTL, so a long-running `watch` process that
