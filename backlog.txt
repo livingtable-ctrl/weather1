@@ -100,6 +100,16 @@ WHAT THE EXEMPTION IS ACTUALLY HIDING, and it is the opposite of what the
   must not be merged; the Brier says the surviving path predicts worse, and
   the P&L says nothing yet.
 
+  THE CLEAN AXIS EXISTS AND WAS DELIBERATELY NOT RUN, recorded here so the
+  next reader does not "discover" it and report the result. Splitting the
+  trades on target_date, as above, conflates trades PLACED before and after
+  the commit landed at 21:31 UTC on 2026-06-25. The exact split is
+  entered_at/placed_at against that timestamp -- and it takes the post-guard
+  traded population from n=6 to n=1. Running it would produce a single-trade
+  P&L with the appearance of rigour and no information in it. If you want the
+  traded question answered, the answer is to WAIT for post-guard trades, not
+  to cut the existing six more finely.
+
   TWO CAVEATS TO CARRY, both of which survive the stratification:
   * post-guard n is 23 total and 8-10 per stratum. Suggestive, not settled,
     and it will move as rows arrive.
