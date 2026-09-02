@@ -15584,11 +15584,25 @@ def _metar_lock_in(
             _city_zoneinfo = None
             _local_today = datetime.now(UTC).date()
         if not (_metar_sta and target_date == _local_today):
-            return False, 0.0, {}
+            # A reason on every early return, so the shadow log can tell a
+            # benign decline from a swallowed exception. All consumers read
+            # this dict with .get(), so adding keys is behaviour-neutral.
+            return (
+                False,
+                0.0,
+                {
+                    "locked": False,
+                    "reason": (
+                        "no METAR station for city"
+                        if not _metar_sta
+                        else "not same-day (target != local today)"
+                    ),
+                },
+            )
 
         _metar_obs = _metar.fetch_metar(_metar_sta)
         if not _metar_obs:
-            return False, 0.0, {}
+            return False, 0.0, {"locked": False, "reason": "no METAR observation"}
 
         # Per-observation local-date guard (the actual bug that caused the 2
         # real OKC/SATX losing trades on 2026-06-25, fixed for the between
@@ -15604,12 +15618,21 @@ def _metar_lock_in(
         # did). _obs_local is reused below by the between branch for its
         # own hour-of-day (_lh) reasoning.
         if _city_zoneinfo is None:
-            return False, 0.0, {}  # ZoneInfo already failed above
+            # ZoneInfo already failed above.
+            return False, 0.0, {"locked": False, "reason": "city timezone unavailable"}
         try:
             _obs_local = _metar_obs["obs_time"].astimezone(_city_zoneinfo)
             _obs_local_date = _obs_local.date()
         except Exception:
-            return False, 0.0, {}  # can't determine local date — skip lock-in
+            # Can't determine the observation's local date -- skip lock-in.
+            return (
+                False,
+                0.0,
+                {
+                    "locked": False,
+                    "reason": "observation local date unavailable",
+                },
+            )
 
         if _obs_local_date != target_date:
             return (
@@ -15860,7 +15883,14 @@ def _metar_lock_in(
             # sets both keys for a real "between" condition; this only
             # guards a malformed/synthetic caller.
             if condition.get("lower") is None or condition.get("upper") is None:
-                return False, 0.0, {}
+                return (
+                    False,
+                    0.0,
+                    {
+                        "locked": False,
+                        "reason": "between condition missing lower/upper",
+                    },
+                )
             _lo = float(condition["lower"])
             _hi = float(condition["upper"])
             _between_var = _var_from_ticker_prefix(ticker.upper())
@@ -16172,7 +16202,18 @@ def _metar_lock_in(
 
     except Exception as _metar_exc:
         _log.debug("METAR lock-in check failed for %s: %s", ticker, _metar_exc)
-        return False, 0.0, {}
+        # DISTINGUISHABLE FROM A BENIGN DECLINE. Without this the shadow log
+        # cannot tell "the lock correctly declined" from "the lock crashed",
+        # which is the single most important thing a lock-quality corpus has
+        # to be able to say.
+        return (
+            False,
+            0.0,
+            {
+                "locked": False,
+                "reason": f"exception: {type(_metar_exc).__name__}",
+            },
+        )
 
 
 def _var_from_ticker_prefix(ticker_upper: str) -> str | None:
@@ -16285,6 +16326,70 @@ def _daily_var_from_series(series: str) -> str:
     None for every real market.
     """
     return _var_from_ticker_prefix(series.upper()) or "max"
+
+
+# Set ONCE by cron._cmd_cron_body before the analysis pool starts, so
+# _shadow_writer_tag can record the scan's true mode. None means "not in a
+# cron scan", and the argv heuristic takes over. Written single-threaded and
+# only read afterwards, so the thread-pool race that rules out a mutable
+# module flag elsewhere does not apply here.
+_SHADOW_SCAN_MODE: str | None = None
+
+
+def _shadow_writer_tag(bypass_retirement_check: bool = False) -> str:
+    """Which caller is writing a metar_lock_shadow_log row.
+
+    analyze_trade is NOT scan-only -- the dashboard endpoints, nine
+    interactive main.py paths, order_executor and check_retirement_probation
+    all reach it -- and the shadow log's first-write-wins key means any of
+    them can claim a market-day's slot ahead of the scheduled scan. Without a
+    tag that is invisible and unfilterable at read time.
+
+    Derived from the process entry point rather than threaded through
+    analyze_trade's signature: adding a parameter would rebind every existing
+    positional caller, and a module-level flag would race across the scan's
+    thread pool. sys.argv is per-process and immutable in practice, so it is
+    both safe and free.
+
+    Returns 'cron', 'cron-sameday', 'probation', the main.py subcommand, or
+    the entry script's stem. Never raises.
+    """
+    if bypass_retirement_check:
+        # check_retirement_probation's own replay path, which deliberately
+        # re-analyses markets a retired method would otherwise skip.
+        return "probation"
+    # The SCAN'S OWN signal wins over argv when cron has set it. cron sets this
+    # once, single-threaded, before the analysis pool starts, so the race the
+    # docstring warns about does not apply -- and it is the only source that
+    # knows full-vs-sameday under `main.py loop`, where argv says neither.
+    _ctx = globals().get("_SHADOW_SCAN_MODE")
+    if _ctx:
+        return str(_ctx)[:32]
+    try:
+        import sys as _sys
+
+        argv = list(_sys.argv or [])
+        # os, not pathlib: pathlib is not imported at module scope here, and a
+        # bare reference would NameError into the except below and pin every
+        # row to "unknown" -- the same silently-swallowed-import defect that
+        # nearly shipped scan_local_hour as always-NULL.
+        stem = (
+            os.path.splitext(os.path.basename(argv[0]))[0].lower()
+            if argv
+            else "unknown"
+        )
+        if stem == "main" and len(argv) > 1:
+            sub = argv[1].lower()
+            # `loop` runs cmd_cron in a `while True` -- it IS a scan, and
+            # tagging it "loop" made the schema comment's advice ("restrict to
+            # written_by='cron'") silently return zero rows for an operator
+            # running the documented long-lived mode.
+            if sub in ("cron", "loop"):
+                return "cron-sameday" if "--sameday-only" in argv else "cron"
+            return sub[:32]
+        return stem[:32] or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def analyze_trade(
@@ -17135,9 +17240,118 @@ def analyze_trade(
 
     # ── METAR same-day lock-in check ─────────────────────────────────────────
     # After 2 PM local time, if METAR confirms the outcome, skip slow ensemble.
+
     metar_locked, _metar_blended_prob, metar_lockout = _metar_lock_in(
         city, target_date, condition, ticker=enriched.get("ticker", "?")
     )
+
+    # ── Shadow-log the evaluation, BEFORE any gate ───────────────────────────
+    # Deliberately here and not one line lower. Everything downstream can end
+    # this market's scan -- the between gate immediately below, the
+    # retired-method gate, then trade_cycle's mkt_prob/divergence/edge gates --
+    # and a lock stopped by any of them currently leaves NO record at all.
+    # Confirmed live on 2026-09-01: the 23:34Z KXLOWTDEN-26SEP01 lock fired at
+    # conf 75%, hit mkt_prob, and wrote nothing to `predictions`.
+    #
+    # NOT A COMPLETE CENSUS, and the conditioning is wider than it looks.
+    # THIRTEEN gates return before _metar_lock_in is ever reached, so none of
+    # those markets appear here at all: no_forecast, no_date, no_city,
+    # past_date, forecast-staleness, condition_parse, no_coords, days_out,
+    # liquidity, min_volume, no_quote, spread, extreme_price.
+    #
+    # FIVE OF THOSE ARE BOOK-DERIVED -- liquidity, min_volume, no_quote,
+    # spread, extreme_price -- and the question this table exists to answer is
+    # whether the lock has edge AGAINST THE BOOK. Conditioning the corpus on
+    # five predicates computed from the book is the same species of selection
+    # the table was built to escape; it is narrower than the survivorship it
+    # fixes, but it is not zero. Read the corpus as "lock evaluations among
+    # markets that survived those thirteen gates", never as "all markets".
+    # tests/test_metar_lock_shadow_log.py asserts the ordering so a silent
+    # population change fails loudly.
+    # That is why the 106 rows in `predictions` are a survivorship-filtered
+    # view of the lock, and why measuring it from them is the wrong
+    # population. See tracker.py's v86->v87 migration comment.
+    #
+    # Wrapped, and the writer never raises either: this is a measurement, and
+    # a measurement must not be able to cost a scan or a trade.
+    # SAME-DAY ONLY, and this guard is load-bearing rather than an
+    # optimisation. MAX_DAYS_OUT is 5, so a market for target date D is
+    # scanned on D-5 ... D-0, and _metar_lock_in returns an empty dict
+    # immediately on every day but D-0 (its own `target_date == _local_today`
+    # check). Those are NON-EVALUATIONS, not declines: the lock never looked
+    # at a thermometer, so the row says nothing about it.
+    #
+    # Writing them was an own-goal introduced together with the
+    # (ticker, target_date) key: the D-5 row claimed the market-day's slot, so
+    # the D-0 scan where the lock ACTUALLY FIRES hit INSERT OR IGNORE and was
+    # dropped -- losing precisely the rows this table exists to capture, and
+    # stamping scan_local_hour with the hour of a scan five days before the
+    # market. The previous key hid it by giving each UTC day its own slot.
+    if target_date == _local_today:
+        try:
+            # ZoneInfo is imported per-function throughout this module, not at
+            # module scope -- referencing a bare `ZoneInfo` here would NameError
+            # into the except below and silently pin scan_local_hour to NULL
+            # forever, which is precisely the dead-column defect this table's
+            # schema comment says not to ship.
+            from zoneinfo import ZoneInfo as _ZI_shadow
+
+            from tracker import record_metar_lock_shadow as _rec_lock_shadow
+
+            # _tz_shadow, NOT _tz: `_tz` is a LIVE variable set above and read ~770
+            # lines below to compute _obs_w (the observation weight in the
+            # probability blend) and to call get_ensemble_members(tz=...).
+            # Rebinding it here would let a measurement change a trade. The values
+            # coincide today, which is exactly why this would not have been caught.
+            _scan_local_hour = None
+            try:
+                _tz_shadow = CITY_COORDS.get(city, (None, None, None))[2]
+                if _tz_shadow:
+                    _scan_local_hour = datetime.now(_ZI_shadow(_tz_shadow)).hour
+            except Exception:
+                _scan_local_hour = None
+
+            _rec_lock_shadow(
+                ticker=enriched.get("ticker", "") or "",
+                city=city,
+                target_date=str(target_date) if target_date else None,
+                condition_type=condition.get("type"),
+                # DERIVED, not condition.get("var"): _parse_market_condition never
+                # sets "var", and the only assignment reaching this point is in the
+                # hourly branch, which returns long before the lock. Reading the
+                # dict here made this column NULL on every real row -- the exact
+                # dead-column defect the table's own schema comment forbids.
+                # _daily_var_from_series is the same single source of truth the
+                # non-locked path uses ~170 lines below.
+                condition_var=_daily_var_from_series(
+                    str(
+                        enriched.get("series_ticker") or enriched.get("ticker") or ""
+                    ).upper()
+                ),
+                locked=bool(metar_locked),
+                lock_outcome=(metar_lockout or {}).get("outcome"),
+                confidence=(metar_lockout or {}).get("confidence"),
+                comp_temp_f=(metar_lockout or {}).get("comp_temp_f"),
+                monotone_safe=(metar_lockout or {}).get("monotone_safe"),
+                reason=(metar_lockout or {}).get("reason"),
+                scan_local_hour=_scan_local_hour,
+                # analyze_trade is not scan-only: the dashboard, nine interactive
+                # main.py paths, order_executor and check_retirement_probation all
+                # reach it, and first-wins means any of them can claim a
+                # market-day's slot ahead of the scheduled scan. Stamping the
+                # caller is what makes those rows separable at read time.
+                written_by=_shadow_writer_tag(bypass_retirement_check),
+            )
+        except Exception as _shadow_exc:
+            # WARNING, not debug. A silently empty corpus is the exact failure
+            # this table exists to prevent, and cron.py's price-recal block
+            # documents why debug is the wrong level: it reaches a per-pid file
+            # and never the console an operator watches.
+            _log.warning(
+                "metar_lock_shadow_log: write failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _shadow_exc,
+            )
 
     # ── Between-bucket gate ───────────────────────────────────────────────────
     # Between markets (B86.5 = ±1°F band) are only tradeable when two conditions

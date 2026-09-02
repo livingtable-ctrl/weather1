@@ -303,7 +303,7 @@ Known traps, each of which has cost a run:
 - `analysis_attempts` has **zero rows before July**. Any "since May" question
   must use `predictions`.
 - `raw_prob` IS NOT THE PRE-CALIBRATION PROBABILITY. It is
-  `round(forecast_prob + bias, 6)` — see `tracker.py:1630`. **The medians are
+  `round(forecast_prob + bias, 6)` — see `tracker.py:1808`. **The medians are
   rounding noise**, which shows only that `bias_correction` is ~0, NOT that
   calibration is inert.
 - `outcomes.settled_at` is stored **naive** while `analyzed_at` carries a `Z`.

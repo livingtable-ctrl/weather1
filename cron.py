@@ -1862,6 +1862,19 @@ def _cmd_cron_body(
     ``sameday_only``: threaded straight through to trade_cycle.run_trade_cycle()
     -- see that function's own docstring for what it does. Default False.
     """
+    # Tell the METAR shadow log which scan mode this is, from the real flag
+    # rather than from sys.argv. argv cannot distinguish full from same-day
+    # under `main.py loop` (which runs cmd_cron in a while-loop and is the
+    # documented long-lived mode), and mis-tagging makes the table's own
+    # written_by filter return the wrong population. Set here: single-threaded,
+    # before run_trade_cycle starts the analysis pool, and reset in the finally
+    # below so a later non-cron caller in the same process is not mislabelled.
+    try:
+        import weather_markets as _wm_shadow_mode
+
+        _wm_shadow_mode._SHADOW_SCAN_MODE = "cron-sameday" if sameday_only else "cron"
+    except Exception:  # pragma: no cover - never worth failing a scan for
+        pass
     # Soft-halt reason (manual override, accuracy halt, graduation gate, anomaly
     # halt). Unlike the kill switch below, these must NOT stop the whole cycle —
     # settlement and stop-loss protection need to keep running (accuracy halt in
@@ -3361,6 +3374,25 @@ def _cmd_cron_body(
     # and dropping the same-day picks would bias the forward corpus toward the
     # multi-day horizon -- which is the exact selection defect
     # analysis_attempts' upsert already has and this table exists to avoid.
+    # METAR-lock shadow outcomes. DELIBERATELY AT THIS LEVEL, not nested
+    # inside the price-recal block below: an earlier draft put it there, and
+    # its own comment claimed "a settlement failure cannot lose this cycle's
+    # writes" while sitting as a CHILD of the price-recal writer's try -- so a
+    # persistent raise in _log_price_recal_picks would have silently frozen
+    # the METAR outcome fill forever. Two independent corpora, two
+    # independent failure domains.
+    #
+    # Runs on --sameday-only too: that is the mode the lock fires in, so
+    # gating it on a full scan would starve the corpus it exists to build.
+    try:
+        from tracker import settle_metar_lock_shadow as _mlsl_settle
+
+        _mlsl_filled = _mlsl_settle()
+        if _mlsl_filled:
+            _log.info("metar_lock_shadow_log: filled %d outcome(s)", _mlsl_filled)
+    except Exception as _mlsl_exc:
+        _log.debug("metar_lock_shadow settle skipped: %s", _mlsl_exc)
+
     try:
         from tracker import DB_PATH as _PRSL_DB
 
@@ -5105,6 +5137,17 @@ def cmd_cron(
 
                 with _sqlite3.connect(_TRACKER_DB) as _wc:
                     _wc.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            except Exception:
+                pass
+            # Clear the shadow-log scan-mode context set at the top of
+            # _cmd_cron_body. Left set, a later non-cron caller in the same
+            # process (the menu, the dashboard under `main.py web`) would have
+            # its rows tagged as a cron scan -- which is precisely the
+            # mis-attribution the column exists to prevent.
+            try:
+                import weather_markets as _wm_shadow_mode
+
+                _wm_shadow_mode._SHADOW_SCAN_MODE = None
             except Exception:
                 pass
             ctx.release_cron_lock()

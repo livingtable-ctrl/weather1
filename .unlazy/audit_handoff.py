@@ -336,14 +336,14 @@ def check_commits() -> list[str]:
 # that actually lives at 1630, having copied a stale line number out of a
 # source comment. The line existed, so the old gate passed.
 CITATION_CONTENT = {
-    ("cron.py", 2218): "_EMOS_TRAIN_GATE",
+    ("cron.py", 2231): "_EMOS_TRAIN_GATE",
     ("ml_bias.py", 848): "def apply_temperature_scaling",
     # not cited by the document, but the entire T-scaling argument rests on
     # this being a DIVISION of the logit; if it ever becomes a multiplication
     # every inversion in the analysis silently flips.
     ("ml_bias.py", 907): "_sigmoid(_logit(prob) / T)",
-    ("tracker.py", 1630): "raw_prob = round(forecast_prob + bias",
-    ("weather_markets.py", 18614): "raw_prob",
+    ("tracker.py", 1808): "raw_prob = round(forecast_prob + bias",
+    ("weather_markets.py", 18828): "raw_prob",
 }
 
 

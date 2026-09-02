@@ -112,7 +112,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 86  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 92  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -1071,6 +1071,184 @@ _MIGRATIONS = [
     # (city, target_date) and a pick with no date cannot join a cluster.
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_prsl_ticker_target_day
         ON price_recal_shadow_log(ticker, target_date, date(recorded_at))""",
+    # v86 -> v87: every METAR lock-in evaluation, recorded BEFORE any gate.
+    #
+    # WHY THIS TABLE EXISTS. The METAR lock is the only path in this bot with
+    # any evidence of profit, and it is the one path nothing measures:
+    #   * brier_score_by_method() excludes days_out=0 outright ("so same-day
+    #     METAR results don't skew method scores"), and ALL 106 recorded
+    #     lock rows are days_out=0 -- so the lock is invisible to the
+    #     auto-retirement scorer and can never be retired however it scores.
+    #     Measured 2026-09-01: lifetime Brier 0.2791, rolling-20 0.4015,
+    #     directional accuracy 0.500. Both retirement guards would fail it.
+    #   * A lock that fires and is then gated downstream leaves NO TRACE AT
+    #     ALL. Confirmed live: the 2026-09-01 23:34Z lock on KXLOWTDEN-26SEP01
+    #     fired at conf 75%, was stopped by trade_cycle's mkt_prob gate, and
+    #     wrote nothing to `predictions`. The 106 rows that DO exist are
+    #     therefore a survivorship-filtered sample of the lock's behaviour,
+    #     which is the wrong population for asking whether it has edge.
+    #
+    # WRITTEN AT THE LOCK SITE: before the between gate, before the
+    # retired-method gate, and before trade_cycle's price gates. That
+    # placement is the entire point; anywhere downstream reproduces the
+    # survivorship filter this table exists to escape.
+    #
+    # THIRTEEN GATES ARE UPSTREAM AND STAY THAT WAY. no_forecast, no_date,
+    # no_city, past_date, forecast-staleness, condition_parse, no_coords,
+    # days_out, liquidity, min_volume, no_quote, spread and extreme_price all
+    # return before _metar_lock_in is reached, so those markets never evaluate
+    # the lock and never appear here.
+    #
+    # FIVE OF THEM ARE BOOK-DERIVED (liquidity, min_volume, no_quote, spread,
+    # extreme_price) and that is the part worth being careful about: this
+    # table exists to ask whether the lock has edge AGAINST THE BOOK, and its
+    # population is already conditioned on five predicates computed from the
+    # book. Much narrower than the survivorship it fixes -- a gated lock now
+    # leaves a row where before it left nothing -- but not zero, and any
+    # read must say so. Read it as "lock evaluations among markets that
+    # survived those thirteen gates", never as "all markets".
+    # tests/test_metar_lock_shadow_log.py asserts the ordering so a silent
+    # population change fails loudly.
+    #
+    # NOT-LOCKED EVALUATIONS ARE STORED TOO (`locked` is 0/1, not a filter).
+    # "How often does the lock decline, and was it right to?" is the same
+    # question as "when it fires, is it right?", and a table holding only
+    # firings cannot answer the first. metar.py's own reason string is kept
+    # verbatim so a decline is attributable without re-deriving the gate.
+    #
+    # scan_local_hour IS THE SCAN'S HOUR IN THE MARKET CITY, NOT THE
+    # OBSERVATION'S. metar.py:623 gates on the OBSERVATION's local hour, and
+    # routine METAR reports at :53, so the two differ by up to an hour near a
+    # boundary. Named for what it is rather than what the gate uses, because
+    # `predictions.local_hour` is NULL on all 106 lock rows and the resulting
+    # inability to ask any hour-of-day question is exactly what this column is
+    # here to fix -- mislabelling it would recreate that problem one level up.
+    #
+    # NO yes_bid/yes_ask. The market's own book is not available at the lock
+    # site without a separate call, and this writer performs no network I/O by
+    # construction -- two columns hardcoded to NULL forever is the defect the
+    # exit_rule_shadow_log schema comment warns about. Price context is
+    # recoverable from orderbook_depth_snapshots, which joins on ticker and
+    # timestamp.
+    #
+    # `outcome` is the MARKET's settlement (did YES resolve true), not the
+    # lock's win, matching price_recal_shadow_log. Whether the lock was right
+    # is `outcome == 1` for lock_outcome='yes' and `outcome == 0` for 'no' --
+    # derived at read time from stored columns, so the row stays scoreable if
+    # the side rule is ever re-examined.
+    """CREATE TABLE IF NOT EXISTS metar_lock_shadow_log (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker          TEXT    NOT NULL,
+        city            TEXT,
+        target_date     TEXT    NOT NULL,
+        condition_type  TEXT,
+        condition_var   TEXT,
+        locked          INTEGER NOT NULL,
+        lock_outcome    TEXT,
+        confidence      REAL,
+        comp_temp_f     REAL,
+        monotone_safe   INTEGER,
+        reason          TEXT,
+        scan_local_hour INTEGER,
+        recorded_at     TEXT    NOT NULL,
+        outcome         INTEGER
+    )""",
+    # v87 -> v88: the dedup index for the table above.
+    #
+    # Keyed on the UTC DAY like price_recal_shadow_log, not the hour
+    # exit_rule_shadow_log uses. This records a DECISION about a market-day,
+    # and four scans in a day do not make four independent lock evaluations of
+    # the same market. INSERT OR IGNORE keeps the FIRST evaluation of each
+    # market-day, which is the only choice that cannot be influenced by seeing
+    # the rest of the day's price action.
+    #
+    # CONSEQUENCE WORTH KNOWING: an early decline ("too early") therefore
+    # occupies the day's slot and a later firing on the same market-day is
+    # dropped. That is correct for "what did the first look conclude", and
+    # WRONG for "did it ever lock today". The scheduled scans land at
+    # 01:30/03:00 UTC when the lock is already eligible in every tracked zone,
+    # so the first look is normally the informative one -- but any analysis
+    # asking "did this market ever lock" must join `predictions`, not read
+    # this table alone.
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_mlsl_ticker_target_day
+        ON metar_lock_shadow_log(ticker, target_date, date(recorded_at))""",
+    # v88 -> v89: drop the index above. It was WRONG, and shipped one review
+    # round earlier.
+    #
+    # It mixed two different clocks: `target_date` is the market's LOCAL
+    # calendar date, `date(recorded_at)` is the UTC day. The lock-eligible
+    # window (>= 14:00 local) straddles UTC midnight for every tracked US
+    # city -- Denver MDT 14:00 local = 20:00 UTC, local midnight = 06:00 UTC
+    # the next day -- so a single market-day got TWO slots, one on each side.
+    # The scheduled scans sit at 01:30/03:00 UTC, i.e. on the far side of the
+    # boundary from an 18:00-local firing, so this was not a corner case: it
+    # would have double-counted exactly the market-days the table is for, and
+    # unevenly (only cities touched on both sides), silently inflating any
+    # COUNT(*)-based lock rate or per-row Brier taken over this table.
+    """DROP INDEX IF EXISTS idx_mlsl_ticker_target_day""",
+    # v89 -> v90: collapse any duplicates the OLD key allowed, BEFORE the new
+    # unique index is created.
+    #
+    # WITHOUT THIS THE MIGRATION WEDGES. Tested: seed a v88 database with the
+    # two rows the straddle key permitted for one (ticker, target_date) -- one
+    # at 20:00Z, one at 01:30Z the next UTC day -- and the CREATE UNIQUE below
+    # raises IntegrityError. The DROP above has already committed by then, so
+    # user_version sticks at 89 and the table is left with NO unique index at
+    # all: every later init_db() retries the same failing step, and the corpus
+    # accumulates unbounded duplicates in the meantime. A migration that can
+    # leave the schema permanently half-applied is worse than the bug it fixes.
+    #
+    # No production database can currently be in that state -- the live DB is
+    # at user_version 86 and has never had this table -- so this is defence
+    # against intermediate checkouts and developer databases, not a repair of
+    # shipped data. It is written anyway because "no DB is in that state" is a
+    # fact about today, and migrations run forever.
+    #
+    # Keeps the LOWEST id per (ticker, target_date), which is the first row
+    # written and therefore the same first-wins row the new index will enforce
+    # from here on -- the alternative (keeping the latest) would silently
+    # change the corpus's selection rule at the moment of migration.
+    """DELETE FROM metar_lock_shadow_log
+        WHERE id NOT IN (
+            SELECT MIN(id) FROM metar_lock_shadow_log
+            GROUP BY ticker, target_date
+        )""",
+    # v90 -> v91: the correct key. `target_date` IS the market-day, so the
+    # UTC-day term bought nothing except the straddle bug. First evaluation of
+    # a market-day wins, across every scan and every UTC date.
+    #
+    # STILL FIRST-WINS, and the limit is worth stating rather than defending:
+    # the evaluation you would most want to score is the one at the moment a
+    # trade would have been placed, and the first look of a market-day can be
+    # an early "not same-day"/"too early" decline carrying no information.
+    # Kept because it is the only choice that cannot be influenced by seeing
+    # the rest of the day's price action, which is the property a forward
+    # corpus needs most. `written_by` (added below) is what makes the weak
+    # rows separable at read time.
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_mlsl_ticker_target
+        ON metar_lock_shadow_log(ticker, target_date)""",
+    # v91 -> v92: which caller wrote the row.
+    #
+    # analyze_trade is NOT scan-only: web_app's dashboard endpoints, nine
+    # interactive main.py paths, order_executor, and
+    # check_retirement_probation (bypass_retirement_check=True) all reach it.
+    # Combined with first-wins above, a dashboard page load can claim a
+    # market-day's slot ahead of the scheduled scan. Without this column that
+    # is invisible.
+    #
+    # READ THE FILTER CORRECTLY: `WHERE written_by='cron'` is a SELECTION, not
+    # a restriction. It does not recover the rows an interactive path took --
+    # those market-days are simply absent, because first-wins evicted cron's
+    # row rather than re-tagging it. So the filtered set is "market-days no
+    # interactive path happened to look at first", which is biased toward the
+    # markets nobody was curious about. The column makes the contamination
+    # VISIBLE and boundable (compare counts by tag); it does not remove it.
+    # Removing it needs a per-writer key, which would defeat first-wins.
+    #
+    # Values: 'cron' / 'cron-sameday' (from cron's own flag, not argv, so
+    # `main.py loop` is tagged correctly), 'probation', the main.py subcommand
+    # for interactive paths, or the entry script's stem.
+    """ALTER TABLE metar_lock_shadow_log ADD COLUMN written_by TEXT""",
 ]
 
 
@@ -14368,6 +14546,127 @@ def settle_price_recal_picks() -> int:
     if filled:
         _log.info(
             "settle_price_recal_picks: filled %d pick outcome(s), no API calls",
+            filled,
+        )
+    return filled
+
+
+def record_metar_lock_shadow(
+    *,
+    ticker: str,
+    city: str | None,
+    target_date: str | None,
+    condition_type: str | None,
+    condition_var: str | None,
+    locked: bool,
+    lock_outcome: str | None,
+    confidence: float | None,
+    comp_temp_f: float | None,
+    monotone_safe: bool | None,
+    reason: str | None,
+    scan_local_hour: int | None,
+    written_by: str | None = None,
+) -> int:
+    """Record ONE METAR lock-in evaluation, before any downstream gate.
+
+    Returns 1 if a row was written, 0 if the market-day was already recorded
+    (INSERT OR IGNORE against idx_mlsl_ticker_target_day) or the row was
+    unusable. See the v86->v87 migration comment for why this table exists and
+    why it is written here rather than anywhere downstream.
+
+    NEVER RAISES. This sits on the live scan path in analyze_trade, between the
+    lock and the between-gate; a shadow-logging failure must not cost a scan or
+    a trade. Every failure is swallowed and logged at debug.
+
+    Performs NO network I/O and reads no market book, by construction.
+    """
+    if not ticker or not target_date:
+        # target_date is NOT NULL on the table specifically so the dedup index
+        # works -- SQLite treats NULLs in a unique index as distinct, so a
+        # nullable one would let the same market be logged unboundedly.
+        return 0
+    try:
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
+
+        con = sqlite3.connect(DB_PATH)
+        try:
+            with con:
+                cur = con.execute(
+                    "INSERT OR IGNORE INTO metar_lock_shadow_log "
+                    "(ticker, city, target_date, condition_type, condition_var, "
+                    " locked, lock_outcome, confidence, comp_temp_f, "
+                    " monotone_safe, reason, scan_local_hour, recorded_at, "
+                    " written_by) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        ticker,
+                        city,
+                        str(target_date),
+                        condition_type,
+                        condition_var,
+                        1 if locked else 0,
+                        lock_outcome,
+                        confidence,
+                        comp_temp_f,
+                        None if monotone_safe is None else (1 if monotone_safe else 0),
+                        reason,
+                        scan_local_hour,
+                        _dt.now(_UTC).isoformat(),
+                        written_by,
+                    ),
+                )
+                return int(cur.rowcount or 0)
+        finally:
+            # Explicit close: sqlite3.Connection.__exit__ commits but does not
+            # close, and cmd_cron runs inside main.cmd_loop's `while True`, so
+            # without this every cycle leaks a handle -- same reason
+            # _log_price_recal_picks closes explicitly.
+            con.close()
+    except Exception as exc:
+        _log.debug("record_metar_lock_shadow: %s (%s)", exc, ticker)
+        return 0
+
+
+def settle_metar_lock_shadow() -> int:
+    """Fill metar_lock_shadow_log.outcome from `outcomes_valid`. Zero API calls.
+
+    Same shape and same reasoning as settle_price_recal_picks: it copies
+    settlements some other path has ALREADY established, never decides that a
+    market settled, and never makes a network call. Reads `outcomes_valid`, not
+    the raw `outcomes` table -- that view is this repo's single definition of
+    "not disputed" and tests/test_disputed_row_guard.py enforces it repo-wide.
+
+    One-way: `outcome IS NULL` in the WHERE means a re-run cannot revise a row
+    already filled.
+    """
+    # init_db() + _conn(), byte-for-byte like settle_price_recal_picks: on a
+    # DB where nothing has called init_db() yet this otherwise raises
+    # "no such table" into cron's except and silently never fills. _conn()
+    # also closes in its own finally and sets WAL/synchronous/cache_size,
+    # which the hand-rolled connect did not.
+    init_db()
+    with _conn() as con:
+        with con:
+            cur = con.execute(
+                """
+                UPDATE metar_lock_shadow_log
+                SET    outcome = (
+                           SELECT o.settled_yes FROM outcomes_valid o
+                           WHERE  o.ticker = metar_lock_shadow_log.ticker
+                       )
+                WHERE  outcome IS NULL
+                  AND  EXISTS (
+                           SELECT 1 FROM outcomes_valid o
+                           WHERE  o.ticker = metar_lock_shadow_log.ticker
+                             AND  o.settled_yes IN (0, 1)
+                       )
+                """
+            )
+            filled = cur.rowcount
+    if filled:
+        _log.info(
+            "settle_metar_lock_shadow: filled %d lock outcome(s), no API calls",
             filled,
         )
     return filled
