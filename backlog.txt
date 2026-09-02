@@ -735,24 +735,191 @@ A SECOND LEAK IN THE SAME FUNCTION, found by the opus review of this entry and
   _weights_from_mae returns -- and any fix to one has to be measured against
   the other.
 
-  _weights_from_mae skips TRACKING_ONLY_MODEL_NAMES before building `weights`
-  (:4818), and its comment states the exact reason: a non-blend model "must not
-  perturb any OTHER model's normalized weight via the total/n_models
-  denominator below". But TRACKING_ONLY_MODEL_NAMES is
-  {gem_global, ukmo_global_ensemble_20km, ncep_hrrr_conus} (:1012) and does NOT
-  contain ecmwf_ifs025 -- which is equally not a member of this blend.
+  _weights_from_mae skips non-blend models before building `weights`, and the
+  skip's comment states the exact reason: such a model "must not perturb any
+  OTHER model's normalized weight via the total/n_models denominator below".
+  Until 2026-09-02 that skip tested TRACKING_ONLY_MODEL_NAMES -- which is
+  {gem_global, ncep_hrrr_conus} as of the UKMO graduation, and has never
+  contained ecmwf_ifs025, equally not a member of this blend.
   _model_weights filters ifs025 out of the RETURNED set downstream, via
-  ensemble_candidate_models (:5643), but by then it has already been counted in
-  `total` and `n_models` at :4849-4850. So it is precisely the leak that
-  comment exists to prevent, from a model the frozenset does not cover.
+  ensemble_candidate_models, but by then it had already been counted in
+  `total` and `n_models`. So it was precisely the leak that comment exists to
+  prevent, from a model the frozenset does not cover.
+  (Line citations deliberately dropped from this paragraph: they drifted twice
+  in two days across concurrent sessions. The function and constant names are
+  stable; the numbers are not.)
 
-  Measured 2026-09-01 with the production helper:
+  Measured 2026-09-01 with the production helper, BEFORE the UKMO graduation:
 
-    with ifs025 in the denominator (today)   gfs 0.7225  icon 1.1901  aifs 0.8783
-    with ifs025 excluded from it             gfs 0.7766  icon 1.2792  aifs 0.9441
+    with ifs025 in the denominator   gfs 0.7225  icon 1.1901  aifs 0.8783
+    with ifs025 excluded from it     gfs 0.7766  icon 1.2792  aifs 0.9441
 
-  ~7.5% relative on gfs. Note the direction: it currently makes gfs's weight
-  LOWER, i.e. it compounds the double-count above rather than offsetting it.
+  ~7.5% relative on gfs, and the direction matters: it made gfs's weight
+  LOWER, compounding the double-count above rather than offsetting it.
+
+  THE UKMO GRADUATION DILUTED IT, but NOT for the reason first written down
+  here, and the correction matters for reasoning about the next graduation.
+  The distortion factor is (n/(n+1)) * (1 + x/S), where x is the intruder's
+  1/mae and S the sum over real members: pre-graduation 0.75 * (1 +
+  0.5195/1.1991) = 1.0749, post 0.80 * (1 + 0.5195/1.6647) = 1.0497. An
+  earlier note attributed the dilution to ifs025 going from 1-of-4 to 1-of-5
+  in the denominator -- but that COUNT term moved the wrong way (0.75 -> 0.80,
+  INCREASING the distortion). All of the dilution came from ukmo's own 1/mae
+  entering S. So graduation does not dilute this in general: graduating a WEAK
+  member amplifies it. Had ukmo's MAE been 10F rather than 2.15, the factor
+  would have risen to 1.1199, worse than before.
+
+  PARTIALLY RESOLVED 2026-09-02, and the scope is narrower than "the
+  denominator leak is fixed". Fixed on _model_weights' TIER 1 (the live path).
+  NOT fixed on tier 2: that tier reads learned_weights.json, which is written
+  by the UNRESTRICTED call, so every value in it is still normalised over a
+  set containing ecmwf_ifs025 -- extra_learned drops the ifs025 KEY but
+  icon/gfs/aifs keep their contaminated VALUES, and ukmo falls to a flat 1.0.
+  Tier 2 is unreachable today (tier 1 returns a dict for every city), which is
+  why this is an incomplete fix rather than a live defect -- but the
+  tier1->tier2 fallback noted below makes it reachable, not less so. And the
+  raw-MAE-vs-bias double-count this entry's TITLE is about is untouched, still
+  gated on the sample floors above. Do not read this as closing the entry.
+
+  WHAT SHIPPED. _weights_from_mae gained a keyword-only `candidates` set that
+  restricts BOTH the returned keys and the normalisation denominator, and
+  _model_weights passes this blend's own membership:
+
+      mae_weights = _weights_from_mae(
+          city, candidates=frozenset(_QUARANTINE_CANDIDATE_MODELS)
+      )
+
+  _QUARANTINE_CANDIDATE_MODELS is already what batch_prewarm_ensemble and
+  get_ensemble_temps read to decide which models enter the blend, so the
+  denominator and the blend share ONE definition rather than a third
+  hand-copied list. With candidates=None the behaviour is exactly as before
+  (skip TRACKING_ONLY_MODEL_NAMES only). `candidates` is part of the cache
+  key -- two callers with different sets would otherwise share an entry and
+  whichever ran first would decide the other's weights.
+
+  THE FIRST ATTEMPT AT THIS FIX WAS WRONG AND WOULD HAVE RE-WEIGHTED A BLEND
+  IT WAS NOT TOUCHING. It made the restriction unconditional inside
+  _weights_from_mae. That function has TWO production callers and the fix
+  reasoned about one: the second, update_learned_weights_from_tracker,
+  persists its output wholesale to data/learned_weights.json, which is TIER 2
+  of _forecast_model_weights -- the DETERMINISTIC blend, whose baseline DOES
+  contain ecmwf_ifs025. All 18 cities on disk carry that key today, and that
+  blend's tier 1 (tracker.get_model_weights, 30-day window, 10-obs-per-city
+  floor) is EMPTY for every city -- max per-(city,model) count is 5 -- so
+  tier 2 is the live path. The unconditional version would have erased the
+  key on the next 5-day refresh (cron.py's .last_weights_refresh) and dropped
+  ifs025 to its static seasonal default: roughly +4pp ECMWF share in summer,
+  +17pp in winter, +22pp in an El Nino winter. Caught in review, not by me;
+  the corrected design is the caller-passed set above, and a test now fails if
+  anyone makes it unconditional again.
+
+  MEASURED EFFECT ON THE ENSEMBLE BLEND, re-derived against the live helpers
+  post-UKMO-graduation rather than transcribed:
+
+    model                       before    after    delta
+    icon_seamless               1.1705   1.2286   +0.0581
+    ukmo_global_ensemble_20km   1.0659   1.1188   +0.0529
+    ecmwf_aifs025_ensemble      0.8639   0.9068   +0.0429
+    gfs_seamless                0.7106   0.7459   +0.0353
+
+  After _model_weights' 0.7/0.3 baseline blend: icon 1.1193 -> 1.1600, ukmo
+  1.0461 -> 1.0831, aifs 1.0547 -> 1.0847, gfs 0.7974 -> 0.8221.
+
+  THE "NEAR-UNIFORM, NO RANKING CHANGE" READING IS TRUE BUT NOT EVIDENCE, and
+  an earlier draft of this block presented it as though it were. Excluding one
+  model from a normalisation rescales every survivor by the SAME constant
+  n(S+x)/((n+1)S) -- here 1.04965 to five decimals for all four members. It
+  could not have come out any other way, so it confirms the arithmetic and
+  says nothing about the blend.
+
+  WHAT DOES REACH THE BLEND, which the uniformity hides: the replication step
+  max(1, round(w * 20)) is not uniform. Three members gain a replicate and gfs
+  does not, so gfs is the only member whose SHARE moves:
+
+    icon  22 -> 23 | aifs 21 -> 22 | ukmo 21 -> 22 | gfs 16 -> 16
+    total 80 -> 83   (not "one replicate out of 80" -- the pool grows by 3)
+    shares before: icon .2750  aifs .2625  ukmo .2625  gfs .2000
+    shares after : icon .2771  aifs .2651  ukmo .2651  gfs .1928
+
+  gfs 20.00% -> 19.28%, i.e. -0.72pp, -3.6% relative. Every share moves --
+  icon .2750 -> .2771, aifs and ukmo .2625 -> .2651 -- but gfs is the only
+  member that moves DOWN, because it is the only one that does not gain a
+  replicate. That is the whole live effect and it is one-sided, not uniform.
+
+  THE TABLE ABOVE IS MONTH-SPECIFIC. ecmwf_w is 1.5 Apr-Sep and 2.0 Oct-Mar,
+  so in winter the aifs row is 24 -> 25 and the total 83 -> 86 (gfs share
+  19.28% -> 18.60%). Re-derive before quoting it outside the current
+  half-year. Every city produces identical weights, because no city reaches
+  _weights_from_mae's min_n=20 per-city floor and all 18 fall back to the
+  global MAE -- that is why these numbers carry no city label.
+
+  WHY THIS ONE WAS FIXED LIVE while the model_consensus gate was only
+  shadowed: there the correct behaviour was an open question (uncalibrated
+  threshold, no measured discrimination). Here the intended behaviour is
+  written down in the skip's own comment -- a non-member "must not perturb any
+  OTHER model's normalized weight via the total/n_models denominator" -- and
+  ifs025 was violating it. The fix restores stated intent rather than choosing
+  a new policy.
+
+  TWO THINGS THIS FIX DOES NOT COVER, both found in review and both worth
+  knowing before anyone calls the family closed:
+  * THE MIRROR-IMAGE LEAK IS UNTOUCHED. tracker.get_model_weights (~:12254)
+    is the DETERMINISTIC blend's tier 1 and excludes only
+    TRACKING_ONLY_MODEL_NAMES -- so ecmwf_aifs025_ensemble and
+    ukmo_global_ensemble_20km, both ensemble-blend-only, enter ITS softmax
+    denominator. Exactly the same defect with the blends swapped. Dormant:
+    it returns {} for all 18 cities because no (city, model) pair reaches its
+    10-observation 30-day floor (max is 5). Not fixed here because fixing it
+    would move the deterministic blend, which this change exists to leave
+    alone.
+  * GRADUATING A MODEL NOW RE-WEIGHTS THE OTHER BLEND TOO. Removing a name
+    from TRACKING_ONLY_MODEL_NAMES grows the UNRESTRICTED fit's denominator by
+    that model's 1/mae, and that fit is what learned_weights.json holds. The
+    UKMO graduation already has this pending: on the next 5-day refresh the
+    deterministic blend's ECMWF share moves 38.93% -> 38.73%. Small, but it is
+    the same omission class that produced this entry's own wrong first fix.
+
+  TWO OPERATIONAL NOTES.
+  * _MAE_WEIGHTS_CACHE has a 4h TTL, so a long-running `watch` process that
+    warmed it before the deploy keeps serving pre-change weights for up to
+    four hours unless it restarts.
+  * If only non-members ever cleared min_n, `weights` would now be empty and
+    _weights_from_mae returns None, flipping _model_weights from tier 1 to
+    tier 2 (learned_weights.json) rather than returning a members-free dict.
+    Not reachable today -- all four members have n=60-64 over 60 days -- but
+    it is a real difference from the old behaviour.
+
+  TESTS. tests/test_weather_markets.py gains
+  TestWeightsFromMaeExcludesOtherBlendsModels (7 tests), a sibling of the
+  existing TestWeightsFromMaeExcludesTrackingOnlyModels. Scoped run over it
+  plus test_forecasting, test_batch96_blend_weighting, test_tracker,
+  test_signal_quality, test_consensus_gap_shadow, test_batch81_signal_floors
+  test_prediction_kwargs and test_sprt: 1407 passed (re-derived after the
+  rebase onto 8c89c104).
+
+  THE SEVENTH TEST IS THE ONE THAT MATTERS, and its absence was a round-2
+  review finding. The other six call _weights_from_mae DIRECTLY and build
+  `candidates` themselves -- they prove the helper works, not that
+  _model_weights uses it. Reverting the call site to the pre-fix
+  `_weights_from_mae(city)` reintroduced the headline defect in full and left
+  613 tests green. test_model_weights_actually_passes_the_candidate_set now
+  drives _model_weights end to end and asserts a member's NUMERIC weight
+  (icon = 0.7*(4/3)+0.3; under the leak it is 0.7*0.5455+0.3), because the
+  leak never changed which KEYS came back -- only their values -- so any
+  key-set assertion is blind to it.
+
+  The rest of the class pins: an ARBITRARY unknown non-member is excluded (an
+  earlier version special-cased the ifs025 name, and a mutation hardcoding
+  `or model == "ecmwf_ifs025"` passed every test while letting any future
+  non-member leak); that the DEFAULT path still emits ifs025, the regression
+  detector for the wrong first attempt above; that `candidates` is in the
+  cache key; and a POSITIVE CONTROL that a genuine member still does move its
+  peers, without which the exclusion assertions could pass because the
+  normalisation was never reached. Mutation-tested: dropping the call-site
+  wiring, reverting the skip, deleting it, hardcoding the name, making it
+  unconditional, and dropping `candidates` from the cache key are each killed
+  by a named test; deleting the skip also fails the PRE-EXISTING gem_global
+  test, so the older property remains independently covered.
 
 Repro and provenance -- NOT every number here comes from one place, and mixing
   them is how the earlier draft of option (b) went wrong:

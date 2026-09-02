@@ -4813,7 +4813,11 @@ _MAE_WEIGHTS_CACHE: ForecastCache[dict[str, float]] = ForecastCache(
 
 
 def _weights_from_mae(
-    city: str, min_n: int = 20, days_back: int = 60
+    city: str,
+    min_n: int = 20,
+    days_back: int = 60,
+    *,
+    candidates: frozenset[str] | None = None,
 ) -> dict[str, float] | None:
     """
     #25/#118: Derive per-model blend weights from inverse-MAE scores in tracker.
@@ -4821,8 +4825,31 @@ def _weights_from_mae(
     Returns None if insufficient data (< min_n observations per model).
     Lower MAE → higher weight. Normalised so weights sum to the number of models.
     City-specific data is preferred; falls back to global MAE if city data is thin.
+
+    `candidates` (keyword-only) restricts BOTH the returned keys and the
+    normalisation denominator to that set. THIS FUNCTION SERVES TWO DIFFERENT
+    BLENDS and that is why the restriction is a caller's choice rather than a
+    constant baked in here:
+      * _model_weights (the ENSEMBLE blend) passes its own membership, so a
+        model belonging to the other blend cannot perturb an ensemble member's
+        normalised weight through total/n_models.
+      * update_learned_weights_from_tracker passes NOTHING, deliberately. Its
+        output is persisted to learned_weights.json, which is tier 2 of
+        _forecast_model_weights -- the DETERMINISTIC blend, whose baseline
+        DOES contain ecmwf_ifs025. Restricting it there would erase that key
+        on the next 5-day refresh and drop ifs025 to its static seasonal
+        default, a 4-22pp swing in ECMWF share depending on month and ENSO.
+        An earlier version of this fix put the restriction inside this
+        function unconditionally and would have done exactly that.
+    With candidates=None the behaviour is unchanged from before: skip
+    TRACKING_ONLY_MODEL_NAMES, keep everything else.
+
+    `candidates` is part of the cache key. It has to be: two callers with
+    different sets would otherwise share an entry and whichever ran first
+    would decide the other's weights -- the same defect _model_bias's own
+    docstring records for its sample floors.
     """
-    cache_key = (city, days_back)
+    cache_key = (city, days_back, candidates)
     _cached_weights = _MAE_WEIGHTS_CACHE.get(cache_key)
     if _cached_weights is not None:
         return _cached_weights
@@ -4840,13 +4867,27 @@ def _weights_from_mae(
 
     weights: dict[str, float] = {}
     for model, stats in acc.items():
-        if model in TRACKING_ONLY_MODEL_NAMES:
+        excluded = (
+            model not in candidates
+            if candidates is not None
+            else model in TRACKING_ONLY_MODEL_NAMES
+        )
+        if excluded:
             # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2:
-            # a track-only model's tracked accuracy must not perturb any
-            # OTHER model's normalized weight via the total/n_models
-            # denominator below — skip it entirely, not just from being
-            # directly selected downstream (that alone doesn't stop the
+            # a model that does not belong to the CALLER's blend must not
+            # perturb any other model's normalized weight via the total/
+            # n_models denominator below — skip it entirely, not just from
+            # being directly selected downstream (that alone doesn't stop the
             # leak; see TRACKING_ONLY_MODEL_NAMES's own docstring).
+            #
+            # The `candidates` branch exists because the TRACKING_ONLY test
+            # alone MISSED ecmwf_ifs025 -- equally not a member of the
+            # ensemble blend, but not track-only either: it belongs to
+            # _forecast_model_weights' DETERMINISTIC blend, and
+            # get_member_accuracy returns every tracked model regardless of
+            # which blend it serves. _model_weights filters it out of the
+            # RETURNED dict one layer up (ensemble_candidate_models), but by
+            # then it has already been counted in `total` and `n_models`.
             continue
         city_bd = stats.get("city_breakdown", {})
         city_n_bd = stats.get("city_n_breakdown", {})
@@ -4917,11 +4958,19 @@ def _weights_from_mae(
 # Candidate set is deliberately hardcoded here, NOT derived from
 # tracker.get_member_accuracy()'s own keys: that function returns every
 # tracked model, including ecmwf_ifs025 (a DIFFERENT blend's model entirely --
-# see _model_weights()'s own docstring) and TRACKING_ONLY_MODEL_NAMES. Only
-# _model_weights() (one layer above _weights_from_mae()) filters ecmwf_ifs025
-# out today; _weights_from_mae() itself only filters TRACKING_ONLY_MODEL_NAMES.
+# see _model_weights()'s own docstring) and TRACKING_ONLY_MODEL_NAMES.
 # Iterating get_member_accuracy()'s raw keys here would let an irrelevant
 # model's MAE feed the active-member floor count below, corrupting it.
+#
+# SINCE 2026-09-02 THIS TUPLE HAS A SECOND JOB: _model_weights() passes it to
+# _weights_from_mae() as that call's `candidates` set, so it now also decides
+# which models enter the ENSEMBLE fit's normalisation denominator. Adding a
+# name here admits it to the fit; omitting one excludes it silently. The
+# assertion below keeps it disjoint from TRACKING_ONLY_MODEL_NAMES, which is
+# what makes the two exclusion branches in _weights_from_mae agree: a name in
+# both would be admitted by `candidates` here and skipped by the default
+# branch there, so learned_weights.json and the live blend would disagree
+# about whether it is a member.
 _QUARANTINE_CANDIDATE_MODELS: tuple[str, ...] = (
     *ENSEMBLE_MODELS,
     "ecmwf_aifs025_ensemble",
@@ -4938,6 +4987,17 @@ _QUARANTINE_TRIP_Z = 2.0  # ewma_z at/above this trips quarantine
 _QUARANTINE_RELEASE_Z = 0.5  # ewma_z must fall to/below this to release (asymmetric --
 # trips easier than it releases, standard circuit-breaker hysteresis to avoid
 # flapping a member in/out every scan when it's sitting near the trip line)
+# The two sets must stay disjoint: a name in BOTH would be admitted to the
+# ensemble fit by _model_weights' `candidates` while _weights_from_mae's
+# default branch still skips it, so learned_weights.json and the live blend
+# would disagree about whether it is a member. Hand-maintained literals, so
+# this is checked rather than assumed (opus review: "by construction"
+# overstated it -- nothing enforced the property).
+assert not (set(_QUARANTINE_CANDIDATE_MODELS) & TRACKING_ONLY_MODEL_NAMES), (
+    "_QUARANTINE_CANDIDATE_MODELS and TRACKING_ONLY_MODEL_NAMES overlap: "
+    f"{sorted(set(_QUARANTINE_CANDIDATE_MODELS) & TRACKING_ONLY_MODEL_NAMES)}"
+)
+
 _QUARANTINE_MIN_RECENT_N = 20  # warm-up floor, matches _weights_from_mae's min_n
 _QUARANTINE_MIN_ACTIVE = 2  # never let quarantine drop active members below this
 _QUARANTINE_RECENT_DAYS = 14
@@ -5572,15 +5632,20 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     (tracked-for-accuracy models explicitly awaiting graduation into this
     exact blend) — not just the 3 fixed baseline/seasonal-prior models below
     (backlog.txt "GRADUATE GEM/UKMO..."). This is scaffolding for a future
-    graduation, not active in production today: a model in
-    TRACKING_ONLY_MODEL_NAMES is, BY DEFINITION, skipped inside
-    _weights_from_mae() itself (see its own `continue` on this same
-    constant) before it could ever reach `mae_weights`/get persisted to
-    learned_weights.json — so today, nothing actually exercises this
-    admission path outside tests that inject a value directly.
-    IMPORTANT — graduating a model needs BOTH steps, not just one: (1)
-    remove it from TRACKING_ONLY_MODEL_NAMES (so _weights_from_mae() stops
-    skipping it and it starts accumulating real mae_weights/learned data),
+    graduation, not active in production today: a TRACKING_ONLY_MODEL_NAMES
+    member cannot reach `mae_weights` on THIS path, because since 2026-09-02
+    this function passes `candidates=_QUARANTINE_CANDIDATE_MODELS` to
+    _weights_from_mae() and a module-level assert keeps those two sets
+    disjoint. (It is also still skipped on the UNRESTRICTED path that feeds
+    learned_weights.json, by that function's default branch.) So today,
+    nothing exercises this admission path outside tests that inject a value
+    directly -- but note the guarantee now rests on the disjointness assert,
+    NOT on an unconditional skip.
+    IMPORTANT — graduating a model needs THREE steps, not one: (1)
+    remove it from TRACKING_ONLY_MODEL_NAMES (so it starts accumulating real
+    learned data on the unrestricted path -- NB this alone also grows the
+    DETERMINISTIC blend's learned_weights.json denominator by that model's
+    1/mae, a small re-weighting of a blend you may not have meant to touch),
     AND (2) add it to the `baseline` dict below (even a plain 1.0, if it has
     no seasonal prior) — because once removed from TRACKING_ONLY_MODEL_NAMES,
     it's also no longer in `ensemble_candidate_models` (which is
@@ -5592,6 +5657,14 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     the live blend, so its weight is actually consumed. Skipping step (2)
     reproduces the exact silent-exclusion bug this generalization exists to
     fix, just one step later.
+    SINCE 2026-09-02 THAT THIRD STEP IS NOT OPTIONAL EITHER, and it is no
+    longer only about consumption: this function passes
+    _QUARANTINE_CANDIDATE_MODELS to _weights_from_mae() as its `candidates`
+    set, so a model absent from that tuple is excluded from the ENSEMBLE FIT
+    itself -- it will not appear in mae_weights at all, and will silently
+    sit at its flat 0.7*1.0 + 0.3*baseline prior with no error. Removing a
+    model from TRACKING_ONLY_MODEL_NAMES no longer suffices to make the fit
+    see it. Do all three.
 
     ensemble_candidate_models (below) treats "in TRACKING_ONLY_MODEL_NAMES"
     as synonymous with "candidate for THIS blend" — true of gem_global/
@@ -5602,18 +5675,22 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     single-value product, the ecmwf_ifs025 shape, destined for no blend at
     all right now). Re-checked at that point, per this note's own
     instruction: still not a live bug, for a reason stronger than "this
-    union happens not to matter" — _weights_from_mae() (above) `continue`s
-    on EVERY TRACKING_ONLY_MODEL_NAMES member before it can ever reach
-    mae_weights, unconditionally, regardless of whether that member is
-    ensemble-shaped. Since `admissible`/`extra_learned` below only ever
+    union happens not to matter" — _weights_from_mae() (above) excludes
+    EVERY TRACKING_ONLY_MODEL_NAMES member before it can ever reach
+    mae_weights, regardless of whether that member is ensemble-shaped.
+    (SINCE 2026-09-02 that exclusion is no longer a single unconditional
+    skip: on this path it comes from the `candidates` set plus the
+    disjointness assert, and on the unrestricted path from the default
+    branch. Same outcome, two mechanisms -- so re-check BOTH.) Since `admissible`/`extra_learned` below only ever
     intersect ensemble_candidate_models against mae_weights/
     learned_weights.json (both derived from _weights_from_mae's output), a
     non-ensemble TRACKING_ONLY_MODEL_NAMES member can never actually reach
     this function's output via that union no matter how it's shaped — the
     union being "wrong" in principle doesn't translate into a reachable
-    leak. Still worth re-checking again the next time TRACKING_ONLY_MODEL_
-    NAMES's membership changes, since this reasoning depends on
-    _weights_from_mae's own unconditional skip staying in place.
+    leak. Still worth re-checking the next time EITHER set's membership
+    changes -- TRACKING_ONLY_MODEL_NAMES or _QUARANTINE_CANDIDATE_MODELS --
+    since this reasoning now depends on the two staying disjoint rather than
+    on an unconditional skip.
     RE-CHECKED 2026-09-02, per that instruction, when
     ukmo_global_ensemble_20km was REMOVED from TRACKING_ONLY_MODEL_NAMES to
     graduate it into the live blend: still not a live bug. The skip is intact
@@ -5701,7 +5778,16 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     # (test_stray_tracked_model_never_leaks_into_result) — cheap to keep even
     # though get_member_accuracy()'s own SQL already filters it out today and
     # it isn't in ensemble_candidate_models anyway.
-    mae_weights = _weights_from_mae(city)
+    # Restrict the fit to THIS blend's own membership. Without it,
+    # ecmwf_ifs025 -- a member of the deterministic blend, not this one --
+    # entered total/n_models and systematically under-weighted every real
+    # member here. Passed from the call site rather than hardcoded inside
+    # _weights_from_mae because that function also serves
+    # update_learned_weights_from_tracker, whose consumer DOES contain
+    # ifs025. See _weights_from_mae's docstring.
+    mae_weights = _weights_from_mae(
+        city, candidates=frozenset(_QUARANTINE_CANDIDATE_MODELS)
+    )
     if mae_weights:
         admissible = (
             set(baseline) | (set(mae_weights) & ensemble_candidate_models)

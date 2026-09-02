@@ -6209,6 +6209,207 @@ class TestWeightsFromMaeExcludesTrackingOnlyModels:
 # ── TestMemberQuarantine (scan_member_quarantine, per-model EWMA drift guard) ──
 
 
+class TestWeightsFromMaeExcludesOtherBlendsModels:
+    """backlog.txt "LIVE BLEND WEIGHTS ARE FIT ON RAW MAE WHILE THE BLEND
+    ITSELF SUBTRACTS THE SAME BIAS", second half.
+
+    Sibling of TestWeightsFromMaeExcludesTrackingOnlyModels above, for the
+    case that frozenset does NOT cover. ecmwf_ifs025 is not track-only -- it
+    belongs to _forecast_model_weights' separate DETERMINISTIC blend -- but
+    tracker.get_member_accuracy returns every tracked model regardless of
+    which blend it serves. The ensemble fit used to skip only
+    TRACKING_ONLY_MODEL_NAMES, so ifs025 entered total/n_models and shifted
+    every real member's normalised weight; _model_weights filtered it out of
+    the returned dict one layer up, but only AFTER it had been counted.
+
+    Measured on the live fit: ifs025 has the BEST MAE of the tracked set, so
+    its 1/mae was the largest term and including it inflated the denominator
+    more than it added to n_models -- every ensemble member was systematically
+    under-weighted (icon 1.1705 -> 1.2286, ukmo 1.0659 -> 1.1188, aifs
+    0.8639 -> 0.9068, gfs 0.7106 -> 0.7459).
+
+    The restriction is passed by the CALLER rather than baked into
+    _weights_from_mae, and test_default_still_emits_ifs025_for_the_
+    deterministic_blend below is why.
+    """
+
+    def _fake_acc(self, extra=None) -> dict:
+        acc = {
+            "icon_seamless": {
+                "mae": 2.0,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            },
+            "gfs_seamless": {
+                "mae": 4.0,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            },
+        }
+        for name in extra or ():
+            # Deliberately the best MAE in the set and well past the floor --
+            # the live shape, and where a leak is most visible.
+            acc[name] = {
+                "mae": 0.5,
+                "n": 50,
+                "city_breakdown": {},
+                "city_n_breakdown": {},
+            }
+        return acc
+
+    def _weights(self, monkeypatch, extra=None, *, restrict=True):
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_accuracy",
+            lambda days_back=60: self._fake_acc(extra),
+        )
+        kw = (
+            {"candidates": frozenset(wm._QUARANTINE_CANDIDATE_MODELS)}
+            if restrict
+            else {}
+        )
+        out = wm._weights_from_mae("NYC", min_n=20, **kw)
+        wm._MAE_WEIGHTS_CACHE.clear()
+        return out
+
+    def test_ifs025_never_appears_when_restricted(self, monkeypatch):
+        result = self._weights(monkeypatch, {"ecmwf_ifs025"})
+        assert "ecmwf_ifs025" not in result, (
+            f"ecmwf_ifs025 is not a member of the ensemble blend and must not "
+            f"carry a weight there, got: {result}"
+        )
+
+    def test_ifs025_presence_does_not_move_the_real_members(self, monkeypatch):
+        """The actual defect: the leak was in the DENOMINATOR, not in the
+        returned keys. Filtering downstream (as _model_weights does) is not
+        enough, because by then it has already been counted."""
+        baseline = self._weights(monkeypatch)
+        leaked = self._weights(monkeypatch, {"ecmwf_ifs025"})
+        assert leaked["icon_seamless"] == pytest.approx(baseline["icon_seamless"]), (
+            f"ecmwf_ifs025 changed icon_seamless's normalised weight: "
+            f"{leaked['icon_seamless']} vs {baseline['icon_seamless']} -- it "
+            f"leaked into the normalisation denominator"
+        )
+        assert leaked["gfs_seamless"] == pytest.approx(baseline["gfs_seamless"])
+        # Hand-computed: two models at mae 2.0 and 4.0 normalise to 1/2 and
+        # 1/4 scaled so they sum to 2 -> 4/3 and 2/3.
+        assert baseline["icon_seamless"] == pytest.approx(4 / 3)
+        assert baseline["gfs_seamless"] == pytest.approx(2 / 3)
+
+    def test_an_arbitrary_non_member_is_also_excluded(self, monkeypatch):
+        """Pins the PROPERTY, not the one model name.
+
+        An earlier version of these tests special-cased ecmwf_ifs025, and a
+        mutation hardcoding `or model == "ecmwf_ifs025"` passed all of them
+        while letting any future non-member leak in full.
+        """
+        result = self._weights(monkeypatch, {"some_future_deterministic_model"})
+        assert "some_future_deterministic_model" not in result
+        assert result["icon_seamless"] == pytest.approx(4 / 3), (
+            "an unknown non-member leaked into the normalisation denominator"
+        )
+
+    def test_positive_control_a_real_member_does_move_them(self, monkeypatch):
+        """Without this, the exclusions above could pass because the fixture
+        never reaches the normalisation at all."""
+        baseline = self._weights(monkeypatch)
+        with_member = self._weights(monkeypatch, {"ukmo_global_ensemble_20km"})
+        assert "ukmo_global_ensemble_20km" in with_member
+        assert with_member["icon_seamless"] != pytest.approx(
+            baseline["icon_seamless"]
+        ), (
+            "a genuine blend member did NOT change its peers' normalised "
+            "weights -- the normalisation path is not being exercised, so the "
+            "exclusion tests above prove nothing"
+        )
+
+    def test_default_still_emits_ifs025_for_the_deterministic_blend(self, monkeypatch):
+        """THE REGRESSION DETECTOR for the reason this restriction is a caller
+        argument rather than a constant inside _weights_from_mae.
+
+        update_learned_weights_from_tracker calls it with NO candidates and
+        persists the result wholesale to learned_weights.json, which is tier 2
+        of _forecast_model_weights -- the DETERMINISTIC blend, whose baseline
+        contains ecmwf_ifs025. All 18 cities on disk carry that key today and
+        tier 1 is empty for every one of them, so tier 2 is the live path.
+        Restricting unconditionally would erase the key on the next 5-day
+        refresh and drop ifs025 to its static seasonal default: a 4-22pp swing
+        in ECMWF share depending on month and ENSO, in a blend this change is
+        not supposed to touch. An earlier version of the fix did exactly that.
+        """
+        result = self._weights(monkeypatch, {"ecmwf_ifs025"}, restrict=False)
+        assert "ecmwf_ifs025" in result, (
+            "the unrestricted fit dropped ecmwf_ifs025 -- learned_weights.json "
+            "will lose the key and the DETERMINISTIC blend will silently fall "
+            "back to its static seasonal weight"
+        )
+        # Track-only exclusion is still the default behaviour.
+        track_only = self._weights(monkeypatch, {"gem_global"}, restrict=False)
+        assert "gem_global" not in track_only
+
+    def test_model_weights_actually_passes_the_candidate_set(self, monkeypatch):
+        """THE CALL-SITE BINDING TEST, and the one that matters in production.
+
+        Every other test in this class calls _weights_from_mae directly and
+        constructs `candidates` itself, so they prove the helper works but NOT
+        that _model_weights uses it. A round-2 review reverted the call site to
+        the pre-fix `_weights_from_mae(city)` and 613 tests stayed green while
+        the headline defect was fully reintroduced.
+
+        Asserts a member's NUMERIC weight, not its presence: the leak never
+        changed which keys came back, only their values, so any key-set
+        assertion is blind to it.
+        """
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_accuracy",
+            lambda days_back=60: self._fake_acc({"ecmwf_ifs025"}),
+        )
+        # Force tier 1: learned_weights.json must not be consulted.
+        monkeypatch.setattr(wm, "load_learned_weights", lambda: {})
+        out = wm._model_weights("NYC", month=7)
+        wm._MAE_WEIGHTS_CACHE.clear()
+
+        assert "ecmwf_ifs025" not in out
+        # icon's restricted mae weight is 4/3 (see the hand-computation above);
+        # _model_weights blends 0.7*mae + 0.3*baseline, baseline 1.0.
+        assert out["icon_seamless"] == pytest.approx(0.7 * (4 / 3) + 0.3), (
+            f"icon_seamless is {out['icon_seamless']}, expected "
+            f"{0.7 * (4 / 3) + 0.3}. With ecmwf_ifs025 leaking into the "
+            f"denominator it would be {0.7 * 0.5454545 + 0.3} -- "
+            f"_model_weights is not passing `candidates`."
+        )
+        assert out["gfs_seamless"] == pytest.approx(0.7 * (2 / 3) + 0.3)
+
+    def test_candidates_is_part_of_the_cache_key(self, monkeypatch):
+        """Two callers with different candidate sets must not share an entry.
+        Otherwise whichever runs first decides the other's weights -- the
+        defect _model_bias's own docstring records for its sample floors."""
+        import weather_markets as wm
+
+        wm._MAE_WEIGHTS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_accuracy",
+            lambda days_back=60: self._fake_acc({"ecmwf_ifs025"}),
+        )
+        unrestricted = wm._weights_from_mae("NYC", min_n=20)
+        restricted = wm._weights_from_mae(
+            "NYC", min_n=20, candidates=frozenset(wm._QUARANTINE_CANDIDATE_MODELS)
+        )
+        wm._MAE_WEIGHTS_CACHE.clear()
+        assert "ecmwf_ifs025" in unrestricted
+        assert "ecmwf_ifs025" not in restricted, (
+            "the restricted call returned the unrestricted cached value -- "
+            "candidates is not in the cache key"
+        )
+
+
 class TestMemberQuarantineScan:
     """scan_member_quarantine() -- generic, per-model quarantine one layer
     above _weights_from_mae()'s soft inverse-MAE down-weighting (see the
