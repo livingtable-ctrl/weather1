@@ -5170,77 +5170,78 @@ class TestGetGemUkmoMeans:
 class TestGetEcmwfAifsProb:
     """backlog.txt '3-WAY MODEL_CONSENSUS CHECK': _get_ecmwf_aifs_prob must
     return ecmwf_aifs025_ensemble's own member-vote-fraction probability via
-    the same _model_prob_and_mean infra _get_consensus_probs's ecmwf_mean
-    fetch already uses (same cache key, so no second network call on a
-    warm cache). Calls the module-import-time-captured real function
-    (_REAL_GET_ECMWF_AIFS_PROB) since conftest's default_ecmwf_aifs_prob_none
-    autouse fixture stubs weather_markets._get_ecmwf_aifs_prob to None by
-    default."""
+    the same _model_prob_and_mean infra _get_consensus_probs uses.
 
-    def test_fetches_member_vote_fraction_probability(self, monkeypatch):
-        from unittest.mock import MagicMock
+    2026-09-01: it became a cache-READ-only caller (no_fetch=True). It is
+    log-only -- analyze_trade records its gap and never gates on it -- and the
+    cache-miss branch reaches _ensemble_cb, whose is_open() is a MUTATOR that
+    grants the live blend's single HALF-OPEN recovery probe. A log-only caller
+    must never be able to consume that. These tests therefore seed
+    _ensemble_cache directly instead of mocking a fetch; the arithmetic claims
+    are unchanged.
+    """
 
+    def test_computes_member_vote_fraction_probability(self):
         import weather_markets as wm
 
         wm._ensemble_cache.clear()
-        wm._ensemble_cb.record_success()  # ensure circuit closed
-
         # 5 members, 3 above the 70.0 threshold -> prob = 0.6.
         members = [65.0, 68.0, 71.0, 72.0, 73.0]
 
-        def _fake_om_request(method, url, **kwargs):
-            resp = MagicMock()
-            resp.raise_for_status.return_value = None
-            resp.json.return_value = {
-                "daily": {
-                    f"temperature_2m_max_member{i + 1:02d}": [v]
-                    for i, v in enumerate(members)
-                }
-            }
-            return resp
-
-        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
-
         from datetime import date, timedelta
 
         target = date.today() + timedelta(days=3)
         condition = {"type": "above", "threshold": 70.0}
-
+        wm._ensemble_cache.set_with_ttl(
+            ("ecmwf_aifs025_ensemble", "NYC", target.isoformat(), "max", None),
+            members,
+            3600,
+        )
         prob = _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition)
         assert prob == pytest.approx(0.6), f"expected 3/5=0.6, got {prob}"
-
         wm._ensemble_cache.clear()
 
-    def test_returns_none_when_fewer_than_five_members(self, monkeypatch):
-        from unittest.mock import MagicMock
-
+    def test_returns_none_when_fewer_than_five_members(self):
         import weather_markets as wm
 
         wm._ensemble_cache.clear()
-        wm._ensemble_cb.record_success()
-
-        def _fake_om_request(method, url, **kwargs):
-            resp = MagicMock()
-            resp.raise_for_status.return_value = None
-            resp.json.return_value = {
-                "daily": {
-                    "temperature_2m_max_member01": [70.0],
-                    "temperature_2m_max_member02": [71.0],
-                    "temperature_2m_max_member03": [72.0],
-                }
-            }
-            return resp
-
-        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
-
         from datetime import date, timedelta
 
         target = date.today() + timedelta(days=3)
         condition = {"type": "above", "threshold": 70.0}
-
+        wm._ensemble_cache.set_with_ttl(
+            ("ecmwf_aifs025_ensemble", "NYC", target.isoformat(), "max", None),
+            [70.0, 71.0, 72.0],
+            3600,
+        )
         prob = _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition)
         assert prob is None, f"expected None below the 5-member floor, got {prob}"
+        wm._ensemble_cache.clear()
 
+    def test_cold_cache_returns_none_without_fetching(self, monkeypatch):
+        """The no_fetch contract, with a positive control: the same call on a
+        WARM cache returns a real probability, so the None below is the guard
+        firing rather than the fixture failing."""
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+
+        def _boom(*a, **kw):
+            raise AssertionError("_get_ecmwf_aifs_prob must not fetch")
+
+        monkeypatch.setattr(wm, "_om_request", _boom)
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        condition = {"type": "above", "threshold": 70.0}
+        assert _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition) is None
+
+        wm._ensemble_cache.set_with_ttl(
+            ("ecmwf_aifs025_ensemble", "NYC", target.isoformat(), "max", None),
+            [65.0, 68.0, 71.0, 72.0, 73.0],
+            3600,
+        )
+        assert _REAL_GET_ECMWF_AIFS_PROB("NYC", target, condition) == pytest.approx(0.6)
         wm._ensemble_cache.clear()
 
 

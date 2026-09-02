@@ -1,6 +1,397 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-09-01 -- surfaced by a parallel session while diagnosing the
+  ensemble auto-retirement and handed over rather than filed there. Filed as a
+  QUESTION. The first draft of this entry argued the exemption was protecting
+  a good signal; measuring it on an axis that is actually valid INVERTED that,
+  and the retraction is kept below because the wrong version is the intuitive
+  one and someone will re-derive it.]
+  THE METAR LOCK CANNOT BE RETIRED AT ANY SCORE -- brier_score_by_method READS
+  multiday_predictions AND ALL 106 LOCK ROWS ARE days_out=0, SO THE ONLY PATH
+  WITH ANY EVIDENCE OF PROFIT IS ALSO THE ONE THE RETIREMENT CHECK CANNOT SEE
+Priority: MEDIUM-HIGH as a question, LOW as an action. Do NOT remove the
+  exclusion as a "fix" -- but do not assume it is protecting something good
+  either. It is High-adjacent because the asymmetry currently decides which
+  methods live: on 2026-09-01 the check retired the method with 144 visible
+  rows and could not evaluate the one with 106.
+Files: tracker.py (brier_score_by_method :2927 and its docstring line
+  "Excludes same-day trades (days_out=0) so same-day METAR results don't skew
+  method scores"; auto_retire_strategies :13729, retire_threshold=0.25,
+  auto_retire_strategies :13741, retire_threshold=0.25, min_samples=20; the
+  multiday_predictions view), paper.py :2947 (the same
+  exclusion restated for the drift/retirement guard).
+
+THE ASYMMETRY, measured 2026-09-01 read-only against data/predictions.db.
+  This half is not in doubt and needs no statistics -- it is a property of a
+  query, not of a sample.
+
+  metar_lockout rows by days_out:  days_out=0: 106.  That is all of them.
+  brier_score_by_method selects FROM multiday_predictions, which excludes
+  days_out=0. Settled rows visible to it, by method:
+
+     ensemble                        144
+     monthly_rain_bootstrap_tilted    90
+     normal_dist                       2
+     monthly_rain_bootstrap            1
+     tornado_count_bootstrap_tilted    1
+     metar_lockout                     0
+
+  So metar_lockout is not "hard to retire", it is UNREACHABLE by the
+  retirement machinery: zero visible rows, permanently below min_samples=20,
+  regardless of how it scores. On the same day, `ensemble` crossed 0.25 on its
+  144 visible rows and was retired to data/retired_strategies.json.
+
+WHAT THE EXEMPTION IS ACTUALLY HIDING, and it is the opposite of what the
+  first draft of this entry claimed. Split at the local-date guard commit
+  e395392b (2026-06-25), on DAY-level attribution:
+
+     population                          n     Brier
+     pre-guard   (predicted_date < 06-25)  83   0.2490
+     post-guard  (>= 06-25)                23   0.3880
+     pooled                               106   0.2791   (threshold 0.25)
+
+  The population the CURRENT code produces scores 0.3880 -- worse than the
+  pooled figure and well past the retirement line. The pre-guard rows are
+  FLATTERING the pooled score, not inflating it. So if the exclusion were
+  removed the lock would retire, and on this evidence that might be the
+  correct outcome rather than a false positive. The exemption is not
+  accidentally protecting a good signal; it may be accidentally protecting a
+  bad one. n=23 is small and nothing here is significant -- that is the point:
+  the honest state is UNMEASURED, and the exclusion means it stays that way.
+
+RETRACTED, AND RECORDED SO IT IS NOT RE-DERIVED: an "05-07h / 21-23h UTC is
+  the profitable window" split. It was going into this entry as the argument
+  that the pooled Brier is untrustworthy. It does not survive, on two
+  independent grounds, and a parallel session caught it before it shipped:
+  * SIZE-MATCHED NULL. good n=41 Brier 0.2321 vs rest n=65 0.3088, gap
+    +0.0767, permutation p = 0.138 over 20,000 draws (p = 0.129 clustered by
+    city-day). The windows are not internally coherent either: hour 02 sits
+    INSIDE the "bad" band at Brier 0.0960, the second-best hour overall, and
+    hour 06 sits inside a "good" band at 0.3441, worse than hours 00 and 01.
+    The two cells doing the work are the smallest (hour 22 n=2, hour 02 n=9).
+  * THE AXIS IS INVALID ANYWAY, which is the more important half and is
+    already written down in this file. The "THE METAR LOCK HAS STOPPED FIRING"
+    entry's own DO-NOT-CITE block says predicted_at's hour-of-day attribution
+    is damaged -- it bins on UTC hour while the gate is on the city's LOCAL
+    hour, and predicted_at is pinned to the day's FIRST scan by tracker's ON
+    CONFLICT while `method` is overwritten. Day- and month-level attribution
+    are safe; hour-of-day is not. The split above was built on the one axis
+    that entry forbids, by someone who had read it earlier the same session.
+    Hours 03, 04 and 08-19 have ZERO rows because the old 3-hourly cron never
+    fired then -- the cells are a cadence artifact, not a sample.
+  This is why the surviving argument above uses DATES, not hours.
+
+THE TWO POSITIONS, and whoever picks one should say which:
+  (a) TRUST THE POOLED SCORE -> the exclusion is a bug, removing it is
+      correct, and the lock retires. Defensible, but note you are then
+      retiring partly on 83 rows of a code path that no longer runs.
+  (b) DISTRUST IT -> then the lock is simply unmeasured, and the exclusion is
+      the only reason that is not visible. "Accidentally right" is not a
+      design, and on the post-guard numbers it is not even accidentally right.
+  Neither is resolvable by reading code. Both need the lock scored on the
+  post-guard population alone, which is n=23 today -- far under any floor
+  this repo uses, and the reason this is filed rather than fixed.
+
+WHAT THIS ENTRY DOES NOT CLAIM.
+  * It does not claim the lock is unprofitable. P&L and Brier are different
+    questions, and "EVERY DOLLAR THIS BOT HAS EVER MADE CAME FROM THE METAR
+    LOCK" is a P&L claim with its own caveats (n=27 traded, one three-week
+    window, post-hoc split). Nothing above touches it.
+  * It does not claim the exclusion was a mistake when written. Its stated
+    reason -- same-day METAR results skewing multi-day method scores -- is
+    real. The defect is that the exclusion doubles as an EXEMPTION and nothing
+    records that.
+  * The pre/post-guard split is itself a post-hoc cut, though a defensible one:
+    the boundary is a code change made for an independent reason, not a
+    threshold tuned to maximise a statistic.
+
+WHEN TO REVISIT. When the post-guard lock population clears a defensible floor
+  (n=23 today against batch-81's 112). ACTION NOW, and only this: amend
+  brier_score_by_method's docstring to say that the exclusion makes an entire
+  method structurally unretireable. Today it says only that it excludes
+  same-day trades, which reads as a scoping choice rather than as an exemption
+  with teeth.
+
+[OPEN 2026-09-01 -- found by following step 2 of the gfs_seamless entry to its
+  consumers. The measurement half is done and is what this entry records; the
+  DECISION half (fix / retire / keep) is deliberately still open and is what
+  the shadow below exists to answer.]
+  THE model_consensus GATE IS UNCALIBRATED, NON-DISCRIMINATING, AND FED A
+  BIASED INPUT -- IT HALVES KELLY ON 22.8% OF PREDICTIONS ON A PREMISE THE
+  DATA DOES NOT SUPPORT
+Priority: MEDIUM-HIGH. It is live and it sizes real positions. Not HIGH only
+  because the direction of the harm is unproven: the gate cannot be shown to
+  help, and it also cannot be shown to hurt.
+Files: weather_markets.py (_get_consensus_probs :12474, the gate at :18193,
+  _model_prob_and_mean :12316 and its new member_shift/no_fetch,
+  _get_consensus_probs_debiased :12611), order_executor.py (:5055
+  consensus_mult; the log-only plumbing is the two kwargs inside
+  _prediction_kwargs_from_analysis :3943, not the pre-existing
+  ecmwf_consensus_gap_prob line at :4022), tracker.py (log_prediction and the
+  two appended migrations).
+
+THREE FINDINGS, EACH MEASURED SEPARATELY.
+
+1. THE GATE READS AN UNCORRECTED INPUT. _get_consensus_probs calls
+   _model_prob_and_mean for icon/gfs with no bias correction anywhere in the
+   path, and analyze_trade sets model_consensus=False when
+   |icon_p - gfs_p| > 0.12. gfs currently carries a +3.49F warm bias on max
+   that the ensemble blend SUBTRACTS before pricing (get_ensemble_temps
+   :5873) and this check never sees. A divergence produced by a known,
+   already-corrected offset is not model disagreement.
+
+   Sensitivity, measured over the 165 max and 165 min (city, target_date)
+   cells in ensemble_member_values that carry BOTH models -- 330 cells drawn
+   from 2,983 stored member sets, taking each cell's most recently logged
+   cycle -- by sweeping the decision boundary across each cell's own member
+   range in 0.5F steps:
+
+     var=max  3468 threshold points  flip False->True 25.3%  True->False 15.5%
+     var=min  2497 threshold points  flip False->True 10.2%  True->False  9.8%
+
+   165 of 165 max cells flip somewhere in their range, and so do 165 of 165
+   min cells. THAT is the finding: the gate is not robust to this bias
+   anywhere in its input space.
+
+   THE DIRECTION OF THE FLIPS IS NOT ESTABLISHED, and an earlier draft of this
+   entry stated it as settled. Under the uniform sweep above, max flips look
+   lopsided toward restoration (876 vs 537), which is what removing a
+   one-sided bias "should" do. That lopsidedness does not survive conditioning
+   on what production actually prices. Restricting to threshold points where
+   the DEBIASED blend prices the contract inside a tradeable band:
+
+     band            pts    F->T           T->F
+     (0.00,1.00)    3468    876 (25.3%)    537 (15.5%)   <- as swept
+     (0.05,0.95)    2058    349 (17.0%)    537 (26.1%)
+     (0.10,0.90)    1735    269 (15.5%)    477 (27.5%)
+     (0.20,0.80)    1241    167 (13.5%)    326 (26.3%)
+
+   60.2% of the "restored" flips sit where the debiased blend prices below
+   0.05 or above 0.95 -- effectively-settled contracts.
+
+   READ THE [0.05,0.95] ROW AS CARRYING NO DIRECTIONAL INFORMATION. That all
+   537 "newly halved" flips survive that filter is ALGEBRAICALLY FORCED, not
+   measured: a T->F flip requires the two debiased vote fractions to differ by
+   more than 0.12, which by construction pushes the pooled debiased price off
+   the extremes (measured range of the 537: 0.0725 .. 0.9420). So that band
+   can only ever delete F->T flips and can never delete a T->F one. The first
+   row that says anything is (0.10,0.90), where T->F does start falling
+   (537 -> 477). An earlier draft rested the reversal on the [0.05,0.95] row
+   and was arguing from a tautology.
+   The reversal is also conditioning-dependent in the ordinary way:
+   conditioning on the RAW pooled blend instead strengthens the original
+   direction (876 vs 220 at [0.05,0.95]). The
+   debiased conditioning is the defensible one because it is what production
+   prices on, but WHICH WAY debiasing would move live sizing on tradeable
+   markets is unresolved, and nothing here should be cited as if it were.
+
+   Two further qualifications on the sweep itself: the +/-0.5F padding at each
+   cell's edges contributes 68 of the 537 max T->F flips (12.7%) at thresholds
+   outside every member of both models, where a market would price at ~0% or
+   ~100% -- in-member-range only, max is 27.9% F->T and 14.9% T->F. And the
+   sweep weights all thresholds equally, which no real ladder does.
+
+2. THE GATE DOES NOT DISCRIMINATE. On 186 settled daily-temperature
+   predictions joined to outcomes_valid:
+
+     model_consensus   n     excess Brier vs market
+     False (0)        104          +0.0363
+     True  (1)         82          +0.0438
+
+   Welch t = -0.23; label permutation over 20,000 shuffles gives p = 0.81.
+
+   THE TWO GROUPS ABOVE ARE NOT COMPARABLE, and an earlier draft of this entry
+   drew a conclusion from the sign that does not survive fixing it. 35 of the
+   82 True rows are method='metar_lockout', and the METAR-locked branch sets
+   model_consensus = True UNCONDITIONALLY without ever fetching icon/gfs
+   (weather_markets.py :18928). Those rows are "the check never ran", not
+   "the models agreed", and the False group contains none of them. On the 151
+   NON-METAR-LOCKED rows -- which is the honest description, and NOT "the rows
+   where the check actually ran": an ensemble row also carries True without
+   any comparison when either probability came back None, when the fetch
+   raised, or when the quarantine branch fired, and nothing stored today
+   distinguishes those. Closing that gap is exactly what consensus_gap_prob is
+   for, so this correction cannot be completed until the column has data:
+
+     method='ensemble' only   False n=104  +0.0363 | True n=47  +0.0202
+                              t = +0.54, permutation p = 0.60
+
+   which is the direction the gate's own premise predicts, and still nowhere
+   near significant. So: "the sign is backwards" was an artifact and is
+   WITHDRAWN. What survives, and is the same under both groupings, is the
+   headline -- NO MEASURABLE DISCRIMINATION IN EITHER DIRECTION. That is
+   "absence of evidence" on n<=186, not "proven useless"; what it does mean is
+   that the 0.5x multiplier is currently justified by nothing measured.
+
+3. THE 0.12 THRESHOLD WAS NEVER CALIBRATED AGAINST OUTCOMES. git log -S finds
+   it in commit aa21865b (2026-04-12), which raised it from 0.08 with the
+   stated reason "so borderline model disagreement no longer halves Kelly
+   below qty=1 cutoff" -- i.e. a VOLUME knob, tuned to place more trades, not
+   a divergence threshold fitted to anything. Any argument of the form "0.12
+   was chosen against raw probabilities, so debiasing would invalidate it" is
+   therefore false. An earlier draft of this entry made exactly that argument
+   before checking, which is why it is written down here.
+
+INCIDENCE: model_consensus is False on 104 of 457 non-null rows (22.8%);
+  38.5% in June, 40.9% in July, 16.2% in August.
+
+WHAT SHIPPED 2026-09-01, AND WHAT DELIBERATELY DID NOT.
+  SHIPPED: a shadow, nothing more. analyze_trade now records two log-only
+  fields on every analysis, plumbed through order_executor's shared
+  _prediction_kwargs_from_analysis into two new predictions columns:
+    * consensus_gap_prob -- |icon_p - gfs_p|, the MAGNITUDE behind the
+      model_consensus boolean. The boolean alone cannot settle anything: it
+      cannot distinguish a 0.13 gap from a 0.90 one, and it cannot be
+      re-evaluated at any threshold other than the 0.12 in force when the row
+      was written. That is the single biggest reason finding 2 is a null
+      result rather than an answer.
+    * consensus_gap_prob_debiased -- the same gap with each member's fitted
+      per-model bias removed, via _model_prob_and_mean's new keyword-only
+      member_shift.
+  NOT SHIPPED, and this is the point: model_consensus, the 0.12 comparison
+  and order_executor's consensus_mult are all unchanged. No live sizing
+  moves. A test asserts exactly that and fails if a future change wires
+  either gap into the gate.
+
+  WHY SHADOW RATHER THAN FIX, having measured all three findings. Debiasing
+  the gate live would move sizing on ~41% of max threshold points (25.3%
+  restored + 15.5% newly halved; an earlier draft quoted the 25% half as if
+  it were the total) to correct
+  the input of a gate that shows no discrimination and whose threshold is a
+  volume knob -- and it would couple live sizing to a bias estimate currently
+  fit on n=26 with NO city clearing its own min_n_city=20 floor, so all 21
+  cities receive one global number and the gate would move whenever that
+  refits. Retiring the 0.5x is the option the outcome data most directly
+  supports, but p=0.81 is absence of evidence on n=186. Both remain open; the
+  shadow is what makes either decidable on data.
+
+  member_shift is applied to the PROBABILITY ONLY, never to mean_temp. The
+  mean feeds model_forecast_means -> ensemble_member_scores.predicted_temp,
+  which is the population get_member_bias FITS the bias on; shifting it would
+  make each refit a correction on top of its own output. Same trap as
+  "train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT".
+
+  Hourly markets get (None, None) rather than a daily-extreme correction,
+  mirroring get_ensemble_temps' own hour-is-None restriction. The METAR-locked
+  branch binds both fields to None explicitly -- it never fetches icon/gfs,
+  and the shared result dict reads them on every path, so an unbound name
+  there is a NameError on every locked analysis.
+
+  Both columns are PLAIN-OVERWRITTEN on upsert, not COALESCEd like two of
+  their neighbours. Reason in the SET-clause comment: they must move with
+  model_consensus (itself plain-overwritten), or a METAR-locked rescan leaves
+  a stale gap beside a fresh boolean -- the batch-75 category error. The
+  COALESCE rationale does not apply anyway, since the next real scan of the
+  same ticker recomputes the gap.
+
+TWO DEFECTS THIS CHANGE INTRODUCED AND A REVIEW CAUGHT, recorded because both
+  falsified the no-live-change promise while every test stayed green:
+  * THE SHADOW REACHED THE LIVE CIRCUIT BREAKER. _model_prob_and_mean's
+    cache-miss branch calls _ensemble_cb.is_open(), and that is a MUTATOR
+    (circuit_breaker.py:164): it grants the single HALF-OPEN recovery probe,
+    zeroes the failure count and persists. _ensemble_cb is the same object the
+    live blend fetch uses, so a log-only call could steal the probe the
+    ensemble path needed, or reopen the breaker with exponential backoff when
+    its own probe failed -- i.e. whether a trade got an ensemble price would
+    have depended on shadow code. Fixed with a keyword-only `no_fetch=True`
+    that returns before the breaker is touched. This is the
+    is_open()-is-stateful trap, and it is now pinned by a test with a positive
+    control proving the same path DOES reach the breaker without the flag.
+  * THE SHADOW RAN OUTSIDE THE GATE'S OWN GUARD. It sat under `if not
+    metar_locked` while the raw path sits under `if ens_prob is not None and
+    len(temps) >= 2` -- i.e. it fired in exactly the ensemble-is-broken regime,
+    which is when the breaker damage above would have mattered most. Both gaps
+    are now computed inside the gate's own arm, which also fixes a third
+    problem: the raw gap used to be recorded even when the quarantine branch
+    skipped the comparison, so a row could carry a 0.90 gap beside a
+    model_consensus=True that never looked at it.
+
+TESTS. tests/test_consensus_gap_shadow.py is new: 24 tests, all passing.
+  Scoped run over it plus test_prediction_kwargs, test_tracker,
+  test_weather_markets, test_forecasting and test_batch81_signal_floors:
+  1345 passed (re-derived after the rebase onto 1b71d251). Plus a named sweep over the METAR-lock and placement paths the
+  change touches -- test_batch75_metar_lock_contamination, test_metar,
+  test_batch98_station_bias_provenance, test_between_bracket_shadow,
+  test_batch01_live_position_visibility: 159 passed.
+
+  THE FIRST VERSION OF THE SAFETY TEST WAS WORTHLESS, which is the most
+  transferable thing here. It asserted the no-live-change property with
+  inspect.getsource string matching. A review broke the property three ways
+  with all tests green: rebinding icon_p/gfs_p to the debiased pair just above
+  the gate (the gate's own text never changes), adding a SECOND gate below it
+  (the check only sliced the source above), and reading the gap in
+  order_executor through a split string literal. A source scan does not bind
+  to the node. It is now behavioural: analyze_trade is called end-to-end,
+  parametrised over BOTH gate outcomes with fixtures where the raw and
+  debiased pairs give OPPOSITE answers, asserting model_consensus tracks the
+  raw one. Both directions are needed -- with a disagreeing fixture alone,
+  model_consensus is already False, so an added gate that also sets False is
+  invisible.
+
+  Mutations applied via Edit, each killed by a named test. The five from the
+  first round (mean from shifted members; hourly guard; empty-bias guard;
+  upsert COALESCE; gate comparison) plus the six the review showed were
+  UNCOVERED and now are:
+    * kwargs pass None from _prediction_kwargs_from_analysis (the whole
+      production write path was untested -- this survived 1257 tests)
+    * the two kwargs transposed (would silently invert the raw-vs-debiased
+      comparison the shadow exists to make; also survived everything)
+    * the icon-side bias lookup constant-folded to 0.0
+    * the two return values of _get_consensus_probs_debiased swapped
+    * no_fetch removed
+    * ATTACK A and ATTACK B above
+  The saturated-fixture lesson applies to the third and fourth: the original
+  fixtures put both debiased clouds below the threshold, so both probabilities
+  pinned at 0.0 and neither mutation was visible. Fixtures now land mid-range.
+
+  Caught by the EXISTING suite rather than by me: _SCHEMA_VERSION is pinned to
+  len(_MIGRATIONS) (two tests), and adding a SIGNAL_REGISTRY entry without
+  also registering the column in tracker's _SIGNAL_COLUMN_ALLOWLIST and
+  _ATTEMPT_JSON_KEY_ALLOWLIST fails three more. Those guards are why the
+  signal has a working accumulation clock rather than a silently-dead one.
+
+THE CLOCK IS CURRENTLY STALLED, NOT SLOW -- flagged by a parallel session on
+  2026-09-01 and verified here. data/retired_strategies.json retired the
+  `ensemble` method at 2026-09-01T23:32:56Z (lifetime Brier 0.2570 / rolling-20
+  0.2711 against a 0.2500 threshold). While that stands, an ensemble-method
+  market produces NEITHER a predictions row NOR an analysis_attempts row, so
+  both new columns accrue nothing on the population they were built to measure.
+
+  The peer's stated mechanism was wrong in a way worth correcting, because it
+  changes where you would look: the retired-strategy gate is at
+  weather_markets.py:19343, AFTER the consensus block at :18193 -- not before
+  it. The gaps ARE computed; the gate then `return None`s the whole analysis,
+  so trade_cycle never appends it to all_results and cron's
+  batch_log_analysis_attempts never sees it. Same outcome, different place.
+
+  The one path that still runs a retired method is
+  check_retirement_probation(), which calls analyze_trade with
+  bypass_retirement_check=True -- but it logs through weather_markets.py's own
+  log_prediction call site, which passes no consensus kwargs, so those rows
+  carry NULL for both columns. Worth fixing if the retirement persists; not
+  worth fixing pre-emptively.
+
+  DO NOT clear retired_strategies.json to unblock this. It retired on its own
+  criteria and would retire again on the next cycle that crosses the line. The
+  honest options are to wait for un-retirement, or to decide the ensemble
+  method's own fate first -- which is a bigger question than this entry.
+
+WHEN TO REVISIT. At roughly 200 settled rows carrying both gaps, answer in
+  order:
+  (a) does the DEBIASED gap discriminate where the raw one does not? If yes,
+      the input defect was real and the fix is to debias the gate.
+  (b) if neither discriminates at ANY threshold -- and consensus_gap_prob is
+      what makes "any threshold" answerable -- retire the 0.5x multiplier
+      rather than tuning it.
+  (c) re-run the sensitivity sweep against a bias estimate that has by then
+      cleared a per-city floor. The whole correction is currently ONE global
+      number -- fit on 11 cities' worth of max observations, applied to all 21
+      cities in CITY_COORDS -- because no city clears _model_bias's own
+      min_n_city=20.
+  Do NOT decide (a) or (b) on the 186 rows already in hand: they carry no
+  debiased gap, and no gap magnitude either.
+
 [OPEN 2026-09-01 -- surfaced by the opus review of the gfs step-2 measurement,
   then verified independently against source before filing. Filed separately
   from "LIVE BLEND WEIGHTS ARE FIT ON RAW MAE ..." because it is a different

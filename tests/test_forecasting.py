@@ -2440,7 +2440,7 @@ class TestSignalGraduationRegistry:
         with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
             wm._count_model_obs("gem_glbal")  # typo, not gem_global
 
-    def test_registry_has_11_entries_matching_the_11_shipped_signal_topics(self):
+    def test_registry_has_12_entries_matching_the_12_shipped_signal_topics(self):
         import weather_markets as wm
 
         # Locks in the retrofit scope agreed on when this was built: all
@@ -2458,7 +2458,11 @@ class TestSignalGraduationRegistry:
         # row off an existing one. A 12th row / 11th topic ("hrrr_graduation")
         # was added batch-50 (2026-08-24) for backlog.txt "GRADUATE HRRR
         # (ncep_hrrr_conus) FROM TRACK-ONLY INTO THE LIVE BLEND" -- also its
-        # own distinct backlog_ref, same shape as market_implied_rain's.
+        # own distinct backlog_ref, same shape as market_implied_rain's. A
+        # 13th row / 12th topic ("consensus_gap_debiased") was added
+        # 2026-09-01 for backlog.txt "THE model_consensus GATE IS
+        # UNCALIBRATED, NON-DISCRIMINATING, AND FED A BIASED INPUT" -- again
+        # its own distinct backlog_ref.
         # Renamed (not just bumped) per this project's own established
         # convention of keeping a count-encoding test name truthful when the
         # count changes.
@@ -2469,9 +2473,14 @@ class TestSignalGraduationRegistry:
         # removes a row without removing a topic. Rows and topics are now
         # 1:1, which is why the two numbers in this test's name coincide --
         # do not read that as them being the same assertion.
-        assert len(wm.SIGNAL_REGISTRY) == 11
+        # 2026-09-01, same day: UP to 12 rows / 12 topics --
+        # "consensus_gap_debiased" was added for backlog.txt "THE
+        # model_consensus GATE IS UNCALIBRATED, NON-DISCRIMINATING, AND FED A
+        # BIASED INPUT", with its own distinct backlog_ref, so the 1:1
+        # coincidence above persists rather than being restored by accident.
+        assert len(wm.SIGNAL_REGISTRY) == 12
         backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
-        assert len(backlog_refs) == 11
+        assert len(backlog_refs) == 12
 
     def test_report_includes_every_registered_signal(self, monkeypatch, tmp_path):
         import weather_markets as wm
@@ -2628,7 +2637,7 @@ class TestSignalGraduationRegistry:
         )
 
         report = wm.get_signal_graduation_report()
-        assert len(report) == 11
+        assert len(report) == 12
         for row in report:
             if row["sample_floor"] is not None:
                 assert row["count"] == 0, row["key"]

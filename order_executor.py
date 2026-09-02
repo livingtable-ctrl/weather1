@@ -4020,6 +4020,14 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
         # backlog.txt "3-WAY MODEL_CONSENSUS CHECK" -- log-only, already
         # computed onto `a` by analyze_trade(), not derived here.
         ecmwf_consensus_gap_prob=a.get("ecmwf_consensus_gap_prob"),
+        # backlog.txt "THE model_consensus GATE IS UNCALIBRATED, NON-
+        # DISCRIMINATING, AND FED A BIASED INPUT" -- log-only, both already
+        # computed onto `a` by analyze_trade(), not derived here. The raw gap
+        # is the magnitude behind model_consensus (also passed above, as a
+        # boolean); the debiased twin is the shadow being accumulated to
+        # decide whether the gate is worth keeping, fixing, or retiring.
+        consensus_gap_prob=a.get("consensus_gap_prob"),
+        consensus_gap_prob_debiased=a.get("consensus_gap_prob_debiased"),
         # backlog.txt "SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM" --
         # the generic path for any FUTURE log-only signal: analyze_trade()
         # sets `a["signals"]` (a dict[str, float]) and it flows through here

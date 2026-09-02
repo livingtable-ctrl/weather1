@@ -141,7 +141,7 @@ class TestGraduationFloorValue:
         assert _power(floor) >= 0.80, f"n={floor} is under 80% power"
         assert _power(floor - 1) < 0.80, f"n={floor - 1} already reaches 80%"
 
-    def test_nine_registry_entries_use_the_derived_floor_and_two_use_none(self):
+    def test_ten_registry_entries_use_the_derived_floor_and_two_use_none(self):
         """Locks the scope of item 1 against the backlog entry's own wrong
         count ("nine of the eleven" -- it is ten of twelve)."""
         # >= rather than ==: adding a signal is a routine future change,

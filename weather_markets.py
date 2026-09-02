@@ -10923,6 +10923,17 @@ _ATTEMPT_SIGNAL_FIELDS: tuple[str, ...] = (
     "liquidity_edge_scale",
     "nbm_quantile_prob",
     "ecmwf_consensus_gap_prob",
+    # backlog.txt "THE model_consensus GATE IS UNCALIBRATED, NON-
+    # DISCRIMINATING, AND FED A BIASED INPUT". Both belong here, not only on
+    # predictions: `predictions` holds the rows the bot chose to TRADE, and
+    # the question these two exist to answer -- does either gap discriminate
+    # -- must be asked on the analysed population, not the selected one. The
+    # gate itself runs on every analysed market, so restricting its own
+    # measurement to placed trades would repeat the exact selection error
+    # backlog.txt's "THE TWO MARKET-IMPLIED SIGNALS CANNOT USE THE UNBIASED
+    # POPULATION" entry is about.
+    "consensus_gap_prob",
+    "consensus_gap_prob_debiased",
     "ensemble_spread_f",
     "model_disagreement_f",
     "precip_sum_in",
@@ -11370,6 +11381,34 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
         ),
         backlog_ref="3-WAY MODEL_CONSENSUS CHECK",
         attempt_json_key="ecmwf_consensus_gap_prob",
+    ),
+    _SignalRegistryEntry(
+        key="consensus_gap_debiased",
+        name="model_consensus gap, raw vs bias-corrected",
+        sample_floor=SIGNAL_GRADUATION_FLOOR,
+        # Counts the DEBIASED column, not the raw one, and the choice decides
+        # what the clock means. The raw gap is recorded on every row the gate
+        # ran on; the debiased twin additionally needs _model_bias to have
+        # data for that city/var and the market to be daily (not hourly). The
+        # question this signal exists to answer is a COMPARISON, so the clock
+        # has to count rows where BOTH exist -- which is exactly the debiased
+        # column's own count, since it is the strict subset. Counting the raw
+        # column would let the floor clear while the comparison is still
+        # unanswerable, the same failure the sibling entry above describes.
+        count_fn=_count_signal_column("consensus_gap_prob_debiased"),
+        correlation_note=(
+            "Does the DEBIASED gap discriminate settled outcomes where the "
+            "raw one does not? Measured 2026-09-01 on 186 settled rows, the "
+            "raw gate showed no discrimination at 0.12. Answer in order: "
+            "(a) if the debiased gap separates and the raw one does not, the "
+            "input defect was real -- debias the gate; (b) if NEITHER "
+            "separates at any threshold (consensus_gap_prob is what makes "
+            "'any threshold' answerable), retire order_executor's 0.5x "
+            "consensus_mult rather than tuning it. Do not decide on rows "
+            "predating this column -- they carry no gap magnitude at all."
+        ),
+        backlog_ref="THE model_consensus GATE IS UNCALIBRATED",
+        attempt_json_key="consensus_gap_prob_debiased",
     ),
     _SignalRegistryEntry(
         key="gem_graduation",
@@ -12281,8 +12320,49 @@ def _model_prob_and_mean(
     condition: dict,
     hour: int | None = None,
     var: str = "max",
+    *,
+    member_shift: float = 0.0,
+    no_fetch: bool = False,
 ) -> tuple[float | None, float | None]:
     """Return (prob, mean_temp) for model_name via ENSEMBLE_BASE. Either may be None.
+
+    `no_fetch` (keyword-only) makes this a CACHE READ ONLY: on a miss it returns
+    (None, None) instead of fetching. Shadow/log-only callers MUST pass it, and
+    the reason is not politeness about network traffic -- it is that the fetch
+    branch below touches `_ensemble_cb`, and CircuitBreaker.is_open() is a
+    MUTATOR (circuit_breaker.py:164): it sets `_half_open = True`, zeroes
+    `_failure_count` and persists state, i.e. it GRANTS the single HALF-OPEN
+    recovery probe. `_ensemble_cb` is the same breaker object
+    _fetch_model_ensemble uses for the live blend, so without this flag a
+    log-only caller can steal the probe the live ensemble path needs, or
+    reopen the breaker with exponential backoff when its own probe fails --
+    which would make whether a trade gets an ensemble price depend on
+    shadow code. Caught in review; see backlog.txt "THE model_consensus GATE
+    IS UNCALIBRATED...".
+
+    `member_shift` (keyword-only, default 0.0) is SUBTRACTED from every member
+    before the threshold comparison that produces `prob`, and deliberately does
+    NOT affect `mean_temp`. Added keyword-only and last so the six existing
+    positional call sites in this module (across three caller functions --
+    _get_consensus_probs, _get_gem_ukmo_means and _get_ecmwf_aifs_prob) are
+    unaffected -- the default is a true no-op on every condition branch.
+
+    WHY THE MEAN MUST STAY RAW, and this is the whole reason the shift is
+    applied to one half of the return and not the other. mean_temp is what
+    analyze_trade puts in model_forecast_means, which paper._score_ensemble_
+    members writes to ensemble_member_scores.predicted_temp, which is the
+    population tracker.get_member_bias() FITS the bias on. Shifting the mean
+    by that same bias would make the next fit a correction on top of its own
+    output -- the self-referential loop batch_prewarm_ensemble's own comment
+    (~:3059) exists to avoid, and the same defect class as backlog.txt's
+    "train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT".
+
+    The cache is unaffected and must stay that way: `temps` is cached RAW
+    under a key with no shift component, so a shifted and an unshifted call
+    share one entry and the shift is applied after the read. Do not add
+    member_shift to cache_key -- that would double the fetch count for no
+    benefit and break the cache-hit assumption _get_ecmwf_aifs_prob and
+    _get_consensus_probs_debiased both rely on.
 
     Module-level rather than a _get_consensus_probs closure (it was extracted
     from there, same body) so backlog.txt "GENERALIZED PER-MODEL ACCURACY
@@ -12302,6 +12382,12 @@ def _model_prob_and_mean(
         temps = _ensemble_cache.get(cache_key)
 
         if temps is None:
+            if no_fetch:
+                # Cache-read-only caller. Returns BEFORE _ensemble_cb.is_open(),
+                # which is the whole point -- see the docstring: that call is a
+                # mutator and would let log-only code consume the live blend's
+                # HALF-OPEN recovery probe.
+                return None, None
             if _ensemble_cb.is_open():
                 _log.debug(
                     "[CircuitBreaker] open_meteo circuit open — skipping ensemble fetch"
@@ -12365,17 +12451,21 @@ def _model_prob_and_mean(
         if len(temps) < 5:
             return None, None
 
+        # mean_temp from the RAW members (see docstring: it feeds the very
+        # population the bias is fitted on). Only the vote fraction below
+        # sees the shift.
         mean_temp = round(sum(temps) / len(temps), 2)
+        p_temps = [t - member_shift for t in temps] if member_shift else temps
         thresh = _prob_threshold(condition)
         ctype = condition.get("type", "")
         if ctype == "above" and thresh is not None:
-            return sum(1 for t in temps if t > thresh) / len(temps), mean_temp
+            return sum(1 for t in p_temps if t > thresh) / len(p_temps), mean_temp
         elif ctype == "below" and thresh is not None:
-            return sum(1 for t in temps if t < thresh) / len(temps), mean_temp
+            return sum(1 for t in p_temps if t < thresh) / len(p_temps), mean_temp
         elif ctype in ("between", "range"):
             lo = condition.get("lower", 0)
             hi = condition.get("upper", 999)
-            return sum(1 for t in temps if lo <= t <= hi) / len(temps), mean_temp
+            return sum(1 for t in p_temps if lo <= t <= hi) / len(p_temps), mean_temp
         return None, mean_temp
     except Exception:
         return None, None
@@ -12485,8 +12575,11 @@ def _get_ecmwf_aifs_prob(
     same reasoning as _get_gem_ukmo_means's docstring above: ~20 existing
     call sites mock/unpack that tuple positionally. This hits the same
     _ensemble_cache entry _get_consensus_probs's own ecmwf_mean fetch just
-    populated (same cache_key), so it's a cache hit, not a second network
-    call, whenever both are called in the same analyze_trade pass.
+    populated (same cache_key). That is USUALLY a cache hit -- but it is not
+    guaranteed, so this now passes no_fetch=True and returns None on a miss
+    rather than fetching. See _model_prob_and_mean's own docstring: the miss
+    branch mutates the shared ensemble circuit breaker, which a log-only
+    caller must never do.
 
     Track-only for now (per the backlog entry's own "when to revisit" note):
     zero settled ecmwf_aifs025_ensemble observations exist yet to know
@@ -12494,10 +12587,125 @@ def _get_ecmwf_aifs_prob(
     on, so analyze_trade logs the pairwise gap but does NOT fold it into
     model_consensus.
     """
+    # no_fetch=True for the same reason _get_consensus_probs_debiased passes
+    # it, and this call is why that rule has to be a RULE rather than a note:
+    # this function is track-only (its own docstring says analyze_trade "does
+    # NOT fold it into model_consensus"), yet it was still reaching
+    # _ensemble_cb through the cache-miss branch and mutating the live blend's
+    # circuit breaker. The "cache hit, not a second network call" claim below
+    # was an assumption about cache warmth, not a guarantee -- and it is false
+    # in the window where _CONSENSUS_CACHE (flat 4h) outlives _ensemble_cache
+    # (cycle-aligned). Caught by review after the sibling fix landed.
     prob, _ = _model_prob_and_mean(
-        "ecmwf_aifs025_ensemble", city, target_date, condition, hour, var
+        "ecmwf_aifs025_ensemble",
+        city,
+        target_date,
+        condition,
+        hour,
+        var,
+        no_fetch=True,
     )
     return prob
+
+
+def _get_consensus_probs_debiased(
+    city: str,
+    target_date,
+    condition: dict,
+    hour: int | None = None,
+    var: str = "max",
+) -> tuple[float | None, float | None]:
+    """Return (icon_prob, gfs_prob) computed on BIAS-CORRECTED members.
+
+    SHADOW/LOG-ONLY. Nothing gates or sizes on this -- analyze_trade records
+    the resulting gap next to the raw one so the two can be compared on
+    settled data later. Same discipline, and the same reason, as
+    ecmwf_consensus_gap_prob.
+
+    backlog.txt "gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max", step 2:
+    the model_consensus check compares icon's and gfs's vote fractions over
+    RAW members, while gfs currently carries a +3.49F warm bias on max that
+    the ensemble blend subtracts before pricing (get_ensemble_temps ~:5823)
+    but this check never sees. A divergence produced by a known, corrected
+    offset is not model disagreement. Measured over the 330 (city, target_date)
+    cells in ensemble_member_values that carry both models -- drawn from 2,983
+    stored member sets, one cycle per cell -- 40.8% of max threshold points
+    flip the 0.12 test when the bias is removed, and every one of the 165 max
+    cells flips somewhere in its range. That is the finding: the gate is not
+    robust to this bias anywhere in its input space. The DIRECTION of the flips
+    is NOT established -- see the backlog entry, which withdraws it.
+
+    WHY IT IS SHADOW AND NOT THE FIX. Two reasons, both measured, neither
+    resolved by this function:
+      * the gate shows no discrimination to preserve. On the 151 non-METAR-
+        locked settled daily-temperature predictions, model_consensus=False
+        scores excess Brier +0.0363 against +0.0202 for True: the direction
+        the gate's premise predicts, and nowhere near significant (t = +0.54,
+        permutation p = 0.60). The pooled 186-row version of this reads the
+        other way (+0.0363 vs +0.0438, t = -0.23, p = 0.81) ONLY because 35
+        metar_lockout rows, where model_consensus is set True without any
+        comparison, land in the True group -- do not cite it.
+      * the 0.12 threshold was never calibrated against outcomes. It was
+        raised from 0.08 in commit aa21865b (2026-04-12) "to increase paper
+        trade volume".
+    Correcting the input of an uncalibrated, non-discriminating gate would
+    move live sizing on ~41% of max threshold points (25.3% restored + 15.5%
+    newly halved) for no measured gain,
+    and would couple that sizing to a bias estimate currently fit on n=26
+    with no city clearing its own 20-observation floor. Log first, decide on
+    data. See the backlog entry "THE model_consensus GATE IS UNCALIBRATED,
+    NON-DISCRIMINATING, AND FED A BIASED INPUT".
+
+    (None, None) IS AMBIGUOUS BY CONSTRUCTION and no consumer may read it as
+    "the models agree". It means one of four things -- hourly market, no bias
+    data for the city/var, or either model's members not in cache under
+    no_fetch. analyze_trade guards on both being non-None and records nothing
+    otherwise, which is the only correct handling; if a future consumer needs
+    to tell these apart, widen the return rather than inferring from None.
+
+    HOURLY IS DELIBERATELY NOT CORRECTED. `_model_bias` is a daily-extreme
+    correction; get_ensemble_temps applies it only when `hour is None`
+    (~:5804-5806) because an hourly market is a different physical quantity.
+    This mirrors that exactly and returns (None, None) for an hourly fetch
+    rather than applying a daily-max/min bias to it.
+
+    COSTS NO NETWORK CALL, BY CONSTRUCTION rather than by assumption: both
+    reads pass no_fetch=True, so a cache miss returns (None, None) instead of
+    fetching. An earlier version relied on "the entry _get_consensus_probs just
+    populated in the same pass" being warm, which is not always true -- the
+    consensus tuple has its own flat 4h _CONSENSUS_CACHE, while _ensemble_cache
+    entries expire on the NWP cycle boundary (_ttl_until_next_cycle, on the
+    02/08/14/20 UTC availability grid). So an entry created more than 2h after
+    a boundary outlives its own member lists, by (t - 2h) -- between 0 and 4h,
+    not a fixed ~3h. In that window the raw path fetches nothing and the shadow
+    would have fetched twice.
+    """
+    if hour is not None:
+        return None, None
+    bias = _model_bias(city, var)
+    if not bias:
+        return None, None
+    icon_prob, _ = _model_prob_and_mean(
+        "icon_seamless",
+        city,
+        target_date,
+        condition,
+        hour,
+        var,
+        member_shift=bias.get("icon_seamless", 0.0),
+        no_fetch=True,
+    )
+    gfs_prob, _ = _model_prob_and_mean(
+        "gfs_seamless",
+        city,
+        target_date,
+        condition,
+        hour,
+        var,
+        member_shift=bias.get("gfs_seamless", 0.0),
+        no_fetch=True,
+    )
+    return icon_prob, gfs_prob
 
 
 def kelly_fraction(
@@ -17860,6 +18068,14 @@ def analyze_trade(
 
         # ── Model consensus check ────────────────────────────────────────────────
         model_consensus = True
+        # backlog.txt "THE model_consensus GATE IS UNCALIBRATED, NON-
+        # DISCRIMINATING, AND FED A BIASED INPUT". Hoisted beside the flag they
+        # describe: consensus_gap_prob is the MAGNITUDE behind that boolean and
+        # consensus_gap_prob_debiased is the same gap on bias-corrected
+        # members. Both LOG-ONLY -- nothing gates or sizes on either. They stay
+        # None unless the gate's own arm below actually ran.
+        consensus_gap_prob: float | None = None
+        consensus_gap_prob_debiased: float | None = None
         icon_forecast_mean: float | None = None
         gfs_forecast_mean: float | None = None
         icon_p: float | None = None
@@ -17976,6 +18192,33 @@ def analyze_trade(
                 elif icon_p is not None and gfs_p is not None:
                     if abs(icon_p - gfs_p) > 0.12:
                         model_consensus = False
+                    # Log-only, and deliberately bound in THIS arm rather than
+                    # beside the result dict: the gap must describe the same
+                    # decision model_consensus records. The quarantine branch
+                    # above fails the gate OPEN without comparing anything, so
+                    # a gap recorded there would sit beside a model_consensus
+                    # that never looked at it -- and a later recalibration of
+                    # the 0.12 threshold would read those rows as "the gate was
+                    # too loose". Left None there instead. See backlog.txt "THE
+                    # model_consensus GATE IS UNCALIBRATED...".
+                    consensus_gap_prob = round(abs(icon_p - gfs_p), 4)
+                    # The debiased twin, same arm and same reason. no_fetch=True
+                    # inside makes this a cache read: it must not touch the
+                    # ensemble circuit breaker, whose is_open() would otherwise
+                    # consume the live blend's HALF-OPEN recovery probe.
+                    try:
+                        _i_deb, _g_deb = _get_consensus_probs_debiased(
+                            city, target_date, condition, hour=hour, var=var
+                        )
+                        if _i_deb is not None and _g_deb is not None:
+                            consensus_gap_prob_debiased = round(abs(_i_deb - _g_deb), 4)
+                    except Exception as _e:
+                        _log.warning(
+                            "analyze_trade: _get_consensus_probs_debiased failed "
+                            "for %s — leaving the shadow gap None: %s",
+                            enriched.get("ticker", "?"),
+                            _e,
+                        )
             except Exception as _e:
                 _log.warning(
                     "analyze_trade: _get_consensus_probs failed for %s — defaulting to consensus=True: %s",
@@ -18700,6 +18943,12 @@ def analyze_trade(
         ecmwf_consensus_gap_prob = (
             None  # No model-consensus fetch in the METAR-locked path.
         )
+        # Same reason as the two above: this branch never fetches icon/gfs, so
+        # there is no gap to record, raw or debiased. Both must be bound here
+        # -- the shared result dict below reads them on every path, so leaving
+        # either unset raises NameError on every METAR-locked analysis.
+        consensus_gap_prob = None
+        consensus_gap_prob_debiased = None
         p_win_gaussian = None
         sigma_gauss = None
         gauss_prob = None  # No Gaussian in METAR-locked path
@@ -19542,6 +19791,12 @@ def analyze_trade(
         # backlog.txt "3-WAY MODEL_CONSENSUS CHECK": log-only, does not gate
         # model_consensus above.
         "ecmwf_consensus_gap_prob": ecmwf_consensus_gap_prob,
+        # Log-only, both of them. consensus_gap_prob is the magnitude behind
+        # the model_consensus boolean already in this dict; the _debiased
+        # twin is the same gap with each member's fitted bias removed. See
+        # _get_consensus_probs_debiased for why neither is allowed to size.
+        "consensus_gap_prob": consensus_gap_prob,
+        "consensus_gap_prob_debiased": consensus_gap_prob_debiased,
         # backlog.txt "FORECAST-CONDITION COVARIATES FOR SIGMA": precip_in is
         # already fetched with every forecast (get_weather_forecast's daily
         # call) but was never threaded past the precip-market routing path —

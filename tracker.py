@@ -112,7 +112,7 @@ def _non_model_keys_sql(alias: str = "") -> tuple[str, list[str]]:
     return f"{col} NOT IN ({placeholders})", keys
 
 
-_SCHEMA_VERSION = 92  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 94  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -1249,6 +1249,26 @@ _MIGRATIONS = [
     # `main.py loop` is tagged correctly), 'probation', the main.py subcommand
     # for interactive paths, or the entry script's stem.
     """ALTER TABLE metar_lock_shadow_log ADD COLUMN written_by TEXT""",
+    # backlog.txt "THE model_consensus GATE IS UNCALIBRATED, NON-DISCRIMINATING,
+    # AND FED A BIASED INPUT". Two log-only columns, appended (never inserted
+    # mid-list -- a mid-list insert is skipped forever on every DB that has
+    # already passed that index).
+    #
+    # consensus_gap_prob is |icon_p - gfs_p|, the MAGNITUDE behind the
+    # model_consensus boolean this table has stored since the migration at
+    # tracker.py:226. Storing only
+    # the boolean means no later analysis can evaluate any threshold other
+    # than the 0.12 in force when the row was written, or tell a 0.13 gap
+    # from a 0.90 one -- which is exactly the question the gate's own
+    # no-discrimination result raises.
+    #
+    # consensus_gap_prob_debiased is the same gap with each member's fitted
+    # per-model bias removed (see weather_markets._get_consensus_probs_debiased).
+    # NULL on the METAR-locked path (no model fetch), on hourly markets (the
+    # bias is a daily-extreme correction), and whenever _model_bias has no
+    # data for the city/var.
+    "ALTER TABLE predictions ADD COLUMN consensus_gap_prob REAL",
+    "ALTER TABLE predictions ADD COLUMN consensus_gap_prob_debiased REAL",
 ]
 
 
@@ -1674,6 +1694,8 @@ def log_prediction(
     precip_sum_in: float | None = None,
     nbm_quantile_prob: float | None = None,
     ecmwf_consensus_gap_prob: float | None = None,
+    consensus_gap_prob: float | None = None,
+    consensus_gap_prob_debiased: float | None = None,
     signals: dict[str, float] | None = None,
     forecast_run_inits: dict[str, str] | None = None,
     blend_exclusions: dict[str, str] | None = None,
@@ -1856,8 +1878,9 @@ def log_prediction(
            nbm_quantile_prob, ecmwf_consensus_gap_prob, signal_values,
            forecast_run_inits, blend_exclusions, observed_extreme_f,
            model_forecast_temp_f, forecast_temp_raw_f,
-           station_bias_applied_f)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           station_bias_applied_f, consensus_gap_prob,
+           consensus_gap_prob_debiased)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(ticker, predicted_date) DO UPDATE SET
             our_prob         = excluded.our_prob,
             raw_prob         = excluded.raw_prob,
@@ -1905,6 +1928,23 @@ def log_prediction(
             precip_sum_in         = excluded.precip_sum_in,
             nbm_quantile_prob     = excluded.nbm_quantile_prob,
             ecmwf_consensus_gap_prob = excluded.ecmwf_consensus_gap_prob,
+            -- Plain overwrite, NOT the COALESCE two of their neighbours below
+            -- use, and the choice is deliberate in both directions.
+            -- consensus_gap_prob is the MAGNITUDE behind model_consensus,
+            -- which is itself plain-overwritten (its own SET clause, ~:1902). The two are written
+            -- together by one analysis and must move together: COALESCE would
+            -- let an ensemble scan's gap survive onto a row a later
+            -- METAR-locked scan has since relabelled model_consensus=True with
+            -- no model fetch at all -- two fields in one row disagreeing about
+            -- what the row is, the same category error batch-75 removed and
+            -- that observed_extreme_f's own comment below refuses to
+            -- reintroduce.
+            -- The COALESCE case does not apply here anyway: forecast_run_inits
+            -- is forward-only and unrecoverable, while a gap NULLed by a
+            -- probation/shadow upsert is recomputed by the next real scan of
+            -- the same ticker (cron rescans each market several times a day).
+            consensus_gap_prob    = excluded.consensus_gap_prob,
+            consensus_gap_prob_debiased = excluded.consensus_gap_prob_debiased,
             signal_values         = excluded.signal_values,
             -- COALESCE, unlike every neighbour above: these two columns hold
             -- forward-only data that cannot be recovered, and the UPSERT is
@@ -2002,6 +2042,12 @@ def log_prediction(
         # on every path -- see the v83->v84 migration comment for why the raw
         # column alone cannot give that on the daily path.
         analysis.get("station_bias_applied"),
+        # Log-only consensus magnitudes. Read from the explicit parameters,
+        # NOT from `analysis`, so a caller that builds its own dict (the
+        # shadow/backfill writers) cannot silently populate them -- same
+        # convention as nbm_quantile_prob and ecmwf_consensus_gap_prob above.
+        consensus_gap_prob,
+        consensus_gap_prob_debiased,
     )
     # Atomic upsert — unique index on (ticker, predicted_date) prevents
     # duplicate rows from concurrent calls (TOCTOU of old SELECT+INSERT pattern).
@@ -2882,7 +2928,19 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
     """
     Brier score broken down by method string (e.g. 'ensemble', 'normal_dist').
     Returns {method: brier} for methods with enough data.
-    Excludes same-day trades (days_out=0) so same-day METAR results don't skew method scores.
+    Excludes same-day trades (days_out=0) so same-day METAR results don't skew
+    method scores.
+
+    THAT EXCLUSION IS ALSO AN EXEMPTION, and the second effect is not a scoping
+    choice -- it decides which methods can be retired at all. Every one of the
+    106 metar_lockout rows is days_out=0, so that method has ZERO rows visible
+    here, sits permanently below auto_retire_strategies' min_samples, and
+    cannot be retired at any score. On 2026-09-01 this check retired `ensemble`
+    on its 144 visible rows while unable to evaluate the lock at all. Do not
+    "fix" it by dropping the filter without reading backlog.txt "THE METAR LOCK
+    CANNOT BE RETIRED AT ANY SCORE" first: the lock's post-guard population
+    scores 0.3880 against a 0.25 threshold on n=23, so removing the exclusion
+    retires it immediately on a sample nobody has argued is sufficient.
 
     Excludes the same _excluded_brier_condition_types() population as
     brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
@@ -4602,6 +4660,11 @@ _SIGNAL_COLUMN_ALLOWLIST = frozenset(
         "ensemble_spread_f",
         "nbm_quantile_prob",
         "ecmwf_consensus_gap_prob",
+        # backlog.txt "THE model_consensus GATE IS UNCALIBRATED...". Only the
+        # DEBIASED column is the signal's clock -- it is the strict subset of
+        # rows where BOTH gaps exist, which is what the comparison needs. The
+        # raw column is still written on more rows and is queried directly.
+        "consensus_gap_prob_debiased",
     }
 )
 _SIGNAL_JSON_KEY_ALLOWLIST = frozenset(
@@ -4649,6 +4712,12 @@ _ATTEMPT_JSON_KEY_ALLOWLIST = frozenset(
         "implied_sigma_rain",
         "fit_residual_rain",
         "rain_forecast_blend_prob",
+        # backlog.txt "THE model_consensus GATE IS UNCALIBRATED...". Both, not
+        # just the debiased one: the gate runs on every ANALYSED market, so its
+        # own measurement must reach the unbiased attempt population and not
+        # only the placed-trade rows in `predictions`.
+        "consensus_gap_prob",
+        "consensus_gap_prob_debiased",
     }
 )
 
