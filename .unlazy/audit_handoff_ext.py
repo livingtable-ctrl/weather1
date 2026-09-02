@@ -18,7 +18,6 @@ READ-ONLY.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import random
 import re
@@ -27,8 +26,6 @@ from collections import defaultdict
 
 from audit_handoff import (
     DB,
-    TOL,
-    _auc,
     _core_rows_ct,
     _section,
     con,
@@ -85,7 +82,7 @@ def check_tables() -> list[str]:
         fe = c.execute(
             """SELECT strftime('%Y-%m', p.predicted_at),
                       ABS(p.forecast_temp_f - o.settled_temp_f)
-               FROM predictions p JOIN outcomes o ON o.ticker = p.ticker
+               FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
                WHERE p.forecast_temp_f IS NOT NULL AND o.settled_temp_f IS NOT NULL
                  AND (p.ticker LIKE 'KXHIGH%' OR p.ticker LIKE 'KXLOWT%')"""
         ).fetchall()
@@ -226,7 +223,7 @@ def check_assertions() -> list[str]:
                 r[0]
                 for r in c.execute(
                     """SELECT ABS(p.forecast_temp_f - o.settled_temp_f)
-                       FROM predictions p JOIN outcomes o ON o.ticker = p.ticker
+                       FROM predictions p JOIN outcomes_valid o ON o.ticker = p.ticker
                        WHERE strftime('%Y-%m', p.predicted_at) = ?
                          AND p.forecast_temp_f IS NOT NULL
                          AND o.settled_temp_f IS NOT NULL
