@@ -6,7 +6,7 @@ version with every retraction and its reasoning is preserved beside this one as
 know why a hypothesis was dropped.
 
 **THE FIGURES HERE ARE A SNAPSHOT OF A GROWING CORPUS.** Every number derives
-from 341 settled core rows, the state of `data/predictions.db` on 2026-08-30.
+from 349 settled core rows, the state of `data/predictions.db` on 2026-09-02.
 `python .unlazy/audit_handoff.py --all` re-derives them. **A failing gate after
 new data is EXPECTED and means "re-derive", not "the document is broken".** Do
 not edit a number to make a gate pass.
@@ -35,15 +35,15 @@ it largely is.
 |--------|-----|---|-----|----|-----------|
 | May-Jun | **model** | 198 | **0.6828** | 0.0377 | **+4.85** |
 | May-Jun | market | 198 | 0.6853 | 0.0376 | +4.93 |
-| Jul-Aug | **model** | 143 | **0.5321** | 0.0484 | **+0.66** |
-| Jul-Aug | market | 143 | 0.7271 | 0.0424 | +5.35 |
+| Jul-Aug | **model** | 151 | **0.5320** | 0.0471 | **+0.68** |
+| Jul-Aug | market | 151 | 0.7086 | 0.0422 | +4.94 |
 
-- model, MayJun - JulAug = **+0.1507**, SE 0.0613, z = +2.46
+- model, MayJun - JulAug = **+0.1508**, SE 0.0603, z = +2.50
   — nominally significant, **BUT CONFOUNDED: see below.**
-- market, MayJun - JulAug = -0.0418, SE 0.0567, z = -0.74 — not significant
+- market, MayJun - JulAug = -0.0232, SE 0.0565, z = -0.41 — not significant
 
-Monthly: May 0.6215 (n=51) | Jun 0.6973 (147) | Jul 0.5497 (69) | Aug 0.5085 (74).
-Pooled model AUC 0.6178 (n=341, z=+3.89); pooled market 0.7049 (z=+7.31).
+Monthly: May 0.6215 (n=51) | Jun 0.6973 (147) | Jul 0.5497 (69) | Aug 0.5123 (82).
+Pooled model AUC 0.6158 (n=349, z=+3.86); pooled market 0.6952 (z=+6.96).
 
 ## Why it is not established: composition
 
@@ -51,19 +51,19 @@ The condition-type mix is almost completely different across the boundary:
 
 | condition | May-Jun share | Jul-Aug share |
 |-----------|---------------|---------------|
-| `between` | **55.6%** | **2.8%** |
-| `above` | 26.3% | 59.4% |
-| `below` | 14.1% | 37.8% |
+| `between` | **55.6%** | **2.6%** |
+| `above` | 26.3% | 59.6% |
+| `below` | 14.1% | 37.7% |
 
-Family drifted too (KXHIGH 65.7% -> 45.5%, KXLOWT 34.3% -> 54.5%). Ladder
+Family drifted too (KXHIGH 65.7% -> 45.0%, KXLOWT 34.3% -> 55.0%). Ladder
 width did not: `between` markets are 2.00F wide in both periods.
 
 | condition | period | who | n | AUC | SE | z vs 0.50 |
 |-----------|--------|-----|---|-----|----|-----------|
 | above | May-Jun | model | 52 | 0.6989 | 0.0723 | +2.75 |
-| above | Jul-Aug | model | 85 | 0.5786 | 0.0620 | +1.27 |
+| above | Jul-Aug | model | 90 | 0.5657 | 0.0606 | +1.08 |
 | below | May-Jun | model | 28 | **0.5444** | 0.1144 | **+0.39** |
-| below | Jul-Aug | model | 54 | 0.4731 | 0.0793 | -0.34 |
+| below | Jul-Aug | model | 57 | 0.4729 | 0.0770 | -0.35 |
 | between | May-Jun | model | 110 | 0.6378 | 0.0545 | +2.53 |
 | between | Jul-Aug | model | **4** | — | — | too few |
 
@@ -72,17 +72,17 @@ width did not: `between` markets are 2.00F wide in both periods.
    discriminated — 0.5444 at z=+0.39 in its best period.
 2. **`between` all but disappeared**, 110 rows to 4. The pooled May-June figure
    is therefore heavily weighted by a market type that is absent later.
-3. **Within `above`, the drop is 0.6989 -> 0.5786** — the difference SE is
-   ~0.095, so **z is about 1.27. NOT SIGNIFICANT.**
+3. **Within `above`, the drop is 0.6989 -> 0.5657** — the difference SE is
+   ~0.094, so **z is about 1.41. NOT SIGNIFICANT.**
 
 The last surviving argument was that **the market's AUC did not fall in any
-stratum** — `above` 0.7358 -> 0.7530, `below` 0.5861 -> 0.6517 — so the two
+stratum** — `above` 0.7358 -> 0.7416, `below` 0.5861 -> 0.6293 — so the two
 diverged in OPPOSITE directions on the same rows, which composition alone
 cannot produce. Measured as a difference-in-differences, cluster-bootstrapped
 by ticker (`.unlazy/did_bootstrap.py`):
 
-    observed DiD  = +0.1373   (positive = model deteriorated vs the market)
-    95% CI        = [-0.0794, +0.3446]   2000 resamples
+    observed DiD  = +0.1269   (positive = model deteriorated vs the market)
+    95% CI        = [-0.0688, +0.3205]   2000 resamples, seed 20260830
     two-sided p   ~ 0.21
 
 **THE CONFIDENCE INTERVAL INCLUDES ZERO. DO NOT PRESENT "THE MODEL BROKE IN
@@ -91,16 +91,16 @@ JULY" AS ESTABLISHED.**
 A selection confound was tested and **REFUTED.** The recording regime genuinely
 did change: May-June recorded only
 markets where a paper trade was placed (51/51 and 147/147), July recorded none
-(trading paused), August 63 of 74. Imposing the old regime's own selection on
+(trading paused), August 71 of 82. Imposing the old regime's own selection on
 the new data — does not rescue the model:
 
 | period | who | n | AUC | SE | z vs 0.50 |
 |--------|-----|---|-----|----|-----------|
 | May-Jun | model | 198 | 0.6828 | 0.0377 | +4.85 |
-| Jul-Aug | model | **63** | **0.4849** | 0.0733 | **-0.21** |
-| Jul-Aug | market | 63 | 0.7213 | 0.0645 | +3.43 |
+| Jul-Aug | model | **71** | **0.4905** | 0.0690 | **-0.14** |
+| Jul-Aug | market | 71 | 0.6873 | 0.0631 | +2.97 |
 
-July contributes zero traded rows, so that n=63 subset is entirely August and
+July contributes zero traded rows, so that n=71 subset is entirely August and
 it cannot speak to July directly.
 
 ## Where the defect is: downstream of the forecast
@@ -112,7 +112,7 @@ Raw forecast error, `|forecast_temp_f - outcomes.settled_temp_f|`, degrees F:
 | 2026-05 | 51 | 2.65 | 2.69 | 5.50 |
 | 2026-06 | 50 | 2.68 | 2.80 | 5.20 |
 | 2026-07 | 56 | **1.18** | 2.01 | 4.14 |
-| 2026-08 | 70 | **1.67** | 2.05 | 4.18 |
+| 2026-08 | 78 | **1.72** | 2.15 | 4.21 |
 
 **The temperature forecast roughly HALVED its error in July** while
 discrimination fell. The model forecasts the weather better than ever and
@@ -142,7 +142,7 @@ destroying discrimination.
   predictions later that same morning were still extreme (0.038, 0.963).
 - **`TRADING_PAUSED` selection.** Trading was paused 2026-07-01 to 07-31.
   August ran `is_shadow = 0` (71 of
-  78 rows, trading resumed) and confidence STAYED collapsed at 0.0700, so
+  82 rows, trading resumed) and confidence STAYED collapsed at 0.0700, so
   the effect outlived the pause. WEAKENED rather than eliminated: it assumes
   nothing else sustains the August flatness.
 - **Loss of the `obs` blend component.** ELIMINATED by the aggregate, which
@@ -156,7 +156,7 @@ destroying discrimination.
 `backlog.txt` ~L47711 records that `train_all_temperature_scaling` FITS T ON
 ITS OWN PRIOR OUTPUT, and that "sameday/hourly were never frozen". Confirmed in
 code: the fitter reads `our_prob`, the stored POST-calibration value. Current
-`data/temperature_scale.json`: `sameday` **T = 3.8294** (n=102), `global`
+`data/temperature_scale.json`: `sameday` **T = 4.9656** (n=97), `global`
 T = 4.6013 (n=68), `above` T = 1.2739 (n=44). Most predictions in
 this corpus are same-day, and same-day is the key that was never frozen.
 
@@ -193,27 +193,27 @@ branch-specific, and June has 21 lock days out of 31, not 24 (06-17, 06-22 and
 06-24 have none).
 
 **The composition shift is large and real.** METAR lock-ins were **89 of 198**
-May-June core rows (**44.9%**) and 17 of 143 (11.9%) in July-August, and
+May-June core rows (**44.9%**) and 17 of 151 (11.3%) in July-August, and
 **69 of the 110 May-June `between` rows (63%)** are lock-ins, as are all 4 of
 the July-August survivors. `ens+obs` went 9.6% -> 46.2% as they left.
 
 ### What is NOT established: that any of this EXPLAINS the AUC gap
 
 Removing the METAR rows shrinks the May-June minus July-August gap from
-**+0.1507** to **+0.0920**. That looked decisive. It is not:
+**+0.1508** to **+0.0928**. That looked decisive. It is not:
 
 - **Size-matched null.** Remove a RANDOM subset with the same per-period
-  counts (89 May-June, 17 July-August), 20,000 draws: mean shrink -0.0000,
-  sd 0.0382, and a shrink at least as large as the observed +0.0587 occurs
-  with **one-sided p = 0.062**.
+  counts (89 May-June, 17 July-August), 20,000 draws: mean shrink -0.0003,
+  sd 0.0383, and a shrink at least as large as the observed +0.0581 occurs
+  with **one-sided p = 0.063**.
 - **Discrimination-matched null.** Restrict those draws to subsets scoring at
-  least METAR's own 0.7248: **p = 0.361**. The shrink is fully accounted for
+  least METAR's own 0.7248: **p = 0.353**. The shrink is fully accounted for
   by "an 89-row subset scoring 0.7248 was removed"; the METAR label does no
-  work. A random 89-row May-June subset reaches 0.7248 **15.4%** of the time.
+  work. A random 89-row May-June subset reaches 0.7248 **16.1%** of the time.
 - **The premise itself is unestablished.** METAR rows are not significantly
   more discriminating than the rows they were pooled with:
   May-June 0.7248 (n=89) vs 0.6369 (n=109), difference +0.0879, SE 0.0759,
-  **z = +1.16**. July-August: +0.5106, SE 0.1520, z = +0.07.
+  **z = +1.16**. July-August: +0.0114, SE 0.1515, z = +0.08.
 
 So the honest statement is: **composition changed identifiably and for a known
 reason, and it is the largest single contributor anyone has named — but at
