@@ -2440,7 +2440,7 @@ class TestSignalGraduationRegistry:
         with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
             wm._count_model_obs("gem_glbal")  # typo, not gem_global
 
-    def test_registry_has_12_entries_matching_the_11_shipped_signal_topics(self):
+    def test_registry_has_11_entries_matching_the_11_shipped_signal_topics(self):
         import weather_markets as wm
 
         # Locks in the retrofit scope agreed on when this was built: all
@@ -2462,7 +2462,14 @@ class TestSignalGraduationRegistry:
         # Renamed (not just bumped) per this project's own established
         # convention of keeping a count-encoding test name truthful when the
         # count changes.
-        assert len(wm.SIGNAL_REGISTRY) == 12
+        # 2026-09-02: DOWN to 11 rows -- "ukmo_graduation" was removed when
+        # UKMO actually graduated into the live blend, so it is no longer a
+        # log-only signal awaiting a decision. Topics stay at 11: GEM and
+        # UKMO were the one pair SHARING a backlog_ref, so dropping UKMO
+        # removes a row without removing a topic. Rows and topics are now
+        # 1:1, which is why the two numbers in this test's name coincide --
+        # do not read that as them being the same assertion.
+        assert len(wm.SIGNAL_REGISTRY) == 11
         backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
         assert len(backlog_refs) == 11
 
@@ -2621,7 +2628,7 @@ class TestSignalGraduationRegistry:
         )
 
         report = wm.get_signal_graduation_report()
-        assert len(report) == 12
+        assert len(report) == 11
         for row in report:
             if row["sample_floor"] is not None:
                 assert row["count"] == 0, row["key"]

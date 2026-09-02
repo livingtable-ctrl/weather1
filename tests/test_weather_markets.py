@@ -428,6 +428,8 @@ class TestModelWeights:
             "icon_seamless": 1.0,
             "gfs_seamless": 1.0,
             "ecmwf_aifs025_ensemble": pytest.approx(2.0),
+            # graduated 2026-09-02, neutral 1.0 prior
+            "ukmo_global_ensemble_20km": 1.0,
         }
 
     def test_learned_weights_backfill_missing_models_from_baseline(self):
@@ -487,6 +489,7 @@ class TestModelWeights:
             "icon_seamless": 1.0,
             "gfs_seamless": 1.0,
             "ecmwf_aifs025_ensemble": pytest.approx(1.5),
+            "ukmo_global_ensemble_20km": 1.0,
         }
 
     def test_stray_tracked_model_never_leaks_into_result(self):
@@ -504,6 +507,7 @@ class TestModelWeights:
             "icon_seamless",
             "gfs_seamless",
             "ecmwf_aifs025_ensemble",
+            "ukmo_global_ensemble_20km",
         }
 
     def test_tier1_admits_a_model_outside_the_fixed_baseline(self):
@@ -572,6 +576,7 @@ class TestModelWeights:
             "icon_seamless",
             "gfs_seamless",
             "ecmwf_aifs025_ensemble",
+            "ukmo_global_ensemble_20km",
         }
 
         with (
@@ -587,14 +592,20 @@ class TestModelWeights:
             "icon_seamless",
             "gfs_seamless",
             "ecmwf_aifs025_ensemble",
+            "ukmo_global_ensemble_20km",
         }
 
-    def test_tier3_seasonal_baseline_stays_fixed_to_3_models(self):
+    def test_tier3_seasonal_baseline_is_exactly_the_baseline_dict(self):
         """Tier 3 (pure seasonal fallback, no tracker/learned data at all) must
-        stay exactly the 3 baseline models -- a graduated model has no coded
-        seasonal/climatological prior, so there's nothing informative to add
-        here (consumers' own `weights.get(model, 1.0)` default already
-        produces the identical neutral value for an absent key)."""
+        return exactly the models in _model_weights' `baseline` dict and no
+        others -- a model that is not in it has no coded seasonal prior, so
+        there is nothing informative to add here (consumers' own
+        `weights.get(model, 1.0)` default already produces the identical
+        neutral value for an absent key).
+
+        Was "stays_fixed_to_3_models" until ukmo_global_ensemble_20km
+        graduated on 2026-09-02, which made it four. The count is not the
+        property -- membership is -- so the name no longer claims one."""
         from unittest.mock import patch
 
         with (
@@ -606,6 +617,7 @@ class TestModelWeights:
             "icon_seamless",
             "gfs_seamless",
             "ecmwf_aifs025_ensemble",
+            "ukmo_global_ensemble_20km",
         }
 
 
@@ -4971,6 +4983,7 @@ class TestGetConsensusProbsEcmwf:
             "icon_seamless": [70.0, 71.0, 72.0, 73.0, 74.0],
             "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
             "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+            "ukmo_global_ensemble_20km": [66.0, 67.0, 68.0, 69.0, 70.0],
         }
 
         def _fake_om_request(method, url, **kwargs):
@@ -5490,15 +5503,19 @@ class TestBatchPrewarmForecastsValidatesResponse:
 
 class TestBatchPrewarmEnsembleTrackingOnlyModels:
     """backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2:
-    batch_prewarm_ensemble must cache gem_global/ukmo_global_ensemble_20km's
-    per-model members (so _get_gem_ukmo_means hits warm cache instead of an
-    unbatched live call) but must NOT fold them into the blended
-    (city, date, None, var) cache entry that feeds the live trading forecast
-    -- neither _model_weights() nor _forecast_model_weights() has a baseline
-    entry for them, so blending would give them a silent, uncalibrated 1.0
-    weight with zero tracked accuracy behind it."""
+    batch_prewarm_ensemble must cache a track-only model's per-model members
+    (so _get_gem_ukmo_means hits warm cache instead of an unbatched live call)
+    but must NOT fold them into the blended (city, date, None, var) cache
+    entry that feeds the live trading forecast -- a model with no
+    _model_weights baseline entry would otherwise get a silent, uncalibrated
+    1.0 weight with zero tracked accuracy behind it.
 
-    def test_gem_ukmo_cached_but_excluded_from_blend(self, monkeypatch):
+    2026-09-02: ukmo_global_ensemble_20km GRADUATED and must now appear in
+    the blend; gem_global is still track-only and must still be absent. The
+    test asserts both directions, which is what makes it a real check rather
+    than a restatement of TRACKING_ONLY_MODEL_NAMES."""
+
+    def test_gem_excluded_but_graduated_ukmo_included(self, monkeypatch):
         from unittest.mock import MagicMock
 
         import weather_markets as wm
@@ -5580,9 +5597,18 @@ class TestBatchPrewarmEnsembleTrackingOnlyModels:
         # clean state file).
         blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max", ""))
         assert blended is not None
-        assert all(-100.0 < t < 100.0 for t in blended), (
-            f"gem/ukmo's tracking-only members leaked into the live trading "
+        # gem_global is STILL track-only: its +200s must not appear.
+        assert not any(t > 100.0 for t in blended), (
+            f"gem_global's track-only members leaked into the live trading "
             f"blend: {blended}"
+        )
+        # ukmo GRADUATED 2026-09-02: its -200s MUST appear. Without this the
+        # test would keep passing if ukmo were silently dropped back out --
+        # exactly the silent-exclusion failure _model_weights' own docstring
+        # warns a partial graduation produces.
+        assert any(t < -100.0 for t in blended), (
+            f"graduated ukmo_global_ensemble_20km is missing from the live "
+            f"trading blend: {blended}"
         )
         # Sanity: the blend must still contain the real blend models' values.
         assert any(t == pytest.approx(72.0) for t in blended), (
@@ -5627,6 +5653,7 @@ class TestBatchPrewarmEnsembleBiasCorrection:
             "icon_seamless": [70.0, 71.0, 72.0, 73.0, 74.0],
             "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
             "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+            "ukmo_global_ensemble_20km": [66.0, 67.0, 68.0, 69.0, 70.0],
         }
 
         def _fake_om_request(method, url, **kwargs):
@@ -5721,6 +5748,7 @@ class TestBatchPrewarmEnsembleAllModelsGuard:
         members_by_model = {
             "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
             "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+            "ukmo_global_ensemble_20km": [66.0, 67.0, 68.0, 69.0, 70.0],
         }
 
         def _fake_om_request(method, url, **kwargs):
@@ -5800,6 +5828,7 @@ class TestBatchPrewarmEnsembleAllModelsGuard:
             "icon_seamless": [70.0, 71.0, 72.0],
             "gfs_seamless": [68.0, 69.0, 70.0],
             "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0],
+            "ukmo_global_ensemble_20km": [66.0, 67.0, 68.0],
         }
 
         def _fake_om_request(method, url, **kwargs):
@@ -5924,8 +5953,13 @@ class TestBatchPrewarmEnsembleRateLimitTiering:
         assert before & tracking_only == set(), (
             f"tracking-only model fetched before the tier sleep: {before}"
         )
-        assert before >= {"icon_seamless", "gfs_seamless", "ecmwf_aifs025_ensemble"}, (
-            f"blend-critical temp models missing from tier 1: {before}"
+        # Derived from the registry, NOT a frozen 3-model literal. UKMO moved
+        # tier 2 -> tier 1 when it graduated (2026-09-02) and the old literal
+        # would still have passed with it dropped back out of tier 1 -- a
+        # superset check cannot see a member it does not name.
+        assert before >= set(wm._QUARANTINE_CANDIDATE_MODELS), (
+            "blend-critical temp models missing from tier 1: "
+            f"{set(wm._QUARANTINE_CANDIDATE_MODELS) - before}"
         )
         assert "ecmwf_ifs025" in before, "precip fetch did not run in tier 1"
         assert after == ensemble_tracking_only, (
@@ -6498,29 +6532,40 @@ class TestMemberQuarantineScan:
         assert state["gfs_seamless"]["last_z"] > 0
 
     def test_floor_quarantines_worst_first_blocks_the_rest(self, monkeypatch):
-        """Two of the 3 real candidates simultaneously over trip threshold
-        with MIN_ACTIVE=2 (room=1): only the worse (by ewma_z) is quarantined,
-        the other appears in blocked_by_floor, not silently dropped."""
+        """More candidates over the trip threshold than MIN_ACTIVE=2 leaves
+        room for: the worst (by ewma_z) are quarantined up to the floor, and
+        the remainder appear in blocked_by_floor rather than being silently
+        dropped.
+
+        ukmo_global_ensemble_20km graduated 2026-09-02, taking the candidate
+        count 3 -> 4 and therefore the room 1 -> 2, so THREE models must trip
+        here to leave one blocked. The property under test is the floor, not
+        the arithmetic of any particular count."""
         import weather_markets as wm
 
-        # gfs peer_mean = mean(icon=9, aifs=2) = 5.5 -> effect=4.5, big z
-        # icon peer_mean = mean(gfs=10, aifs=2) = 6.0 -> effect=3.0, big z
-        # gfs is worse (higher z/ewma) -> gfs quarantined, icon blocked. (Large
-        # synthetic magnitudes, not realistic Brier values -- this is pure
-        # mocked arithmetic exercising a single-scan trip, same as the
-        # cold-start-extreme test's large own_brier construction.)
+        # Each model's peer_mean is the mean of the OTHER three, so a single
+        # very healthy model (aifs=1.0) pulls every peer_mean down far enough
+        # that all three bad models clear the trip line, ordered
+        # gfs > icon > ukmo by effect. Large synthetic magnitudes, not
+        # realistic Brier values -- pure mocked arithmetic exercising a
+        # single-scan trip, same as the cold-start-extreme test.
         recent = {
             "gfs_seamless": self._stats(brier=10.0, n=30, std=1.0),
-            "icon_seamless": self._stats(brier=9.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(brier=2.0, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=9.5, n=30, std=1.0),
+            "ukmo_global_ensemble_20km": self._stats(brier=9.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=1.0, n=30, std=1.0),
         }
         monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
-        assert result["newly_quarantined"] == ["gfs_seamless"]
-        assert result["blocked_by_floor"] == ["icon_seamless"]
+        room = len(wm._QUARANTINE_CANDIDATE_MODELS) - wm._QUARANTINE_MIN_ACTIVE
+        assert result["newly_quarantined"] == ["gfs_seamless", "icon_seamless"]
+        assert len(result["newly_quarantined"]) == room, (
+            "the floor must cap quarantines at exactly the available room"
+        )
+        assert result["blocked_by_floor"] == ["ukmo_global_ensemble_20km"]
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["quarantined"]
-        assert not state["icon_seamless"]["quarantined"]
+        assert not state["ukmo_global_ensemble_20km"]["quarantined"]
 
     def test_deterministic_tiebreak_on_exact_equal_ewma_z(self, monkeypatch):
         """Exact-float-tie between two candidates: alphabetically-first model
@@ -6530,19 +6575,27 @@ class TestMemberQuarantineScan:
         z/ewma_z tie clearing the trip line on a single scan."""
         import weather_markets as wm
 
+        # Room is 2 since ukmo graduated (4 candidates, MIN_ACTIVE=2), so the
+        # tie must be a THREE-way one for the floor to block anybody: gfs,
+        # icon and ukmo all identical -> two quarantined alphabetically, the
+        # third blocked.
         recent = {
             "gfs_seamless": self._stats(brier=12.0, n=30, std=1.0),
             "icon_seamless": self._stats(brier=12.0, n=30, std=1.0),
+            "ukmo_global_ensemble_20km": self._stats(brier=12.0, n=30, std=1.0),
             "ecmwf_aifs025_ensemble": self._stats(brier=2.0, n=30, std=1.0),
         }
         monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
-        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(
-            state["icon_seamless"]["ewma_z"]
-        ), "test setup bug: this test requires an exact tie"
-        assert result["newly_quarantined"] == ["gfs_seamless"]  # alphabetically first
-        assert result["blocked_by_floor"] == ["icon_seamless"]
+        assert (
+            state["gfs_seamless"]["ewma_z"]
+            == pytest.approx(state["icon_seamless"]["ewma_z"])
+            == pytest.approx(state["ukmo_global_ensemble_20km"]["ewma_z"])
+        ), "test setup bug: this test requires an exact three-way tie"
+        # Alphabetical among the exact ties: gfs < icon < ukmo.
+        assert result["newly_quarantined"] == ["gfs_seamless", "icon_seamless"]
+        assert result["blocked_by_floor"] == ["ukmo_global_ensemble_20km"]
 
     def test_read_time_floor_clamp_tiebreak_is_deterministic(self):
         """get_quarantined_members()'s defensive read-time floor clamp (for
@@ -6554,21 +6607,24 @@ class TestMemberQuarantineScan:
         namespace between them."""
         import weather_markets as wm
 
-        # All 3 candidates "quarantined" (invalid: floor only allows 1) with
-        # an exact ewma_z tie between two of them.
+        # All 4 candidates "quarantined" (invalid: the floor allows 2 now
+        # that ukmo has graduated) with an exact ewma_z tie between three of
+        # them, so the clamp has to break a tie rather than just truncate.
         wm._save_member_quarantine_state(
             {
                 "gfs_seamless": {"quarantined": True, "ewma_z": 5.0},
                 "icon_seamless": {"quarantined": True, "ewma_z": 5.0},
+                "ukmo_global_ensemble_20km": {"quarantined": True, "ewma_z": 5.0},
                 "ecmwf_aifs025_ensemble": {"quarantined": True, "ewma_z": 1.0},
             }
         )
         result = wm.get_quarantined_members()
-        assert len(result) == 1, f"floor must clamp to 1, got {result}"
-        # Between the exact-tied gfs/icon (both ewma_z=5.0, higher than
+        room = len(wm._QUARANTINE_CANDIDATE_MODELS) - wm._QUARANTINE_MIN_ACTIVE
+        assert len(result) == room, f"floor must clamp to {room}, got {result}"
+        # Among the exact-tied gfs/icon/ukmo (all ewma_z=5.0, higher than
         # aifs's 1.0), alphabetically-first wins deterministically.
-        assert result == {"gfs_seamless"}, (
-            f"expected deterministic tiebreak to keep gfs_seamless, got {result}"
+        assert result == {"gfs_seamless", "icon_seamless"}, (
+            f"expected deterministic tiebreak to keep gfs+icon, got {result}"
         )
 
     def test_stray_tracked_models_never_affect_peers_floor_or_room(self, monkeypatch):
@@ -7003,7 +7059,10 @@ class TestMemberQuarantineBlendHooks:
             "gfs_seamless": [900.0, 901.0, 902.0],  # absurd -- must not leak into blend
             "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0],
             "gem_global": [200.0, 201.0, 202.0],
-            "ukmo_global_ensemble_20km": [-200.0, -201.0, -202.0],
+            # REALISTIC, unlike gem's leak sentinel: ukmo graduated into the
+            # blend on 2026-09-02, so its members SHOULD appear here and an
+            # absurd value would now be indistinguishable from a real leak.
+            "ukmo_global_ensemble_20km": [66.0, 67.0, 68.0],
         }
 
         def _fake_om_request(method, url, **kwargs):
@@ -7047,14 +7106,21 @@ class TestMemberQuarantineBlendHooks:
         # only model quarantined in this test.
         blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max", "gfs_seamless"))
         assert blended is not None
-        # Tight bound: only icon_seamless (70-72) and ecmwf_aifs025_ensemble
-        # (74-76) should ever appear here. A loose bound like `t < 500` would
-        # also silently pass gem_global's 200s/ukmo's -200s/gfs's 900s --
-        # this must actually distinguish "leaked" from "didn't leak", not
-        # just "isn't absurdly huge".
+        # Tight bound: only icon_seamless (70-72), ecmwf_aifs025_ensemble
+        # (74-76) and the graduated ukmo (66-68) belong here. A loose bound
+        # like `t < 500` would silently pass gem_global's 200s or gfs's 900s
+        # -- this must distinguish "leaked" from "didn't leak", not just
+        # "isn't absurdly huge".
         assert all(50.0 < t < 100.0 for t in blended), (
-            f"quarantined gfs_seamless's members (or gem/ukmo's tracking-"
-            f"only members) leaked into the live trading blend: {blended}"
+            f"quarantined gfs_seamless's members (or gem_global's track-only "
+            f"members) leaked into the live trading blend: {blended}"
+        )
+        # ukmo graduated 2026-09-02 and is NOT quarantined here, so it must be
+        # present. Without this the test would still pass if graduation were
+        # silently reverted -- the leak bound alone cannot tell the difference
+        # between "correctly absent" and "wrongly absent".
+        assert any(t == pytest.approx(67.0) for t in blended), (
+            f"graduated ukmo_global_ensemble_20km is missing from the blend: {blended}"
         )
         assert any(t == pytest.approx(75.0) for t in blended), (
             "ecmwf_aifs025_ensemble's real member is missing from the blend"

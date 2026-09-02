@@ -46,11 +46,19 @@ class TestWeightsSurviveReplication:
             "icon_seamless": [10.0] * 4,
             "gfs_seamless": [20.0] * 4,
             "ecmwf_aifs025_ensemble": [30.0] * 4,
+            # UKMO graduated into the blend 2026-09-02. Omitting it here
+            # reproduced the exact hazard the comment above warns about, one
+            # model later: _fetch_model_ensemble returns [] for a missing
+            # model and `all_temps.extend([] * repeats)` is a silent no-op
+            # that does not even raise, so the ratio still came out right and
+            # the test passed on a false premise.
+            "ukmo_global_ensemble_20km": [40.0] * 4,
         }
         weights = {
             "icon_seamless": 1.5,
             "gfs_seamless": 0.75,  # exactly 2:1 against icon
             "ecmwf_aifs025_ensemble": 1.0,
+            "ukmo_global_ensemble_20km": 1.0,
         }
 
         monkeypatch.setattr(wm, "_model_weights", lambda *a, **k: weights)
@@ -65,9 +73,17 @@ class TestWeightsSurviveReplication:
         monkeypatch.setattr(wm, "get_model_run_init", lambda *a, **k: None)
         wm._ensemble_cache.clear()
 
+        # Binds the fixture to the real blend membership: a model graduating
+        # into the blend with no sentinel here would otherwise contribute
+        # nothing and go unnoticed (see the note in `members`).
+        assert set(members) == set(wm._QUARANTINE_CANDIDATE_MODELS), (
+            "fixture is missing a live blend model: "
+            f"{set(wm._QUARANTINE_CANDIDATE_MODELS) - set(members)}"
+        )
+
         out = wm.get_ensemble_temps("NYC", date(2026, 8, 28), var="max")
         counts = Counter(out)
-        assert counts[10.0] and counts[20.0] and counts[30.0], (
+        assert counts[10.0] and counts[20.0] and counts[30.0] and counts[40.0], (
             f"a blend model contributed nothing -- check for a swallowed fetch "
             f"error rather than trusting the ratio below: {counts}"
         )

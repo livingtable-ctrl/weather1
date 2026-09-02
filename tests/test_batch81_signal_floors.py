@@ -141,16 +141,21 @@ class TestGraduationFloorValue:
         assert _power(floor) >= 0.80, f"n={floor} is under 80% power"
         assert _power(floor - 1) < 0.80, f"n={floor - 1} already reaches 80%"
 
-    def test_ten_registry_entries_use_the_derived_floor_and_two_use_none(self):
+    def test_nine_registry_entries_use_the_derived_floor_and_two_use_none(self):
         """Locks the scope of item 1 against the backlog entry's own wrong
         count ("nine of the eleven" -- it is ten of twelve)."""
-        # >= rather than ==: adding a 13th signal is a routine future
-        # change, and this file already reasons its way out of the same trap
-        # for _MIGRATIONS (see _V79_INDEX). The scope pins that matter are
-        # the None set and that no entry sits on the old floor of 20.
+        # >= rather than ==: adding a signal is a routine future change,
+        # and this file already reasons its way out of the same trap for
+        # _MIGRATIONS (see _V79_INDEX). The scope pins that matter are the
+        # None set and that no entry sits on the old floor of 20.
+        # 2026-09-02: bounds LOWERED by one (12->11, 10->9) because
+        # "ukmo_graduation" was removed on UKMO's actual graduation. A `>=`
+        # bound does not survive a removal on its own -- note that it had to
+        # be re-derived here rather than just holding, which is the cost of
+        # the `>=` and is accepted deliberately.
         floors = [e.sample_floor for e in wm.SIGNAL_REGISTRY]
-        assert len(floors) >= 12
-        assert floors.count(wm.SIGNAL_GRADUATION_FLOOR) >= 10
+        assert len(floors) >= 11
+        assert floors.count(wm.SIGNAL_GRADUATION_FLOOR) >= 9
         assert floors.count(None) == 2
         assert wm.SIGNAL_TRIPWIRE_FLOOR not in floors
         assert {e.key for e in wm.SIGNAL_REGISTRY if e.sample_floor is None} == {
@@ -187,7 +192,7 @@ class TestGraduationFloorValue:
         )
         # Positive control: the constant IS referenced, so an empty registry
         # slice (a refactor that moved the entries) cannot pass vacuously.
-        assert registry.count("sample_floor=SIGNAL_GRADUATION_FLOOR") >= 10
+        assert registry.count("sample_floor=SIGNAL_GRADUATION_FLOOR") >= 9
 
 
 class TestFloorClearedAndNotification:
@@ -1361,7 +1366,8 @@ class TestPopulationsAreReportedSeparately:
         something other than `predictions` cannot silently inherit the
         default label."""
         by_key = {e.key: e.count_population_label for e in wm.SIGNAL_REGISTRY}
-        for key in ("gem_graduation", "ukmo_graduation", "hrrr_graduation"):
+        # ukmo_graduation removed 2026-09-02 on its actual graduation.
+        for key in ("gem_graduation", "hrrr_graduation"):
             assert by_key[key] == "ensemble_member_scores observations", key
         assert by_key["market_implied_rain"] == "distinct settled city-months"
         # Positive control: the ordinary entries keep the default.

@@ -18583,11 +18583,77 @@ When to revisit (Pass 2 plan, kept for history -- SUPERSEDED, see the
     GEM/UKMO; scope and prioritize independently if ever picked up. Still
     open -- not part of Pass 2.
 
-[PARTIALLY RESOLVED 2026-07-23 -- item #1 (generalize _model_weights()) shipped; #2/#3/#4 (the actual graduation decision) still gated on real data, unchanged] GRADUATE GEM/UKMO (AND FUTURE TRACKING-ONLY MODELS) FROM TRACK-ONLY INTO THE LIVE BLEND
+[PARTIALLY RESOLVED 2026-09-02 -- UKMO GRADUATED into the live blend; GEM stays track-only on measured evidence; HRRR untouched (its own entry). Item #1 shipped 2026-07-23. See the 2026-09-02 block below FIRST -- it corrects this entry's own graduation recipe, which had gone stale] GRADUATE GEM/UKMO (AND FUTURE TRACKING-ONLY MODELS) FROM TRACK-ONLY INTO THE LIVE BLEND
 Priority: Medium -- read together with GENERALIZED PER-MODEL ACCURACY
   TRACKING above (Pass 3, conceptually: that entry generalized the
   tracking mechanism, this one generalizes the weighting mechanism the
   same way).
+RESOLVED 2026-09-02 for UKMO ONLY (ukmo_global_ensemble_20km is now a live
+  blend member at baseline weight 1.0). GEM remains track-only, on evidence,
+  not on inertia. HRRR is a separate entry and was not considered here.
+
+  THIS ENTRY'S OWN RECIPE WAS STALE -- read the one in _model_weights'
+  docstring instead, which is maintained next to the code it describes. The
+  2026-07-23 text below says step (3) is "add to the live-blend fetch lists in
+  get_ensemble_temps()/batch_prewarm_ensemble()". That is no longer how it
+  works: both functions now reference _QUARANTINE_CANDIDATE_MODELS as the
+  single source of truth for live-blend membership, so step (3) today is
+  "add to _QUARANTINE_CANDIDATE_MODELS". Following the stale prose would have
+  produced a model that is weighted but never consumed -- the same
+  silent-exclusion class this entry exists to prevent, a third time.
+  The three steps, as shipped, each mutation-tested by reverting it alone
+  against tests/test_weather_markets.py: (1) remove from
+  TRACKING_ONLY_MODEL_NAMES -> 1 failure; (2) add to `baseline` -> 5
+  failures; (3) add to _QUARANTINE_CANDIDATE_MODELS -> 5 failures. No step
+  can be skipped silently.
+
+  THE EVIDENCE (item #3's MAE pre-check, finally answerable). Paired on the
+  60 (city, target_date, var) keys where all six tracked models are scored,
+  2026-08-04..08-30, simple-mean blends against settled actuals:
+
+      live blend (icon+gfs+aifs)      MAE 1.926
+      live blend + ukmo               MAE 1.817   paired -0.109 F
+                                      95% CI [-0.239, +0.021]
+      live blend + ukmo + gem         a further   -0.015 F
+      gem standalone                  +1.018 F worse than the blend
+                                      CI [+0.367, +1.668]  -- significant
+      ukmo standalone                 +0.192 F worse than the blend
+                                      CI [-0.328, +0.712]
+
+  NOT STATISTICALLY ESTABLISHED, and shipped anyway as a deliberate cheap
+  bet: the interval spans zero, n is 60, and the whole window sits inside
+  August, which was an unusually easy month (forecast-error median 1.72 F
+  against 2.65-2.68 F in May and June). What justifies shipping it despite
+  that is the COST side, not the evidence side -- ukmo was already fetched on
+  every scan by batch_prewarm_ensemble's track-only tier, so graduation adds
+  no network call, no latency and no new failure mode of its own. RE-CHECK
+  once a second month of overlapping coverage exists; if the sign reverses,
+  reverting is the same three lines.
+  ukmo went in at 1.0 and NOT at an MAE-derived weight: it is second-best
+  standalone but still worse than the blend it joined, so there is no
+  evidence for tilting toward it on day one. Tier 1 (per-city inverse-MAE)
+  can earn it a real weight now that _weights_from_mae has stopped skipping
+  it.
+
+  WHY GEM DID NOT GRADUATE: it fails its own pre-check. Standalone it is
+  +1.018 F worse than the blend with an interval clear of zero, and on top of
+  ukmo it buys -0.015 F, which is nothing. This is the "legitimate outcome,
+  not a bug" case the registry entry anticipated -- for GEM rather than for
+  UKMO, which is the reverse of what was expected.
+
+  TWO CONSEQUENCES THAT LAND ON OTHER ENTRIES, both by design and both worth
+  knowing before reading them:
+    * The live blend is now FOUR models, not three. The entry "QUARANTINE
+      CHANGES THE LIVE ENSEMBLE BLEND'S SPREAD, BUT SPREAD-BASED
+      CALIBRATIONS ... ARE FIT ON THE UNFILTERED 3-MODEL BLEND" is widened by
+      this, not narrowed: those calibrations are now fit on a membership that
+      no longer exists at all.
+    * The EWMA quarantine now has FOUR candidates against
+      _QUARANTINE_MIN_ACTIVE=2, so it can quarantine two members at once
+      where it could previously quarantine one. That is the designed
+      behaviour of the floor, not a regression, and the quarantine tests now
+      pin it explicitly.
+
 
 RESOLVED 2026-07-23 (item #1 only -- _model_weights() generalized, zero live
   behavior change today, pushed pending commit): tiers 1 (MAE-derived) and 2
@@ -33324,9 +33390,112 @@ Resolution (2026-08-25 -- batch-59 item 4):
   via the real pre-commit hook.
 
 
+[OPEN 2026-09-02 -- found by the independent opus review of the UKMO
+  graduation, BEFORE that change merged, and verified independently against
+  the live DB via the production helper (tracker.get_member_brier
+  (days_back=_QUARANTINE_RECENT_DAYS)) rather than a hand-rolled query.
+  SHIPPED KNOWINGLY, not missed: see THE DECISION below.]
+  ADDING A FOURTH QUARANTINE PEER PUSHES ecmwf_aifs025_ensemble OVER THE TRIP
+  LINE -- THE HIGHEST-WEIGHTED BLEND MEMBER WILL AUTO-QUARANTINE IN ~13 DAYS
+Priority: HIGH -- it is a live behaviour change with a dated clock on it, and
+  the member it removes carries the largest baseline weight in the blend.
+Files: weather_markets.py -- scan_member_quarantine's z at :5319-5327,
+  _QUARANTINE_TRIP_Z at :4937, _QUARANTINE_CANDIDATE_MODELS at :4925-4932.
+  Cron's once-a-day rate limit on the scan: cron.py :2882 (`if
+  _quarantine_scan_age >= 1`).
+
+WHAT HAPPENS. _QUARANTINE_CANDIDATE_MODELS does DOUBLE DUTY: it is both the
+live blend membership AND the peer population each member is scored against.
+Graduating UKMO therefore did two things, only one of which was intended.
+Each model's z is (own_brier - mean(peer_briers)) / se, and se shrinks with
+peer count because peer_pool_var = sum(std^2/n)/len(peers)^2. UKMO's 14-day
+Brier is 0.2851 -- the BEST of the four -- so it drags every incumbent's
+peer_mean down while also shrinking the standard error.
+
+Measured on the live 14-day window (n=30 per model):
+
+    model                      effect/z BEFORE     effect/z AFTER
+    icon_seamless              -0.0812  -1.223     -0.0504  -0.828
+    gfs_seamless               -0.0440  -0.573     -0.0173  -0.234
+    ecmwf_aifs025_ensemble     +0.1253  +1.808     +0.1332  +2.065   <-- TRIPS
+    ukmo_global_ensemble_20km       --      --     -0.0655  -1.013
+
+_QUARANTINE_TRIP_Z is 2.0. AIFS moves from just under the line to just over
+it. The trip is on the EWMA, not on z: ewma_z is 1.0856 today and converges
+to z at lambda=0.2, so it needs 13 scans to cross 2.0. The scan is rate-
+limited to once a day (cron.py :2882), so THE CLOCK IS ~13 DAYS, NOT 13 CRON
+RUNS. (The review's own estimate of "4-6 scans" was wrong on both counts and
+is corrected here.) last_effect is 0.1034, far above _QUARANTINE_MIN_EFFECT
+0.02, so the practical-significance guard does not stop it. Release needs
+ewma_z <= 0.5, which the new peer set makes HARDER, so it will not self-heal
+unless AIFS actually improves.
+
+THE DECISION, and why this shipped rather than being "fixed". The tempting
+fix -- raise _QUARANTINE_TRIP_Z until AIFS stays under it -- is tuning a
+threshold to suppress a result the data supports, and was rejected. AIFS
+really is the worst of the four candidates by Brier (0.4341 against
+0.2851/0.2964/0.3212), and the +0.1253 effect PREDATES this change: it was
+always there, and simply was not significant against two peers. Adding a
+third peer bought statistical power, and the quarantine then detected a
+member that was already underperforming. That is the machinery working as
+designed, not a defect introduced by the graduation.
+What is genuinely unresolved is whether the OUTCOME is desirable. AIFS
+carries ecmwf_w = 1.5 summer / 2.0 winter (:5658), the largest baseline
+weight of any member, and it is being removed on a Brier computed over ALL
+horizons while the graduation itself was justified on same-window MAE. Those
+are different metrics on different populations and they disagree about AIFS.
+
+WHAT TO DO WHEN THE TRIP FIRES (expected ~2026-09-15):
+  * Do NOT reflexively raise _QUARANTINE_TRIP_Z or _QUARANTINE_MIN_ACTIVE to
+    prevent it. Both are threshold-tuning against an observed outcome.
+  * DO check first whether the blend got better or worse without AIFS, on
+    the same paired basis the graduation used. If it got better, the
+    quarantine is right and the real question is why AIFS holds a 1.5x
+    baseline weight at all.
+  * The reviewer's alternative -- give UKMO blend membership WITHOUT the peer
+    role -- requires splitting _QUARANTINE_CANDIDATE_MODELS' two jobs, which
+    is a real design change and should not be done reactively.
+  * Reverting the graduation is three lines and restores the old peer set.
+
+RELATED, from the same review and NOT fixed here:
+  * tracker.get_model_weights (:12235) filters by TRACKING_ONLY_MODEL_NAMES,
+    so UKMO now enters a softmax whose only blend consumer is
+    _forecast_model_weights -- the DETERMINISTIC daily blend (gfs_seamless /
+    ecmwf_ifs025 / icon_seamless), which UKMO is not fetched for and cannot
+    join. The `dyn = {m: v * len(dyn_raw)}` rescale at weather_markets.py
+    :2271 then divides a softmax over N models across the 3 that are
+    actually read. THIS BUG IS PRE-EXISTING, NOT NEW: ecmwf_aifs025_ensemble
+    already leaked the same way (it is not in TRACKING_ONLY either), so the
+    mismatch was 4-over-3 before and is 5-over-3 now. VERIFIED DORMANT
+    2026-09-02: MIN_OBSERVATIONS is 10 per city over 30 days, the live max is
+    5, and tracker.get_model_weights returns {} for all 7 cities checked, so
+    _dynamic_model_weights returns None and tier 1 of the deterministic blend
+    is inert. It activates silently when per-city counts double. The fix is
+    to filter that softmax by BLEND MEMBERSHIP rather than by the track-only
+    flag -- the same distinction the "GRADUATE GEM/UKMO" entry already had to
+    make once for ecmwf_ifs025. The comment at tracker.py :12228 still names
+    UKMO as excluded and is now wrong.
+  * The `blended` pseudo-model rows in ensemble_member_scores describe a
+    3-member blend before 2026-09-02 and a 4-member one after, with nothing
+    marking the boundary. _non_model_keys_sql excludes `blended` from the
+    weight/Brier paths so no live consumer breaks, but any cross-boundary
+    analysis of that series silently pools two regimes.
+
+
 [OPEN 2026-08-20 -- filed as a review-caught follow-up (2nd review's
   MEDIUM-4) rather than blocked on; latent/not-live today, so not a
-  blocker for the quarantine change itself.]
+  blocker for the quarantine change itself.
+  WIDENED 2026-09-02: the premise in this title is now wrong in a second,
+  larger way. UKMO graduated into the live blend, so the blend is FOUR
+  models and the "unfiltered 3-model blend" these calibrations were fit on
+  no longer exists at all -- the membership changed, not just the spread
+  under quarantine. Two independent sources of drift now, and the
+  membership one is live TODAY rather than latent. The EWMA quarantine also
+  now has four candidates against _QUARANTINE_MIN_ACTIVE=2, so it can drop
+  two members at once where it could previously drop one, which widens the
+  spread range this entry is about. Any refit must be done against the
+  4-model blend; refitting against 3 would re-file this entry immediately.
+  See "GRADUATE GEM/UKMO".]
   QUARANTINE CHANGES THE LIVE ENSEMBLE BLEND'S SPREAD, BUT SPREAD-BASED
   CALIBRATIONS (EMOS, ANOMALY/BIMODAL GUARDS) ARE FIT ON THE UNFILTERED
   3-MODEL BLEND
@@ -48691,6 +48860,33 @@ THE OPTIONS THAT REMAIN
     Status: diagnose the product/resolution and returned member count FIRST --
       one live call discriminates the two hypotheses. Do not reweight before
       that. See its own entry.
+    UPDATE 2026-09-02 -- the two "Against" caveats are now MEASURED, and both
+      of this option's headline claims are refuted. The paired pipeline
+      counterfactual the caveat asked for was run on the 60 all-models-scored
+      city-day-var keys of 2026-08-04..08-30:
+        * "the blend is beaten by its own best member" -- FALSE. The blend has
+          the best median error (1.61 F) and the second-best MAE of anything
+          measured. The original claim came from comparing models over
+          DIFFERENT windows: the four newer members are only scored from
+          2026-08-04, icon/gfs from 2026-05-14, and August was an unusually
+          easy month (error median 1.72 F vs 2.65-2.68 F in May/June). It was
+          a period artifact, not a member-quality finding.
+        * "drop gfs_seamless" -- ACTIVELY WRONG. Removing it makes the blend
+          WORSE: MAE 2.113, paired +0.188 F. gfs measures worst standalone
+          (3.321 F, +1.365 vs the blend) and still earns its place, which is
+          the ordinary ensemble result for a weak-but-decorrelated member.
+          The existing design comment that resisted dropping it was right.
+      MEMBERSHIP is the part of this option that survived: UKMO graduated
+      2026-09-02 (see "GRADUATE GEM/UKMO"), GEM did not. WEIGHTS need no
+      manual action -- tier-1 per-city inverse-MAE is already live and
+      already down-weighting gfs (icon 1.119, ukmo 1.046, aifs 1.055, gfs
+      0.797), i.e. the mechanism this option wanted to build by hand is
+      running.
+      WHAT STILL DOES NOT FOLLOW: none of this is shown to narrow the
+      model-vs-market gap. That caveat is untouched, and the peer measurement
+      that better forecast MAE did not improve AUC applies directly here --
+      a better blend has not yet been shown to buy better RANKING, which is
+      what a trade needs.
 
 RECOMMENDATION AS OF 2026-08-27 (fourth revision -- items a-d of the action
 list below have all LANDED, and d's answer narrows this entry's own caveat)
@@ -48914,13 +49110,15 @@ Priority: MEDIUM -- concrete and cheap, unlike the modelling work the no-edge
   defect, which is a bug, not a skill gap.
 Files: weather_markets.py. CITATIONS RE-DERIVED 2026-09-01; the originals
   (~:2148, ~:884) had drifted and one pointed at the WRONG blend entirely.
-  _model_weights' `baseline` dict is :5613-5617 and reads icon_seamless 1.0,
-  gfs_seamless 1.0, ecmwf_aifs025_ensemble ecmwf_w -- NOT ecmwf_ifs025, which
-  is the DETERMINISTIC blend's model (_forecast_model_weights' own baseline
-  :2219-2223, ifs025 at :2221) and is excluded here. THIS FUNCTION'S ecmwf_w is
-  1.5 summer / 2.0 winter with NO ENSO term (:5607-5611) -- the "2.5+ winter
+  _model_weights' `baseline` dict is :5643-5654 (RE-DERIVED 2026-09-02, was
+  :5613-5617 -- it grew a fourth member) and reads icon_seamless 1.0,
+  gfs_seamless 1.0, ecmwf_aifs025_ensemble ecmwf_w, ukmo_global_ensemble_20km
+  1.0 -- NOT ecmwf_ifs025, which is the DETERMINISTIC blend's model
+  (_forecast_model_weights' own baseline :2243-2247, ifs025 at :2245) and is
+  excluded here. THIS FUNCTION'S ecmwf_w is
+  1.5 summer / 2.0 winter with NO ENSO term (:5637-5641) -- the "2.5+ winter
   with an ENSO bump" this line used to carry is _forecast_model_weights'
-  (:2209-2217), i.e. it had imported the rule from the very blend the sentence
+  (:2234-2241), i.e. it had imported the rule from the very blend the sentence
   warns you not to confuse this one with. NOTE: ENSEMBLE_MODELS (:935) is NOT
   the live membership -- its own comment says "keep for backward compat".
 

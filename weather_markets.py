@@ -1009,9 +1009,33 @@ KNOWN_FORECAST_MODEL_NAMES = frozenset(
 # paired diff -0.656 F, 95% CI [-1.233, -0.108]. Switching away would make the
 # forecast worse. See backlog.txt "THE DETERMINISTIC BLEND TRADES ON HRRR
 # UNDER A GFS LABEL".
-TRACKING_ONLY_MODEL_NAMES = frozenset(
-    {"gem_global", "ukmo_global_ensemble_20km", "ncep_hrrr_conus"}
-)
+# 2026-09-02: ukmo_global_ensemble_20km GRADUATED out of this set into the
+# live blend. Its own comment above said track-only should end "until real
+# accuracy data justifies picking a starting weight", so here is the data.
+#
+# Counterfactual on the 60 city-day-var keys where all six tracked models are
+# scored (2026-08-04..08-30), simple-mean blends against settled actuals:
+#     live blend (icon+gfs+aifs)   MAE 1.926
+#     live blend + ukmo            MAE 1.817   paired -0.109 F
+#                                  95% CI [-0.239, +0.021]
+# Direction is right and the marginal cost is zero -- ukmo was already fetched
+# every scan by batch_prewarm_ensemble's track-only tier, so this adds no
+# network call. THE GAIN IS NOT STATISTICALLY ESTABLISHED: the interval spans
+# zero, n is 60, and all of it sits inside August, which was an unusually easy
+# month (forecast-error median 1.72 F against 2.65-2.68 F in May/June). Treat
+# it as a cheap directional bet, not a measured win, and re-check once a
+# second month of overlapping coverage exists.
+#
+# gem_global stays track-only: same window, +1.018 F worse than the blend
+# standalone (CI [+0.367, +1.668], significant), and adding it on top of ukmo
+# bought only a further -0.015 F.
+#
+# NOT DROPPING gfs_seamless, despite it measuring worst standalone (3.321 F,
+# +1.365 vs the blend). Removing it makes the blend WORSE -- MAE 2.113,
+# paired +0.188 -- which is the ordinary ensemble result that a weak-but-
+# decorrelated member still earns its place. That also matches the existing
+# note above about gfs_seamless being HRRR at the traded horizon.
+TRACKING_ONLY_MODEL_NAMES = frozenset({"gem_global", "ncep_hrrr_conus"})
 
 
 def _validate_forecast_model_keys(
@@ -2886,7 +2910,8 @@ def batch_prewarm_ensemble(
 
     # Tier 1: blend-critical temp models. These feed the live trading blend
     # directly, so they get first claim on the rate budget. Iterates
-    # _real_blend_models (always all 3), NOT the quarantine-filtered
+    # _real_blend_models (always every blend member, 4 since UKMO
+    # graduated 2026-09-02), NOT the quarantine-filtered
     # blend_models -- a quarantined model must keep being fetched here so its
     # accuracy keeps being tracked (see the quarantine module's docstring);
     # blend_models is consulted separately below, only at the point that
@@ -4879,8 +4904,10 @@ def _weights_from_mae(
 # until batch-59 item 4 (backlog.txt "MODEL_CONSENSUS SHOULD EXCLUDE A
 # QUARANTINED MEMBER"), which now skips the comparison entirely when either
 # member of the pair is quarantined. Still NOT covered: the EMOS / anomaly /
-# bimodal guards, which are fit on the unfiltered 3-model blend (backlog.txt's
-# own separate calibration-side entry).
+# bimodal guards, which are fit on the unfiltered blend -- and as of the
+# 2026-09-02 UKMO graduation they were fit on a 3-member blend that no longer
+# exists at all, so the membership has drifted underneath them as well as the
+# spread (backlog.txt's own separate calibration-side entry, widened there).
 # _weights_from_mae()/_model_weights() are deliberately left untouched;
 # quarantine acts one layer above them, mirroring the existing
 # TRACKING_ONLY_MODEL_NAMES precedent in batch_prewarm_ensemble() (fetch for
@@ -4898,6 +4925,12 @@ def _weights_from_mae(
 _QUARANTINE_CANDIDATE_MODELS: tuple[str, ...] = (
     *ENSEMBLE_MODELS,
     "ecmwf_aifs025_ensemble",
+    # Step 3 of the graduation _model_weights' docstring describes: this tuple
+    # is what batch_prewarm_ensemble/get_ensemble_temps read to decide which
+    # models actually enter the blend, so without it ukmo would carry a
+    # baseline weight nothing ever consumes -- the silent-exclusion bug that
+    # docstring exists to warn about.
+    "ukmo_global_ensemble_20km",
 )
 
 _QUARANTINE_EWMA_LAMBDA = 0.2  # EWMA smoothing factor (Lucas & Saccucci 1990 range)
@@ -5581,6 +5614,15 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     leak. Still worth re-checking again the next time TRACKING_ONLY_MODEL_
     NAMES's membership changes, since this reasoning depends on
     _weights_from_mae's own unconditional skip staying in place.
+    RE-CHECKED 2026-09-02, per that instruction, when
+    ukmo_global_ensemble_20km was REMOVED from TRACKING_ONLY_MODEL_NAMES to
+    graduate it into the live blend: still not a live bug. The skip is intact
+    and still unconditional (_weights_from_mae, above), and the two remaining
+    members are gem_global (ensemble-shaped, the case the union gets right)
+    and ncep_hrrr_conus (the non-ensemble case, still unreachable for the
+    same reason). Note the direction of this particular change is the SAFE
+    one either way -- a removal shrinks the union, so it cannot introduce a
+    leak; the check that matters is on ADDITIONS to this set.
 
     A model outside the baseline dict gets a neutral 1.0 prior (no seasonal/
     climatological reasoning is coded for it) instead of a KeyError.
@@ -5614,6 +5656,13 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
         "icon_seamless": 1.0,
         "gfs_seamless": 1.0,
         "ecmwf_aifs025_ensemble": ecmwf_w,
+        # 1.0, NOT a weight derived from its measured MAE. ukmo is second-best
+        # standalone over the matched window, but it is still WORSE than the
+        # blend it is joining (+0.192 F, CI [-0.328, +0.712]), so there is no
+        # evidence for tilting toward it on day one. Tier 1 (per-city
+        # inverse-MAE) can earn it a real weight now that it is out of
+        # TRACKING_ONLY_MODEL_NAMES and _weights_from_mae stops skipping it.
+        "ukmo_global_ensemble_20km": 1.0,
     }
 
     # A model outside `baseline` is only a genuine candidate for THIS blend if
@@ -5810,8 +5859,9 @@ def get_ensemble_temps(
 
     all_temps: list[float] = []
     # _QUARANTINE_CANDIDATE_MODELS, not a second independent reconstruction
-    # of the same 3-model tuple -- see the identical note in
-    # batch_prewarm_ensemble() above.
+    # of the same model tuple -- see the identical note in
+    # batch_prewarm_ensemble() above. Deliberately not a hardcoded count: it
+    # was 3 until UKMO graduated 2026-09-02 and is 4 now.
     ensemble_models_with_ecmwf = [
         m for m in _QUARANTINE_CANDIDATE_MODELS if m not in _quarantined_now
     ]
@@ -11337,20 +11387,16 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
         backlog_ref="GRADUATE GEM/UKMO",
         count_population_label="ensemble_member_scores observations",
     ),
-    _SignalRegistryEntry(
-        key="ukmo_graduation",
-        name="UKMO (ukmo_global_ensemble_20km) graduation from track-only",
-        sample_floor=SIGNAL_GRADUATION_FLOOR,
-        count_fn=_count_model_obs("ukmo_global_ensemble_20km"),
-        correlation_note=(
-            "Same MAE pre-check as GEM, computed independently — UKMO's "
-            "shorter real forecast horizon (~9-10 of 16 days) may mean it "
-            "never earns a competitive weight even with plenty of data; "
-            "that's a legitimate outcome, not a bug."
-        ),
-        backlog_ref="GRADUATE GEM/UKMO",
-        count_population_label="ensemble_member_scores observations",
-    ),
+    # ukmo_graduation was REMOVED from this registry 2026-09-02: UKMO
+    # graduated into the live blend, so it is no longer a log-only signal
+    # awaiting a decision and this report is "for every registered log-only
+    # signal". Left in place it would have kept counting toward
+    # SIGNAL_GRADUATION_FLOOR and eventually fired a one-time activation
+    # alert telling an operator to graduate an already-graduated model.
+    # Its re-check is calendar-gated (a second month of overlapping member
+    # coverage), not count-gated, so no counter replaces it -- see
+    # backlog.txt "GRADUATE GEM/UKMO". gem_graduation and hrrr_graduation
+    # stay: neither has graduated.
     _SignalRegistryEntry(
         key="hrrr_graduation",
         name="HRRR (ncep_hrrr_conus) graduation from track-only",
@@ -17898,9 +17944,14 @@ def analyze_trade(
                 # The comparison is a PAIR (icon vs gfs), so excluding either
                 # member leaves nothing to compare against -- there is no
                 # surviving two-model check to fall back to. _QUARANTINE_MIN_
-                # ACTIVE=2 over 3 candidates caps this at one quarantined
-                # member at a time, so "both gone" isn't reachable, but
-                # "one gone" is exactly the case that matters. Fail open
+                # ACTIVE=2 capped this at one quarantined member at a time
+                # while there were 3 candidates, which made "both gone"
+                # unreachable. THAT NO LONGER HOLDS: UKMO graduated
+                # 2026-09-02, so room is 4-2=2 and icon AND gfs can be
+                # quarantined in the same scan. The fail-open below already
+                # handles it correctly -- `if _cons_quarantined` does not care
+                # how many are gone -- but do not rely on the old arity
+                # argument. "One gone" is still the common case. Fail open
                 # (leave model_consensus at its True default), identical to
                 # what this branch already does when either probability
                 # comes back None -- deliberately NOT substituting
