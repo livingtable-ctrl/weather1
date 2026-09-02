@@ -304,9 +304,23 @@ def cmd_cron(
     module-level names (which monkeypatch has already replaced).
 
     ``sameday_only``: see trade_cycle.run_trade_cycle()'s own docstring.
-    Only the CLI ``cron --sameday-only`` dispatch below sets this True --
-    every other caller (loop, the interactive menu's "Cron" option) keeps
-    the default full scan.
+    Set True by exactly ONE direct caller -- the interactive menu's "Same-day"
+    option (cmd_menu) -- and by the CLI ``cron --sameday-only`` dispatch below.
+    That CLI form is in turn what the dashboard's Same-day scan button
+    (web_app.api_run_cron) and the KalshiCronSameday_01UTC/_03UTC scheduled
+    tasks (cmd_schedule) each spawn as a subprocess; neither calls this
+    function directly. The loop and the menu's "Cron" option keep the default
+    full scan.
+
+    NOTE this flag does NOT gate the METAR lock-in, and it does five things,
+    not one: it narrows the market list (trade_cycle.py's filter), skips a
+    record_shadow_observations() call, labels the scan_runs row 'cron-sameday',
+    skips the signals-cache write, and freezes last_full_scan. None of those is
+    on the lock-in path -- _metar_lock_in sits in analyze_trade's
+    daily-temperature pipeline, and the same-day market list is a strict subset
+    of the full one, so a full scan analyses every market a same-day scan does
+    and locks in identically. The same-day form is CHEAPER, which is what makes
+    it affordable to run at the local hours where a lock-in is possible at all.
     """
     _called_from_loop = getattr(cmd_cron, "_called_from_loop", False)
 
@@ -10223,6 +10237,9 @@ def cmd_menu(client: KalshiClient):
         ("A", "Analyze ", "find best trades right now"),
         ("T", "Today   ", "what should I do today?"),
         ("L", "Cron    ", "scan markets and place trades now"),
+        # Label is exactly 8 chars like its siblings, and the dispatch below
+        # keys off the STRIPPED label ("Same-day"), so both must move together.
+        ("D", "Same-day", "today's markets only — the METAR lock's window"),
         ("W", "Watch   ", "live auto-refresh dashboard"),
         ("P", "Paper   ", "trades, alerts, results, settle"),
         ("K", "Backtest", "score model on history"),
@@ -10476,6 +10493,39 @@ def cmd_menu(client: KalshiClient):
                     "\n  Tip: run  py main.py loop  in a separate terminal to auto-run every 4h."
                 )
             )
+
+        elif name_stripped == "Same-day":
+            print(bold("\n  ── Run Same-day Scan ──\n"))
+            print(
+                dim(
+                    "  Skips the multi-day scan and forecast prewarm — only\n"
+                    "  city-local-today temperature markets. Cheaper, NOT more\n"
+                    "  capable: a full scan fires the METAR lock-in just the\n"
+                    "  same. Being cheap is the point — it can be run at the\n"
+                    "  local hours where a lock-in is possible at all (the\n"
+                    "  market's own local day past hour 14).\n"
+                )
+            )
+            print(
+                dim(
+                    "  This does NOT count as a full scan — the 'last FULL cron\n"
+                    "  scan' staleness warning keeps counting up.\n"
+                )
+            )
+            sys.stdout.flush()
+            try:
+                # Same exception discipline as the Cron branch above, and for
+                # the same reasons: no _called_from_loop (it would bypass the
+                # kill-switch override prompt) and SystemExit caught so cron's
+                # end-of-scan sys.exit(0) doesn't close the menu.
+                cmd_cron(client, sameday_only=True)
+            except SystemExit:
+                pass  # normal cron exit — menu keeps running
+            except KeyboardInterrupt:
+                print(yellow("\n  Same-day scan cancelled."))
+            except Exception as exc:
+                print(red(f"  Same-day scan error: {exc}"))
+            sys.stdout.flush()
 
         elif name_stripped == "Watch":
             _menu_watch(client)
@@ -12788,9 +12838,11 @@ def cmd_schedule():
     # Nothing in this repo ever scheduled `cron --sameday-only`: the four
     # cycle-aligned tasks cmd_schedule_cycles() prints are all FULL scans, and
     # every other task registered above runs analyze/brief/settle/
-    # settlement-monitor, not cron at all. `scan_runs` bears that out -- every
-    # recorded row is mode='cron', never 'cron-sameday' (cron.py sets the
-    # latter only when sameday_only).
+    # settlement-monitor, not cron at all. `scan_runs` supports that as far as
+    # it goes -- all 18 rows, since 2026-08-26, are mode='cron', never
+    # 'cron-sameday' (cron.py sets the latter only when sameday_only). Note
+    # that table's own window: it landed with schema v77 on 2026-08-25, so it
+    # can only speak for runs after that date, not for the project's history.
     #
     # That matters because the METAR lock-in is gated on the market's OWN local
     # day already being late (metar.py's `_LOCK_IN_HOUR = 14`), and its

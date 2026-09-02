@@ -1693,10 +1693,41 @@ setInterval(() => {{
 
     @app.route("/api/run_cron", methods=["POST"])
     def api_run_cron():
-        """Spawn a cron scan subprocess, capturing output to cron_web.log."""
+        """Spawn a cron scan subprocess, capturing output to cron_web.log.
+
+        Accepts an optional JSON body ``{"sameday_only": true}`` to run the
+        lightweight same-day scan (``cron --sameday-only``) instead of the full
+        multi-day one. Absent or false means a FULL scan, so every existing
+        caller -- the legacy /signals page posts no body at all -- keeps its
+        current behaviour.
+
+        The flag is converted to a fixed literal argument rather than
+        interpolated: the request never contributes a string to the argv this
+        builds, so no body can smuggle an extra flag into the subprocess.
+        """
         import time as _time
 
+        from flask import request as _req
+
         from cron import _is_cron_running
+
+        # silent=True: the legacy /signals button posts with no body and no
+        # Content-Type, which get_json() would otherwise turn into a 415.
+        #
+        # isinstance, not `or {}`: silent=True suppresses PARSE failures, not
+        # SHAPE ones. A syntactically valid body whose top level is a list,
+        # string, number or bool is returned as-is and is truthy, so `or {}`
+        # keeps it and `.get` raises AttributeError -> 500. Opus review found
+        # this against the live app; `[1,2]`, `"hello"`, `123` and `true` all
+        # 500'd, while `[]` and `null` happened to survive on falsiness alone.
+        _body = _req.get_json(silent=True)
+        if not isinstance(_body, dict):
+            _body = {}
+        # `is True`, not bool(): the echo below tells the caller which scan it
+        # got, and bool() made {"sameday_only": "false"} a SAME-DAY scan whose
+        # echo confirmed "true" -- defeating the point of echoing. Only a real
+        # JSON boolean true opts in; anything else is a full scan.
+        _sameday_only = _body.get("sameday_only") is True
 
         # Flask serves requests threaded (threaded=True default) — without this lock,
         # two near-simultaneous POSTs (e.g. a double-click) can both pass the
@@ -1733,8 +1764,16 @@ setInterval(() => {{
                 if sys.platform == "win32"
                 else 0
             )
+            _argv = [
+                sys.executable,
+                "-u",
+                str(Path(__file__).parent / "main.py"),
+                "cron",
+            ]
+            if _sameday_only:
+                _argv.append("--sameday-only")
             proc = subprocess.Popen(
-                [sys.executable, "-u", str(Path(__file__).parent / "main.py"), "cron"],
+                _argv,
                 cwd=str(Path(__file__).parent),
                 stdin=subprocess.DEVNULL,  # never inherit Flask's stdin
                 stdout=log_f,
@@ -1746,7 +1785,17 @@ setInterval(() => {{
             # store on the function object so it survives across requests
             # (_last_spawn was already reserved inside the lock above)
             api_run_cron._proc = proc  # type: ignore[attr-defined]
-            return jsonify({"status": "started", "pid": proc.pid})
+            return jsonify(
+                {
+                    "status": "started",
+                    "pid": proc.pid,
+                    # Echoed so the caller can confirm which scan it actually
+                    # got rather than assuming its request was honoured -- the
+                    # two modes write to the SAME log file, so the log alone
+                    # does not distinguish them.
+                    "sameday_only": _sameday_only,
+                }
+            )
         except Exception as e:
             # WA-regression: roll back the rate-limit reservation on a failed spawn —
             # nothing actually started, so a transient failure (e.g. cron_web.log

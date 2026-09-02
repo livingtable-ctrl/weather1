@@ -324,8 +324,19 @@ export default function SettingsTab() {
           <div>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Cron scan</h3>
             <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 12 }}>
-              {cronState.status === 'running' && (s.kill_switch ? 'Scanning markets — no trades will fire until kill switch is cleared.' : 'Scan in progress — signals will update when complete.')}
-              {cronState.status === 'done'    && 'Scan complete. Signals refreshed.'}
+              {/* "signals will update" is true of the FULL scan only. cron.py
+                  skips the signals-cache write for --sameday-only on purpose,
+                  so a narrow same-day list cannot clobber the full scan's
+                  snapshot -- which means the idle line below would then report
+                  an unchanged "Last scan" age and contradict this one. */}
+              {cronState.status === 'running' && (s.kill_switch
+                ? 'Scanning markets — no trades will fire until kill switch is cleared.'
+                : cronState.samedayOnly
+                  ? "Same-day scan in progress — today's markets only; the signals list is left as the last full scan wrote it."
+                  : 'Scan in progress — signals will update when complete.')}
+              {cronState.status === 'done'    && (cronState.samedayOnly
+                ? 'Same-day scan complete. Signals list unchanged by design — see the log below.'
+                : 'Scan complete. Signals refreshed.')}
               {cronState.status === 'error'   && 'Scan finished with errors — see log below.'}
               {cronState.status === 'cancelled' && 'Scan cancelled.'}
               {(cronState.status === 'idle')  && (() => {
@@ -349,8 +360,35 @@ export default function SettingsTab() {
                 fontWeight: 600, fontSize: 13, cursor: 'pointer',
               }}>Cancel</button>
             )}
+            {/* Same-day only: skips the multi-day analysis pool and forecast
+                prewarm, so it is the cheap run. NOT a different capability --
+                a full scan fires the METAR lock-in identically, because the
+                same-day list is a strict filtered subset of the full one
+                (trade_cycle.py:321) and nothing the flag touches is on the
+                lock-in path. Historically 103 of the 106 recorded lock-ins
+                predate the flag existing at all. Being cheap is the point: it
+                can be run at the local hours where a lock-in is possible.
+                Secondary styling -- the full scan stays the default action. */}
             <button
-              onClick={handleRunCron}
+              onClick={() => handleRunCron(true)}
+              disabled={cronState.status === 'running'}
+              title="Scan today's markets only — the cheap run, for the hours when the METAR lock-in is possible"
+              style={{
+                padding: '10px 16px', borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-card)',
+                color: cronState.status === 'running' ? 'var(--text-muted)' : 'var(--text)',
+                fontWeight: 600, fontSize: 13,
+                cursor: cronState.status === 'running' ? 'not-allowed' : 'pointer',
+              }}>
+              {cronState.status === 'running' && cronState.samedayOnly ? 'Running…' : 'Same-day scan'}
+            </button>
+            {/* onClick must be a WRAPPER, not `handleRunCron` bare: React
+                passes the click event as the first argument, and an event
+                object is truthy -- passing it straight through would make
+                every "Run scan" click a same-day scan. */}
+            <button
+              onClick={() => handleRunCron(false)}
               disabled={cronState.status === 'running'}
               style={{
                 padding: '10px 20px', borderRadius: 8, border: 'none',
@@ -359,7 +397,7 @@ export default function SettingsTab() {
                 fontWeight: 600, fontSize: 13,
                 cursor: cronState.status === 'running' ? 'not-allowed' : 'pointer',
               }}>
-              {cronState.status === 'running' ? 'Running…' : 'Run scan'}
+              {cronState.status === 'running' && !cronState.samedayOnly ? 'Running…' : 'Run scan'}
             </button>
           </div>
         </div>

@@ -469,9 +469,23 @@ export default function App() {
   });
   const [connected, setConnected] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null });
+  const [cronState, setCronState] = useState({ status: 'idle', log: [], exitCode: null, samedayOnly: false });
   const [toasts, setToasts] = useState([]);
   const cronPollRef = useRef(null);
+  // Which mode the IN-FLIGHT scan is. A ref, not state: the poll callback
+  // needs to read it synchronously to label the completion toast, and reading
+  // it out of a setState updater relied on React's eager-state optimization,
+  // which react-dom only applies when the fiber has no pending update -- so
+  // the label was intermittently wrong rather than deterministically right.
+  // /api/cron-status cannot report the mode, so a run this page did not start
+  // is labelled a full scan (see the mount effect below).
+  const samedayRef = useRef(false);
+  // Whether THIS page started the scan currently in flight. The mount-time
+  // /api/cron-status fetch can sit queued for seconds behind useData's request
+  // burst; if the operator clicks a scan inside that window, the late reply
+  // would otherwise overwrite the mode with its own "I don't know" default and
+  // mislabel a same-day run for its whole duration.
+  const pageStartedScanRef = useRef(false);
 
   useEffect(() => {
     applyTheme(theme);
@@ -510,15 +524,38 @@ export default function App() {
         .then(d => {
           if (!d) return;
           const status = d.running ? 'running' : (d.exit_code === 0 ? 'done' : 'error');
-          setCronState({ status, log: d.log || [], exitCode: d.exit_code });
+          // The server's reply does not say which mode is running, so the
+          // mode comes from samedayRef -- without it this rebuild would reset
+          // the flag mid-run and the completion toast would misname the scan.
+          const sameday = samedayRef.current;
+          setCronState(prev => ({
+            ...prev, status, log: d.log || [], exitCode: d.exit_code, samedayOnly: sameday,
+          }));
           if (!d.running) {
             clearInterval(cronPollRef.current);
             cronPollRef.current = null;
+            // The ref means "a scan THIS PAGE started is in flight", which is
+            // what its own comment claims -- so clear it when that stops being
+            // true. Left set, the mount effect would be permanently
+            // short-circuited and a later Task Scheduler run starting while
+            // the dashboard sits open would never be picked up.
+            pageStartedScanRef.current = false;
             data.refresh();
-            const msg = d.exit_code === 0 ? 'Cron scan complete — signals updated.' : 'Cron scan finished with errors.';
+            const what = sameday ? 'Same-day scan' : 'Cron scan';
+            // "signals updated" is TRUE ONLY OF THE FULL SCAN. cron.py's
+            // `if not sameday_only:` around the SIGNALS_CACHE_PATH write skips
+            // it deliberately, so a narrow same-day list cannot clobber the
+            // full scan's snapshot. Saying "signals updated" here would
+            // contradict the very next thing the operator sees, because the
+            // idle line reads its age from that same untouched cache.
+            const msg = d.exit_code !== 0
+              ? `${what} finished with errors.`
+              : sameday
+                ? 'Same-day scan complete — dashboard signals left unchanged by design; see the log and paper trades.'
+                : 'Cron scan complete — signals updated.';
             addToast(msg, d.exit_code === 0 ? 'success' : 'error');
             if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Kalshi scan complete', { body: msg, icon: '/favicon.ico' });
+              new Notification(`Kalshi ${sameday ? 'same-day ' : ''}scan complete`, { body: msg, icon: '/favicon.ico' });
             }
           }
         })
@@ -526,22 +563,63 @@ export default function App() {
     }, 3000);
   }, [data.refresh, addToast]);
 
-  const handleRunCron = useCallback(() => {
+  // samedayOnly runs `cron --sameday-only`: same-day markets only. That is a
+  // CHEAPER scan, not a more capable one -- a full scan fires the METAR
+  // lock-in identically. Defaults to false so every existing caller keeps
+  // getting a full multi-day scan.
+  const handleRunCron = useCallback((samedayOnly = false) => {
+    samedayRef.current = samedayOnly;
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-    setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
-    fetch('/api/run_cron', withTimeout({ method: 'POST', headers: authHeader() }))
+    setCronState({
+      status: 'running',
+      log: [samedayOnly ? 'Starting same-day scan…' : 'Starting scan…'],
+      exitCode: null,
+      samedayOnly,
+    });
+    fetch('/api/run_cron', withTimeout({
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sameday_only: samedayOnly }),
+    }))
       .then(r => r.json())
       .then(d => {
-        if (d.error) {
-          setCronState({ status: 'error', log: [d.error], exitCode: 1 });
+        // Positive check, not `if (d.error)`: api_run_cron's spawn-failure
+        // path returns {"status":"error","message":...} with NO `error` key,
+        // so a 500 fell into the success branch below -- adopting a
+        // sameday_only that isn't there, arming the poll, and firing
+        // "complete" for the PREVIOUS run. 409/429 do send `error`; this
+        // covers all three.
+        if (d.status !== 'started') {
+          setCronState({
+            status: 'error',
+            log: [d.error || d.message || 'Scan failed to start'],
+            exitCode: 1,
+            samedayOnly,
+          });
+          pageStartedScanRef.current = false;
         } else {
+          // Trust the server's echo over what we asked for. The endpoint
+          // accepts only a JSON `true`, so a request that failed to opt in
+          // (wrong content-type, a proxy that stringified the body) gets a
+          // FULL scan -- and without this the UI would label it same-day for
+          // its whole run. This is what the echo was added for.
+          const confirmed = d.sameday_only === true;
+          samedayRef.current = confirmed;
+          pageStartedScanRef.current = true;
+          setCronState(prev => ({ ...prev, samedayOnly: confirmed }));
           startCronPoll();
         }
       })
-      .catch(e => setCronState({
+      .catch(e => {
+        // A block body, not a comma expression: this arrow needs two
+        // statements now, and `(a = false, setCronState({...}))` is both
+        // harder to read and easy to mis-close.
+        pageStartedScanRef.current = false;
+        setCronState({
         status: 'error',
+        samedayOnly,
         // batch-84 item 3: api_run_cron spawns the subprocess and only then
         // responds, so an aborted request may have started a scan that is
         // now running unwatched. Saying "is the server running?" there is
@@ -562,7 +640,8 @@ export default function App() {
           ? 'Request timed out — a scan may have started anyway; reload to check.'
           : 'Request failed — is the server running?'],
         exitCode: 1,
-      }));
+        });
+      });
   }, [startCronPoll]);
 
   const handleCancelCron = useCallback(() => {
@@ -591,8 +670,19 @@ export default function App() {
     fetch('/api/cron-status', withTimeout({ headers: authHeader() }))
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (d?.running) {
-          setCronState({ status: 'running', log: d.log || [], exitCode: null });
+        // pageStartedScanRef, not an unguarded overwrite: this reply can
+        // arrive AFTER the operator has already started a scan from this page
+        // (see the queueing note above), and clobbering the mode then would
+        // mislabel their same-day run. Only adopt this reply when the run is
+        // genuinely not ours.
+        if (d?.running && !pageStartedScanRef.current) {
+          // Not started by this page (a reload mid-scan, the CLI, or Task
+          // Scheduler), and /api/cron-status does not report the mode. Label
+          // it a full scan DELIBERATELY rather than leaving the key undefined
+          // -- undefined read as "full" anyway, but by accident, and it made
+          // the full-scan button show "Running…" during a same-day run.
+          samedayRef.current = false;
+          setCronState({ status: 'running', log: d.log || [], exitCode: null, samedayOnly: false });
           startCronPoll();
         }
       })
