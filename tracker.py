@@ -3606,7 +3606,8 @@ def brier_score(
     reference _excluded_brier_condition_types() (dynamic, gate-coupled --
     see that function's own docstring), the same source this function uses.
     get_rolling_win_rate, get_metar_lockout_calibration_data,
-    get_multiday_calibration_cli, and get_sameday_calibration_cli reference
+    get_multiday_calibration_cli, get_sameday_calibration_cli, and
+    _get_recent_win_loss reference
     _ALWAYS_EXCLUDED_CONDITION_TYPES instead (opus-review finding M5,
     corrected during this same fix): their own docstrings give a
     structural/scale-mismatch reason for the exclusion, not a shadow-
@@ -3614,6 +3615,15 @@ def brier_score(
     just imprecise -- see _ALWAYS_EXCLUDED_CONDITION_TYPES's docstring for
     the distinction. The paper-trade fallback below is now filtered too,
     via _paper_trade_excluded_condition_type().
+
+    _get_recent_win_loss was added to that list on 2026-09-02 and had
+    appeared on NEITHER list before -- not the filtered one and not the M4
+    "still unfiltered" one below. It was never considered by any of the
+    three review passes this docstring records, which is how the one query
+    feeding the LIVE circuit breaker (via sprt_model_health ->
+    paper.is_accuracy_halted) went unfiltered while its sibling
+    get_rolling_win_rate was fixed. It halted all trading on 2026-09-02
+    from a window of 49 precip_month_total rows and 1 tornado_count.
 
     NOT "every sibling" (opus-review finding M4, corrected here): this
     module still has unfiltered condition_type-adjacent functions this fix
@@ -5200,19 +5210,52 @@ def _get_recent_win_loss(window: int) -> tuple[int, int]:
     A win is: (our_prob >= 0.5 AND outcome = 1) OR (our_prob < 0.5 AND outcome = 0).
 
     Returns (wins, n) where n <= window.
+
+    Excludes _ALWAYS_EXCLUDED_CONDITION_TYPES for the SAME reason
+    get_rolling_win_rate() does, and the omission was a real defect rather
+    than a style difference: this feeds sprt_model_health(), which feeds
+    paper.is_accuracy_halted() -- the live circuit breaker. Monthly
+    rain/snow/hurricane and other non-directional families carry a different
+    win-rate distribution than a directional temperature call, so letting
+    them in can "falsely trip the halt on unrelated volatility" exactly as
+    get_rolling_win_rate's own docstring warns. The set also contains
+    'between', which is neither monthly nor non-directional -- it is
+    excluded for the SEPARATE scale-mismatch reason
+    _ALWAYS_EXCLUDED_CONDITION_TYPES documents (a structurally larger
+    calibration gap), and it is the member least likely to stay
+    shadow-only since its gate is deliberately decoupled from the other
+    six (weather_markets._between_metar_gates_active).
+
+    NOT filtered by this: rows with a NULL condition_type, which
+    _condition_type_not_in_sql keeps by contract. Same exposure as the
+    sibling; recorded so "the filter is complete" is not read too widely.
+
+    MEASURED 2026-09-02, which is why this filter exists here now: the live
+    window was 49 precip_month_total rows plus 1 tornado_count and ZERO
+    temperature rows -- monthly markets all settle on the month boundary, so
+    one batch sweep filled the whole `ORDER BY settled_at DESC LIMIT 50`
+    window. It scored 15/50 and halted ALL trading at llr=+4.0134 while the
+    temperature model it is supposed to police sat at 50% (llr=0.0000) over
+    24 market dates. The sibling rolling-win-rate check, which already had
+    this filter, read 45% and did not halt -- the two layers disagreed
+    purely because of the missing exclusion.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _ALWAYS_EXCLUDED_CONDITION_TYPES
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND {cond_clause}
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
-            (window,),
+            (*cond_params, window),
         ).fetchall()
     n = len(rows)
     wins = sum(

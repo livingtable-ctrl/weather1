@@ -1303,7 +1303,10 @@ class TestBrierFamilyNewlyFilteredFunctions(unittest.TestCase):
 class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
     """Tests for opus-review finding M5 (batch-06): get_rolling_win_rate(),
     get_metar_lockout_calibration_data(), get_multiday_calibration_cli(),
-    and get_sameday_calibration_cli() must stay excluded for all 6
+    get_sameday_calibration_cli(), and _get_recent_win_loss() (the fifth,
+    added 2026-09-02 -- it feeds sprt_model_health() and therefore the live
+    accuracy circuit breaker, and had no member test here) must stay
+    excluded for all 6
     condition_types EVEN when every market-family gate is active --
     their own docstrings give a structural/scale-mismatch/not-yet-
     validated reason for the exclusion, not a shadow-market-family one,
@@ -1377,6 +1380,25 @@ class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
         # If precip_month_total leaked in, count would be 2 and win_rate < 1.0.
         self.assertEqual(count, 1)
         self.assertAlmostEqual(win_rate, 1.0, places=6)
+
+    def test_get_recent_win_loss_stays_excluded_with_all_gates_active(self):
+        """The SPRT window must not re-admit a shadow family when its gate
+        flips. This is the test that DISCRIMINATES the two constants: with
+        every gate inactive (the default test environment)
+        _ALWAYS_EXCLUDED_CONDITION_TYPES and _excluded_brier_condition_types()
+        are identical, so tests/test_sprt.py's filter tests pass under either.
+        Only with the gates patched active does the wrong choice show up --
+        and the wrong choice would re-create the 2026-09-02 incident, where
+        precip_month_total rows halted all trading."""
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        self._insert("TK-SHADOW", 0.0, True, condition_type="precip_month_total")
+        with contextlib.ExitStack() as _stack:
+            for _p in self._all_gates_active():
+                _stack.enter_context(_p)
+            wins, count = tracker._get_recent_win_loss(20)
+        # If precip_month_total leaked in, count would be 2 (and wins still 1).
+        self.assertEqual(wins, 1)
+        self.assertEqual(count, 1)
 
     def test_get_metar_lockout_calibration_data_stays_excluded_with_all_gates_active(
         self,

@@ -1,6 +1,71 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-09-02 -- opened by the opus review of the SPRT condition_type fix
+  (commit that adds _get_recent_win_loss's filter). These are the findings that
+  review said to FILE rather than fix, because each is a pre-existing hole the
+  fix touches the edge of rather than creates.]
+  THE ACCURACY CIRCUIT BREAKER CAN SWITCH ITSELF OFF SILENTLY, AND NEITHER
+  LAYER COVERS THE SHADOW FAMILIES ONCE THEIR GATES FLIP
+Priority: MEDIUM now, HIGH the day any *_TRADING_ENABLED flag is set. Nothing
+  is unprotected today because every gate-coupled family is shadow-only.
+Files: paper.py:3396 is_accuracy_halted, paper.py:3484
+  get_accuracy_halt_reason, tracker.py sprt_model_health /
+  _get_recent_win_loss, tracker.py get_rolling_win_rate, backtest.py
+  run_walk_forward.
+
+1. SAMPLE STARVATION IS A SILENT KILL-SWITCH. sprt_model_health returns
+   {"status": "insufficient_data"} when the window falls under
+   SPRT_MIN_TRADES (20), and is_accuracy_halted then falls through to
+   `return False` WITH NO LOG LINE -- it logs only on "degraded". Layer 1 has
+   the identical dead zone (count < ACCURACY_MIN_SAMPLE -> bare `pass`). Now
+   that both layers filter to the SAME population, a temperature drought
+   turns the whole accuracy breaker off with nothing visible to an operator.
+   Before the condition_type filter landed, the monthly rows padded n past
+   the floor -- with garbage, but the layer was at least ON.
+   FIX: log at WARNING (or surface it through get_accuracy_halt_reason) when
+   either layer skips for insufficient sample while in a trade-placing path.
+   DEBUG is not enough -- it never reaches the console an operator watches.
+
+2. NO HALT LAYER COVERS THE EXCLUDED FAMILIES AT ALL. Both layers now exclude
+   between + the 6 gate-coupled types. Before the fix the SPRT was the only
+   thing that could halt on a collapse in those families; now nothing can.
+   alerts.py's WIN_RATE_COLLAPSE reads load_paper_trades(), so it only sees
+   families that actually place orders; check_condition_type_weakness is
+   warn-only and its cron call site swallows exceptions. The exclusions are
+   CORRECT (a monthly-precip win rate is not a temperature win rate), so the
+   answer is not to un-exclude -- it is a per-family breaker. This must be
+   built BEFORE any family goes live, not after.
+   'between' is the sharp end: its gate (_between_metar_gates_active) is
+   deliberately decoupled from the other six, so it is the member most likely
+   to trade real capital while invisible to both layers.
+
+3. backtest.py run_walk_forward (~L743-750) HAS THE SAME MISSING FILTER.
+   It computes avg_brier / avg_win_rate / stability_score from
+   multiday_predictions JOIN outcomes_valid with no condition_type filter --
+   the closest structural analogue to the bug just fixed. It gates nothing
+   today (only caller is main.py cmd_walkforward, a human-run CLI) and it
+   opens sqlite3.connect(_TRACKER_DB) directly rather than going through
+   _conn()/init_db(), so it is a separate change. Also unfiltered and
+   display-only: web_app.py /api/reliability/<city>,
+   tracker.get_component_attribution. NOT a gap:
+   brier_by_condition_type_rolling, which GROUPs by condition_type in Python.
+
+4. NULL condition_type ROWS BYPASS EVERY ONE OF THESE FILTERS.
+   _condition_type_not_in_sql builds "(condition_type IS NULL OR
+   condition_type NOT IN (...))", so a NULL row is KEPT. condition_type is
+   nullable and is populated from the caller-supplied analysis dict in
+   log_prediction, so a producer that omits it leaks straight into the
+   circuit breaker's window. Shared by every consumer of that helper, so it
+   is the helper's contract to change, not one call site's.
+
+WHY THIS ENTRY EXISTS AT ALL, which is the part worth keeping: the module's
+own permanent M5 audit registry in tracker.brier_score's docstring enumerates
+every filtered and every deliberately-unfiltered consumer across three review
+passes -- and _get_recent_win_loss appeared on NEITHER list. The one query
+feeding the live circuit breaker was never considered by any of them. An audit
+that lists what it checked is only as good as its enumeration of what exists.
+
 [OPEN 2026-09-01 -- surfaced by a parallel session while diagnosing the
   ensemble auto-retirement and handed over rather than filed there. Filed as a
   QUESTION. The first draft of this entry argued the exemption was protecting
