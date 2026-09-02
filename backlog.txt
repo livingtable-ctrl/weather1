@@ -1,6 +1,272 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-09-01 -- surfaced by the opus review of the gfs step-2 measurement,
+  then verified independently against source before filing. Filed separately
+  from "LIVE BLEND WEIGHTS ARE FIT ON RAW MAE ..." because it is a different
+  table with different consumers, per the same-payload test.]
+  get_ensemble_temps PERSISTS BIAS-CORRECTED MEMBERS INTO ensemble_member_values
+  UNDER A COMMENT PROMISING RAW ONES, WHILE batch_prewarm_ensemble PERSISTS RAW
+  -- SO THE SAME TABLE HOLDS BOTH, AND WHICHEVER WRITER RUNS FIRST WINS
+Priority: MEDIUM. A table that silently mixes two different quantities under one
+  dedup key is worse than one that is uniformly wrong, because no consumer can
+  tell which it got. Not a live-money path today (nothing prices off this
+  table), so it is not HIGH -- but it is a data-integrity defect, not a
+  cosmetic one, and the comment that documents the invariant is the thing
+  currently asserting the false half.
+Files: weather_markets.py (get_ensemble_temps :5771 -- the rebinding at :5823
+  and the persist at :5849; batch_prewarm_ensemble :2691 -- its persist at
+  :3071), _persist_member_values :4356 -- whose own docstring (:4363-4371) is
+  a SECOND place asserting the raw invariant, and asserts it in the strongest
+  form: ":4368  Both call this BEFORE bias correction and BEFORE the
+  `temps * repeats` weight-replication". That sentence is now half false. A
+  fixer working from this entry must update it AND the :5830 comment, not one
+  of them. In tracker.py: the ensemble_member_values schema :615, its dedup
+  index :631-632, and the `INSERT OR IGNORE` the "first writer wins" claim
+  rests on, :11456 in log_ensemble_members_bulk.
+
+Problem, verified 2026-09-01 by reading both writers:
+
+  In get_ensemble_temps the fetched list is REBOUND by the bias correction:
+
+    5820   temps = _fetch_model_ensemble(...)
+    5821   model_bias = bias.get(model, 0.0)
+    5822   if model_bias:
+    5823       temps = [t - model_bias for t in temps]   <- rebinds `temps`
+    5829   all_temps.extend(temps * repeats)
+    5830   # batch-64 item 2: raw members, pre-bias and pre-replication.
+    5849   _persist_member_values(city, model, ..., temps)   <- DEBIASED
+
+  The comment at :5830 is not stale drift -- it is a careful comment that
+  explains why the call was deliberately MOVED DOWN past all_temps.extend (an
+  opus review argued a log-only writer throwing above that line would drop the
+  model from the blend entirely). In moving it, it crossed the rebinding at
+  :5823. The reason for the move was sound; the move was made without noticing
+  what it moved past. That is the whole defect.
+
+  batch_prewarm_ensemble does it correctly, and says why:
+
+    3059   # Written BEFORE bias correction below: those consumers (accuracy
+           # scoring, consensus-gap comparisons) need the model's raw
+           # forecast, not a self-referentially-corrected one.
+    3065   # batch-64 item 2: persist the raw members here ... before bias
+           # correction and before the weight-replication below.
+    3071   _persist_member_values(city_name, model, date_iso, var_str, member_temps)
+
+  So ensemble_member_values receives RAW rows from prewarm and BIAS-CORRECTED
+  rows from get_ensemble_temps, keyed identically. The insert is INSERT OR
+  IGNORE on (city, model, target_date, var, cycle), so within any one cycle
+  WHICHEVER WRITER GETS THERE FIRST DECIDES which quantity is stored, and
+  nothing in the row records which one it was.
+
+WHY IT MATTERS BEYOND TIDINESS. Prewarm's own comment names the hazard exactly:
+  a bias-corrected value fed back into accuracy scoring is
+  self-referential -- the correction is fit on the errors, so scoring the
+  corrected value measures the residual and reports it as the model's skill.
+  That is the same class of defect as backlog.txt's
+  "train_all_temperature_scaling FITS T ON ITS OWN PRIOR OUTPUT".
+
+WHAT IS NOT CLAIMED. No current consumer is shown to be reading the
+  contaminated rows or to have produced a wrong number from them -- the step-2
+  measurement that found this reads ensemble_member_scores, a DIFFERENT table,
+  which is unaffected -- but the scope of that claim matters and an earlier
+  draft overstated it. Verified repo-wide, `predicted_temp` has one INSERT
+  writer and NO post-hoc UPDATE. The other two columns the measurement reads
+  DO have post-hoc writers: tracker.py:10761 sets implied_prob/brier,
+  tracker.py:10969 rewrites actual_temp from official settlements, :10630 sets
+  var and :11280 re-keys model. None of them is the bias correction at issue
+  here, which is why the measurement stands, but "no UPDATE touches it" is
+  true of predicted_temp alone. The A15 rank-histogram consumer
+  prewarm's comment mentions was not traced. So: fix the writer, and check what
+  reads the table before deciding whether existing rows need a repair pass.
+
+Fix: pass the raw list. The cheapest correct form is to stop rebinding --
+  keep the fetched list under its own name and apply the correction into a
+  second name used by the blend -- so a future reader cannot re-introduce this
+  by moving a line. Do NOT simply move the persist call back above :5823: that
+  re-creates the exception-scope problem the :5830 comment exists to document.
+
+[OPEN 2026-09-01 -- found while running step 2 of the gfs_seamless entry
+  ("gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max"). Not that entry's
+  question and deliberately not folded into it: that one is gated on a sample
+  floor for weight VALUES, and this is a mechanism defect that is not.]
+  LIVE BLEND WEIGHTS ARE FIT ON RAW MAE WHILE THE BLEND ITSELF SUBTRACTS THE
+  SAME BIAS, SO A BIASED MEMBER IS PENALISED TWICE
+Priority: MEDIUM. A whole correction is applied twice to the same error, in two
+  subsystems that do not know about each other. Same class as, and the same
+  argument for acting as, the batch-96 round(w*2) quantisation fix: it is a
+  mechanism question, so it does NOT need the 112-row floor that gates
+  reweighting. What it DOES need before any code change is a decision about
+  which basis the weights should use, and that decision is a measurement.
+Files: weather_markets.py (_weights_from_mae :4790, _model_bias :5396,
+  _model_weights :5522, get_ensemble_temps :5771 and the subtraction at :5823,
+  _WEIGHT_REPLICATION_FACTOR :934), tracker.py (get_member_accuracy :11760,
+  get_member_bias :11875).
+  SECOND LIVE SITE, and any fix must touch both: batch_prewarm_ensemble
+  (:2691) performs the identical _model_bias() lookup, the identical
+  `[t - model_bias for t in member_temps]` subtraction and the identical
+  `repeats = max(1, round(w * _WEIGHT_REPLICATION_FACTOR))` -- the lookup at
+  :3079 (from `bias = _model_bias(city_name, var_str)` at :3049), the
+  subtraction at :3081, the replication at :3087.
+  A change landed in only one of the two would make a warm cache and a cold
+  fetch price differently. Prewarm also binds the corrected list to a SEPARATE
+  name (`blend_temps`, :3080-3084) rather than rebinding the fetched one, which
+  is the shape the sibling entry above recommends -- but do NOT read that as
+  what protects it. Prewarm's persist is at :3071, BEFORE the bias lookup
+  (:3079) and the subtraction (:3081) even run, so call ORDER is the actual
+  guarantee there and rebinding would not have created the bug. The separate
+  name is belt-and-braces, not the mechanism.
+
+Problem:
+  Two subsystems correct the same error, independently.
+
+  1. get_ensemble_temps subtracts a per-model additive bias from every member
+     before replication: `temps = [t - model_bias for t in temps]` (:5823),
+     where model_bias comes from _model_bias() <- tracker.get_member_bias(),
+     the signed mean of (predicted_temp - actual_temp) over a 60-day window,
+     split by var.
+
+  2. _model_weights() blends its seasonal baseline with _weights_from_mae(),
+     which reads tracker.get_member_accuracy() -- mean ABSOLUTE error over the
+     RAW ensemble_member_scores.predicted_temp, bias included and pooled
+     across var -- and assigns weight 1.0/mae.
+
+  So a member with a large signed bias is corrected by (1) and then
+  down-weighted by (2) for the very error (1) just removed. Nothing in either
+  path references the other.
+
+Measured 2026-09-01, on the live DB:
+  gfs_seamless carries a max bias of +3.49F (n=26). Bias and sd are close
+  (+3.49 vs 3.13, i.e. bias is ~55% of MSE -- NOT "mostly offset", which an
+  earlier draft of this line claimed); what makes it an offset story is the
+  comparison, gfs's sd being ordinary for this panel while its bias is 2-3x
+  any peer's. That sd comes from the repro's target_date-MONTH bucket, not
+  from get_member_bias, which returns no sd -- see the provenance note below. Its raw pooled MAE is 3.2216 (n=64)
+  against icon_seamless 1.9558 (n=64), and that raw number is what sets the
+  weight:
+
+    _weights_from_mae("NYC")  gfs 0.7225  icon 1.1901  aifs 0.8783
+    _model_weights("NYC")     gfs 0.8057  icon 1.1331  aifs 1.0648
+
+  On leave-one-out DEBIASED MAE over paired cells -- i.e. the error that
+  actually survives into the blend -- the ordering is different:
+
+    var=max  n=26   gfs 2.449   icon 2.068   aifs 2.554
+    var=min  n=34   gfs 2.777   icon 1.861   aifs 1.842
+
+  On max, once the bias is removed, the three are INDISTINGUISHABLE -- gfs -
+  aifs = -0.105, t = -0.24, sign-flip p = 0.814 on n=26 -- so no ordering is
+  established either way. An earlier draft of this line asserted "aifs is the
+  worst"; the sibling entry's own numbers forbid that, and the point being
+  made here does not need it. What the data does support is narrower and
+  sufficient: the weight asserts a confident ordering the debiased error does
+  not. On min the debiased gaps DO survive (gfs worst, p = 0.021 vs icon,
+  0.011 vs aifs), and there weight and corrected error agree in sign.
+
+A SECOND, RELATED MISMATCH IN THE SAME PAIR. get_member_bias is deliberately
+  split by var and refuses to pool -- its docstring records a leave-one-out
+  backtest (2026-08-13) finding that a var-pooled bias correction scored WORSE
+  than no correction at all, because a model's max and min bias can be
+  similarly sized and opposite signed. get_member_accuracy pools across var.
+  So the correction and the weight disagree about whether var is even
+  separable, which is a second reason the weight cannot express what the
+  correction did. gfs is exactly the case that distinguishes them: +3.49 on
+  max against +0.25 on min.
+
+WHAT THIS ENTRY DOES NOT CLAIM. It does not claim that fixing this improves
+  Brier, edge, or P&L, and nothing here licenses a reweighting -- weight
+  VALUES remain gated by the gfs entry's step 2, which as of 2026-09-01 is
+  measured and NOT met (n=26 max / 34 min against a 112 floor). The claim is
+  only that the current weight is derived from a quantity the pipeline has
+  already corrected, which is true regardless of sample size.
+
+THE REASON NOT TO JUST SWAP THE BASIS. _WEIGHT_REPLICATION_FACTOR is now 20,
+  raised from 2 by batch-96. Under the old factor, round(w*2) collapsed every
+  weight the learning system produced to the same integer and the whole
+  weighting was inert -- so this defect was, until 2026-08-28, invisible by
+  construction. It is now live and weights bite roughly an order of magnitude
+  harder. Any change to the weight BASIS moves live prices materially more
+  than the same change would have a month ago, which is an argument for
+  measuring first, not for moving fast.
+
+Options, none of them costless, listed so the next session does not re-derive
+  them:
+  a. Fit weights on debiased MAE (subtract get_member_bias before computing
+     the error). Smallest change, keeps MAE. But it needs the var split to
+     mean the same thing on both sides, and get_member_accuracy pools.
+  b. Fit weights on Brier instead of MAE. The member quarantine already made
+     exactly this swap for its own statistic (get_member_brier exists and is
+     used by scan_member_quarantine), so there is in-repo precedent and a
+     helper. Brier is probability skill, which is what the blend is actually
+     for. It costs history, but LESS than an earlier draft of this entry
+     said: that draft set a per-model brier count against a pooled all-model
+     row count and implied ~8x. Like-for-like, per model, 2026-09-01: brier
+     covers 60 of gfs's and 60 of icon's 127 rows, and all 60 of aifs's 60 --
+     so ~2x history lost on two of the three live members and NONE on the
+     third, because brier starts 2026-08 and so does aifs.
+  c. Document it and leave it. Defensible while the blend's own value is
+     unproven, but it should be an explicit decision written into
+     _weights_from_mae's docstring, not the current silence.
+
+  Do NOT pick one without measuring: the gfs entry's caveats about n apply
+  with full force to any comparison of these options, and (b) in particular
+  cannot be evaluated on 60 rows.
+
+A SECOND LEAK IN THE SAME FUNCTION, found by the opus review of this entry and
+  verified independently before being written down. It is filed here rather
+  than as its own entry because it moves the SAME number -- the weight value
+  _weights_from_mae returns -- and any fix to one has to be measured against
+  the other.
+
+  _weights_from_mae skips TRACKING_ONLY_MODEL_NAMES before building `weights`
+  (:4818), and its comment states the exact reason: a non-blend model "must not
+  perturb any OTHER model's normalized weight via the total/n_models
+  denominator below". But TRACKING_ONLY_MODEL_NAMES is
+  {gem_global, ukmo_global_ensemble_20km, ncep_hrrr_conus} (:1012) and does NOT
+  contain ecmwf_ifs025 -- which is equally not a member of this blend.
+  _model_weights filters ifs025 out of the RETURNED set downstream, via
+  ensemble_candidate_models (:5643), but by then it has already been counted in
+  `total` and `n_models` at :4849-4850. So it is precisely the leak that
+  comment exists to prevent, from a model the frozenset does not cover.
+
+  Measured 2026-09-01 with the production helper:
+
+    with ifs025 in the denominator (today)   gfs 0.7225  icon 1.1901  aifs 0.8783
+    with ifs025 excluded from it             gfs 0.7766  icon 1.2792  aifs 0.9441
+
+  ~7.5% relative on gfs. Note the direction: it currently makes gfs's weight
+  LOWER, i.e. it compounds the double-count above rather than offsetting it.
+
+Repro and provenance -- NOT every number here comes from one place, and mixing
+  them is how the earlier draft of option (b) went wrong:
+  * The paired MAE / Brier / debiasing tables belong to the gfs entry and are
+    reproduced by audit/reproductions/gfs_step2_paired_brier.py, which is
+    read-only against predictions.db but not write-free overall -- see that
+    entry's own Repro note.
+  * The bias figures (+3.49 max, +0.25 min) are tracker.get_member_bias(60) --
+    a 60-day logged_at window. The repro script's section 1 buckets by
+    target_date MONTH instead and prints +0.44 for gfs/min over 2026-08. Both
+    are correct for what they measure; neither is a check on the other.
+    AND THE sd QUOTED BESIDE THE BIAS IS FROM THE SECOND OF THOSE, NOT THE
+    FIRST: get_member_bias returns no sd at all, so every sd in either entry
+    (3.13 for gfs/max, and the peer sds 2.57/3.17/3.29/2.85) comes from the
+    month bucket. At max the two row sets happen to be identical so the pair
+    is coherent; at min they are NOT (get_member_bias n=36 / +0.2536 against
+    the month bucket's n=34 / +0.44). Do not pair a min bias with a min sd.
+  * The pooled MAEs (gfs 3.2216 n=64, icon 1.9558 n=64) are
+    tracker.get_member_accuracy(60), pooled across var.
+  * The weights are weather_markets._weights_from_mae("NYC") and
+    _model_weights("NYC"); the bias the blend subtracts is
+    _model_bias("NYC","max") = 3.4873, global for every city.
+  Calling any tracker read helper runs init_db(), which opens the real DB
+  read-write -- so those four bullets were read from a throwaway process and
+  deliberately NOT folded into the read-only repro script.
+
+When to revisit:
+  Alongside the gfs entry's step 2 re-run at a defensible n, and immediately if
+  any member is ever actually quarantined (quarantine acts one layer above
+  these weights and would change what the weight is even doing).
+
 [OPEN 2026-08-31 -- filed after the measurement REFUTED the finding it was
   opened to record. Kept because the negative result and the four traps below
   cost real effort to find, and the raw (wrong) number is easy to reproduce.]
@@ -48633,18 +48899,30 @@ correct response is not to trust less; it is to compute the split.
 [OPEN 2026-08-26 -- raised by the user against the blanket "do not improve the
   forecast" recommendation. They were right; that line was written without
   checking member-level data. Measured after the challenge, then checked
-  against published verification, which REVERSED the interpretation.]
+  against published verification, which REVERSED the interpretation.
+  READ THE TITLE AS SUPERSEDED: step 2 (2026-09-01) shows the 2x is a BIAS
+  ARTIFACT measured on a column the blend never prices from, and that on
+  Brier nothing is significant at either var. The title is kept verbatim
+  because BACKLOG_OPEN.md indexes titles and the refuted claim is the one a
+  future reader will search for -- but do not cite it. Still OPEN only for
+  step 2's own re-run at a defensible n.]
   gfs_seamless HAS ~2x THE ERROR OF ITS PEERS ON max IN THIS PIPELINE -- WHICH
   CONTRADICTS ITS PUBLISHED GLOBAL RANKING, SO SUSPECT THE PRODUCT/CONFIG, NOT
-  THE MODEL
+  THE MODEL  [TITLE SUPERSEDED 2026-09-01 -- see the bracket above]
 Priority: MEDIUM -- concrete and cheap, unlike the modelling work the no-edge
   entries argue against. If the leading hypothesis holds this is a data-source
   defect, which is a bug, not a skill gap.
-Files: weather_markets.py (_model_weights' `baseline` dict ~:2148 --
-  gfs_seamless 1.0, ecmwf_ifs025 ecmwf_w, icon_seamless 1.0; ecmwf_w = 1.5
-  summer / 2.5+ winter with an ENSO bump). NOTE: ENSEMBLE_MODELS (~:884) is
-  NOT the live membership -- its own comment says "keep for backward compat".
-  The live temperature blend is that three-key baseline dict.
+Files: weather_markets.py. CITATIONS RE-DERIVED 2026-09-01; the originals
+  (~:2148, ~:884) had drifted and one pointed at the WRONG blend entirely.
+  _model_weights' `baseline` dict is :5613-5617 and reads icon_seamless 1.0,
+  gfs_seamless 1.0, ecmwf_aifs025_ensemble ecmwf_w -- NOT ecmwf_ifs025, which
+  is the DETERMINISTIC blend's model (_forecast_model_weights' own baseline
+  :2219-2223, ifs025 at :2221) and is excluded here. THIS FUNCTION'S ecmwf_w is
+  1.5 summer / 2.0 winter with NO ENSO term (:5607-5611) -- the "2.5+ winter
+  with an ENSO bump" this line used to carry is _forecast_model_weights'
+  (:2209-2217), i.e. it had imported the rule from the very blend the sentence
+  warns you not to confuse this one with. NOTE: ENSEMBLE_MODELS (:935) is NOT
+  the live membership -- its own comment says "keep for backward compat".
 
 Measured on ensemble_member_scores, PAIRED -- only (city, target_date, var)
 cells where all three live members are present, so it is like-for-like:
@@ -48769,6 +49047,196 @@ STEP 1 DONE 2026-08-28 (batch-97). Neither hypothesis survives as the
   first 48 hours. See "THE DETERMINISTIC BLEND TRADES ON HRRR UNDER A GFS
   LABEL". It does not explain the number above -- different endpoint -- but it
   is why this entry's instinct to suspect the product was sound.
+
+STEP 2 DONE 2026-09-01. THE 2x IS A BIAS ARTIFACT, AND THE ENSEMBLE BLEND
+  CORRECTS IT BEFORE PRICING -- BUT "WRONG COLUMN" DOES NOT RETIRE THE
+  FINDING, BECAUSE A SECOND LIVE CONSUMER READS IT UNCORRECTED.
+  Three things follow and they must not be collapsed into one:
+   (i)  the ENSEMBLE BLEND's price does not see this offset -- it is subtracted
+        at weather_markets.py:5823 before any member enters the blend;
+   (ii) the blend nonetheless DERIVES both that correction and its weights
+        from this same raw column, which is its own defect and its own entry
+        (see the end of this block);
+   (iii) THE model_consensus SIZING GATE CONSUMES IT UNCORRECTED. This was
+        missed by the first version of this block and is why the heading is
+        qualified. _get_consensus_probs (:12338) calls _model_prob_and_mean
+        for icon/gfs/aifs with NO bias correction anywhere in the function;
+        its icon_p/gfs_p set model_consensus at :17669, and
+        order_executor.py:5047 does `consensus_mult = 0.5 if not
+        a.get("model_consensus", True) else 1.0`, applied to Kelly at :5065.
+        So gfs's uncorrected +3.49F max offset is a live input to an
+        icon-vs-gfs divergence test that can HALVE POSITION SIZE. For that
+        consumer the raw MAE measured in this entry is the RIGHT measurement,
+        not the wrong one.
+  So: the reweighting question stays gated on Brier at a defensible n, but the
+  raw-error question is LIVE for model_consensus and is not answered here. Steps 2 and 3 still gate any reweighting, and the gate is
+  still NOT met -- but the reason to leave the weights alone has changed, and
+  the member that now looks worst is a different one.
+
+  WHY THE MEASURED COLUMN IS THE WRONG ONE, established before any statistic.
+  ensemble_member_scores.predicted_temp is the RAW member mean: analyze_trade
+  builds model_forecast_means from _get_consensus_probs <- _model_prob_and_mean
+  (weather_markets.py:12231), which returns sum(temps)/len(temps) with no
+  correction applied, and paper._score_ensemble_members logs that value. The
+  live blend does not use it that way -- get_ensemble_temps (:5771) subtracts a
+  per-model additive bias from every member first (`temps = [t - model_bias for
+  t in temps]`, :5823, from _model_bias :5396 <- tracker.get_member_bias
+  :11875). So every MAE figure in this entry, the 2x included, describes a
+  quantity the blend corrects before it prices anything.
+
+  THE CORRECTION IS LIVE, AND IT IS THE WHOLE GAP. tracker.get_member_bias(60)
+  on 2026-09-01, global -- no city clears its own 20-observation floor, so
+  every city receives the global number:
+
+    model                      var   n    bias
+    gfs_seamless               max  26   +3.49
+    ecmwf_aifs025_ensemble     max  26   -1.57
+    ecmwf_ifs025               max  26   +1.06
+    gem_global                 max  26   -1.37
+    ukmo_global_ensemble_20km  max  26   +0.42
+    icon_seamless              max  26   -0.11
+
+  gfs's August max EXCESS is offset, not scatter. Bias and sd are nearly equal
+  (+3.49 vs 3.13, so the bias is ~55% of MSE, not most of it) -- the point is
+  comparative: gfs's sd is ordinary for this panel (icon 2.57, aifs 3.17, gem
+  3.29, ukmo 2.85) while its bias is 2-3x any peer's, and it is warm in 10 of
+  its 11 cities. Accordingly _model_bias() returns 3.4873 for
+  gfs/max in every city today, so the blend already subtracts nearly all of it.
+
+  PAIRED MAE, RAW vs LEAVE-ONE-OUT DEBIASED. Live members only, cells where all
+  three are present, 60-day window:
+
+    var=max  n=26              raw     debiased
+      icon_seamless          1.963      2.068
+      gfs_seamless           4.133      2.449
+      ecmwf_aifs025_ens      2.871      2.554
+      paired gfs - icon     +2.170     +0.382
+                          (t=+3.92)  (t=+0.80)
+
+    var=min  n=34              raw     debiased
+      icon_seamless          2.017      1.861
+      ecmwf_aifs025_ens      2.481      1.842
+      gfs_seamless           2.700      2.777
+      paired gfs - icon     +0.683     +0.916
+                          (t=+1.88)  (t=+2.47)
+      paired gfs - aifs     +0.219     +0.935
+                          (t=+0.60)  (t=+2.72)
+
+  The max table's gfs-aifs pair is printed here too, because it is the number
+  that most constrains the conclusion and omitting it would flatter this
+  block: debiased gfs - aifs = -0.105, t = -0.24, sign-flip p = 0.814. So on
+  max the three members are INDISTINGUISHABLE once bias is removed -- the raw
+  ordering stops being informative and NO new ordering is established. Only
+  the min gaps survive (sign-flip p = 0.021 vs icon, 0.011 vs aifs).
+
+  The debiasing is LEAVE-ONE-OUT -- each row corrected by the bias computed
+  from all OTHER rows of that model/var -- precisely because in-sample
+  debiasing would flatter gfs by construction. Note what it does: it ERASES the
+  max gap this entry was opened about, and CREATES a min gap the raw numbers
+  understated. The deficit that survives is on the OPPOSITE variable from the
+  headline.
+
+  ON BRIER -- the metric this entry itself requires -- NOTHING IS SIGNIFICANT
+  AT EITHER VAR. Same paired cells, ensemble_member_scores.brier:
+
+    var=max  n=26                        var=min  n=34
+      icon_seamless         0.2483         icon_seamless        0.3573
+      gfs_seamless          0.3024         gfs_seamless         0.3622
+      ecmwf_aifs025_ens     0.3611         ecmwf_aifs025_ens    0.4023
+      gfs - icon  +0.0541 (t=+0.74)        gfs - icon  +0.0049 (t=+0.06)
+      gfs - aifs  -0.0587 (t=-0.62)        gfs - aifs  -0.0401 (t=-0.47)
+
+  n = 26 max / 34 min against batch-81's 112-row floor for a single signal.
+  THE STEP-2 GATE IS NOT MET AND STEP 3 STAYS CLOSED.
+
+  IT WAS NEVER A STANDING PROPERTY OF THE MODEL. icon vs gfs paired MAE over
+  the full history -- the largest sample available, and only this pair reaches
+  back, since every ecmwf/gem/ukmo row starts 2026-08-04:
+
+    var=max  full  n=62   gfs 3.037  icon 2.402   ratio 1.26x  t=+1.64
+      pre-Jul      n=36   gfs 2.246  icon 2.719   ratio 0.83x  t=-1.04
+      Aug+         n=26   gfs 4.133  icon 1.963   ratio 2.11x  t=+3.92
+    var=min  full  n=53   gfs 2.502  icon 1.997   ratio 1.25x  t=+1.84
+      pre-Jul      n=19   gfs 2.147  icon 1.962   ratio 1.09x  t=+0.45
+      Aug+         n=34   gfs 2.700  icon 2.017   ratio 1.34x  t=+1.88
+
+  BOTH vars are printed deliberately: an earlier draft of this block quoted
+  only max, which flatters the heading. The min half does NOT show the
+  reversal -- gfs is worse than icon there in every bucket including pre-July
+  -- and min is precisely the variable on which the debiased deficit above
+  survives. So the "never a standing property" claim is about MAX only.
+
+  On max, in May-June, gfs was BETTER than icon. The bias itself walks: -0.67
+  (May) -> +1.15 (Jun) -> +3.49 (Aug). Whatever this is, it began around
+  August and is not a property of the product -- consistent with step 1 having
+  found no configuration explanation for it.
+
+  THE MEMBER THAT NOW LOOKS WORST IS ecmwf_aifs025_ensemble, NOT gfs, AND THE
+  PRODUCTION QUARANTINE SCANNER AGREES -- though NOT independently, and the
+  word is worth getting right: scan_member_quarantine reads get_member_brier
+  (tracker.py:11821), i.e. the SAME brier column over a 14-day window NESTED
+  INSIDE the one below. It is a different statistic, not a second sample. data/member_quarantine.
+  json after the 2026-09-01T06:29Z scan: gfs ewma_z -0.32 (own Brier 0.3276
+  against a peer mean of 0.3544, i.e. BETTER than its peers), icon -0.77, and
+  ecmwf_aifs025_ensemble +1.09 (own 0.4144 against peers 0.3110) -- the only
+  member drifting toward the trip line. Nothing is quarantined. That is a
+  different statistic over a different window from the tables above, and it
+  points the same way.
+
+  A NOTE ON THIS ENTRY'S OWN PAIRED TABLE: it compares icon / gfs /
+  ecmwf_ifs025, and ecmwf_ifs025 is NOT a member of this blend. _model_weights'
+  baseline is icon_seamless / gfs_seamless / ecmwf_aifs025_ensemble
+  (weather_markets.py:5613-5617); ifs025 belongs to the DETERMINISTIC blend and
+  is excluded from this one on grounds the code itself calls drift. Both sets
+  are reported above so the comparison to the original table survives.
+
+  WHAT IS NOT ESTABLISHED, and these bound the whole block:
+  * THE DB IS LIVE AND MOVED DURING THIS MEASUREMENT. A cron settlement pass
+    inserted a Seattle 2026-08-30 min cell at 2026-09-01T23:32:56Z, mid-run,
+    and it changed every min figure (Brier n 33 -> 34, icon min Brier 0.3679
+    -> 0.3573, and the sign of an already-insignificant gfs-icon gap). Every
+    number in this block is from ONE run at 2026-09-01T23:44Z -- do not mix
+    them with a figure taken at any other instant. The repro is deliberately
+    not date-pinned, so a re-run will NOT reproduce them exactly.
+  * THE MAE HALF IS NOT AN INDEPENDENT REPLICATION. The 60-day window overlaps
+    the n=21 cells this entry was written on, so the raw 2x is the same
+    measurement with more rows, not a second one. Only the debiasing and the
+    Brier comparison are new evidence.
+  * n is still under a third of the floor, still one season, still summer.
+  * THE CORPUS ITSELF IS SELECTED, and no earlier version of this entry says
+    so. ensemble_member_scores has exactly one production INSERT path --
+    paper._score_ensemble_members (paper.py:1781 -> tracker.log_member_score
+    :11332), which runs AT SETTLEMENT OF A PLACED PAPER TRADE -- so every row
+    describes a market the edge gates chose to trade,
+    and those gates read these same models. Within-cell pairing is fairly
+    robust to it, but nothing here is a claim about markets in general. Same
+    class as batch-87's note that `predictions` holds no row below
+    |forecast - market| = 0.0984.
+  * THE BLENDED-VS-BEST-MEMBER QUESTION THIS ENTRY ALSO RAISES CANNOT BE
+    ANSWERED. Only 11 max / 16 min cells carry a 'blended' row with a Brier,
+    and those rows are exactly the ones batch-75's METAR-lock contamination
+    repair re-keys. Nothing about the blend beating or losing to its best
+    member should be read off that.
+  * "Leave-one-out debiased" is what the blend approximately does, not exactly:
+    _model_bias applies a 60-day rolling global bias with its own city/global
+    floors, which is not identical to a leave-one-out fit over these cells.
+    The direction is not in doubt -- the correction removes an offset of the
+    measured size -- but the debiased MAEs are an estimate of the corrected
+    error, not the pipeline's own output.
+
+  A SEPARATE, REAL DEFECT FOUND WHILE CHECKING, filed as its own entry: the
+  live blend weights are fit on the RAW MAE while the blend separately
+  subtracts the bias, so a biased member is penalised twice. See "LIVE BLEND
+  WEIGHTS ARE FIT ON RAW MAE WHILE THE BLEND ITSELF SUBTRACTS THE SAME BIAS".
+  It is a mechanism defect and does not need this entry's sample floor.
+
+  Repro: audit/reproductions/gfs_step2_paired_brier.py. Not date-pinned, so
+  it re-derives against whatever the DB holds when run. READ-ONLY AGAINST
+  predictions.db (mode=ro) but NOT write-free overall: importing paths.py
+  runs materialize_missing_seeds(), which opens and unlinks nine
+  .seed-<pid>.tmp files in the real data/. The armed prod-data guard reports
+  those 27 mutations on every run -- that output is expected, and any OTHER
+  path appearing in it is a real finding.
 
 
 [RESOLVED 2026-08-28 by batch-96 -- mechanism fixed, weight VALUES
