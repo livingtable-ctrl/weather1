@@ -57,8 +57,59 @@ WHAT THE EXEMPTION IS ACTUALLY HIDING, and it is the opposite of what the
   removed the lock would retire, and on this evidence that might be the
   correct outcome rather than a false positive. The exemption is not
   accidentally protecting a good signal; it may be accidentally protecting a
-  bad one. n=23 is small and nothing here is significant -- that is the point:
-  the honest state is UNMEASURED, and the exclusion means it stays that way.
+  bad one.
+
+  STRATIFIED, IT HARDENS -- contributed by a parallel session 2026-09-02 and
+  re-derived here before being written down. The pooled split above is
+  CONFOUNDED: condition_type mix shifts hard across the guard (pre 78% between
+  / 20% above / 1% below; post 35% / 43% / 22%), so part of the pooled gap is
+  a change in what got PICKED, not in how well it scored. This repo's own
+  standing rule is to stratify by condition_type and never pool, and this is
+  why:
+
+     condition   pre n  pre Brier   post n  post Brier
+     above          17     0.1691       10      0.4392   WORSE
+     between        65     0.2646        8      0.4406   WORSE
+     below           1     0.5898        5      0.2014   (pre n=1, ignore)
+
+  Both strata with usable data on both sides move the SAME way, to ~0.44
+  against a 0.25 threshold. n-weighted within-stratum gap +0.2283, within-
+  stratum permutation p = 0.0145 over 20,000 draws -- a LARGER effect and a
+  SMALLER p than the pooled version (pooled p = 0.050, cluster-permuted by
+  city-day 0.043, i.e. marginal), because the mix shift was masking it.
+
+  WHAT THIS DOES AND DOES NOT SAY ABOUT THE P&L CLAIM. It is tempting to read
+  the above as retiring "EVERY DOLLAR THIS BOT HAS EVER MADE CAME FROM THE
+  METAR LOCK" on the grounds that it describes a path that no longer exists.
+  That overshoots, and the P&L has to be re-derived on the same safe axis
+  rather than inferred from the Brier. Doing so (paper_trades.json joined to
+  predictions.method, settled rows, split on target_date):
+
+     ALL settled lock trades        n=89   P&L  +119.36   win 67.4%
+     pre-guard  (target < 06-25)    n=83   P&L   +87.03   win 67.5%
+     post-guard (target >= 06-25)   n=6    P&L   +32.33   win 66.7%
+
+  The P&L does NOT collapse post-guard -- it stays positive. But FIVE of those
+  six trades are dated 2026-06-25 itself, the day e395392b landed at 21:31
+  UTC, so most of them sit on the wrong side of the boundary they are supposed
+  to test. Only one trade (2026-06-26) is unambiguously post-guard. So the
+  correct statement is not "the surviving path loses money" but "there is
+  essentially NO traded evidence about the surviving path in either
+  direction": 23 post-guard PREDICTIONS against ~1 clean post-guard TRADE.
+  The Brier evidence and the P&L evidence are on different populations and
+  must not be merged; the Brier says the surviving path predicts worse, and
+  the P&L says nothing yet.
+
+  TWO CAVEATS TO CARRY, both of which survive the stratification:
+  * post-guard n is 23 total and 8-10 per stratum. Suggestive, not settled,
+    and it will move as rows arrive.
+  * THE GUARD DATE IS ALSO A CALENDAR BOUNDARY. Anything seasonal that changed
+    in late June is confounded with the code change, and stratifying by
+    condition_type does not touch that. No way to separate them at n=23 has
+    been found. Whoever revisits this should say which they are attributing to.
+
+  n=23 is small and nothing here is settled -- that is the point: the honest
+  state is UNMEASURED, and the exclusion means it stays that way.
 
 RETRACTED, AND RECORDED SO IT IS NOT RE-DERIVED: an "05-07h / 21-23h UTC is
   the profitable window" split. It was going into this entry as the argument
