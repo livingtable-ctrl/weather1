@@ -2024,7 +2024,10 @@ complete and was not. The section has SEVEN bullets, not six:
     it is named here so the count reconciles.
 
 
-[OPEN 2026-08-30 -- observed on the first cron cycle after the option-5 shadow
+[RESOLVED 2026-09-07 -- fixed together with a SECOND, unfiled defect in the
+  same expression (a purely relative threshold with no absolute floor); see
+  the resolution block at the end of this entry. Originally filed
+  2026-08-30 -- observed on the first cron cycle after the option-5 shadow
   log landed. Not caused by that change; surfaced by watching a full run.]
   FLASH-CRASH BREAKER RE-TRIGGERS ON EVERY CHECK WHILE ALREADY IN COOLDOWN --
   IT EXTENDS THE COOLDOWN, RE-LOGS, AND RE-WRITES DISK EACH TIME
@@ -2102,6 +2105,208 @@ before. Drive the middle of the window, not its endpoints.
 
 When to revisit: cheap enough to do next time circuit_breaker.py is open.
 Nothing depends on it, and no trade is placed or blocked incorrectly today.
+
+RESOLVED 2026-09-07. Both halves fixed in circuit_breaker.py FlashCrashCB.
+
+  A SECOND DEFECT, NOT FILED ANYWHERE, FOUND WHILE FIXING THIS ONE. The trip
+  test was purely relative -- `move / oldest_price >= threshold_pct` -- with no
+  absolute floor at all. On a penny book that is meaningless. Replaying
+  data/.flash_crash_history.json from the 2026-09-07 cron run (313 tickers)
+  through check()'s own arithmetic: 18 tickers tripped, and 15 of them had
+  moved FOUR CENTS OR LESS.
+
+      abs move   rel    from -> to    trips  ticker
+        27.5c    44%    63.0 -> 90.5      4  KXTEMPNYCH-26SEP0715-T76.99
+         9.5c    39%    24.5 -> 15.0      9  KXTEMPMIAH-26SEP0715-T87.99
+         5.5c    23%    24.0 -> 29.5     11  KXRAINMIAM-26SEP-12
+         4.0c    53%     7.5 ->  3.5      1  KXTEMPLAXH-26SEP0715-T83.99
+         3.0c   100%     3.0 ->  6.0     14  KXHIGHTDAL-26SEP07-B103.5
+         2.0c    80%     2.5 ->  0.5     41  KXHIGHLAX-26SEP07-B80.5
+         1.0c    67%     1.5 ->  2.5      4  KXHIGHTOKC-26SEP07-T104
+         0.5c    50%     1.0 ->  0.5      5  KXRAIN-26SEP07-DAL
+
+  KXHIGHLAX-26SEP07-B80.5 alone accounts for 41 of the trips, on a mid
+  oscillating between 0.005 and 0.01. By parse_market_price's own convention a
+  0.005 mid is bid=0/ask=0.01 -- an EMPTY BID SIDE appearing and disappearing,
+  not a price moving at all (see the "zero quote is an empty book" family of
+  entries). The payoff on a prediction market is linear in price, so what makes
+  a move dangerous to trade into is its absolute size; 80% of half a cent is
+  not a crash. This is why the 2026-08-28 note elsewhere in this file calling
+  the first live trips "all genuine" was too generous: it was right that the
+  DIRECTION is safe, wrong that the trips were real.
+
+  WHAT SHIPPED, against the fix list this entry already sketched:
+   1. Absolute floor. New `min_abs_move` constructor parameter, default 0.05
+      (5 cents), required IN ADDITION to threshold_pct. Chosen over 3c/2c
+      because it is the value that drops all 15 sub-5c trips including the
+      41-trip one, keeping the three that were real. Appended at the END of
+      the signature deliberately -- an AST scan of the repo found zero
+      positional constructions, but inserting earlier is the silent-rebinding
+      failure mode recorded elsewhere in this file.
+   2. Inline cooldown read, NOT is_in_cooldown(). As this entry warned:
+      self._lock is a plain Lock, not an RLock, so calling is_in_cooldown()
+      from inside check()'s `with` would SELF-deadlock: the calling thread blocks re-acquiring a lock it
+      already holds, and the other feed's thread then piles up behind it. The test is `now < self._cooldowns.get(...)`
+      inside the existing lock hold.
+   3. max(), not assignment. A fresh crash 500s into a 600s cooldown can still
+      push protection past the original deadline; a re-trip can no longer pull
+      a longer deadline backwards.
+   4. Re-arm is silent. WARNING on the arming edge only; the re-arm logs at
+      DEBUG. check() now returns True only when it ARMS (edge semantics) --
+      documented in the docstring, and safe because neither production caller
+      reads the return value (kalshi_ws.py:1028 discards it;
+      order_executor.py:3806 discards it and gates on is_in_cooldown()).
+   5. _save_cooldowns() throttled at _COOLDOWN_SAVE_INTERVAL_SECS = 5.0,
+      mirroring _save_history()'s existing throttle and its comment. Arming
+      still saves immediately -- it is rare and worth durable.
+
+  A THIRD DEFECT, PRE-EXISTING, FIXED INLINE BECAUSE IT IS THE SAME
+  EXPRESSION. Both comparisons sat on float boundaries and silently demanded
+  MORE than they documented. abs(0.15 - 0.10) is 0.04999999999999999, so an
+  exactly-5-cent move reads as below a 5-cent floor; and (0.50 - 0.40) / 0.50
+  is 0.19999999999999996, so a textbook 20% crash was refused by a breaker
+  documenting a 20% threshold. One shared `_COMPARE_EPSILON = 1e-9` on both.
+  Safe in both directions: Kalshi quotes in whole cents and mids land on
+  half-cents, so the smallest real gap below the ABSOLUTE bound is 0.005 and below the
+  RELATIVE bound 0.00102 (at oldest 0.98 -> 0.785), a million times the
+  tolerance or more -- it can only admit a move meant to be exactly
+  AT the bound. Found because a test written for the floor failed for the
+  OTHER reason, which is the only way this would ever have surfaced.
+
+  BLAST RADIUS. is_in_cooldown() is consulted in exactly one place,
+  order_executor._validate_trade_opportunity (~line 3807), which is
+  entry-side. No exit path reads it, so no position could have been trapped by
+  a spurious trip -- the cost was blocked ENTRIES plus the log noise.
+
+THREE ROUNDS OF INDEPENDENT OPUS REVIEW, and rounds 2-3 found more than round
+  1 did. Recorded because the pattern is the point: the first round's FIXES
+  introduced two fail-opens of their own, and the review that caught them was
+  reviewing the fix, not the original change.
+
+  ROUND 1 (two parallel scopes: production logic, test validity).
+   * The headline test was VACUOUS. `test_rearm_extends_the_deadline_without_
+     relogging` filtered caplog for "FLASH CRASH CB", but the re-arm branch
+     emits "FlashCrashCB: ... still crashing" -- and
+     "FLASH CRASH CB" in "FlashCrashCB: ..." is False, so the assertion could
+     never fail. Proven by mutating that _log.debug back to _log.warning, i.e.
+     literally reinstating the ~50-line spam this entry exists to remove: all
+     133 tests stayed green. Now asserts on levelno with a positive DEBUG
+     control.
+   * FIVE further mutation survivors the first six mutations missed:
+     the constructor default 0.05 -> 0.0 (restores pre-change behaviour);
+     `already_cooling = ticker in self._cooldowns` instead of a time
+     comparison; deleting the arming path's _save_cooldowns(); deleting
+     `if oldest_price <= 0`; and the DEBUG->WARNING one above.
+   * A THIRD pre-existing defect, fixed inline as the same expression: both
+     comparisons sat on float boundaries and silently demanded MORE than they
+     documented. (0.50-0.40)/0.50 is 0.19999999999999996, so a textbook 20%
+     crash was refused by a breaker advertising a 20% threshold.
+   * My own docstring arithmetic was wrong: "14 of the 18" is 15, and "six
+     moved a single cent" is 7 at <=1c (only 3 at exactly 1c). Re-derived from
+     the primary file and corrected here and in both docstrings.
+   * The comment justifying max() asserted a rationale a reader can DISPROVE:
+     plain assignment already extends in-process, since prior_deadline was
+     written as t_prev + cooldown for t_prev <= now. max() earns its place for
+     two other reasons -- a backwards wall-clock step, and a deadline persisted
+     by a process that ran a LONGER cooldown_seconds, which matters precisely
+     because cron is one-shot. Comment rewritten.
+
+  ROUND 2, reviewing round 1's fixes. TWO FAIL-OPENS, both introduced by the
+  fixes:
+   * THE FINITENESS GUARD WAS PLACED AFTER THE HISTORY APPEND. So one
+     non-finite observation was recorded AND persisted, and then -- because the
+     guard only inspects _history[ticker][0] -- every later check() on that
+     ticker returned False for a full window_seconds, silently, with no log
+     line. A 0.60 -> 0.05 collapse (55c, 92%) armed nothing and
+     is_in_cooldown() stayed False, so _validate_trade_opportunity let the
+     trade through. Round 1's version merely over-blocked on NaN; the fix
+     inverted that into fail-open. Now rejected BEFORE the append, and the
+     tests pin the ORDERING (asserting only "returns False" passes under the
+     broken placement too).
+   * AND +inf IS REACHABLE FROM BOTH LIVE FEEDS, contrary to the comment I
+     wrote, which reasoned only about NaN. kalshi_ws's `if mid and mid > 0`
+     and order_executor's `if mid > 0` are both TRUE for inf.
+   * THE CONSTRUCTOR VALIDATION REJECTED THE ONLY HARMLESS VALUE AND ACCEPTED
+     ALL THREE DANGEROUS ONES. A negative floor is a no-op; `0.0` restores the
+     penny noise, `nan` disables the floor (`move < nan` is always False), and
+     `inf` turns the breaker OFF ENTIRELY (`move < inf` is always True) -- a
+     total silent fail-open. The comment even argued 0 was the dangerous value
+     while the code tested `< 0`. Now `not isfinite or <= 0`, on both
+     min_abs_move and threshold_pct.
+   * An `Infinity` token in .flash_crash_cooldowns.json blocks a ticker
+     permanently across every restart AND is re-persisted by the save path
+     (inf > now is True there too). Filtered on both load and save, and
+     non-finite history entries are dropped in _load_history.
+   * _save_cooldowns/_save_history now pass emergency_copy=False: on a total
+     write failure safe_io otherwise drops a copy in the REAL data/.emergency/
+     that cron re-alerts on every cycle until cleared by hand -- reachable from
+     a test run, whose tmp_path redirect does not cover that directory.
+     Reconstructible cached state is exactly safe_io's documented criterion.
+   * A comment claiming _save_cooldowns() prunes expired entries was wrong: it
+     filters into a LOCAL dict for the write and never touches
+     self._cooldowns. That comment was the sole justification for the time
+     comparison over a membership test, so it mattered.
+
+  DELIBERATE NO-OPS, each an explicit decision rather than a silent drop:
+   * `now` is captured before _save_history()'s atomic write, so the inline
+     cooldown read is not byte-equivalent to is_in_cooldown()'s fresh
+     time.time(). Both directions of the skew are benign (a stale `now`
+     favours the quiet branch; the deadline is short by the I/O duration
+     against 600s). Documented in the code; narrowing the lock hold is a
+     bigger change than this one.
+   * check() holds a plain Lock across disk I/O. Pre-existing; this change
+     strictly REDUCES it (arming plus at most once per 5s, vs every
+     qualifying move). Documented, not fixed.
+   * The escalation comparison uses a bare `>` with no _COMPARE_EPSILON,
+     unlike the two bounds above it. It is log-only with no behavioural
+     consequence, and an "exactly 1.5x" move is not representable anyway
+     (0.60->0.45 arms on 0.14999999999999997), so the boundary is left fuzzy
+     on purpose and the test pins 1.4x/1.6x instead.
+   * The 8-case parametrized replay is 5-way redundant on one guard. Kept and
+     relabelled as a REGRESSION CORPUS rather than guard coverage -- it
+     records which real markets a future loosening would let back through.
+   * The concurrency test is a DEADLOCK detector, not a race detector
+     (removing `with self._lock:` from check() leaves it green). Stated in its
+     docstring; deterministic interleaving is a bigger harness than this
+     change warrants. Its threads are now daemon=True so a re-entry
+     regression fails the test instead of hanging pytest at exit.
+   * main.py:7447 iterates _cb._cooldowns.values() without the lock while the
+     WS thread mutates it; a resize mid-iteration raises RuntimeError into a
+     fail-closed except. Pre-existing, a different consumer in a different
+     file -- filed separately rather than stretched into this change.
+
+TESTS (counts re-derived by collection at the moment of writing): 61 in
+  tests/test_flash_crash_cb.py, up from 12 -- 49 new across 8 new classes.
+  Each GUARD is tested separately, since several produce the same observable
+  (check() returns False) and one "doesn't trip" test would leave whichever
+  guard it missed silently uncovered. Every absence assertion carries a
+  positive control proving the branch was reached, and value assertions
+  precede count/log assertions so the value claim cannot be short-circuited
+  under mutation.
+
+  23 MUTATIONS applied and reverted across the three rounds, no survivors.
+  The 10 against the round-2 fixes: finiteness moved back below the append
+  (killed by 4), _armed_move prune removed (1), _load_cooldowns isfinite
+  dropped (1), _save_cooldowns isfinite dropped (1), _load_history isfinite
+  dropped (1), oldest_price isfinite dropped (1), min_abs_move `<=0`->`<0`
+  (3), min_abs_move isfinite dropped (2), threshold_pct validation removed
+  (4), _COMPARE_EPSILON 1e-9 -> 1e-7 (1). Newly ADDED guards were mutated
+  specifically to check they are not redundant with protection that already
+  exists -- a guard whose removal leaves the suite green should be deleted,
+  not kept as reassurance. None were.
+
+  A scripted mutation pass silently matched 0 of 5 multi-line anchors because
+  the file is CRLF and the anchors used \n. Caught only by an explicit
+  `assert count == 1` before each replacement; without it the run would have
+  reported five clean passes and proved nothing. Recorded because this repo
+  has shipped exactly that failure before.
+
+  Scoped suite (test_flash_crash_cb, test_circuit_breaker,
+  test_circuit_breaker_registry, test_kalshi_ws, test_trade_validation,
+  test_trading): 193 passed. ruff, ruff-format and mypy clean via
+  `python -m pre_commit run --files` (the git hooks are not installed in this
+  repo, so `git commit` lints nothing).
+
 
 
 [OPEN 2026-08-30 -- same cron cycle. Filed separately because the fix is a
@@ -50934,3 +51139,53 @@ When to revisit:
   Immediately on any live-trading proposal touching daily temperature markets,
   and before any batch that touches the METAR lock, station bias, or
   data-driven sigma.
+
+
+[OPEN 2026-09-07 -- found by an opus review of the flash-crash breaker change,
+  in a DIFFERENT consumer than the one that change touched. Filed separately
+  rather than stretched into it: different file, different function, and it
+  needs a decision about what cmd_readiness should do when the read races.]
+  cmd_readiness ITERATES flash_crash_cb._cooldowns WITHOUT THE LOCK WHILE THE
+  WEBSOCKET THREAD MUTATES IT
+Priority: LOW. Fails closed and is caught, so the consequence is a wrong
+  readiness line, not a bad trade.
+Files: main.py:7447 (cmd_readiness), circuit_breaker.py FlashCrashCB.
+
+  main.py:7447 is:
+
+      any_cooldown = any(_time.time() < exp for exp in _cb._cooldowns.values())
+
+  reaching into the singleton's private dict with no `with _cb._lock`.
+  FlashCrashCB.check() writes that dict from the kalshi_ws background thread on
+  every live ticker tick, and a dict that RESIZES during iteration raises
+  `RuntimeError: dictionary changed size during iteration`. The surrounding
+  try/except turns that into a "Could not compute"-style gate, so it fails
+  closed -- but the readiness report then misreports breaker state at exactly
+  the moment the breaker is busiest, which is when an operator is most likely
+  to be reading it.
+
+  Pre-existing; the 2026-09-07 flash-crash change did not introduce it and
+  deliberately did not touch it. That change did make the WS thread's writes
+  to this dict slightly more frequent in one respect (a re-arm now always
+  assigns via max()), so the window is marginally wider than before, but the
+  race predates it.
+
+  THE FIX IS NOT JUST "TAKE THE LOCK" -- there is a design question first.
+  FlashCrashCB deliberately exposes is_in_cooldown(ticker) as its only public
+  read, and it takes the lock correctly. There is no public "is anything
+  cooling?" accessor, which is why this caller reached into the private dict.
+  So either:
+    (a) add a locked `any_active_cooldown() -> bool` (or
+        `active_cooldowns() -> dict` returning a copy) to FlashCrashCB and
+        have cmd_readiness call it -- preferred, since it stops the next
+        caller doing the same thing; or
+    (b) have cmd_readiness snapshot under the lock: `with _cb._lock:
+        vals = list(_cb._cooldowns.values())`. Cheaper, but keeps a private
+        attribute reach in a second place.
+
+  Whichever is chosen, note _cooldowns is never pruned in memory
+  (_save_cooldowns filters into a LOCAL dict for the write and leaves
+  self._cooldowns untouched), so any such accessor must compare against the
+  wall clock rather than testing emptiness.
+
+  When to revisit: next time either file is open. Nothing depends on it.

@@ -552,6 +552,15 @@ def isolate_flash_crash_cb_state(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_history", {})
     monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_cooldowns", {})
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_armed_move", {})
+    # The two save-throttle baselines leak the same way the dicts above do,
+    # and are wall-clock valued rather than merely stale: once any test arms a
+    # cooldown on the singleton via the real _validate_trade_opportunity path,
+    # these hold a real time.time() that silently suppresses a later test's
+    # disk write for the next 5 seconds. Nothing asserts on it today, which is
+    # exactly why it would surface later as an unreproducible flake.
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_last_history_save", 0.0)
+    monkeypatch.setattr(circuit_breaker.flash_crash_cb, "_last_cooldown_save", 0.0)
 
 
 @pytest.fixture(autouse=True)
