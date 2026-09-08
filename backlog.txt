@@ -1,6 +1,99 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-09-08 -- first read of metar_lock_shadow_log (added c245c3b1,
+  "record every METAR lock evaluation, before the gates that were eating
+  them"). That instrumentation answers a question the entry "THE METAR LOCK
+  HAS STOPPED FIRING..." could only approach from the outside: it measured
+  locks against PREDICTIONS, which cannot see an evaluation that never
+  produced one. This is the evaluation-level view, and it relocates the
+  problem.]
+  THE METAR LOCK EVALUATES DAILY-HIGH MARKETS ONLY AT HOURS IT REJECTS AS
+  "TOO EARLY", AND NEVER ONCE AT THE HOURS WHERE A LOCK IS POSSIBLE
+Priority: HIGH as diagnosis, LOW as an action -- do NOT change a margin on
+  this evidence. n=1 lock in 136 evaluations is not a sample you can tune
+  against. The value here is knowing WHERE the loss happens.
+Files: predictions.db metar_lock_shadow_log; weather_markets.py ~16320-16520
+  (the between NO/YES branches); tracker.py:1119 (scan_local_hour contract).
+
+THE HEADLINE NUMBER. 136 recorded evaluations, ONE lock. 0.7%.
+
+    condition_var         evaluations   locked
+    max  (daily HIGH)          88          0     0.0%
+    min  (daily LOW)           48          1     2.1%
+
+AND THE TWO HALVES NEVER SEE THE SAME CLOCK:
+
+    scan_local_hour     LOW        HIGH
+    11-14              0/23       0/88
+    20-23              1/25    never evaluated
+
+  Every one of the 88 daily-HIGH evaluations landed at hours 11-14 and was
+  rejected "too early (Xh < 14h local)". Not one HIGH market has EVER been
+  evaluated in the 20-23 window where a lock can fire. The mechanism is the
+  full cron running midday -- when a HIGH market is open but the day's high
+  has not happened -- while by 20:00+ those same markets have resolved into
+  analyze_trade's extreme_price gate and never reach the lock at all. The
+  lock is not choosing not to fire on HIGH markets; it is never asked at an
+  hour where it could say yes.
+
+A STRUCTURAL ASYMMETRY THAT NO SCHEDULE FIXES. For a LOW market the running
+min can only fall, so the NO branch requires comp_temp <= lo - margin (min
+already BELOW the band, a direction it cannot return from). A LOW market
+whose running min sits ABOVE the band is therefore UNLOCKABLE AT ANY HOUR:
+the min can always still fall into the band, so YES is never foreclosed. On
+2026-09-07 23:00 ET all six evaluations were exactly this case.
+
+THE 2026-09-07 23:00 ET RUN, which is the clean test. Optimal instant (all
+four zones at hour factor 1.00), SPRT halt fixed that morning, full cron run
+9h earlier:
+    filter breakdown - no_analysis:260 ... passed:0 = 260 of 260
+    gates - between_no_metar:8 extreme_price:222 min_volume:2
+            model_mkt_gap:1 rain_daily_track_only_no_model:20
+            retired_method:1 spread:6
+  ZERO of 260 markets reached the edge calculation. extreme_price alone took
+  222 (85%). Six lock evaluations ran and all six declined correctly.
+  Conclusion: giving the lock its scan at the best possible instant, with
+  every other blocker cleared, still produces nothing. Scan starvation was
+  real but is NOT the remaining constraint.
+
+A WRONG HYPOTHESIS, RECORDED SO IT IS NOT RE-RUN. I suspected the "NO safety
+margin" was over-conservative, citing Phoenix: low-so-far 86.0 vs band
+[80.5, 82.5], 3.5F of apparent clearance at hour 20, no lock. That is
+measuring the WRONG SIDE. For a LOW market, above-the-band is the direction
+the extreme still moves TOWARD; 3.5F of desert overnight cooling before
+midnight is routine. The margin is correct and the decline was right.
+  The margins are also better built than they look: _margin = 3.0F applies
+  OUTSIDE the band where distance is unbounded, while inside it switches to
+  _yes_inband_margin = (hi-lo)/2 = 1.0F -- because a 3.0F bar inside a 2F
+  band is unreachable and would make the YES branch DEAD CODE, which is a
+  bug already found and fixed in analyze_trade's sibling between_edge gate.
+
+THE ONE TUNABLE ACTUALLY DECIDING OUTCOMES, and it is unvalidated. Of the
+~26 genuinely evaluable rows (51 past a scan_local_hour>=14 filter, minus 25
+that the observation clock still rejected as 13h): 1 locked at 1.5F
+clearance, and THREE YES near-misses at 0.5F, 0.9F and 0.5F against the
+1.0F in-band bar, plus 4 above/below "within margin" near-misses. Half the
+band width is a reasoned choice, not a measured one, and with n=1 lock there
+is no sample to test it against. DO NOT LOWER IT ON THIS DATA.
+
+A MEASUREMENT TRAP IN THE TABLE ITSELF. scan_local_hour is the SCAN's hour in
+the market city; the lock gates on the OBSERVATION's local hour, and routine
+METARs report at :53, so the two differ by up to an hour near a boundary
+(tracker.py:1119 documents this). 25 rows with scan_local_hour>=14 carry the
+reason "too early (13h < 14h local)". Any hour-of-day analysis on this column
+carries +/-1h of slop and must not be quoted as exact.
+
+WHAT WOULD ACTUALLY MOVE THIS. Not a margin change and not a new schedule.
+The HIGH half needs an evaluation at an hour where the day's high is settled
+AND the market is still inside the tradeable price band -- and the 2026-09-07
+run says those two windows may not overlap at all. Establishing whether they
+ever overlap is the open question, and metar_lock_shadow_log is now the
+instrument that can answer it. Run the scans daily and re-read this table in
+a few weeks; it is the only path to a sample large enough to decide anything.
+SUPERSEDES NOTHING -- extends "THE METAR LOCK HAS STOPPED FIRING..." (2026-08-26),
+whose "re-measure the lock rate after 2026-09-25" instruction this serves.
+
 [OPEN 2026-09-02 -- opened by the opus review of the SPRT condition_type fix
   (commit that adds _get_recent_win_loss's filter). These are the findings that
   review said to FILE rather than fix, because each is a pre-existing hole the
