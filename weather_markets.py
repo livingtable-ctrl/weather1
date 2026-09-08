@@ -263,6 +263,18 @@ _gate_counts_lock = threading.Lock()
 # Unknown-gate names already warned about, so a gate missing from SCAN_GATES
 # logs once per process rather than once per rejected market.
 _unknown_gates_warned: set[str] = set()
+# Tickers this scan rejected specifically at the retired-method gate.
+#
+# Recorded because "which markets did THAT gate stop?" is not answerable from
+# _gate_counts (a count) or from _gate_near_misses (bounded, and only
+# populated for gates carrying a numeric threshold, which this one does not).
+# cron's price-recal replay needs the exact set: re-deriving it by
+# re-analysing every core-temperature market instead cost ~126 enrichments per
+# cycle and, worse, could not distinguish a market the RETIREMENT stopped from
+# one an earlier non-deterministic gate stopped that happens to pass on a
+# warm cache. Guarded by _gate_counts_lock and cleared with it, so it shares
+# the per-scan lifecycle rather than inventing a second one.
+_retired_gate_tickers: set[str] = set()
 
 
 def _count_gate(
@@ -377,11 +389,43 @@ def reset_gate_counts() -> None:
     with _gate_counts_lock:
         _gate_counts.clear()
         _gate_near_misses.clear()
+        _retired_gate_tickers.clear()
         # isoformat(), not strftime: a bare "2026-08-25T06:36:00" with no
         # offset is parsed as LOCAL time by JavaScript's Date, shifting the
         # panel's clock by the viewer's UTC offset. The "+00:00" suffix is what
         # makes it unambiguous.
         _scan_started_at = datetime.now(UTC).isoformat()
+
+
+def _record_retired_gate_victim(enriched: dict) -> None:
+    """Record one market rejected at the retired-method gate.
+
+    A named function rather than four inline statements so the behaviour is
+    UNIT-TESTABLE. Inline, the only thing pinning it was a source-window
+    substring scan over analyze_trade, and a review defeated that twice:
+    recording `str(method)` instead of the ticker kept the scan green, and in
+    production would have made `victims` a set of method names that no market
+    ever matches -- silently readmitting ZERO markets, i.e. restoring the exact
+    starvation the replay exists to repair, invisibly.
+
+    Records the TICKER. Never raises.
+    """
+    try:
+        ticker = (enriched or {}).get("ticker")
+        if ticker:
+            with _gate_counts_lock:
+                _retired_gate_tickers.add(str(ticker))
+    except Exception:  # pragma: no cover - a bookkeeping write must never
+        pass  # end a market's analysis
+
+
+def get_retired_gate_tickers() -> set[str]:
+    """Tickers this scan rejected at the retired-method gate.
+
+    A COPY, so a caller iterating it cannot tear against the analysis pool
+    still writing into the live set."""
+    with _gate_counts_lock:
+        return set(_retired_gate_tickers)
 
 
 def get_gate_counts() -> dict[str, int]:
@@ -16681,6 +16725,25 @@ def _daily_var_from_series(series: str) -> str:
 # only read afterwards, so the thread-pool race that rules out a mutable
 # module flag elsewhere does not apply here.
 _SHADOW_SCAN_MODE: str | None = None
+# Set True by cron's price-recal replay for the duration of its serial loop,
+# and False everywhere else.
+#
+# SUPPRESSES the three observational writes analyze_trade performs -- two
+# before its gates and save_forecast_snapshot at the very end --
+# rather than merely re-tagging them. Tagging was the first attempt and it was
+# wrong: record_metar_lock_shadow is INSERT OR IGNORE against a UNIQUE
+# (ticker, target_date) index, so first write wins FOREVER, not per day. A
+# replay row therefore does not just carry a misleading written_by -- it
+# OCCUPIES THE SLOT, and the genuine `cron` row a later cycle would have
+# written is silently discarded. A mislabelled row is recoverable; a lost slot
+# is not. log_source_attempt is suppressed for the same reason in the other
+# direction: it is INSERT OR REPLACE keyed on (city, source, day), so a replay
+# whose source availability differs from the main pass's silently FLIPS the
+# day's recorded reliability.
+#
+# The replay is a measurement pass over markets the main scan already
+# evaluated. It has nothing to contribute to either corpus.
+_SHADOW_REPLAY_SUPPRESS_WRITES: bool = False
 
 
 def _shadow_writer_tag(bypass_retirement_check: bool = False) -> str:
@@ -17634,7 +17697,12 @@ def analyze_trade(
     # dropped -- losing precisely the rows this table exists to capture, and
     # stamping scan_local_hour with the hour of a scan five days before the
     # market. The previous key hid it by giving each UTC day its own slot.
-    if target_date == _local_today:
+    # `and not _SHADOW_REPLAY_SUPPRESS_WRITES`: cron's price-recal replay
+    # re-analyses markets the main pass already evaluated, and this table is
+    # first-write-wins on (ticker, target_date) FOREVER. A replay row would
+    # claim the slot and silently discard the genuine `cron` row a later cycle
+    # writes -- the exact own-goal the comment above records for the D-5 case.
+    if target_date == _local_today and not _SHADOW_REPLAY_SUPPRESS_WRITES:
         try:
             # ZoneInfo is imported per-function throughout this module, not at
             # module scope -- referencing a bare `ZoneInfo` here would NameError
@@ -19418,13 +19486,20 @@ def analyze_trade(
         ci_low = max(0.01, blended_prob - _ci_half)
         ci_high = min(0.99, blended_prob + _ci_half)
 
-    # Log source availability for per-city reliability tracking
+    # Log source availability for per-city reliability tracking.
+    #
+    # Skipped for the price-recal replay: log_source_attempt is INSERT OR
+    # REPLACE on (city, source, day), so a replay whose source availability
+    # differs from the main pass's does not double-count -- it FLIPS the day's
+    # recorded value, which main.py, output_formatters and the dashboard all
+    # read.
     try:
-        from tracker import log_source_attempt as _log_src
+        if not _SHADOW_REPLAY_SUPPRESS_WRITES:
+            from tracker import log_source_attempt as _log_src
 
-        _log_src(city, "ensemble", ens_prob is not None)
-        _log_src(city, "nws", _nws_prob is not None)
-        _log_src(city, "climatology", clim_prob is not None)
+            _log_src(city, "ensemble", ens_prob is not None)
+            _log_src(city, "nws", _nws_prob is not None)
+            _log_src(city, "climatology", clim_prob is not None)
     except Exception:
         pass
 
@@ -19441,6 +19516,10 @@ def analyze_trade(
                 _retired[method].get("brier", 0),
             )
             _count_gate("retired_method")
+            # Record WHICH market, not just that one was stopped. cron's
+            # price-recal replay reads this to repair the forward corpus; a
+            # count cannot tell it which tickers to re-analyse.
+            _record_retired_gate_victim(enriched)
             return None
     except Exception as _ret_exc:
         _log.debug("analyze_trade: retired-strategy check failed: %s", _ret_exc)
@@ -19899,7 +19978,18 @@ def analyze_trade(
         # nbm_quantile_prob computation above for why it's never blended.
         "nbm_quantile_prob": nbm_quantile_prob,
     }
-    save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
+    # THE THIRD first-write-wins write, and the only one the REPLAY reaches
+    # that the main pass does not. save_forecast_snapshot keeps one file per
+    # (ticker, UTC day) and refuses to overwrite -- and a retired-gated market
+    # returns None ~460 lines above this, so the main pass never wrote a
+    # snapshot for it. A replay would claim the day's slot with a warm-cache
+    # forecast; if the method is auto-unretired later that day, the cycle that
+    # actually trades the market finds the file present and its genuine
+    # decision snapshot is silently discarded. Same own-goal as the metar
+    # slot, found only because a review swept analyze_trade for persistence
+    # calls rather than trusting the "two observational writes" inventory.
+    if not _SHADOW_REPLAY_SUPPRESS_WRITES:
+        save_forecast_snapshot(enriched.get("ticker", "unknown"), forecast)
     return _result
 
 

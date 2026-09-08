@@ -2524,6 +2524,231 @@ Files: tracker.py (_MIGRATIONS, price_recal_shadow_log), cron.py
   (_log_price_recal_picks). SHADOW ONLY -- it places nothing, and live trading
   stays dormant.
 
+RECORD, 2026-09-07 -- A RETIREMENT NARROWED THE CORPUS FOR SIX DAYS, AND WHY
+  THAT IS RECORDED HERE RATHER THAN TREATED AS AN AMENDMENT. This is a note
+  about COLLECTION, not about the rule. Nothing in section 1 changes: a, b,
+  the threshold, the side rule, the cluster target, the price convention and
+  protocol_version "2026-08-29.v1" are all exactly as registered, and no
+  refit happened.
+
+  WHAT HAPPENED. analyze_trade's retired-strategy gate does `return None`
+  before trade_cycle appends to `all_results`, and cron._log_price_recal_picks
+  reads `all_results`. auto_retire_strategies retired the `ensemble` method at
+  2026-09-01T23:32:56Z on its realised Brier (0.2570 lifetime / 0.2711 last
+  20). From that moment, core-temperature markets whose forecast resolved to
+  that method stopped reaching the writer at all. The 2026-09-07 cycle is the
+  clean illustration: 9 core-temperature markets were dropped at
+  `retired_method`, and all 57 pairs that did reach the writer were non-core
+  types refused at its condition-type guard. Zero picks were possible that
+  day, and the "nothing written for 119.6 hours" warning fired.
+
+  WHY IT IS NOT MERELY A SMALLER CORPUS. Two reasons, and the second is the
+  one that matters:
+   1. The gate is OUTCOME-DEPENDENT. Membership is decided by a method's
+      realised Brier, so a corpus collected through it is filtered by
+      information from the outcomes it is meant to be predicting. A forward
+      corpus with that property is not a forward corpus.
+   2. The selection is HORIZON-CORRELATED BY MECHANISM. Same-day locked
+      markets resolve to method='metar_lockout', which was not retired, so
+      they survive; multi-day markets resolve to 'ensemble' and die. Section 7
+      of this entry already records that the slope differs by horizon --
+      same-day b=+1.2436, multi-day b=+1.4313, against the pooled b=+1.33635
+      the coefficients were frozen at on 435/207 rows. So leaving the gate in
+      place does not shrink the sample toward the same estimand; it MOVES the
+      estimand toward the same-day arm.
+
+  WHAT WAS DONE. cron._replay_retired_core_temp re-analyses the affected
+  markets with analyze_trade(bypass_retirement_check=True) purely to feed this
+  corpus, and re-applies the gate's own predicate (method in retired) so that
+  markets held back for any OTHER reason are not admitted. It is inert
+  whenever nothing is retired. It feeds this table only -- not the trading
+  path, not the display tiers, not analysis_attempts.
+
+  AN ARGUMENT THAT WAS TRIED AND WITHDRAWN, recorded because a rejected
+  reading is part of the record. A first draft justified the fix by reading
+  section 1's "THE POPULATION IS DEFINED BY CONDITION TYPE" as making
+  condition type SUFFICIENT for inclusion. It is not: that sentence contrasts
+  with TICKER FAMILY, and its operative clause is "They were in the fit". Read
+  as sufficient it would also compel admitting liquidity- and spread-gated
+  markets. Worse, the fit population was ITSELF intermittently method-filtered
+  -- `predictions` carries is_probation=1 ensemble rows on 2026-08-06 and
+  2026-08-16, inside the 642-row fit window, and 2026-08-06/14/15 have zero
+  non-probation ensemble rows while scans ran. So "it was in the fit" does not
+  cleanly separate these markets either, and the estimand argument above is
+  what the fix actually rests on.
+
+  WHAT WAS DECIDED ABOUT THE PICKS ALREADY LOGGED, explicitly, because
+  discovering a defect in how data was collected and then keeping the data is
+  itself a degree of freedom. All 10 are retained, the clock is NOT restarted,
+  and protocol_version is unchanged. The reasoning is checkable rather than
+  aesthetic: three cron cycles ran inside the narrowed window (scan_runs 21,
+  22, 23) and produced exactly ONE logged pick -- row 10,
+  KXTEMPMIAH-26SEP0215-T85.99, an hourly. Hourly markets return from
+  _analyze_hourly_trade roughly 1,900 lines BEFORE the retirement gate, so
+  their inclusion probability was not affected by the retirement at all. Rows
+  1-9 all predate 2026-09-01T23:32Z. The narrowing therefore produced ABSENCE
+  (zero daily picks entered during the window), not biased inclusion, so the
+  10 rows on hand are not contaminated by it.
+
+  THE HONEST RESIDUAL. The corpus now spans collection regimes: rows 1-9 with
+  the gate inert, row 10 inside the narrowed window, and everything after
+  2026-09-07 with the gate bypassed for this table. That is recorded so a
+  later reader can test sensitivity to it by recorded_at rather than
+  discovering it from git history. And see the separate OPEN entry
+  "analysis_attempts IS STARVED BY THE SAME RETIRED-METHOD GATE" -- the table
+  the frozen fit was computed FROM has the same defect and is deliberately
+  not fixed by this change.
+
+  HOW THE REPLAY IS DRIVEN, after a second review round rejected the first
+  design. weather_markets now records each ticker it rejects at the
+  retired-method gate (_retired_gate_tickers, cleared by the existing
+  reset_gate_counts so it shares the per-scan lifecycle), and the replay reads
+  that set. The first version instead re-analysed every core-temperature
+  market missing from all_results and post-filtered on `method in retired`.
+  Both halves of that were wrong:
+    * COST. Measured against the 2026-09-07 scan itself: 126 of 480 daily
+      core-temperature markets sit inside the rule's firing band (mid in
+      [0.087, 0.442]), so it would re-enrich 126 markets serially to recover
+      9. At that scan's own ~2-3 worker-seconds per market that is 250-380s
+      added to a cycle whose scan already took 288s -- against a 720s watchdog
+      that calls os._exit(1) and runs NO finally blocks. And this block sits
+      UPSTREAM of check_paper_position_exits, the price-based stop-loss. A
+      slow cycle could have been killed before position protection ran and
+      before the cron lock was released. That is a live-money hazard the
+      "handful of markets" claim in the first docstring concealed.
+    * PRECISION. `method in retired` tests which method the REPLAY produced,
+      not which gate stopped the MAIN PASS. model_spread, model_mkt_gap,
+      daily_thin_ensemble, below_extreme_ens and volatile_regime all fire
+      earlier and all depend on what the forecast fetch returned, so a market
+      rejected there that passes on a warm-cache replay was admitted anyway --
+      making corpus membership depend on a re-run's non-determinism, the same
+      defect class this entry exists to remove, pointing the other way.
+  Reading the recorded set makes admission exactly "the main pass stopped
+  here". A 25-market cap (matching _PROBATION_SAMPLE_SIZE) and an in-loop
+  kill-switch re-check bound it further, and hitting the cap logs a WARNING
+  because a truncated replay means the corpus under-collected that cycle.
+
+  SIDE EFFECTS ARE SUPPRESSED, NOT TAGGED -- also a correction. analyze_trade
+  performs two observational writes before its gates, and tagging them (the
+  first attempt) fixed neither:
+    * metar_lock_shadow_log is INSERT OR IGNORE on a UNIQUE (ticker,
+      target_date) index, so first write wins FOREVER. A replay row does not
+      merely carry a misleading written_by -- it OCCUPIES THE SLOT, and the
+      genuine `cron` row a later cycle writes is silently discarded. That is
+      the same own-goal this table's own schema comment already records for
+      the D-5 case. A mislabelled row is recoverable; a lost slot is not.
+    * source_reliability is INSERT OR REPLACE on (city, source, day), so a
+      replay whose source availability differs does not double-count -- it
+      FLIPS the day's recorded value, which the dashboard and
+      output_formatters read.
+  _SHADOW_REPLAY_SUPPRESS_WRITES turns both off for the loop's duration and is
+  restored in a finally. The scan summary's gate line now reads
+  result.gate_counts (captured before the replay) rather than a live
+  _get_gate_counts(), which the replay would otherwise double-count.
+
+TESTS (counts re-derived by collection at the moment of writing): 112 in
+  tests/test_price_recal_shadow_log.py, up from 69. Guards are tested
+  SEPARATELY because several produce the same observable (an empty return),
+  and every absence assertion carries a positive control.
+
+  14 MUTATIONS applied and reverted against the redesign, no survivors. THREE
+  of them initially survived, and each exposed a real test defect rather than
+  a code one:
+    * the metar-suppression test asserted `"not _SHADOW_REPLAY_SUPPRESS_WRITES"
+      appears in the source` -- which the SOURCE-LOGGING guard also satisfies,
+      so deleting the metar guard entirely left it green. Now bound to the AST
+      node whose `if` test mentions _local_today.
+    * the no-victims short-circuit test used a tripwire raising AssertionError,
+      which the replay's own `except Exception` swallowed. Now a BaseException,
+      the same reason conftest's blocked-network sentinel is one.
+    * the scan-funnel gate line had no test at all; now bound to the single
+      _gate_detail assignment inside _cmd_cron_body.
+
+  THE WIRING IS PINNED BY BYTECODE, not a source scan. An earlier version
+  asserted over cron.py's AST and a review defeated it three ways -- a dead
+  `if False:` branch, a never-called module-level function, and a decoy call
+  earlier in the file while the real site was reverted -- all three green. The
+  call site is now a real function (_price_recal_input), tested directly, plus
+  a dis.get_instructions() reachability check on _cmd_cron_body and a
+  `len(calls) == 1` AST assertion scoped to it.
+
+  A PROCESS NOTE WORTH KEEPING: a scripted mutation pass hit a transient
+  Windows OSError during a RESTORE and left the tree with a guard missing --
+  the "scripted revert leaves a third state" failure. It was caught because
+  the run asserts an md5 match after every restore and the tests were re-run
+  immediately; the harness now writes via a temp file plus os.replace with
+  retries. A later kill of a review agent mid-mutation left the same file
+  missing `if not analysis: continue`, caught by mypy rather than by the
+  tests. Verify the tree after ANY interrupted mutation run.
+
+  Scoped suite (test_price_recal_shadow_log, test_cron_integration,
+  test_trade_cycle_engine, test_weather_markets): 782 passed. ruff,
+  ruff-format and mypy clean via `python -m pre_commit run --files`.
+  Separately filed: tests/test_metar_lock_shadow_log.py's
+  TestMigrationCannotWedge is RED at clean HEAD, pre-existing and unrelated.
+
+  ROUND 3 (the third independent review pair) FOUND 25 MUTATION SURVIVORS OUT
+  OF 68, and two of them would have silently turned the whole change into a
+  no-op. Recorded in full because "the tests were green" was true throughout:
+   * THE WIRING ARGUMENT WAS UNPINNED. Changing the call site to
+     _price_recal_input(None) -- everything else intact -- left all 112 tests
+     green while the fix did nothing. The wiring tests pinned reachability
+     (via dis) and call SHAPE (via AST), and neither looked at the argument.
+     Now asserted to be the Name `result`.
+   * THE VICTIM RECORDING WAS PINNED ONLY BY A SOURCE-WINDOW SUBSTRING SCAN.
+     Recording str(method) instead of the ticker kept that scan green, and in
+     production would have made `victims` a set of method names that no market
+     ever matches -- readmitting ZERO and restoring the exact starvation this
+     entry exists to repair, invisibly. The recording is now a named function
+     (_record_retired_gate_victim) tested behaviourally, with the gate bound to
+     it by an AST walk scoped to the retired_method `if`.
+   * A THIRD FIRST-WRITE-WINS WRITE was missed by the "two observational
+     writes" inventory: save_forecast_snapshot, at the very end of
+     analyze_trade, keeps one file per (ticker, UTC day) and refuses to
+     overwrite. It is the ONLY one the replay reaches that the main pass does
+     not, since a retired-gated market returns None ~460 lines earlier. If the
+     method is auto-unretired later the same day, the cycle that actually
+     trades the market finds the slot taken and its genuine decision snapshot
+     is discarded. Now suppressed with the other two, and the suppression test
+     walks every guarded call rather than grepping for the flag.
+   * THE COUNT CAP WAS THE WRONG BOUND, three ways. It measured markets while
+     the watchdog measures seconds (run_trade_cycle alone has consumed 469.8s
+     of its 720s budget); it took the first 25 in Kalshi fetch order, which is
+     city- and series-grouped, so truncation was systematically biased rather
+     than merely smaller -- it borrowed _PROBATION_SAMPLE_SIZE's NUMBER
+     without its random.sample; and sitting above the pre-filters it warned
+     "under-collecting" for victims the filters would have discarded anyway.
+     Replaced by a 90s wall-clock budget with the count kept as a raised
+     backstop, both below the pre-filters, over a shuffled candidate list.
+   * THE SILENT-STALL PATH WAS REAL. The summary sat inside `if considered:`,
+     so a ticker-key mismatch printed NOTHING at any visible level --
+     byte-identical to a quiet day. It now warns distinctly when the gate
+     rejected markets but none were admissible, and when markets were
+     re-analysed but none readmitted.
+  Also: the entry kill-switch guard was untested (the in-loop re-check caught
+  the same fixture); the summary fixture was degenerate (all three counts
+  equal to 1, so the format arguments were interchangeable); a `not ticker or`
+  clause was unreachable-in-effect and was removed rather than kept; and one
+  positive control was an exact duplicate whose docstring described a
+  different fixture. All fixed or deleted.
+
+  ROUND 3 ALSO CONFIRMED, by attack, the things that hold: the suppression
+  flag cannot leak True (nothing can raise between the assignment and the
+  try); no other in-process caller reaches analyze_trade while it is set (the
+  WS thread and depth writer never call it, main.py's two background threads
+  are defined but never invoked, and the dashboard runs in a separate
+  process); the scan_completed guard genuinely closes the in-flight-worker
+  window, because _scan_completed is set only in the for/else; deduped_markets
+  contains every victim; and there is no stale-victim path across two cycles
+  in one process.
+
+TESTS (counts re-derived by collection at the moment of writing): 123 in
+  tests/test_price_recal_shadow_log.py, up from 69. Scoped suite
+  (test_price_recal_shadow_log, test_cron_integration, test_trade_cycle_engine,
+  test_weather_markets, test_scan_funnel): 859 passed. ruff, ruff-format and
+  mypy clean. Every round-3 survivor re-run and killed, no survivors, with the
+  file md5-verified after each revert.
+
 THE RULE, restated so the pre-commitment is unambiguous. Model-free; it reads no
 weather forecast. Fit y ~ a + b*logit(market_prob) on settled markets. Where the
 recalibrated probability disagrees with the raw price by more than a threshold,
@@ -51282,3 +51507,109 @@ Files: main.py:7447 (cmd_readiness), circuit_breaker.py FlashCrashCB.
   wall clock rather than testing emptiness.
 
   When to revisit: next time either file is open. Nothing depends on it.
+
+
+[OPEN 2026-09-07 -- found while fixing the same defect in the price-recal
+  shadow log. Filed separately and deliberately NOT fixed there: the fix
+  changes a shared function's contract on the live-money path, so it needs its
+  own change and its own review.]
+  analysis_attempts IS STARVED BY THE SAME RETIRED-METHOD GATE -- AND IT IS
+  THE TABLE THE FROZEN OPTION-5 FIT WAS COMPUTED FROM
+Priority: MEDIUM. Nothing is mispriced and no trade is affected; the cost is a
+  silently incomplete audit trail, which matters because a pre-registered
+  experiment's coefficients were fitted from it.
+Files: weather_markets.py analyze_trade (retired-strategy gate), trade_cycle.py
+  (~line 634, the all_results append), cron.py (~line 3300, the
+  batch_log_analysis_attempts loop).
+
+  THE MECHANISM, identical to the one fixed for price_recal_shadow_log.
+  analyze_trade's retired-strategy gate does `return None` BEFORE trade_cycle
+  appends the (enriched, analysis) pair to `all_results`. cron.py builds its
+  `_analysis_batch` for batch_log_analysis_attempts by walking that same
+  `result.all_results`. So from the moment a forecasting method is retired,
+  every market that would have used it stops being recorded as an analysis
+  attempt at all -- not as a rejected attempt, not as a gated one: it simply
+  leaves the record.
+
+  WHY THIS ONE IS WORSE THAN THE SHADOW-LOG CASE. The option-5 protocol's
+  frozen coefficients (a = -0.12856, b = +1.33635) were fitted by MLE logistic
+  regression over "the 642 core-temperature rows in analysis_attempts with
+  outcome NOT NULL and both probabilities NOT NULL, as of 2026-08-29". That
+  table IS the fit population. It is now under-collecting exactly the
+  multi-day core-temperature markets the fit leaned on, which means:
+    * any future re-registration that refits on accumulated rows will refit on
+      a horizon-skewed population without anything in the data saying so;
+    * the "known imprecision in the inherited effect size" already recorded in
+      the protocol entry gets a second, undocumented source;
+    * `ensemble` has been retired since 2026-09-01T23:32Z and is still
+      retired, so this is accruing now, not hypothetically.
+
+  Evidence it also predates the current retirement: `predictions` carries
+  is_probation=1 ensemble rows on 2026-08-06 and 2026-08-16 -- inside the
+  642-row fit window -- and 2026-08-06, -14 and -15 have zero non-probation
+  ensemble rows despite scans running. So the fit population was itself
+  intermittently filtered by this gate.
+
+  WHY IT WAS NOT FIXED ALONGSIDE THE SHADOW LOG. The shadow-log fix works by
+  running a SECOND, isolated analyze_trade pass and feeding its output only to
+  the price-recal writer (cron._replay_retired_core_temp). That is safe
+  precisely because it touches nothing else. Fixing analysis_attempts the same
+  way would double-log attempts; fixing it properly means making the gate
+  return a TAGGED analysis instead of None so the pair reaches all_results
+  while the trading path skips it -- which changes a shared function's
+  contract on the live-money path and requires auditing every all_results
+  consumer (the trading gates, the display tiers, the tier/threshold
+  annotations, the near-miss funnel). That is a different change with a
+  different blast radius.
+
+  THE DESIGN QUESTION TO SETTLE FIRST, because it is not obvious: should a
+  retired-method analysis be recorded as an ATTEMPT (it was analysed, and the
+  model did produce a probability, so its Brier is measurable) or as a GATE
+  REJECTION (no trade was ever possible)? The two give different denominators
+  for every rate computed off this table. Note check_retirement_probation
+  already logs probation predictions with an is_probation flag, so there is
+  precedent for a marked row rather than an absent one.
+
+  When to revisit: before any refit, re-registration, or look-1 analysis of
+  the option-5 protocol, and before trusting any per-method rate computed from
+  analysis_attempts across a retirement boundary.
+
+[OPEN 2026-09-07 -- found incidentally while widening the scoped test run for
+  the price-recal replay change. Pre-existing: reproduced at clean HEAD in a
+  detached worktree with zero of that change applied. NOT fixed there because
+  it is a different table, a different corpus and its own defect.]
+  tests/test_metar_lock_shadow_log.py::TestMigrationCannotWedge IS RED --
+  _run_migrations RAISES "no such table: predictions" ON ITS FIXTURE DB
+Priority: LOW-MEDIUM. A red test in the suite that guards a MIGRATION WEDGE,
+  so the thing it protects is exactly the thing nobody would notice breaking.
+Files: tests/test_metar_lock_shadow_log.py
+  (TestMigrationCannotWedge::test_duplicates_from_the_old_key_do_not_wedge_the_migration),
+  tracker.py:1288 (_run_migrations).
+
+  SYMPTOM: sqlite3.OperationalError: no such table: predictions, raised out of
+  tracker._run_migrations at tracker.py:1288 while the test replays migrations
+  against a hand-built fixture database.
+
+  LIKELY THE SAME CLASS AS THE STALE price_recal MIGRATION TEST fixed
+  2026-09-07 (see the price-recal entry's resolution): a test that hand-builds
+  a partial database and winds user_version to a hardcoded or otherwise
+  position-dependent point, then replays. Later migrations were appended --
+  including two `ALTER TABLE predictions ADD COLUMN consensus_gap_prob*` at
+  indices 92/93 -- and a replay window that now includes them hits a fixture
+  DB that never created `predictions` at all. _run_migrations only swallows
+  "duplicate column"/"already exists", so `no such table` re-raises.
+
+  That is a GUESS at the mechanism, stated as one: it was not diagnosed, only
+  reproduced and bisected to "not caused by the price-recal change".
+
+  WHY IT MATTERS BEYOND THE RED: the assertion this test cannot reach is that
+  duplicate rows left by the OLD (ticker, target_date, date(recorded_at)) key
+  do not wedge the migration that installs the new unique index. If that
+  migration can wedge, metar_lock_shadow_log stops accruing on any database
+  carrying such duplicates -- a silent corpus stall, which is the failure mode
+  that table's own schema comments care most about.
+
+  When to revisit: next time tracker.py's migration list or
+  test_metar_lock_shadow_log.py is open. Check first whether the fixture
+  should create `predictions`, or whether the replay window should be derived
+  from the migration list rather than hardcoded.

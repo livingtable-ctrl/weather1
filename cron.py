@@ -13,11 +13,12 @@ import json
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import execution_log
 from colors import bold, cyan, dim, green, red, yellow
@@ -1305,6 +1306,23 @@ _PRICE_RECAL_FIT_B = 1.33635
 # adopting that older slope would be the fifth threshold, so the branch stays,
 # unfired, rather than being deleted as dead code.
 _PRICE_RECAL_THRESHOLD = 0.05
+# TWO bounds on the replay, because the count alone was the wrong one.
+#
+# The threat is WALL CLOCK, not market count: this block runs upstream of
+# check_paper_position_exits (the price-based stop-loss) under a 720s watchdog
+# whose os._exit(1) runs no finally blocks, and run_trade_cycle alone has been
+# measured consuming 469.8s of that budget (scan_runs, 2026-09-02 18:36). The
+# replay is serial, calls enrich_with_forecast with fetch_forecast=True, and
+# can dispatch fresh half-open probes to the weather fallbacks -- which are
+# deliberately NOT suppress_probe'd during analysis. 25 markets at tens of
+# seconds each is enough to cross 720s from a 470s start, so a count cap did
+# not actually bound the hazard it was written for.
+_PRICE_RECAL_REPLAY_BUDGET_S = 90.0
+# The count cap stays as a cheap backstop, raised well above any observed
+# per-cycle victim count (9 on 2026-09-07, the only measured cycle) so it does
+# not bind in normal operation. Both are logged as WARNINGs when they bind,
+# because a truncated replay means the corpus under-collected that cycle.
+_PRICE_RECAL_REPLAY_CAP = 200
 _PRICE_RECAL_PROTOCOL_VERSION = "2026-08-29.v1"
 # The gate is on the CONDITION TYPE, not the ticker family, and the fit was
 # taken the same way -- that is what makes the two populations identical, which
@@ -1387,6 +1405,273 @@ def _price_recal_recalibrated(mid: float) -> float:
     return 1.0 / (1.0 + math.exp(-max(min(eta, 40.0), -40.0)))
 
 
+def _replay_retired_core_temp(
+    result: Any, all_pairs: list[tuple[dict, dict]] | None = None
+) -> list[tuple[dict, dict]]:
+    """Re-analyse the markets the retired-method gate dropped, so they can
+    still reach the price-recal forward corpus.
+
+    THE DEFECT. analyze_trade's retired-strategy gate does `return None`
+    BEFORE trade_cycle appends to `all_results`, and _log_price_recal_picks
+    reads `all_results`. `ensemble` was retired 2026-09-01T23:32Z -- two days
+    AFTER the protocol was registered -- so from that moment every market
+    using it silently stopped entering the corpus. The 2026-09-07 cycle: 9
+    core-temperature markets dropped at `retired_method`, and all 57 pairs
+    that did reach the writer were non-core types refused at its
+    condition-type guard. Zero picks were possible.
+
+    WHY THIS IS A CONFORMANCE FIX AND NOT AN AMENDMENT. Not the argument a
+    first draft made. That one read the entry's "THE POPULATION IS DEFINED BY
+    CONDITION TYPE" as making condition type SUFFICIENT for inclusion -- but
+    that sentence contrasts with TICKER FAMILY, its operative clause is "They
+    were in the fit", and read as sufficient it would equally compel admitting
+    liquidity- and spread-gated markets. The fit population was also ITSELF
+    intermittently method-filtered (is_probation=1 ensemble rows on 2026-08-06
+    and 2026-08-16, inside the 642-row fit window). The argument that carries
+    is about the ESTIMAND:
+      1. the gate is OUTCOME-DEPENDENT -- auto_retire_strategies fires on
+         realised Brier, so a corpus collected through it is filtered by the
+         outcomes it exists to predict;
+      2. the selection is HORIZON-CORRELATED BY MECHANISM -- same-day markets
+         resolve to method='metar_lockout' and survive, multi-day resolve to
+         'ensemble' and die -- and the entry's section 7 records the slope
+         differing by horizon (same-day b=+1.2436, multi-day b=+1.4313 against
+         the frozen pooled b=+1.33635). So the gate MOVES THE ESTIMAND rather
+         than merely shrinking the sample.
+    Frozen a, b, threshold, side rule, cluster target and price convention are
+    untouched; protocol_version is unchanged. Recorded in the backlog entry.
+
+    DRIVEN BY THE GATE'S OWN VICTIM LIST, not re-derived. weather_markets
+    records each ticker it rejects at that gate, and this reads that set. The
+    first version instead re-analysed every core-temperature market absent
+    from all_results and post-filtered on `method in retired`, which was wrong
+    twice over:
+      * COST -- measured against the 2026-09-07 scan, 126 of 480 daily
+        core-temperature markets sit inside the rule's firing band
+        (mid in [0.087, 0.442]), so it re-enriched 126 markets serially to
+        recover 9. At the scan's own ~2-3 worker-seconds per market that is
+        250-380s added to a cycle whose scan already took 288s, against a 720s
+        watchdog that calls os._exit(1) and runs no finally blocks -- and this
+        block sits UPSTREAM of check_paper_position_exits, the price-based
+        stop-loss. A slow cycle could have been killed before position
+        protection ran and before the cron lock was released.
+      * PRECISION -- `method in retired` tests which method the REPLAY
+        produced, not which gate stopped the MAIN PASS. model_spread,
+        model_mkt_gap, daily_thin_ensemble, below_extreme_ens and
+        volatile_regime all fire earlier and all depend on what the forecast
+        fetch returned, so a market rejected there that passes on a warm-cache
+        replay was still admitted. Corpus membership would have depended on a
+        re-run's non-determinism -- the same class of defect this exists to
+        remove, pointing the other way.
+    Reading the recorded set makes admission exactly "the main pass stopped
+    here", and bounds the work to what that gate actually rejected.
+
+    SIDE EFFECTS ARE SUPPRESSED, NOT TAGGED. analyze_trade performs two
+    observational writes before its gates, and both are hostile to a second
+    pass: metar_lock_shadow_log is INSERT OR IGNORE on (ticker, target_date),
+    so a replay row would claim the slot forever and silently discard the
+    genuine `cron` row a later cycle writes; source_reliability is INSERT OR
+    REPLACE per (city, source, day), so a replay could flip the day's recorded
+    value. _SHADOW_REPLAY_SUPPRESS_WRITES turns both off for the duration,
+    restored in a finally.
+
+    STILL NOT STRUCTURALLY FETCH-FREE: enrich/analyze consult cache-backed
+    sources behind named circuit breakers whose is_open() is a mutator. The
+    caches are warm and the set is small, but the writer's "fetches nothing"
+    claim does not extend here and the call site no longer says it does.
+
+    Never raises, for the WHOLE body: a malformed result must not cost the
+    cycle's entire price-recal write, which reads identically to a quiet day.
+    """
+    try:
+        from tracker import get_retired_strategies as _get_retired
+
+        retired = _get_retired() or {}
+        if not retired:
+            return []
+
+        from weather_markets import get_retired_gate_tickers as _victims
+
+        victims = _victims()
+        if not victims:
+            return []
+
+        # LOAD-BEARING FOR THREAD SAFETY, not only for halt semantics.
+        # trade_cycle's timeout and kill-switch paths call
+        # _pool.shutdown(wait=False, cancel_futures=True), which leaves
+        # in-flight analyze_trade workers running. scan_completed is set only
+        # in the loop's for/else, i.e. only when every future finished -- so
+        # this guard is what guarantees no pool worker is still inside
+        # analyze_trade while the suppression flag below is toggled.
+        if not getattr(result, "scan_completed", False):
+            return []
+        if KILL_SWITCH_PATH.exists():
+            return []
+
+        import weather_markets as _wm
+        from weather_markets import _parse_market_condition as _parse_cond
+        from weather_markets import analyze_trade as _analyze
+        from weather_markets import enrich_with_forecast as _enrich
+        from weather_markets import parse_market_price as _parse_price
+
+        analysed = {
+            enriched.get("ticker")
+            for enriched, _a in (
+                all_pairs
+                if all_pairs is not None
+                else (getattr(result, "all_results", None) or [])
+            )
+            if isinstance(enriched, dict)
+        }
+        replayed: list[tuple[dict, dict]] = []
+        considered = 0
+        # SHUFFLED, because truncation must not be order-correlated.
+        # deduped_markets arrives in Kalshi fetch/dedup order, which is series-
+        # and city-grouped, so a bound that stops partway would always exclude
+        # the same cities from a PRE-REGISTERED corpus. _PROBATION_SAMPLE_SIZE
+        # -- the precedent the cap borrowed its number from -- uses
+        # random.sample for exactly this reason; borrowing the number without
+        # the randomisation was half the pattern.
+        import random as _rnd
+
+        _candidates = list(getattr(result, "deduped_markets", None) or [])
+        _rnd.shuffle(_candidates)
+
+        _deadline = time.monotonic() + _PRICE_RECAL_REPLAY_BUDGET_S
+        _prev_suppress = getattr(_wm, "_SHADOW_REPLAY_SUPPRESS_WRITES", False)
+        _wm._SHADOW_REPLAY_SUPPRESS_WRITES = True
+        try:
+            for market in _candidates:
+                # Bound BEFORE the try: the handler logs it, and an earlier
+                # draft assigned it inside, so a market that raised on the
+                # first statement left the name unbound and the handler itself
+                # raised UnboundLocalError -- which escaped the loop and cost
+                # every remaining market. An isinstance(market, dict) guard
+                # also sat here; mutation testing showed its removal broke
+                # nothing once ticker was bound safely, so it went. The
+                # per-market except is the real protector. Deliberately not
+                # re-added.
+                ticker = None
+                try:
+                    ticker = market.get("ticker")
+                    # No `not ticker or` clause: mutation testing showed it
+                    # unreachable-in-effect, because a falsy ticker is already
+                    # excluded by `not in victims` (the gate only records
+                    # truthy tickers). A guard that reads as load-bearing but
+                    # cannot fire is worse than none. Deliberately not re-added.
+                    if ticker not in victims or ticker in analysed:
+                        continue
+                    # Re-checked EVERY iteration, not once at entry: the main
+                    # scan breaks mid-scan on the kill switch, and this loop
+                    # can run for many seconds.
+                    if KILL_SWITCH_PATH.exists():
+                        break
+                    cond = _parse_cond(market)
+                    if not cond or cond.get("type") not in _PRICE_RECAL_CORE_TYPES:
+                        continue
+                    # The writer's guard 4, hoisted, from the same constants so
+                    # the two cannot drift. enrich_with_forecast adds keys and
+                    # never touches the price fields parse_market_price reads,
+                    # so raw and enriched agree here by construction.
+                    mid = float(_parse_price(market).get("mid") or 0.0)
+                    if not (0.0 < mid < 1.0):
+                        continue
+                    if (
+                        abs(_price_recal_recalibrated(mid) - mid)
+                        < _PRICE_RECAL_THRESHOLD
+                    ):
+                        continue
+                    # BOTH bounds here, below the pre-filters and above the
+                    # only expensive call. Above the filters they fired on
+                    # victims that would have been discarded anyway, reporting
+                    # "under-collecting" when nothing was lost.
+                    if considered >= _PRICE_RECAL_REPLAY_CAP:
+                        _log.warning(
+                            "price_recal replay: hit the %d-market cap with "
+                            "admissible victims outstanding -- the corpus is "
+                            "under-collecting this cycle",
+                            _PRICE_RECAL_REPLAY_CAP,
+                        )
+                        break
+                    if time.monotonic() > _deadline:
+                        _log.warning(
+                            "price_recal replay: hit the %.0fs budget after %d "
+                            "market(s) with admissible victims outstanding -- "
+                            "the corpus is under-collecting this cycle",
+                            _PRICE_RECAL_REPLAY_BUDGET_S,
+                            considered,
+                        )
+                        break
+                    considered += 1
+                    enriched = _enrich(market, skip_past_target_dates=True)
+                    analysis = _analyze(enriched, bypass_retirement_check=True)
+                    if not analysis:
+                        continue
+                    replayed.append((enriched, analysis))
+                except Exception as _exc:
+                    _log.debug("price_recal replay: skipped %s: %s", ticker, _exc)
+        finally:
+            _wm._SHADOW_REPLAY_SUPPRESS_WRITES = _prev_suppress
+
+        # ALWAYS reports when the gate rejected anything, at a level that
+        # matches what it means. An earlier version logged only `if
+        # considered:` -- so if every victim ticker failed to match a market
+        # (exactly what happens if the gate ever records the wrong key), the
+        # cycle printed NOTHING at any visible level: byte-identical to a quiet
+        # day, which is the silent-stall failure this corpus cannot tolerate.
+        if victims and not considered:
+            _log.warning(
+                "price_recal replay: the gate rejected %d market(s) but NONE "
+                "were admissible -- if this repeats, suspect a ticker-key "
+                "mismatch between the gate's record and deduped_markets",
+                len(victims),
+            )
+        elif considered and not replayed:
+            _log.warning(
+                "price_recal replay: re-analysed %d of %d retired-method "
+                "market(s) and readmitted NONE -- a systematic enrich/analyse "
+                "failure looks exactly like this",
+                considered,
+                len(victims),
+            )
+        elif considered:
+            _log.info(
+                "price_recal replay: %d of %d retired-method market(s) "
+                "re-analysed for the forward corpus, %d readmitted",
+                considered,
+                len(victims),
+                len(replayed),
+            )
+        return replayed
+    except Exception as _outer:
+        _log.warning("price_recal replay: skipped this cycle: %s", _outer)
+        return []
+
+
+def _price_recal_input(result: Any) -> list[tuple[dict, dict]]:
+    """The (enriched, analysis) pairs the price-recal writer should see.
+
+    A real function, not two inline statements, so the wiring is EXECUTABLE
+    and testable. As inline statements the only thing pinning it was an AST
+    scan of cron.py, and a review defeated that three ways: a dead `if False:`
+    branch, a never-called module-level function, and a decoy call earlier in
+    the file while the real site was reverted.
+
+    `list(...)` is load-bearing -- without the copy .extend() mutates
+    result.all_results IN PLACE and the replayed pairs leak into the trading
+    gates, the display tiers and the analysis_attempts audit trail. Today
+    those all read the list earlier in the cycle, so ordering happens to
+    protect them too, but ordering is not a guarantee a reader can see.
+
+    The copied list is passed INTO the replay rather than letting it re-read
+    result.all_results: two reads of the same attribute would diverge if it
+    were ever an iterator, and the first list() would have exhausted it.
+    """
+    pairs = list(getattr(result, "all_results", None) or [])
+    pairs.extend(_replay_retired_core_temp(result, all_pairs=pairs))
+    return pairs
+
+
 def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, str]:
     """Record the option-5 rule's picks for this cycle. SHADOW ONLY.
 
@@ -1428,8 +1713,10 @@ def _log_price_recal_picks(all_results: list, db_path) -> tuple[int, int, int, s
     tracker.settle_price_recal_picks to fill from `outcomes`, and no win flag,
     edge or P&L is computed at write time -- the protocol's statistic is
     computed twice, at tracker.PRICE_RECAL_LOOK_1 and _LOOK_2 settled
-    picks (850 and 1,700 as pre-registered), and a column that
-    quietly accumulated it would be a third look.
+    picks (1,100 and 2,200 as pre-registered), and a column that
+    quietly accumulated it would be a third look. The "850 and 1,700" this
+    line used to quote was the SUPERSEDED sizing -- the entry withdrew both
+    when the half-spread was measured at 1.5c and the floor moved to 2,200.
     """
     import pathlib
     import sqlite3
@@ -3175,7 +3462,6 @@ def _cmd_cron_body(
     # reset_gate_counts is no longer called here -- run_trade_cycle() resets
     # the counters itself before its own analyze loop runs.
     from trade_cycle import TIER_STRONG, run_trade_cycle
-    from weather_markets import get_gate_counts as _get_gate_counts
 
     # Subscribe+start the WebSocket at the same point in the cycle it ran at
     # pre-extraction -- right after the market fetch, before prewarm/the
@@ -3365,8 +3651,17 @@ def _cmd_cron_body(
         pass
 
     # Option-5 price-recalibration shadow log. SHADOW ONLY -- it places
-    # nothing, fetches nothing, and reads the same result.all_results the
-    # analysis batch above already walked.
+    # nothing and reads the same result.all_results the analysis batch above
+    # already walked.
+    #
+    # "fetches nothing" was true when this comment was written and is NO
+    # LONGER true in full: _price_recal_input also replays the core-temperature
+    # markets the retired-method gate dropped, and enrich_with_forecast/
+    # analyze_trade consult cache-backed sources behind named circuit breakers
+    # whose is_open() is a mutator. That replay is filtered down to markets
+    # where the rule actually fires and is inert whenever nothing is retired,
+    # but the unqualified claim would now be false, so it is stated accurately
+    # rather than left as inherited reassurance. It still PLACES nothing.
     #
     # Runs on --sameday-only too, unlike the signals cache below. That cache is
     # a wholesale-overwritten snapshot, so a narrow scan would truncate it; this
@@ -3396,12 +3691,17 @@ def _cmd_cron_body(
     try:
         from tracker import DB_PATH as _PRSL_DB
 
+        # all_results PLUS the core-temperature markets the retired-method
+        # gate dropped before it was ever appended to. Built by a real
+        # function rather than two inline statements so the wiring is
+        # executable and testable -- see _price_recal_input's docstring for
+        # why the AST scan that used to pin it was not enough.
         (
             _prsl_cand,
             _prsl_wrote,
             _prsl_skipped,
             _prsl_stamp,
-        ) = _log_price_recal_picks(result.all_results if result else [], _PRSL_DB)
+        ) = _log_price_recal_picks(_price_recal_input(result), _PRSL_DB)
         # NOT behind `if _prsl_wrote`. An earlier draft was, and its docstring
         # claimed a systematic parse failure "cannot look like the rule did not
         # fire" -- which was false: with every market failing, written == 0, the
@@ -3778,7 +4078,19 @@ def _cmd_cron_body(
     _n_strong = len(strong_opps)
     _n_med = len(med_opps)
     _n_with_edge = _n_strong + _n_med
-    _gate_detail = _get_gate_counts()
+    # result.gate_counts, NOT a live _get_gate_counts() read. The counters are
+    # a module global in weather_markets, reset once per scan, and the
+    # price-recal replay above re-analyses markets AFTER trade_cycle captured
+    # them -- so a live read here double-counts every gate the replay passes
+    # through and no longer reconciles with `scanned`, with
+    # _format_filter_breakdown, or with data/scan_funnel.json (which
+    # trade_cycle snapshots before the replay). The captured dict is the
+    # scan's own view.
+    # No `if result else _get_gate_counts()` fallback: that arm is unreachable
+    # (_cmd_cron_body returns earlier when result is None) and a live read is
+    # exactly what must not happen here, so keeping it as a "safe" default
+    # would only preserve a way back to the double-counted number.
+    _gate_detail = result.gate_counts
     _gate_str = (
         " ".join(f"{k}:{v}" for k, v in sorted(_gate_detail.items()))
         if _gate_detail
