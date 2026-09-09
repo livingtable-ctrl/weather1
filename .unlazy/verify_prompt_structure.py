@@ -21,6 +21,11 @@ import sys
 REQUIRED = [
     # (label, regex that must be PRESENT)
     ("web/research instruction", r"Use the web as well as the repo"),
+    ("deep-research skill named", r"Use the `deep-research` skill"),
+    ("unlazy skill named", r"Use the `unlazy` skill"),
+    ("prior searches marked provisional", r"a starting point, not a result"),
+    ("oracle commands given", r"verify_prompt_numbers\.py docs/HANDOFF"),
+    ("unsearched gap named", r"Worth searching that nobody has"),
     (
         "favorite-longshot framing",
         "favorite[-\u2013\u2014]longshot bias",

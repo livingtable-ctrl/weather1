@@ -10,6 +10,53 @@ the single most important open question below turns on published work about pred
 calibration, not on anything in this codebase. Read `backlog.txt` (top entries first) and
 `MEMORY.md` before doing anything.
 
+## How to work this
+
+**Use the `deep-research` skill for the literature question in task 1.** It fans out parallel
+searches, fetches sources, adversarially verifies each claim, and returns a cited report.
+That is the right shape for "is the favourite-longshot bias real and exploitable after
+costs in a market like this one", which is the question the whole brief turns on.
+
+**Use the `unlazy` skill before any code change or any conclusion you intend to publish.**
+Write the gates first, make the riskiest outcome runnable, and mutation-test your own
+oracle. This repo has shipped vacuous gates before -- a checker that embedded the number it
+was meant to prove -- and the session that wrote this brief hit the same class of bug twice
+in its own audit tooling.
+
+**Three searches were already run; treat them as a starting point, not a result.** Verify
+them independently and go further:
+
+1. The favourite-longshot bias and whether it survives transaction costs in binary
+   event markets. What was found: b>1 means the market is underconfident (prices compressed
+   toward 50c); the effect is generally judged "efficient within transaction costs"; it is
+   reported most exploitable near $0.05-0.15 and $0.75-0.92. **Confirm or refute this from
+   primary sources -- the summary above came from secondary web results, not papers.**
+2. Kalshi's fee schedule. What was found: taker `0.07 x C x P x (1-P)`, maker
+   `M x 0.0175 x C x P x (1-P)` with the series multiplier `M = 0` for weather. This matches
+   the repo. **Re-check it -- if `M` ever becomes non-zero for weather series, the maker-only
+   thesis in this brief dies immediately.** `cron._check_fee_change` monitors it daily.
+3. Kalshi weather-market calibration at scale. What was found: independent reporting claims
+   these markets are well calibrated across ~70,000-73,000 resolved daily markets, a 70c
+   contract resolving yes ~70% of the time. **This is the single most load-bearing external
+   claim in the brief** -- it is what makes task 1's selection test necessary. It came from
+   a secondary source. Find the primary data or a better source before relying on it.
+
+Worth searching that nobody has: whether anyone has published on **execution** in binary
+event markets specifically -- whether a resting maker-only strategy can actually capture a
+calibration edge that a taker cannot, and what fill rates that implies. That is the exact
+mechanism this brief proposes, and it is the part with no evidence behind it.
+
+**Verification discipline, non-negotiable.** Every number in this document was measured on
+2026-09-09 and several move. Three oracles in `.unlazy/` bind them to the live corpus and
+will tell you immediately if the document has drifted:
+
+    python .unlazy/verify_prompt_numbers.py docs/HANDOFF-where-is-the-edge-2026-09-09.md
+    python .unlazy/verify_prompt_structure.py --selftest docs/HANDOFF-where-is-the-edge-2026-09-09.md
+    python .unlazy/mutate_prompt_oracle.py docs/HANDOFF-where-is-the-edge-2026-09-09.md
+
+Run the first one before you start. If it fails, the corpus has moved and the failing
+figure is named -- re-derive it and correct this document rather than working around it.
+
 ## How to treat the numbers in this document
 
 Every figure here was measured from source on **2026-09-09**. The corpus is live and
